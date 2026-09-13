@@ -1,4 +1,8 @@
-﻿# LAZER / Build 5
+# Scoot with Friends
+
+Play online: https://scoot-with-friends.nicsoundcloud22.chatgpt.site
+
+Windows portable copy: releases/Scoot-with-Friends-Windows.zip. Extract all and double-click Play Scoot with Friends.cmd. This works independently of ChatGPT or coding credits.
 
 A playable browser scooter game with Warehouse 01, the photo-inspired Sunset Plaza 02, controller menus, a modular Lazer scooter builder, three rider presets, session markers, and local loadout saving. TypeScript, Three.js, Rapier and Vite. Everything runs locally without an account or backend.
 

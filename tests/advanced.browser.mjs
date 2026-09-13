@@ -46,11 +46,13 @@ try {
       large = modules.find((m) => m.id === "large-transfer"),
       quarters = modules.filter((m) => m.kind === "quarter");
     check(
-      "Spine and small box physically occupy swapped adjacent lanes",
+      "Only outer obstacles swap; small box retains original middle lane",
       small.x1 === spine.x0 &&
-        spine.x1 === large.x0 &&
-        spine.x0 === -4 &&
-        small.x0 === -11,
+        large.x1 === small.x0 &&
+        small.x0 === -4 &&
+        small.x1 === 1 &&
+        large.x0 < small.x0 &&
+        spine.x1 > small.x1,
     );
     check(
       "Opposing tall quarters share exact centerlines",
@@ -88,9 +90,9 @@ try {
       heights.every((h, i) => i === 0 || h > heights[i - 1] + 0.5),
     );
     for (const [id, x] of [
-      ["spine", -1.5],
-      ["small-box", -7.5],
-      ["large-transfer", 7],
+      ["spine", 4.5],
+      ["small-box", -1.5],
+      ["large-transfer", -10],
     ]) {
       place(x, 26.2, 0.1, Math.PI);
       let launched = false;

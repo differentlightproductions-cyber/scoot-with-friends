@@ -86,6 +86,10 @@ export class RiderModel {
   thighs: THREE.Mesh[] = [];
   shins: THREE.Mesh[] = [];
   shoes: THREE.Mesh[] = [];
+  hands: THREE.Group[] = [];
+  knees: THREE.Mesh[] = [];
+  neck: THREE.Mesh;
+  walkOffset = 0;
   crouch = 0;
   wheelAngle = 0;
   carry = 0;
@@ -123,7 +127,91 @@ export class RiderModel {
       this.materials.helmet,
       v(1, 0.73, 1),
     );
+    this.neck = rod(
+      this.rider,
+      v(0, 1.35, 0),
+      v(0, 1.43, 0),
+      0.055,
+      this.materials.skin,
+    );
+    const white = new THREE.MeshStandardMaterial({ color: 0xe8dfce });
     for (const sign of [-1, 1]) {
+      box(
+        this.head,
+        v(0.043, 0.027, 0.015),
+        v(sign * 0.047, 0.012, 0.107),
+        white,
+      );
+      box(
+        this.head,
+        v(0.018, 0.021, 0.012),
+        v(sign * 0.046, 0.011, 0.119),
+        this.materials.black,
+      );
+      box(
+        this.head,
+        v(0.046, 0.012, 0.018),
+        v(sign * 0.047, 0.036, 0.11),
+        this.materials.black,
+      );
+      sphere(
+        this.head,
+        0.032,
+        v(sign * 0.123, -0.004, 0),
+        this.materials.skin,
+        v(0.6, 1, 0.7),
+      );
+      box(
+        this.hips,
+        v(0.011, 0.065, 0.085),
+        v(sign * 0.145, -0.012, -0.035),
+        this.materials.black,
+      );
+    }
+    sphere(
+      this.head,
+      0.026,
+      v(0, -0.014, 0.12),
+      this.materials.skin,
+      v(0.65, 0.8, 1.2),
+    );
+    box(
+      this.head,
+      v(0.045, 0.008, 0.009),
+      v(0, -0.063, 0.1),
+      this.materials.black,
+    );
+    box(this.hips, v(0.285, 0.025, 0.215), v(0, 0.07, 0), this.materials.black);
+    for (const sign of [-1, 1]) {
+      this.knees.push(
+        sphere(this.rider, 0.077, v(sign * 0.1, 0.53, 0), this.materials.pants),
+      );
+      const hand = new THREE.Group();
+      this.rider.add(hand);
+      this.hands.push(hand);
+      box(hand, v(0.066, 0.065, 0.031), v(0, 0, 0), this.materials.skin);
+      for (let f = 0; f < 4; f++) {
+        box(
+          hand,
+          v(0.012, 0.034, 0.014),
+          v((f - 1.5) * 0.017, -0.045, 0.008),
+          this.materials.skin,
+        );
+        const tip = box(
+          hand,
+          v(0.012, 0.024, 0.014),
+          v((f - 1.5) * 0.017, -0.064, 0.021),
+          this.materials.skin,
+        );
+        tip.rotation.x = -0.8;
+      }
+      const thumb = box(
+        hand,
+        v(0.021, 0.04, 0.021),
+        v(-sign * 0.041, -0.018, 0.023),
+        this.materials.skin,
+      );
+      thumb.rotation.z = sign * 0.55;
       this.upperArms.push(
         rod(
           this.rider,
@@ -208,12 +296,13 @@ export class RiderModel {
       0,
       s.roll * (1 - this.carry) + (this.carry * Math.PI) / 2,
     );
-    this.scooter.position.x = damp(
-      this.scooter.position.x,
-      s.walking ? 0.48 : 0,
+    this.walkOffset = damp(
+      this.walkOffset,
+      s.sitting?.id ? 0.78 : s.walking ? 0.48 : 0,
       14,
       dt,
     );
+    this.scooter.position.x = this.walkOffset;
     this.scooter.position.z = this.carry * 0.12;
     this.rider.rotation.set(
       s.pitch * 0.65 - s.rampLean * TUNE.rampLeanAngle,
@@ -222,16 +311,29 @@ export class RiderModel {
     );
     this.scooter.position.y = s.manual.active
       ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
-      : this.carry * 1.02;
+      : s.sitting
+        ? -0.55
+        : this.carry * 1.02;
     const bri = s.tricks.bri.angle,
       kickless = s.tricks.kickless.angle;
-    this.scooter.rotation.x += bri;
-    this.scooter.rotation.z +=
-      Math.sin(bri / 2) * 0.65 + Math.sin(kickless) * 0.55;
+    const briActive =
+      Math.abs(s.tricks.bri.velocity) > 0.1 || s.tricks.bri.mismatch > 0.02;
+    const cycle = Math.abs(bri) % (Math.PI * 2),
+      lift = Math.sin(cycle / 2),
+      side = Math.sign(bri) || 1;
+    const inward = side !== s.tricks.naturalDirection;
+    this.scooter.rotation.order = "YXZ";
+    this.scooter.rotation.x += (inward ? -1 : 1) * Math.abs(bri);
+    this.scooter.rotation.y = briActive
+      ? side * lift * (inward ? 0.12 : 0.65)
+      : 0;
+    this.scooter.rotation.z += Math.sin(kickless) * 0.55;
     const pivot = v(0, 1.01, 0.26),
       rotated = pivot.clone().applyEuler(this.scooter.rotation);
-    if (Math.abs(s.tricks.bri.velocity) > 0.1 || s.tricks.bri.mismatch > 0.02)
-      this.scooter.position.add(pivot.sub(rotated));
+    if (briActive)
+      this.scooter.position.add(
+        v(side * 0.34 * lift, 1.01 + 0.22 * lift, 0.26).sub(rotated),
+      );
     this.deckPivot.rotation.y = s.tricks.deck.angle + Math.sin(kickless) * 2.7;
     this.deckPivot.rotation.z = Math.sin(kickless) * 0.45;
     this.barPivot.rotation.y =
@@ -240,7 +342,8 @@ export class RiderModel {
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
     this.crouch = damp(
       this.crouch,
-      s.charge * 0.3 +
+      (s.sitting?.id ? 0.8 : 0) +
+        s.charge * 0.3 +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * 0.65 : 0) +
         (s.popTimer > 0 ? 0.1 : 0),
@@ -274,10 +377,32 @@ export class RiderModel {
     this.torso.rotation.x += weight * 0.18;
     this.hips.position.set(0, 0.88 - c, -0.13 - c * 0.5);
     this.hips.position.z += weight * TUNE.airWeightShiftStrength * 0.65;
+    this.hips.position
+      .copy(
+        v(0, -0.21, 0).applyEuler(this.torso.rotation).add(this.torso.position),
+      )
+      .add(v(0, -0.055, 0));
+    this.hips.rotation.copy(this.torso.rotation);
     this.head.position.set(0, 1.49 - c, -0.01 + c * 0.3);
     this.helmet.position.set(0, 1.57 - c, -0.025 + c * 0.3);
     this.head.position.z += weight * TUNE.airWeightShiftStrength;
     this.helmet.position.z += weight * TUNE.airWeightShiftStrength;
+    poseRod(
+      this.neck,
+      v(0, 0.225, 0).applyEuler(this.torso.rotation).add(this.torso.position),
+      this.head.position.clone().add(v(0, -0.09, 0)),
+    );
+    this.rider.position.set(
+      0,
+      s.walking && !s.sitting
+        ? Math.abs(Math.sin(s.elapsed * (s.running ? 13 : 9))) *
+            Math.min(s.speed, 1) *
+            0.025
+        : s.manual.active
+          ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
+          : 0,
+      0,
+    );
     for (let i = 0; i < 2; i++) {
       const sign = i === 0 ? -1 : 1;
       const rear = s.tricks.stance === "regular" ? 1 : 0;
@@ -347,13 +472,23 @@ export class RiderModel {
         this.shoes[i].position.copy(foot);
       }
       const knee = v(sign * 0.13, 0.53 - c * 0.55, 0.04 + c * 0.4);
-      poseRod(this.thighs[i], v(sign * 0.1, 0.89 - c, -0.13 - c * 0.5), knee);
-      poseRod(this.shins[i], knee, foot);
-      const shoulder = v(
-        sign * 0.19,
-        1.3 - c,
-        -0.07 + c * 0.3 + weight * TUNE.airWeightShiftStrength,
+      if (s.sitting) {
+        knee.set(sign * 0.12, 0.03, 0.34);
+        foot.set(sign * 0.12, -0.49, 0.4);
+        this.shoes[i].position.copy(foot);
+      }
+      this.knees[i].position.copy(knee);
+      poseRod(
+        this.thighs[i],
+        v(sign * 0.095, -0.015, 0)
+          .applyEuler(this.hips.rotation)
+          .add(this.hips.position),
+        knee,
       );
+      poseRod(this.shins[i], knee, foot);
+      const shoulder = v(sign * 0.19, 0.17, 0)
+        .applyEuler(this.torso.rotation)
+        .add(this.torso.position);
       let hand = v(sign * 0.24, 1.01, 0.26);
       const elbow = v(sign * 0.28, 1.13 - c * 0.7, 0.04);
       if (s.walking) {
@@ -371,8 +506,9 @@ export class RiderModel {
         elbow.lerp(v(sign * 0.32, 1.13, 0.06), this.carry);
       }
       if (s.tricks.fingerTime > 0 && sign === s.tricks.fingerHand) {
-        hand.set(sign * 0.16, 0.3, -0.06);
-        elbow.set(sign * 0.32, 0.72, -0.04);
+        const reach = Math.sin((1 - s.tricks.fingerTime / 0.35) * Math.PI);
+        hand.lerp(v(sign * 0.35, 0.4, 0.3), reach);
+        elbow.lerp(v(sign * 0.45, 0.78, 0.32), reach);
       }
       if (pose === "Superman") hand.z += blend * 0.15;
       if (
@@ -399,7 +535,29 @@ export class RiderModel {
           0.27 + Math.sin(s.tricks.bars.angle + sign) * 0.1,
         );
       poseRod(this.upperArms[i], shoulder, elbow);
+      if (briActive) {
+        hand.copy(
+          v(sign * 0.24, 1.01, 0.26)
+            .applyEuler(this.scooter.rotation)
+            .add(this.scooter.position)
+            .sub(this.rider.position)
+            .applyQuaternion(this.rider.quaternion.clone().invert()),
+        );
+        elbow.copy(shoulder).lerp(hand, 0.5);
+        elbow.x += sign * 0.13;
+        poseRod(this.upperArms[i], shoulder, elbow);
+      }
+      if (s.sitting) {
+        hand.set(sign * 0.14, 0.16, 0.25);
+        elbow.copy(shoulder).lerp(hand, 0.55);
+        poseRod(this.upperArms[i], shoulder, elbow);
+      }
       poseRod(this.forearms[i], elbow, hand);
+      this.hands[i].position.copy(hand);
+      this.hands[i].quaternion.setFromUnitVectors(
+        v(0, 1, 0),
+        elbow.clone().sub(hand).normalize(),
+      );
     }
     if (s.state === "Bail") {
       const t = s.bailTimer;
@@ -417,7 +575,9 @@ export class RiderModel {
           ? Math.abs(Math.sin(s.elapsed * (s.running ? 13 : 9))) *
               Math.min(s.speed, 1) *
               0.025
-          : this.scooter.position.y,
+          : s.manual.active
+            ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
+            : 0,
         0,
       );
   }

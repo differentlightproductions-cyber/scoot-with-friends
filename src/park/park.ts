@@ -93,6 +93,46 @@ export function selectPark(id: string) {
   SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
 }
 export class Park {
+  benches: {
+    id: string;
+    x: number;
+    z: number;
+    seat: number;
+    width: number;
+    length: number;
+  }[] = [];
+  bench(id: string, x: number, base: number, z: number, width = 1, length = 4) {
+    const seat = base + 0.55;
+    this.benches.push({ id, x, z, seat, width, length });
+    this.box(
+      new THREE.Vector3(x, seat - 0.06, z),
+      new THREE.Vector3(width, 0.12, length),
+      0xa17f55,
+      true,
+    );
+    for (const dz of [-length * 0.34, length * 0.34])
+      this.box(
+        new THREE.Vector3(x, base + 0.24, z + dz),
+        new THREE.Vector3(width * 0.65, 0.48, 0.12),
+        0x39483e,
+        true,
+      );
+    for (const side of [-1, 1])
+      this.rail(
+        id + " coping " + side,
+        new THREE.Vector3(
+          x + side * (width / 2 - 0.025),
+          seat + 0.012,
+          z - length / 2,
+        ),
+        new THREE.Vector3(
+          x + side * (width / 2 - 0.025),
+          seat + 0.012,
+          z + length / 2,
+        ),
+        "ledge",
+      );
+  }
   rails: Rail[] = [];
   railHandles = new Set<number>();
   solids: THREE.Object3D[] = [];
@@ -394,20 +434,7 @@ export class Park {
       new THREE.Vector3(65, 0.15, 89),
       0x778b84,
     ).castShadow = false;
-    // Observation bench beyond the main practice lane.
-    for (const z of [-18, -12]) {
-      this.box(
-        new THREE.Vector3(-29, 0.5, z),
-        new THREE.Vector3(1, 0.18, 4),
-        0xb88659,
-      );
-      for (const dz of [-1.3, 1.3])
-        this.box(
-          new THREE.Vector3(-29, 0.22, z + dz),
-          new THREE.Vector3(0.7, 0.45, 0.15),
-          0x2c4545,
-        );
-    }
+    for (const z of [-18, -12]) this.bench("Warehouse bench " + z, -29, 0, z);
   }
   rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge") {
     this.rails.push({ id, a, b, kind, coping: id === "Quarter coping" });

@@ -27,6 +27,12 @@ export class GameMenu {
   previewRider: RiderModel;
   orbit = 0.55;
   zoom = 3.7;
+  zoomTarget = 3.7;
+  focus = new THREE.Vector3(0, 0.52, 0);
+  focusTarget = new THREE.Vector3(0, 0.52, 0);
+  pan = new THREE.Vector3();
+  focusBox = new THREE.Box3Helper(new THREE.Box3(), 0xf26c38);
+  private focusKey = "";
   private saveFailed = false;
   onRide = (_map: MapId) => {};
   onChange = () => {};
@@ -41,6 +47,25 @@ export class GameMenu {
     public profile: LocalProfile,
   ) {
     this.previewScene.background = new THREE.Color(0xc5cbc1);
+    this.previewScene.add(this.focusBox);
+    this.focusBox.visible = false;
+    let drag:{x:number;y:number;pan:boolean}|null=null;
+    window.addEventListener('pointerdown',e=>{if(!this.root.hidden&&e.clientX>innerWidth*.5){drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey};}});
+    window.addEventListener('pointerup',()=>{drag=null;});
+    window.addEventListener('pointermove',e=>{if(!drag||this.root.hidden)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(drag.pan){this.pan.x-=dx*.003;this.pan.y+=dy*.003;}else this.orbit-=dx*.008;drag.x=e.clientX;drag.y=e.clientY;});
+    window.addEventListener('contextmenu',e=>{if(!this.root.hidden&&e.clientX>innerWidth*.5)e.preventDefault();});
+    window.addEventListener(
+      "wheel",
+      (e) => {
+        if (this.root.hidden) return;
+        this.zoomTarget = THREE.MathUtils.clamp(
+          this.zoomTarget + e.deltaY * 0.003,
+          0.8,
+          7,
+        );
+      },
+      { passive: true },
+    );
     this.previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6b7970, 2.4));
     const light = new THREE.DirectionalLight(0xffefdc, 3);
     light.position.set(-3, 5, 4);
@@ -205,7 +230,7 @@ export class GameMenu {
           : "BACK",
         () => this.back(),
       );
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : "Selections save on this device."}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : "Selections save on this device."}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -221,6 +246,39 @@ export class GameMenu {
     this.highlight();
   }
   private highlight() {
+    const category =
+      this.screen === "scooter"
+        ? CATEGORIES[Math.min(this.index, CATEGORIES.length - 1)]
+        : this.category;
+    const active = ["scooter", "parts", "variants"].includes(this.screen);
+    const key = active ? category : "";
+    if (key !== this.focusKey) {
+      this.focusKey = key;
+      this.pan.set(0, 0, 0);
+      this.zoomTarget = active ? 2.2 : 3.7;
+    }
+    this.focusBox.visible = active;
+    if (active) {
+      const bounds = new THREE.Box3();
+      this.previewRider.root.updateMatrixWorld(true);
+      this.previewRider.scooter.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          const selected = PARTS.some(
+            (p) => p.id === o.userData.part && p.category === category,
+          );
+          const material = o.material as THREE.MeshStandardMaterial;
+          if (material.emissive) {
+            material.emissive.set(selected ? 0xb95619 : 0);
+            material.emissiveIntensity = selected ? 0.25 : 0;
+          }
+          if (selected) bounds.expandByObject(o);
+        }
+      });
+      if (!bounds.isEmpty()) {
+        this.focusBox.box.copy(bounds).expandByScalar(0.025);
+        bounds.getCenter(this.focusTarget);
+      } else this.focusBox.visible = false;
+    } else this.focusTarget.set(0, 0.83, 0);
     this.root
       .querySelectorAll("[data-menu-index]")
       .forEach((el, i) => el.classList.toggle("selected", i === this.index));
@@ -267,23 +325,30 @@ export class GameMenu {
     } else if (!direction) this.cooldown = 0;
     if (input.pressed.hop) this.select();
     else if (input.pressed.brakeBars || input.pressed.pause) this.back();
+    this.focus.lerp(this.focusTarget, 1 - Math.exp(-8 * dt));
+    this.zoom += (this.zoomTarget - this.zoom) * (1 - Math.exp(-7 * dt));
+    if (input.held.leftModifier > 0.5) {
+      this.pan.x += input.rx * dt;
+      this.pan.y -= input.ry * dt;
+      return;
+    }
     this.orbit -= input.rx * dt * 1.8;
-    this.zoom = THREE.MathUtils.clamp(
-      this.zoom + input.ry * dt * 1.5,
-      2.2,
-      5.2,
-    );
+    this.zoom = THREE.MathUtils.clamp(this.zoom + input.ry * dt * 1.5, 0.8, 7);
+    if (Math.abs(input.ry) > 0.05) this.zoomTarget = this.zoom;
   }
   preview(renderer: THREE.WebGLRenderer) {
     const scooter = ["scooter", "parts", "variants"].includes(this.screen);
     this.previewRider.rider.visible = !scooter;
-    const center = new THREE.Vector3(-0.65, scooter ? 0.52 : 0.83, 0),
+    const center = this.focus
+        .clone()
+        .add(this.pan)
+        .add(new THREE.Vector3(-0.5, 0, 0)),
       distance = this.zoom * (scooter ? 0.66 : 1);
     this.previewCamera.aspect = innerWidth / innerHeight;
     this.previewCamera.position.set(
-      Math.sin(this.orbit) * distance,
-      0.9 + distance * 0.35,
-      Math.cos(this.orbit) * distance,
+      this.focus.x + this.pan.x + Math.sin(this.orbit) * distance,
+      this.focus.y + this.pan.y + distance * 0.35,
+      this.focus.z + this.pan.z + Math.cos(this.orbit) * distance,
     );
     this.previewCamera.lookAt(center);
     this.previewCamera.updateProjectionMatrix();

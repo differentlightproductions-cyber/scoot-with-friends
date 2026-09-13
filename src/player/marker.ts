@@ -57,6 +57,7 @@ export class MarkerSystem {
   set(s: Simulation) {
     if (
       !s.grounded ||
+      s.sitting ||
       s.mantle ||
       s.dropIn.phase ||
       s.grind ||

@@ -1,15 +1,15 @@
-﻿import * as THREE from "three";
+import * as THREE from "three";
 import type { Park } from "./park";
 
 export const outdoorSpawns = [
   { name: "PLAZA / RUNWAY", x: -10, z: -19, yaw: 0 },
-  { name: "SMALL BOX", x: -7.5, z: 13, yaw: Math.PI },
+  { name: "SMALL BOX", x: -1.5, z: 13, yaw: Math.PI },
   { name: "BACK QUARTER", x: 4, z: 18, yaw: 0 },
   { name: "FRONT QUARTER", x: -8, z: -18, yaw: Math.PI },
   { name: "STREET RAIL", x: 15, z: -9, yaw: 0 },
-  { name: "DROP / SPINE", x: -1.5, z: 26.2, yaw: Math.PI },
-  { name: "DROP / SMALL BOX", x: -7.5, z: 26.2, yaw: Math.PI },
-  { name: "DROP / LARGE TRANSFER", x: 7, z: 26.2, yaw: Math.PI },
+  { name: "DROP / SPINE", x: 4.5, z: 26.2, yaw: Math.PI },
+  { name: "DROP / SMALL BOX", x: -1.5, z: 26.2, yaw: Math.PI },
+  { name: "DROP / LARGE TRANSFER", x: -10, z: 26.2, yaw: Math.PI },
 ];
 export interface RampModule {
   id: string;
@@ -51,8 +51,8 @@ export const modules: RampModule[] = [
   },
   {
     id: "spine",
-    x0: -4,
-    x1: 1,
+    x0: 1,
+    x1: 8,
     z0: -2.625,
     z1: 3.625,
     h: 2.2,
@@ -63,9 +63,9 @@ export const modules: RampModule[] = [
   },
   {
     id: "small-box",
-    x0: -11,
-    x1: -4,
-    z0: -6,
+    x0: -4,
+    x1: 1,
+    z0: -7.5,
     z1: 5.5,
     h: 1.4,
     kind: "box",
@@ -75,8 +75,8 @@ export const modules: RampModule[] = [
   },
   {
     id: "large-transfer",
-    x0: 1,
-    x1: 13,
+    x0: -16,
+    x1: -4,
     z0: -9,
     z1: 8,
     h: 2.3,
@@ -270,14 +270,7 @@ export function buildOutdoor(park: Park) {
         );
     }
   }
-  // The original dividing ledge stays on the smaller connected box.
-  for (const x of [-4.28, -4.04])
-    park.rail(
-      "Split box ledge",
-      new THREE.Vector3(x, 1.45, 1),
-      new THREE.Vector3(x, 1.45, 2.75),
-      "ledge",
-    );
+  park.bench("Small box bench", 0.55, 1.4, 1.85, 0.6, 1.35);
   park.rail(
     "Plaza flat rail",
     new THREE.Vector3(15, 0.62, -3),
@@ -327,8 +320,5 @@ export function buildOutdoor(park: Park) {
     hill.position.set(-110 + i * 20, 2, 95);
     scene.add(hill);
   }
-  for (const x of [-27, 27]) {
-    box(x, 0.55, 0, 1, 0.15, 4, 0xa17f55);
-    for (const z of [-1.4, 1.4]) box(x, 0.25, z, 0.6, 0.5, 0.12, 0x39483e);
-  }
+  for (const x of [-27, 27]) park.bench("Plaza bench " + x, x, 0, 0);
 }

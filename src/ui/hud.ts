@@ -226,7 +226,8 @@ export class HUD {
     const hints: Record<string, string> = {
       Walking: s.running
         ? "A JUMP / CLIMB / LS CLICK WALK / Y MOUNT"
-        : "LS WALK / A JUMP / LS CLICK RUN / Y MOUNT",
+        : "LS WALK / A JUMP / B SIT NEAR BENCH / Y MOUNT",
+      Sitting: "B STAND / A JUMP / Y MOUNT",
       DropInReady: "LS FORWARD TO COMMIT / BACK TO REBALANCE / B CANCEL",
       DropInCommit: "LEAN INTO THE TRANSITION",
       Airborne: "LS ROTATE  /  X WHIP  /  B BARSPIN  /  RT CATCH RAIL",

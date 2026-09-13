@@ -33,6 +33,7 @@ export type RideState =
   | "SketchyLanding"
   | "Bail"
   | "Walking"
+  | "Sitting"
   | "DropInReady"
   | "DropInCommit";
 export class Simulation {
@@ -50,6 +51,7 @@ export class Simulation {
   mantle: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null =
     null;
   walking = false;
+  sitting: { id: string; origin: THREE.Vector3 } | null = null;
   running = false;
   marker = new MarkerSystem();
   airWeight = new AirWeightControl();
@@ -158,6 +160,7 @@ export class Simulation {
     this.footJumpTimer = 0;
     this.mantle = null;
     this.walking = false;
+    this.sitting = null;
     this.running = false;
     this.transitionAir = false;
     this.lipClearTimer = 0;
@@ -613,6 +616,48 @@ export class Simulation {
       return;
     }
     if (this.dropIn.step(this, dt, input)) return;
+    if (this.sitting) {
+      if (input.pressed.brakeBars || input.pressed.body || input.pressed.hop) {
+        this.position.copy(this.sitting.origin);
+        this.body.setTranslation(this.position, true);
+        this.previousPosition.copy(this.position);
+        this.sitting = null;
+        this.state = "Walking";
+      } else {
+        this.velocity.set(0, 0, 0);
+        this.body.setLinvel(this.velocity, true);
+        this.state = "Sitting";
+        return;
+      }
+    } else if (this.walking && this.grounded && input.pressed.brakeBars) {
+      const bench = this.park.benches.find(
+        (b) =>
+          Math.abs(this.position.x - b.x) < b.width / 2 + 0.9 &&
+          Math.abs(this.position.z - b.z) < b.length / 2 + 0.3 &&
+          Math.abs(this.position.y - 0.22 - (b.seat - 0.55)) < 0.35,
+      );
+      if (bench) {
+        this.sitting = { id: bench.id, origin: this.position.clone() };
+        this.yaw = this.position.x < bench.x ? -Math.PI / 2 : Math.PI / 2;
+        this.previousYaw = this.yaw;
+        this.position.set(
+          bench.x,
+          bench.seat + 0.22,
+          clamp(
+            this.position.z,
+            bench.z - bench.length / 2 + 0.3,
+            bench.z + bench.length / 2 - 0.3,
+          ),
+        );
+        this.body.setTranslation(this.position, true);
+        this.previousPosition.copy(this.position);
+        this.velocity.set(0, 0, 0);
+        this.body.setLinvel(this.velocity, true);
+        this.running = false;
+        this.state = "Sitting";
+        return;
+      }
+    }
     if (
       input.pressed.body &&
       this.walking &&
@@ -1122,6 +1167,7 @@ export class Simulation {
     return {
       state: this.state,
       walking: this.walking,
+      sitting: this.sitting?.id ?? null,
       dropIn: { phase: this.dropIn.phase, lean: this.dropIn.lean },
       mantle: !!this.mantle,
       stance: this.tricks.stance,

@@ -85,10 +85,12 @@ try {
         "Assembled mesh includes selected " + slot,
         actual.includes(selection.partId),
       );
+    g.menu.zoomTarget = g.menu.zoom;
+    const priorZoom = g.menu.zoom;
     g.menu.update(f({}, {}, { rx: 1, ry: 1 }), 0.3);
     check(
       "Preview orbit and zoom respond to controller",
-      g.menu.orbit < 0.55 && g.menu.zoom > 3.7,
+      g.menu.orbit < 0.55 && g.menu.zoom > priorZoom,
     );
     g.menu.show("home");
     g.menu.select();
