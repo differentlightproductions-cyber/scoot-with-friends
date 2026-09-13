@@ -2,7 +2,18 @@ import { clamp, TUNE } from "../core/config";
 import type { InputFrame } from "./input";
 
 // Physical A/X names remain stable for menus and walking; riding resolves stance here.
-export function ridingButtons(stance: "regular" | "goofy") {
+export type ControlStyle = "pro" | "arcade";
+export function ridingButtons(
+  stance: "regular" | "goofy",
+  style: ControlStyle = "pro",
+) {
+  if (style === "arcade")
+    return {
+      push: "pushDeck",
+      whip: "brakeBars",
+      pushLabel: "X",
+      whipLabel: "B",
+    } as const;
   return stance === "regular"
     ? ({
         push: "pushDeck",
@@ -22,7 +33,7 @@ export class StickPreload {
   amount = 0;
   dwell = 0;
   popped = false;
-  step(dt: number, input: InputFrame, supported: boolean) {
+  step(dt: number, input: InputFrame, supported: boolean, sweeping = false) {
     this.popped = false;
     // LB owns manual entry/balance. A deliberate unmodified down hold loads a hop.
     const down =
@@ -36,6 +47,8 @@ export class StickPreload {
         0,
         1,
       );
+    } else if (sweeping && supported) {
+      return null;
     } else if (!down && this.dwell >= 0.06 && this.amount > 0) {
       this.popped = supported;
       const charge = this.amount;

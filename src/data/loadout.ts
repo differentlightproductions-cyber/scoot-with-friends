@@ -6,6 +6,7 @@ export interface LocalProfile {
   outfitId: string;
   scooter: ScooterLoadout;
   settings: {
+    controlStyle: "pro" | "arcade";
     sound: boolean;
     grindAssist: boolean;
     stance: "regular" | "goofy";
@@ -18,7 +19,12 @@ export function loadProfile(): LocalProfile {
     riderId: RIDERS[0].id,
     outfitId: RIDERS[0].outfitId,
     scooter: defaultScooter(),
-    settings: { sound: true, grindAssist: true, stance: "regular" },
+    settings: {
+      controlStyle: "pro",
+      sound: true,
+      grindAssist: true,
+      stance: "regular",
+    },
   };
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
@@ -40,6 +46,8 @@ export function loadProfile(): LocalProfile {
       if (part?.variants.some((v) => v.id === s?.variantId))
         profile.scooter[slot] = { partId: s.partId, variantId: s.variantId };
     }
+    if (saved.settings?.controlStyle === "arcade")
+      profile.settings.controlStyle = "arcade";
     if (saved.settings?.stance === "goofy") profile.settings.stance = "goofy";
     for (const key of ["sound", "grindAssist"] as const)
       if (typeof saved.settings?.[key] === "boolean")

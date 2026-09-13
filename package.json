@@ -1,11 +1,11 @@
 {
   "name": "scoot-with-friends",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs",
@@ -13,7 +13,9 @@
     "test:build3": "node tests/build3.browser.mjs",
     "test:advanced": "node tests/advanced.browser.mjs",
     "test:memorial": "node tests/memorial.browser.mjs",
-    "test:polish": "node tests/polish.browser.mjs"
+    "test:polish": "node tests/polish.browser.mjs",
+    "test:editor": "node tests/editor.browser.mjs",
+    "test:addendum": "node tests/addendum.browser.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

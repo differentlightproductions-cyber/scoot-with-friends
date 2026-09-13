@@ -206,28 +206,40 @@ export class HUD {
       `scaleX(${s.charge})`;
     const help = document.querySelector("#help") as HTMLElement;
     help.hidden = !input.help;
-    const mapping = ridingButtons(s.tricks.stance);
-    if (help.dataset.stance !== s.tricks.stance) {
+    const mapping = ridingButtons(s.tricks.stance, s.tricks.controlStyle);
+    if (
+      help.dataset.stance !== s.tricks.stance ||
+      help.dataset.controlStyle !== s.tricks.controlStyle
+    ) {
       help.dataset.stance = s.tricks.stance;
+      help.dataset.controlStyle = s.tricks.controlStyle;
       help.innerHTML =
         '<div class="eyebrow">' +
+        s.tricks.controlStyle.toUpperCase() +
+        " / " +
         s.tricks.stance.toUpperCase() +
         " CONTROLS</div><h2>RIDE / REPEAT</h2><dl>" +
         "<dt>" +
         mapping.pushLabel +
         "</dt><dd>Tap to push on the ground</dd><dt>" +
         mapping.whipLabel +
-        "</dt><dd>Tap tailwhip / hold continuous whips in air</dd>" +
+        "</dt><dd>Tap for a trick takeoff / hold continuous whips in air</dd>" +
+        (s.tricks.controlStyle === "arcade"
+          ? "<dt>A</dt><dd>Quick hop</dd>"
+          : "") +
         "<dt>RS DOWN / RELEASE</dt><dd>Hold down to crouch and load; release or sweep out to pop. Ramps also launch naturally with speed.</dd>" +
         "<dt>LT + " +
         mapping.whipLabel +
         "</dt><dd>Heelwhip</dd><dt>RT + " +
         mapping.whipLabel +
         "</dt><dd>Fingerwhip; add LT for opposite fingerwhip</dd>" +
-        "<dt>B / RB + B</dt><dd>Barspin / opposite barspin. Tap once or hold continuous rotations.</dd>" +
+        (s.tricks.controlStyle === "arcade"
+          ? "<dt>X / RB + X</dt>"
+          : "<dt>B / RB + B</dt>") +
+        "<dd>Barspin / opposite barspin. Tap once or hold continuous rotations.</dd>" +
         "<dt>LB / RB DURING WHIP</dt><dd>At 65-90%: tap and release to rewind; hold 0.18 seconds for kickless. Repeat at the next catch window.</dd>" +
         "<dt>LB / RB DURING BARSPIN</dt><dd>Rewind only opposite the current spin: LB left / RB right. Whip windows take priority.</dd>" +
-        "<dt>RS CIRCULAR SWEEP</dt><dd>Bri / Inward Bri in air. Pop straight into a sweep; kickless requires an active whip.</dd>" +
+        "<dt>RS CIRCULAR SWEEP</dt><dd>Bri / Inward Bri from ground or air. Load and sweep for a higher pop; kickless requires an active whip.</dd>" +
         "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
         "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Tuck. LT + Y: Deck Grab. Both triggers + Y: Superman.</dd>" +
         "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +

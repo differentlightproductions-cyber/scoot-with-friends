@@ -1,6 +1,7 @@
 import type { TrickRecord } from "../tricks/resolver";
 export type LandingQuality = "clean" | "sketchy" | "failed";
 export type GameEvent =
+  | { type: "splash"; x: number; z: number }
   | { type: "pop"; charge: number }
   | { type: "push" }
   | { type: "pump" }

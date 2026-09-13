@@ -164,6 +164,7 @@ export class Tricks {
     targetAngle: number;
     completed: boolean;
   }[] = [];
+  controlStyle: "pro" | "arcade" = "pro";
   stance: "regular" | "goofy" = "regular";
   get naturalDirection() {
     return this.stance === "regular" ? 1 : -1;
@@ -182,7 +183,7 @@ export class Tricks {
   motionOrder: string[] = [];
   private completed = { deck: 0, bri: 0, kickless: 0 };
   input(dt: number, input: InputFrame) {
-    const buttons = ridingButtons(this.stance);
+    const buttons = ridingButtons(this.stance, this.controlStyle);
     const heel = input.held.brake > 0.5;
     const finger = input.held.pumpGrind > 0.5;
     const direction = this.naturalDirection * (heel ? -1 : 1);
@@ -279,8 +280,9 @@ export class Tricks {
       !this.consumedBumpers.has("leftModifier");
     this.bars.input(
       dt,
-      input.pressed.brakeBars,
-      input.held.brakeBars > 0.5,
+      input.pressed[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"],
+      input.held[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"] >
+        0.5,
       this.naturalDirection * (rb ? -1 : 1),
     );
     this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
@@ -364,14 +366,14 @@ export class Tricks {
   }
   landing: LandingQuality = "clean";
   constructor(public events: Events) {}
-  startAir(fromLink: boolean) {
+  startAir(fromLink: boolean, keepGesture = false) {
     this.fingerTargets = [];
     this.pendingBumper = null;
     this.consumedBumpers.clear();
     this.kicklessHistory = [];
     this.bri.reset();
     this.kickless.reset();
-    this.gesture.reset();
+    if (!keepGesture) this.gesture.reset();
     this.finger = false;
     this.fingerTime = 0;
     this.poseBlend = 0;

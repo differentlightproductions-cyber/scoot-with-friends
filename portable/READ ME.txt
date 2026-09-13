@@ -1,18 +1,32 @@
 SCOOT WITH FRIENDS - WINDOWS EDITION
 
-1. Right-click the ZIP and choose Extract All.
-2. Open the extracted folder.
-3. Double-click Play Scoot with Friends.cmd.
-4. Your browser opens the game. Choose Ride, then a park.
+1. Extract the entire ZIP.
+2. Double-click Play Scoot with Friends.cmd.
+3. Leave its server window open while playing. Close it to stop.
 
-Keep the launcher window open while playing. Close it when finished.
-Use a recent Chrome or Edge browser on Windows 10/11 (64-bit).
-No installation, ChatGPT account, internet connection, or development tools needed.
+The included runtime needs no install, account, or coding credits. Solo play
+works offline. When connected, the game can load the latest published park.
 
-Connect an Xbox-style controller and press a button, or use the keyboard.
-Press H in the game for the full controls. Esc pauses.
-Basic keyboard: X push, Space hold/release hop, A/D steer, W/S weight,
-B barspin, Y walk/mount, F run, arrow keys camera, R reset.
+PRO (regular stance): X pushes, A tailwhips, B barspins. Goofy swaps A and X.
+RS down loads a hop; release pops. Circular RS sweeps can take off directly
+into Bri / Inward Bri. Hold whip/bar buttons for continuous spins.
+ARCADE: A hops, X pushes on ground / barspins in air, B tailwhips.
+Select the control style in Settings. H shows the full controls.
+LT brakes, RT pumps/grinds. Y walks or mounts. On foot A jumps/climbs,
+B sits near benches, and LS click runs carrying the scooter.
+After a crash, A gets up locally; recovery also happens automatically.
+Keyboard: Space=A, X=X, B=B, Y=Y, arrows=RS, WASD=LS, Ctrl=LT,
+C=RT, Shift=LB, E=RB, F=run, M=marker, R=reset, Esc=pause.
 
-Your settings save in this browser on this PC. This is currently a solo
-freestyle prototype; the title does not imply online multiplayer support.
+PARK EDITOR is on the main menu. Choose an asset, then click to place it.
+G moves, T rotates, J resizes. Numeric fields and grid/angle snapping help.
+Right drag orbits, middle drag pans, wheel zooms. WASD flies; Q/E moves up/down.
+Controller: LS flies, RS looks, triggers move vertically.
+Save / Save As stores named parks on this device. Export JSON backs up or
+shares a design. Import JSON loads it. Undo/Redo retains 60 edits.
+Terrain tools edit the surrounding grounds and protect the wooden park.
+Draw Path adds points; Finish Path makes one curved route. Pick its width
+and dirt, concrete, asphalt, or gravel surface. Test Ride uses that same park.
+Return to Editor keeps your work.
+
+This is a solo freestyle game. Multiplayer is not implemented.

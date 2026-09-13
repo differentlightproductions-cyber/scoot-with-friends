@@ -1,3 +1,4 @@
+import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
@@ -20,6 +21,10 @@ const smooth = (t: number) => {
 const transition = (t: number, r: number) =>
   r - Math.sqrt(Math.max(0.1, r * r - t * t));
 export function terrainHeight(x: number, z: number): number {
+  if (editedHeightQuery) return editedHeightQuery(x, z);
+  return objectHeight(x, z, brushHeight(x, z, baseTerrainHeight(x, z)));
+}
+export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
   let h = 0;
   // Broad quarter pipes with tangent-continuous bottoms and flat decks.
@@ -98,12 +103,14 @@ export class Park {
     x: number;
     z: number;
     seat: number;
+    base: number;
+    yaw: number;
     width: number;
     length: number;
   }[] = [];
   bench(id: string, x: number, base: number, z: number, width = 1, length = 4) {
     const seat = base + 0.55;
-    this.benches.push({ id, x, z, seat, width, length });
+    this.benches.push({ id, x, z, seat, width, length, base, yaw: 0 });
     this.box(
       new THREE.Vector3(x, seat - 0.06, z),
       new THREE.Vector3(width, 0.12, length),
@@ -276,7 +283,7 @@ export class Park {
         for (let i = 0; i <= nx; i++) {
           const x = -32 + i * step,
             z = -44 + j * step,
-            y = terrainHeight(x, z);
+            y = brushHeight(x, z, baseTerrainHeight(x, z));
           p.push(x, y, z);
           base.set(
             OUTDOOR
@@ -319,7 +326,7 @@ export class Park {
     this.scene.add(mesh);
     this.solids.push(mesh);
     const collision = make(step, false);
-    this.world.createCollider(
+    mesh.userData.collider = this.world.createCollider(
       RAPIER.ColliderDesc.trimesh(
         new Float32Array(collision.p),
         new Uint32Array(collision.idx),
@@ -327,7 +334,7 @@ export class Park {
         .setFriction(0)
         .setRestitution(0)
         .setCollisionGroups(GROUPS.surface),
-    );
+    ).handle;
     collision.g.dispose();
   }
   box(
@@ -345,12 +352,12 @@ export class Park {
     mesh.receiveShadow = true;
     this.scene.add(mesh);
     if (collision) {
-      this.world.createCollider(
+      mesh.userData.collider = this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
           .setTranslation(pos.x, pos.y, pos.z)
           .setFriction(0.1)
           .setCollisionGroups(GROUPS.surface),
-      );
+      ).handle;
       this.solids.push(mesh);
     }
     return mesh;
@@ -456,14 +463,15 @@ export class Park {
     );
     mesh.castShadow = true;
     this.scene.add(mesh);
+    mesh.name = id;
     this.railHandles.add(
-      this.world.createCollider(
+      (mesh.userData.collider = this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(length / 2, 0.045)
           .setTranslation(mid.x, mid.y, mid.z)
           .setRotation(mesh.quaternion)
           .setFriction(0.05)
           .setCollisionGroups(GROUPS.rail),
-      ).handle,
+      ).handle),
     );
     if (kind === "rail")
       for (const t of [0.1, 0.9]) {
@@ -473,7 +481,7 @@ export class Park {
           new THREE.Vector3(p.x, (p.y + floor) / 2, p.z),
           new THREE.Vector3(0.08, p.y - floor, 0.08),
           0x344b49,
-        );
+        ).name = id + " support";
       }
   }
   private sign(

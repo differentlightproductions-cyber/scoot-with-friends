@@ -1,4 +1,5 @@
-﻿import * as THREE from "three";
+import { inWater } from "../park/water";
+import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import { Events } from "../core/events";
@@ -97,6 +98,11 @@ export class Simulation {
   hopBuffer = 0;
   bufferCharge = 0;
   spawnIndex = 0;
+  lastSafeGround = new THREE.Vector3();
+  waterBail = false;
+  getUpTimer = 0;
+  groundIntent: { direction: number; charge: number; age: number } | null =
+    null;
   private lastPump = false;
   private lastSlope = 0;
   private manualRecorded = false;
@@ -148,7 +154,11 @@ export class Simulation {
           ? "airborne trick"
           : "camera";
   }
+  resolvingSpawn = false;
   reset(index = this.spawnIndex, restart = false) {
+    this.resolvingSpawn = true;
+    this.groundIntent = null;
+    this.waterBail = false;
     this.preload.reset();
     this.spineLaunchVelocity.set(0, 0, 0);
     this.spineLaunchAngle = 0;
@@ -156,6 +166,7 @@ export class Simulation {
     const s = SPAWNS[index];
     this.position.set(s.x, terrainHeight(s.x, s.z) + TUNE.radius, s.z);
     this.previousPosition.copy(this.position);
+    this.lastSafeGround.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.yaw = s.yaw;
     this.previousYaw = this.yaw;
@@ -218,6 +229,7 @@ export class Simulation {
       this.tricks.history = [];
       this.score.restart();
     }
+    this.resolvingSpawn = false;
     this.events.emit({ type: "reset" });
   }
   private support(): { height: number; normal: THREE.Vector3 } {
@@ -257,14 +269,19 @@ export class Simulation {
     }
     return { height, normal };
   }
-  private redirectSpine(direction: number, lean: number) {
-    const speed = Math.hypot(this.velocity.z, this.velocity.y);
+  private redirectSpine(
+    direction: number,
+    lean: number,
+    forward = new THREE.Vector3(0, 0, direction),
+  ) {
+    const across = this.velocity.dot(forward);
+    const speed = Math.hypot(across, this.velocity.y);
     const ratio = clamp(
       0.16 + Math.max(0, speed - 9) * 0.007 - lean * 0.025,
       0.1,
       0.23,
     );
-    this.velocity.z = direction * speed * ratio;
+    this.velocity.addScaledVector(forward, speed * ratio - across);
     this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
     this.spineLaunchVelocity.copy(this.velocity);
     this.spineLaunchAngle =
@@ -305,13 +322,20 @@ export class Simulation {
       : null;
     if (rampPop && lip && lip.distance < 0.55) {
       this.lipClearTimer = TUNE.transitionRailClearTime;
-      if (lip.module.kind === "spine") this.redirectSpine(lip.direction, lean);
+      if (lip.module.kind === "spine")
+        this.redirectSpine(lip.direction, lean, lip.forward);
       else if (lip.module.kind === "quarter") {
-        const speed = Math.hypot(this.velocity[lip.axis], this.velocity.y);
+        const speed = Math.hypot(
+          this.velocity.dot(lip.forward),
+          this.velocity.y,
+        );
         const ratio =
           clamp((speed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
           clamp(lean, 0, 1) * 0.06;
-        this.velocity[lip.axis] = lip.direction * speed * ratio;
+        this.velocity.addScaledVector(
+          lip.forward,
+          speed * ratio - this.velocity.dot(lip.forward),
+        );
         this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
       }
     }
@@ -326,7 +350,7 @@ export class Simulation {
     this.charge = 0;
     this.hopBuffer = 0;
     this.spin = 0;
-    this.tricks.startAir(linked);
+    this.tricks.startAir(linked, true);
     this.airWeight.reset(this.pitch, this.yaw);
     this.airSpin.reset();
     this.events.emit({ type: "pop", charge });
@@ -351,6 +375,63 @@ export class Simulation {
     this.velocity.multiplyScalar(0.72);
     this.velocity.y = Math.max(1.5, this.velocity.y);
     this.events.emit({ type: "bail", reason });
+  }
+  recoverLocally() {
+    const origin = this.waterBail ? this.lastSafeGround : this.position;
+    let target: THREE.Vector3 | null = null;
+    for (const radius of [0, 0.6, 1.2, 2, 3, 5, 8]) {
+      for (let i = 0; i < 16; i++) {
+        const x = origin.x + Math.cos((i * Math.PI) / 8) * radius;
+        const z = origin.z + Math.sin((i * Math.PI) / 8) * radius;
+        if (OUTDOOR && inWater(x, z, 1.08)) continue;
+        if (terrainNormal(x, z).y < 0.75) continue;
+        const p = new THREE.Vector3(x, terrainHeight(x, z) + TUNE.radius, z);
+        if (
+          this.world.intersectionWithShape(
+            p.clone().add(new THREE.Vector3(0, 0.65, 0)),
+            { x: 0, y: 0, z: 0, w: 1 },
+            new RAPIER.Capsule(0.35, 0.22),
+            undefined,
+            GROUPS.chassis,
+            undefined,
+            this.body,
+          )
+        )
+          continue;
+        target = p;
+        break;
+      }
+      if (target) break;
+    }
+    if (!target) {
+      this.reset();
+      return;
+    }
+    this.position.copy(target);
+    this.previousPosition.copy(target);
+    this.body.setTranslation(target, true);
+    this.velocity.set(0, 0, 0);
+    this.body.setLinvel(this.velocity, true);
+    this.body.setGravityScale(1, true);
+    this.body.collider(0).setSensor(false);
+    this.railGuard.setSensor(false);
+    this.walking = true;
+    this.running = false;
+    this.sitting = null;
+    this.mantle = null;
+    this.state = "Walking";
+    this.grounded = true;
+    this.pitch = this.roll = this.spin = 0;
+    this.preload.reset();
+    this.groundIntent = null;
+    this.tricks.reset();
+    this.airWeight.reset(0, this.yaw);
+    this.airSpin.reset();
+    this.dropIn.reset();
+    this.waterBail = false;
+    this.getUpTimer = 0.45;
+    this.bailTimer = 0;
+    this.grindCooldown = 0.4;
   }
   private finishManual() {
     if (
@@ -657,6 +738,30 @@ export class Simulation {
       this.reset();
       return;
     }
+    this.getUpTimer = Math.max(0, this.getUpTimer - dt);
+    if (
+      OUTDOOR &&
+      inWater(this.position.x, this.position.z) &&
+      this.position.y < 0.35 &&
+      !this.waterBail
+    ) {
+      this.bail("Water — returning to shore");
+      this.waterBail = true;
+      this.body.collider(0).setSensor(true);
+      this.railGuard.setSensor(true);
+      this.events.emit({
+        type: "splash",
+        x: this.position.x,
+        z: this.position.z,
+      });
+    }
+    if (
+      this.grounded &&
+      !inWater(this.position.x, this.position.z, 1.12) &&
+      this.state !== "Bail" &&
+      this.normal.y > 0.8
+    )
+      this.lastSafeGround.copy(this.position);
     if (this.state === "Bail") {
       this.bailTimer += dt;
       this.velocity.x *= Math.exp(-1.8 * dt);
@@ -664,7 +769,16 @@ export class Simulation {
       this.body.setLinvel(this.velocity, true);
       this.world.step();
       this.position.copy(this.body.translation());
-      if (this.bailTimer > 2.0) this.reset();
+      if (this.waterBail) {
+        this.velocity.multiplyScalar(Math.exp(-7 * dt));
+        this.velocity.y = -0.6;
+        this.body.setLinvel(this.velocity, true);
+      }
+      if (
+        this.bailTimer > (this.waterBail ? 1.1 : 2.0) ||
+        (this.bailTimer > 0.25 && input.pressed.hop)
+      )
+        this.recoverLocally();
       return;
     }
     if (this.dropIn.step(this, dt, input)) return;
@@ -682,25 +796,33 @@ export class Simulation {
         return;
       }
     } else if (this.walking && this.grounded && input.pressed.brakeBars) {
-      const bench = this.park.benches.find(
-        (b) =>
-          Math.abs(this.position.x - b.x) < b.width / 2 + 0.9 &&
-          Math.abs(this.position.z - b.z) < b.length / 2 + 0.3 &&
-          Math.abs(this.position.y - 0.22 - (b.seat - 0.55)) < 0.35,
-      );
-      if (bench) {
-        this.sitting = { id: bench.id, origin: this.position.clone() };
-        this.yaw = this.position.x < bench.x ? -Math.PI / 2 : Math.PI / 2;
-        this.previousYaw = this.yaw;
-        this.position.set(
-          bench.x,
-          bench.seat + 0.22,
-          clamp(
-            this.position.z,
-            bench.z - bench.length / 2 + 0.3,
-            bench.z + bench.length / 2 - 0.3,
-          ),
+      const local = (b: (typeof this.park.benches)[number]) =>
+        new THREE.Vector3(
+          this.position.x - b.x,
+          0,
+          this.position.z - b.z,
+        ).applyAxisAngle(new THREE.Vector3(0, 1, 0), -b.yaw);
+      const bench = this.park.benches.find((b) => {
+        const p = local(b);
+        return (
+          Math.abs(p.x) < b.width / 2 + 0.9 &&
+          Math.abs(p.z) < b.length / 2 + 0.3 &&
+          Math.abs(this.position.y - 0.22 - b.base) < 0.35
         );
+      });
+      if (bench) {
+        const p = local(bench);
+        this.sitting = { id: bench.id, origin: this.position.clone() };
+        this.yaw = (p.x < 0 ? -Math.PI / 2 : Math.PI / 2) + bench.yaw;
+        this.previousYaw = this.yaw;
+        this.position
+          .set(
+            0,
+            bench.seat + 0.22,
+            clamp(p.z, -bench.length / 2 + 0.3, bench.length / 2 - 0.3),
+          )
+          .applyAxisAngle(new THREE.Vector3(0, 1, 0), bench.yaw)
+          .add(new THREE.Vector3(bench.x, 0, bench.z));
         this.body.setTranslation(this.position, true);
         this.previousPosition.copy(this.position);
         this.velocity.set(0, 0, 0);
@@ -773,10 +895,14 @@ export class Simulation {
         this.lipClearTimer = TUNE.transitionRailClearTime;
         this.popTimer = 0.12;
         if (leavingLip.module.kind === "spine")
-          this.redirectSpine(leavingLip.direction, input.lean);
+          this.redirectSpine(
+            leavingLip.direction,
+            input.lean,
+            leavingLip.forward,
+          );
         if (leavingLip.module.kind === "quarter") {
           const planeSpeed = Math.hypot(
-            this.velocity[leavingLip.axis],
+            this.velocity.dot(leavingLip.forward),
             this.velocity.y,
           );
           const ratio =
@@ -786,8 +912,10 @@ export class Simulation {
               0.35,
             ) -
             clamp(input.lean, 0, 1) * 0.06;
-          this.velocity[leavingLip.axis] =
-            leavingLip.direction * planeSpeed * ratio;
+          this.velocity.addScaledVector(
+            leavingLip.forward,
+            planeSpeed * ratio - this.velocity.dot(leavingLip.forward),
+          );
           this.velocity.y = planeSpeed * Math.sqrt(1 - ratio * ratio);
         }
         this.events.emit({ type: "pop", charge: 0 });
@@ -796,11 +924,62 @@ export class Simulation {
       this.finishManual();
       this.state = "Airborne";
       this.airTime = 0;
-      this.tricks.startAir(false);
+      this.tricks.startAir(false, true);
       this.airWeight.reset(this.pitch, this.yaw);
       this.airSpin.reset();
     }
     if (this.grounded) this.lastGround = this.elapsed;
+    const supportedForTrick = this.grounded || !!this.grind;
+    const gesture =
+      supportedForTrick &&
+      input.held.body < 0.5 &&
+      input.held.leftModifier < 0.5
+        ? this.tricks.gesture.step(dt, input.rx, input.ry)
+        : null;
+    if (gesture?.kind === "bri")
+      this.groundIntent = {
+        direction: gesture.direction,
+        charge: this.preload.amount,
+        age: 0,
+      };
+    const whip = ridingButtons(
+      this.tricks.stance,
+      this.tricks.controlStyle,
+    ).whip;
+    if (
+      supportedForTrick &&
+      (input.pressed[whip] ||
+        (this.tricks.controlStyle === "arcade" && input.pressed.hop))
+    ) {
+      this.pop(Math.max(0.15, this.preload.amount), input.lean);
+      this.preload.reset();
+    }
+    if (this.groundIntent) {
+      const intent = this.groundIntent;
+      intent.age += dt;
+      const lip = OUTDOOR
+        ? outdoorLip(
+            this.position.x,
+            this.position.z,
+            this.velocity.z,
+            this.velocity.x,
+          )
+        : null;
+      const waitForLip =
+        this.grounded &&
+        this.velocity.y > 1 &&
+        lip &&
+        lip.distance > 0.15 &&
+        lip.distance < 0.9 &&
+        intent.age < 0.16;
+      if (!waitForLip) {
+        if (this.grounded || this.grind)
+          this.pop(Math.max(0.15, intent.charge), input.lean);
+        this.tricks.bri.kick(intent.direction);
+        this.groundIntent = null;
+        this.preload.reset();
+      }
+    }
     // Preload survives the lip briefly and can buffer a release just before contact.
     const rsPop = this.preload.step(
       dt,
@@ -808,6 +987,8 @@ export class Simulation {
       this.grounded ||
         !!this.grind ||
         this.elapsed - this.lastGround < TUNE.coyoteTime,
+      Math.hypot(input.rx, input.ry) > 0.55 &&
+        (Math.abs(input.rx) > 0.45 || this.tricks.gesture.confidence > 0.1),
     );
     this.charge = this.preload.amount;
     if (rsPop !== null) {
@@ -978,7 +1159,9 @@ export class Simulation {
       if (current > 0)
         this.velocity.multiplyScalar(Math.max(0, current - loss) / current);
       if (
-        input.pressed[ridingButtons(this.tricks.stance).push] &&
+        input.pressed[
+          ridingButtons(this.tricks.stance, this.tricks.controlStyle).push
+        ] &&
         this.pushTimer === 0 &&
         !this.manual.active &&
         !revert.reverting
@@ -1131,15 +1314,21 @@ export class Simulation {
       this.popTimer === 0
     ) {
       if (lip.module.kind === "spine")
-        this.redirectSpine(lip.direction, input.lean);
+        this.redirectSpine(lip.direction, input.lean, lip.forward);
       if (lip.module.kind === "quarter") {
-        const planeSpeed = Math.hypot(this.velocity[lip.axis], this.velocity.y);
+        const planeSpeed = Math.hypot(
+          this.velocity.dot(lip.forward),
+          this.velocity.y,
+        );
         // The transition turns existing momentum; it never assigns jump energy.
         // Only surplus speed produces a meaningful outward component over the deck.
         const outwardRatio =
           clamp((planeSpeed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
           clamp(input.lean, 0, 1) * 0.06;
-        this.velocity[lip.axis] = lip.direction * planeSpeed * outwardRatio;
+        this.velocity.addScaledVector(
+          lip.forward,
+          planeSpeed * outwardRatio - this.velocity.dot(lip.forward),
+        );
         this.velocity.y =
           planeSpeed * Math.sqrt(Math.max(0, 1 - outwardRatio * outwardRatio));
       }
@@ -1150,7 +1339,7 @@ export class Simulation {
       this.popTimer = 0.12;
       this.lipClearTimer = TUNE.transitionRailClearTime;
       this.body.setGravityScale(1, true);
-      this.tricks.startAir(false);
+      this.tricks.startAir(false, true);
       this.airSpin.reset();
       this.airWeight.reset(this.pitch, this.yaw);
       this.spin = 0;
@@ -1249,8 +1438,12 @@ export class Simulation {
       dropIn: { phase: this.dropIn.phase, lean: this.dropIn.lean },
       mantle: !!this.mantle,
       stance: this.tricks.stance,
-      pushButton: ridingButtons(this.tricks.stance).pushLabel,
-      tailwhipButton: ridingButtons(this.tricks.stance).whipLabel,
+      pushButton: ridingButtons(this.tricks.stance, this.tricks.controlStyle)
+        .pushLabel,
+      tailwhipButton: ridingButtons(
+        this.tricks.stance,
+        this.tricks.controlStyle,
+      ).whipLabel,
       rsPreloadAmount: this.preload.amount,
       rsPopDetected: this.preload.popped,
       activeWhip: Math.abs(this.tricks.deck.velocity) > 1,

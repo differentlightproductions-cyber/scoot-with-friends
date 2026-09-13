@@ -1,3 +1,4 @@
+import { activeLayout, brushHeight } from "../editor/layout";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
@@ -96,14 +97,38 @@ export function buildMemorialGrounds(park: Park) {
     return mesh;
   };
   // Continuous flat collider under the connected grounds. Existing wooden ramp triangles stay untouched.
-  world.createCollider(
-    RAPIER.ColliderDesc.cuboid(116, 0.1, 125)
-      .setTranslation(0, -0.1, -45)
-      .setCollisionGroups(GROUPS.surface),
-  );
+  if (!activeLayout?.terrain.length)
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(116, 0.1, 125)
+        .setTranslation(0, -0.1, -45)
+        .setCollisionGroups(GROUPS.surface),
+    );
+  else {
+    const verts: number[] = [],
+      indices: number[] = [],
+      nx = 116,
+      nz = 125;
+    for (let j = 0; j <= nz; j++)
+      for (let i = 0; i <= nx; i++) {
+        const x = -116 + i * 2,
+          z = -170 + j * 2;
+        verts.push(x, brushHeight(x, z, 0), z);
+      }
+    for (let j = 0; j < nz; j++)
+      for (let i = 0; i < nx; i++) {
+        const a = j * (nx + 1) + i;
+        indices.push(a, a + nx + 1, a + 1, a + 1, a + nx + 1, a + nx + 2);
+      }
+    world.createCollider(
+      RAPIER.ColliderDesc.trimesh(
+        new Float32Array(verts),
+        new Uint32Array(indices),
+      ).setCollisionGroups(GROUPS.surface),
+    );
+  }
   box(0, -0.045, -45, 232, 0.06, 250, 0xb49a73);
   box(5, -0.014, 18, 195, 0.012, 82, 0x7f9b55);
-  box(-62, -0.005, 3, 38, 0.008, 62, 0xc3a16f);
+  box(-62, -0.005, 3, 38, 0.008, 62, 0xc3a16f).name = "Dirt riding track base";
   const patch = (
     x0: number,
     x1: number,
@@ -146,18 +171,26 @@ export function buildMemorialGrounds(park: Park) {
         metalness: color === 0x333c42 ? 0.4 : 0,
       }),
     );
+    m.name =
+      x0 === -81
+        ? "Dirt riding track"
+        : x0 === 47.75
+          ? "Metal half pipe"
+          : x0 === 58.75
+            ? "Metal pyramid"
+            : "Metal kicker";
     m.receiveShadow = true;
     m.castShadow = true;
     scene.add(m);
     park.solids.push(m);
-    world.createCollider(
+    m.userData.collider = world.createCollider(
       RAPIER.ColliderDesc.trimesh(
         new Float32Array(points),
         new Uint32Array(indices),
       )
         .setFriction(0)
         .setCollisionGroups(GROUPS.surface),
-    );
+    ).handle;
   };
   box(65, 0.001, 0, 46, 0.008, 48, 0xb8bab3);
   patch(47.75, 78.25, 7.75, 18.25, 0.125, metalHeight, 0x333c42);
@@ -216,7 +249,9 @@ export function buildMemorialGrounds(park: Park) {
   for (const x of [44, 86])
     park.bench("Metal park bench " + x, x, 0, 23, 1, 3.5);
   // Broad, level paths give a continuous ride from wood to metal, parking and lake.
+  let pathSerial = 0;
   const path = (points: number[][], width = 4, color = 0xc8c5b7) => {
+    const pathId = pathSerial++;
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1],
         b = points[i],
@@ -231,6 +266,8 @@ export function buildMemorialGrounds(park: Park) {
         Math.hypot(dx, dz) + 0.25,
         color,
       );
+      mesh.userData.pathId = pathId;
+      mesh.name = color === 0xc8c5b7 ? "Concrete path" : "Asphalt path";
       mesh.rotation.y = Math.atan2(dx, dz);
     }
   };
@@ -380,6 +417,23 @@ export function buildMemorialGrounds(park: Park) {
       polygonOffsetUnits: -30,
     }),
   );
+  lake.name = "lake-water";
+  (lake.material as THREE.MeshStandardMaterial).onBeforeCompile = (shader) => {
+    shader.uniforms.waterTime = { value: 0 };
+    lake.userData.waterShader = shader;
+    shader.vertexShader =
+      "varying vec2 waterUV;\n" +
+      shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        "#include <begin_vertex>\nwaterUV=position.xy;",
+      );
+    shader.fragmentShader =
+      "uniform float waterTime; varying vec2 waterUV;\n" +
+      shader.fragmentShader.replace(
+        "#include <color_fragment>",
+        "#include <color_fragment>\nfloat ripple=sin(waterUV.x*45.0+waterUV.y*18.0+waterTime*1.8)*sin(waterUV.y*60.0-waterTime);diffuseColor.rgb*=0.90+0.08*ripple+0.16*length(waterUV);",
+      );
+  };
   lake.rotation.x = -Math.PI / 2;
   lake.scale.set(10, 30, 1);
   lake.position.set(-97, 0.009, 5);
@@ -512,6 +566,8 @@ export function buildMemorialGrounds(park: Park) {
     crowns.setMatrixAt(i, matrix);
   });
   trunks.castShadow = crowns.castShadow = true;
+  trunks.name = "tree-trunks";
+  crowns.name = "tree-crowns";
   scene.add(trunks, crowns);
   const shrubs = new THREE.InstancedMesh(
     new THREE.IcosahedronGeometry(1, 0),
@@ -535,6 +591,7 @@ export function buildMemorialGrounds(park: Park) {
     );
     shrubs.setMatrixAt(i, matrix);
   }
+  shrubs.name = "bushes";
   scene.add(shrubs);
   const rocks = new THREE.InstancedMesh(
     new THREE.IcosahedronGeometry(1, 0),
@@ -554,6 +611,7 @@ export function buildMemorialGrounds(park: Park) {
     );
     rocks.setMatrixAt(i, matrix);
   }
+  rocks.name = "rocks";
   scene.add(rocks);
   for (const [x, z] of [
     [35, -28],

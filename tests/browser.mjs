@@ -265,12 +265,17 @@ try {
         s.lastLanding === quality,
         g.snapshot(),
       );
+      const crashPosition = s.position.clone();
       a(2.0);
       check(
         quality === "failed"
-          ? "Bail automatically resets safely"
+          ? "Bail gets up near the crash with no spawn reset"
           : "Landing recovers to ordinary riding",
-        s.state === "Grounded",
+        quality === "failed"
+          ? s.state === "Walking" &&
+              s.position.distanceTo(crashPosition) < 5 &&
+              s.speed < 0.1
+          : s.state === "Grounded",
         g.snapshot(),
       );
     }

@@ -343,6 +343,7 @@ export class RiderModel {
     this.crouch = damp(
       this.crouch,
       (s.sitting?.id ? 0.8 : 0) +
+        s.getUpTimer * 0.8 +
         s.charge * 0.3 +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * 0.65 : 0) +

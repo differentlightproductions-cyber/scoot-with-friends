@@ -1,3 +1,4 @@
+import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
 import type { Park } from "./park";
 import {
@@ -122,8 +123,87 @@ export function profile(m: RampModule, z: number) {
   return m.h * t * t * (3 - 2 * t);
 }
 export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
+  for (const o of activeLayout?.objects ?? []) {
+    if (
+      ![
+        "Quarter Pipe",
+        "Half Pipe",
+        "Mini Ramp",
+        "Spine",
+        "Launch Ramp",
+        "Box Jump",
+        "Bank",
+        "Landing Ramp",
+      ].includes(o.type)
+    )
+      continue;
+    const p = localXZ(o, x, z);
+    if (Math.abs(p.x) > o.width / 2 - 0.1) continue;
+    const forward = new THREE.Vector3(
+      Math.sin(o.rotation),
+      0,
+      Math.cos(o.rotation),
+    );
+    const speed = vx * forward.x + vz * forward.z;
+    const lips =
+      o.type === "Spine"
+        ? [-o.deck / 2, o.deck / 2]
+        : ["Half Pipe", "Mini Ramp"].includes(o.type)
+          ? [-o.length / 2, o.length / 2]
+          : [
+              o.type === "Quarter Pipe" || o.type === "Launch Ramp"
+                ? -o.length / 2 + Math.min(o.radius, o.length)
+                : o.length / 2,
+            ];
+    for (let i = 0; i < lips.length; i++) {
+      const lip = lips[i],
+        direction =
+          o.type === "Spine"
+            ? i === 0
+              ? 1
+              : -1
+            : lips.length === 2
+              ? i === 0
+                ? -1
+                : 1
+              : 1,
+        distance = (lip - p.z) * direction;
+      if (distance > -0.4 && distance < 1.3 && speed * direction > 0)
+        return {
+          module: {
+            kind:
+              o.type === "Spine"
+                ? "spine"
+                : ["Quarter Pipe", "Half Pipe", "Mini Ramp"].includes(o.type)
+                  ? "quarter"
+                  : "box",
+          },
+          lip,
+          direction,
+          distance,
+          axis: "z" as const,
+          forward: forward.clone().multiplyScalar(direction),
+        };
+    }
+  }
   for (const m of modules) {
-    if (x < m.x0 + 0.2 || x > m.x1 - 0.2) continue;
+    const edit = activeLayout?.baseEdits["base-wood-" + m.id];
+    if (edit?.hidden) continue;
+    const angle = edit?.rotation ?? 0,
+      centerX = (m.x0 + m.x1) / 2,
+      centerZ = (m.z0 + m.z1) / 2;
+    const dx = x - centerX - (edit?.x ?? 0),
+      dz = z - centerZ - (edit?.z ?? 0),
+      localX =
+        (dx * Math.cos(angle) - dz * Math.sin(angle)) /
+          (edit?.scale?.[0] ?? 1) +
+        centerX,
+      localZ =
+        (dx * Math.sin(angle) + dz * Math.cos(angle)) /
+          (edit?.scale?.[2] ?? 1) +
+        centerZ;
+    const localVelocity = vx * Math.sin(angle) + vz * Math.cos(angle);
+    if (localX < m.x0 + 0.2 || localX > m.x1 - 0.2) continue;
     for (const lip of rampLips(m)) {
       const direction =
         m.kind === "quarter"
@@ -135,9 +215,20 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
             : lip == rampLips(m)[0]
               ? 1
               : -1;
-      const distance = (lip - z) * direction;
-      if (distance > -0.4 && distance < 1.3 && vz * direction > 0)
-        return { module: m, lip, direction, distance, axis: "z" as const };
+      const distance = (lip - localZ) * direction * (edit?.scale?.[2] ?? 1);
+      if (distance > -0.4 && distance < 1.3 && localVelocity * direction > 0)
+        return {
+          module: m,
+          lip,
+          direction,
+          distance,
+          axis: "z" as const,
+          forward: new THREE.Vector3(
+            Math.sin(angle) * direction,
+            0,
+            Math.cos(angle) * direction,
+          ),
+        };
     }
   }
   for (const m of metalQuarters) {
@@ -152,6 +243,7 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
         direction,
         distance,
         axis: "x" as const,
+        forward: new THREE.Vector3(direction, 0, 0),
       };
   }
   return null;
@@ -320,5 +412,5 @@ export function buildOutdoor(park: Park) {
     hill.position.set(-132 + i * 24, 2, 140);
     scene.add(hill);
   }
-  for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 0);
+  for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
 }

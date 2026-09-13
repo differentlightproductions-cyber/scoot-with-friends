@@ -1,0 +1,17 @@
+OWNER EDITION - KEEP THIS COPY PRIVATE
+
+Launch Owner Editor.cmd, then choose PARK EDITOR from the main menu.
+Enable Owner Editing to move, rotate, resize, recolor, or hide existing assets.
+Trees stay together; paths and the dirt riding track move as whole assets.
+New ramps, rails, scenery, terrain changes, and custom paths are editable too.
+Use Existing Park Assets in the right panel to find a specific object.
+
+Save locally while designing. TEST RIDE checks your changes.
+PUBLISH TO PUBLIC GAME uploads the current layout to the public website.
+A success message confirms publication. Players receive the latest park
+when they next start Veterans Memorial Park. Internet is needed to publish;
+coding credits are not. The service retains the previous published layout.
+
+Keep this Owner Edition private: it contains your publishing permission.
+Give friends Scoot-with-Friends-Windows.zip, not this Owner ZIP or folder.
+Exported park JSON contains only designs and can be shared.

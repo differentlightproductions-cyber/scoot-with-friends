@@ -710,3 +710,185 @@ body:not(.riding) footer {
     display: block;
   }
 }
+#park-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  color: #f4f2e9;
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+}
+#park-editor[hidden],
+#return-editor[hidden] {
+  display: none;
+}
+#park-editor header,
+#park-editor aside,
+#park-editor footer {
+  pointer-events: auto;
+  background: rgba(23, 37, 37, 0.96);
+  box-shadow: 0 3px 20px #0003;
+  border: 1px solid #8ba09833;
+}
+#park-editor header {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-radius: 8px;
+}
+#park-editor header strong {
+  margin: 0 10px;
+  color: #ffc34f;
+  letter-spacing: 1px;
+}
+#park-editor aside {
+  position: absolute;
+  top: 83px;
+  bottom: 85px;
+  width: 218px;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 8px;
+}
+#park-editor .editor-library {
+  left: 12px;
+}
+#park-editor .editor-inspector {
+  right: 12px;
+}
+#park-editor h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+#park-editor h3 {
+  font-size: 14px;
+}
+#park-editor button,
+#park-editor input,
+#park-editor select,
+#park-editor .file-button {
+  font: inherit;
+  background: #344d4b;
+  color: #f5f3e8;
+  border: 1px solid #91a59c55;
+  border-radius: 4px;
+  padding: 7px;
+  cursor: pointer;
+}
+#park-editor button:hover,
+#park-editor .chosen {
+  background: #6c633d;
+  border-color: #ffc34f;
+}
+#park-editor button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#park-editor label {
+  display: block;
+  margin: 8px 0;
+  text-transform: capitalize;
+}
+#park-editor label input:not([type="checkbox"]),
+#park-editor label select {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 3px;
+}
+#park-editor details {
+  border-top: 1px solid #91a59c44;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+#park-editor summary {
+  font-size: 15px;
+  cursor: pointer;
+  color: #ffc34f;
+}
+#park-editor details button {
+  margin: 4px 2px 0 0;
+}
+#park-editor footer {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  color: #ffe0a0;
+}
+#park-editor footer small {
+  display: block;
+  color: #bdcfca;
+  margin-top: 4px;
+}
+#park-editor p {
+  color: #bdcfca;
+}
+#park-editor .file-button {
+  display: inline-block;
+  margin: 0;
+}
+#editor-import {
+  display: none;
+}
+#editor-object {
+  width: 100%;
+}
+#return-editor {
+  position: fixed;
+  z-index: 25;
+  top: 78px;
+  left: 25px;
+  padding: 12px 18px;
+  background: #ffca66;
+  border: 0;
+  border-radius: 6px;
+  color: #183533;
+  font-weight: bold;
+  cursor: pointer;
+}
+body.editing #start,
+body.editing #hud,
+body.editing #pause,
+body.editing .location,
+body.editing #help,
+body.editing #trick-line,
+body.editing #feedback {
+  display: none !important;
+}
+@media (max-width: 1000px) {
+  #park-editor aside {
+    width: 170px;
+    top: 110px;
+  }
+  #park-editor header {
+    font-size: 11px;
+  }
+  #park-editor footer small {
+    font-size: 10px;
+  }
+}
+body.editing #app {
+  display: none !important;
+}
+#park-editor h2 {
+  font:
+    600 20px/1.2 system-ui,
+    sans-serif;
+}
+#park-editor footer {
+  display: block;
+  letter-spacing: normal;
+}
+#park-editor footer small {
+  display: block;
+}

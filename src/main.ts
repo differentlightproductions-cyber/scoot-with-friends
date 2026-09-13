@@ -1,3 +1,13 @@
+import { ParkEditor } from "./editor/editor";
+import { buildObject, deformGroundLayers } from "./editor/assets";
+import {
+  setActiveLayout,
+  setEditedHeightQuery,
+  validateLayout,
+  type ParkLayout,
+} from "./editor/layout";
+import { buildBaseAssets } from "./editor/base-assets";
+import { WaterEffects } from "./park/water";
 import "./style.css";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -21,6 +31,7 @@ async function boot() {
     audio = new AudioEngine();
   await RAPIER.init();
   const scene = new THREE.Scene();
+  const waterEffects = new WaterEffects(scene);
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: "high-performance",
@@ -46,21 +57,125 @@ async function boot() {
   rider.applyProfile(profile);
   sim.grindAssist = profile.settings.grindAssist;
   sim.tricks.stance = profile.settings.stance;
+  sim.tricks.controlStyle = profile.settings.controlStyle;
   audio.enabled = profile.settings.sound;
+  const editor = new ParkEditor(renderer, scene);
+  editor.getPark = () => park;
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   menu.onChange = () => {
     rider.applyProfile(profile);
     sim.grindAssist = profile.settings.grindAssist;
     sim.tricks.stance = profile.settings.stance;
+    sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
     document.querySelector("#sound")!.textContent = audio.enabled
       ? "ON"
       : "OFF";
   };
   document.querySelector("#sound")!.textContent = audio.enabled ? "ON" : "OFF";
-  menu.onRide = (id) => startSession(id);
+  let publicLayout: ParkLayout | null = null;
+  async function latestPark() {
+    try {
+      const response = await fetch("/api/public-park", {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        publicLayout = data.layout ? validateLayout(data.layout) : null;
+      }
+    } catch {
+      /* Offline copies retain the playable base park. */
+    }
+  }
+  void latestPark();
+  menu.onRide = async (id) => {
+    if (id === "outdoor") await latestPark();
+    setActiveLayout(id === "outdoor" ? publicLayout : null);
+    setEditedHeightQuery(null);
+    startSession(id, true);
+    if (id === "outdoor" && publicLayout) applyLayout(publicLayout, false);
+  };
+  menu.onEditor = () => {
+    if (
+      !editor.history.past.length &&
+      !editor.layout.objects.length &&
+      publicLayout
+    )
+      editor.history.layout = validateLayout(publicLayout);
+    editor.open();
+  };
+  function applyLayout(layout: ParkLayout, editing: boolean) {
+    deformGroundLayers(park);
+    const baseObjects = buildBaseAssets(
+      park,
+      layout,
+      editor.owner || Object.keys(layout.baseEdits).length > 0,
+    );
+    const objects = layout.objects.map((o) => buildObject(park, o));
+    world.step();
+    if (Object.keys(layout.baseEdits).length)
+      setEditedHeightQuery((x, z) => {
+        const ceiling =
+          editor.active || sim.resolvingSpawn ? 30 : sim.position.y + 0.8;
+        const hit = world.castRay(
+          new RAPIER.Ray({ x, y: ceiling, z }, { x: 0, y: -1, z: 0 }),
+          40,
+          true,
+          undefined,
+          undefined,
+          undefined,
+          sim.body,
+          (c) => !park.railHandles.has(c.handle),
+        );
+        return hit ? ceiling - hit.timeOfImpact : -3;
+      });
+    if (editor.showDebug) {
+      const d = world.debugRender();
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(d.vertices, 3));
+      g.setAttribute("color", new THREE.BufferAttribute(d.colors, 4));
+      const debug = new THREE.LineSegments(
+        g,
+        new THREE.LineBasicMaterial({
+          vertexColors: true,
+          depthTest: false,
+          transparent: true,
+          opacity: 0.65,
+        }),
+      );
+      debug.name = "editor-collisions";
+      scene.add(debug);
+    }
+    if (editing) editor.bind(objects, baseObjects);
+  }
+  editor.onBuild = (layout) => {
+    setEditedHeightQuery(null);
+    setActiveLayout(layout);
+    startSession("outdoor", true);
+    applyLayout(layout, true);
+    hud.started = false;
+    document.querySelector("#start")!.setAttribute("hidden", "");
+    rider.root.visible = false;
+  };
+  editor.onTest = () => {
+    const debug = scene.getObjectByName("editor-collisions");
+    if (debug) debug.visible = false;
+    rider.root.visible = true;
+    hud.start();
+    hud.setPaused(false);
+    input.clear();
+    sim.reset();
+    camera.reset();
+  };
+  editor.onExit = () => {
+    setActiveLayout(null);
+    setEditedHeightQuery(null);
+    startSession("outdoor", true);
+    exitToMenu();
+  };
   events.on((e) => {
     audio.event(e);
+    if (e.type === "splash") waterEffects.splash(e.x, e.z);
     if (e.type === "pop") input.rumble(TUNE.rumble.pop, 45);
     if (e.type === "landing")
       input.rumble(
@@ -91,12 +206,13 @@ async function boot() {
   window.addEventListener("keydown", () => {
     if (hud.started) void audio.start();
   });
-  function startSession(id: MapId) {
-    if ((OUTDOOR ? "outdoor" : "warehouse") !== id) {
+  function startSession(id: MapId, force = false) {
+    if (force || (OUTDOOR ? "outdoor" : "warehouse") !== id) {
       sim.score.dispose();
       world.free();
       const geometries = new Set<THREE.BufferGeometry>(),
         materials = new Set<THREE.Material>();
+      scene.remove(editor.helper, editor.highlight);
       scene.traverse((o) => {
         if (o instanceof THREE.Mesh || o instanceof THREE.Line) {
           geometries.add(o.geometry);
@@ -124,6 +240,7 @@ async function boot() {
     rider.applyProfile(profile);
     sim.grindAssist = profile.settings.grindAssist;
     sim.tricks.stance = profile.settings.stance;
+    sim.tricks.controlStyle = profile.settings.controlStyle;
     history.replaceState(
       null,
       "",
@@ -235,6 +352,7 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
+    waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
     camera.update(sim, frame, dt, alpha);
     if (hud.started) renderer.render(scene, camera.camera);
@@ -249,6 +367,10 @@ async function boot() {
     if (testMode) return;
     input.poll();
     frame = input.consume();
+    if (editor.active) {
+      editor.update(frame, dt);
+      return;
+    }
     if (!hud.started) {
       menu.update(frame, dt);
       render(dt);
@@ -314,6 +436,7 @@ async function boot() {
         return sim;
       },
       menu,
+      editor,
       profile,
       startSession,
       exitToMenu,

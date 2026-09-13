@@ -36,6 +36,7 @@ export class GameMenu {
   private saveFailed = false;
   onRide = (_map: MapId) => {};
   onChange = () => {};
+  onEditor = () => {};
   private choices: {
     label: string;
     detail?: string;
@@ -49,11 +50,33 @@ export class GameMenu {
     this.previewScene.background = new THREE.Color(0xc5cbc1);
     this.previewScene.add(this.focusBox);
     this.focusBox.visible = false;
-    let drag:{x:number;y:number;pan:boolean}|null=null;
-    window.addEventListener('pointerdown',e=>{if(!this.root.hidden&&e.clientX>innerWidth*.5){drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey};}});
-    window.addEventListener('pointerup',()=>{drag=null;});
-    window.addEventListener('pointermove',e=>{if(!drag||this.root.hidden)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(drag.pan){this.pan.x-=dx*.003;this.pan.y+=dy*.003;}else this.orbit-=dx*.008;drag.x=e.clientX;drag.y=e.clientY;});
-    window.addEventListener('contextmenu',e=>{if(!this.root.hidden&&e.clientX>innerWidth*.5)e.preventDefault();});
+    let drag: { x: number; y: number; pan: boolean } | null = null;
+    window.addEventListener("pointerdown", (e) => {
+      if (!this.root.hidden && e.clientX > innerWidth * 0.5) {
+        drag = {
+          x: e.clientX,
+          y: e.clientY,
+          pan: e.button === 2 || e.shiftKey,
+        };
+      }
+    });
+    window.addEventListener("pointerup", () => {
+      drag = null;
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!drag || this.root.hidden) return;
+      const dx = e.clientX - drag.x,
+        dy = e.clientY - drag.y;
+      if (drag.pan) {
+        this.pan.x -= dx * 0.003;
+        this.pan.y += dy * 0.003;
+      } else this.orbit -= dx * 0.008;
+      drag.x = e.clientX;
+      drag.y = e.clientY;
+    });
+    window.addEventListener("contextmenu", (e) => {
+      if (!this.root.hidden && e.clientX > innerWidth * 0.5) e.preventDefault();
+    });
     window.addEventListener(
       "wheel",
       (e) => {
@@ -121,6 +144,11 @@ export class GameMenu {
           "Scoot with Friends / Your custom build",
         );
         add("SETTINGS", () => this.show("settings"));
+        add(
+          "PARK EDITOR",
+          () => this.onEditor(),
+          "Build and save your own lines",
+        );
         break;
       case "maps":
         title = "MAP SELECT";
@@ -199,6 +227,18 @@ export class GameMenu {
         break;
       }
       case "settings":
+        add(
+          "CONTROLS " +
+            (this.profile.settings.controlStyle === "pro"
+              ? "PRO / ADVANCED"
+              : "ARCADE"),
+          () => {
+            this.profile.settings.controlStyle =
+              this.profile.settings.controlStyle === "pro" ? "arcade" : "pro";
+            this.changed();
+            this.show("settings");
+          },
+        );
         add("STANCE " + this.profile.settings.stance.toUpperCase(), () => {
           this.profile.settings.stance =
             this.profile.settings.stance === "regular" ? "goofy" : "regular";

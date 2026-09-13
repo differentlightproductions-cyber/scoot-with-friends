@@ -4,7 +4,16 @@ Play online: https://scoot-with-friends.nicsoundcloud22.chatgpt.site
 
 Windows portable copy: releases/Scoot-with-Friends-Windows.zip. Extract all and double-click Play Scoot with Friends.cmd. This works independently of ChatGPT or coding credits.
 
-A playable browser scooter game with Warehouse 01, the photo-inspired Veterans Memorial Park, controller menus, a modular Lazer scooter builder, three rider presets, session markers, and local loadout saving. TypeScript, Three.js, Rapier and Vite. Everything runs locally without an account or backend.
+A playable browser scooter game with Warehouse 01, the photo-inspired Veterans Memorial Park, controller menus, a modular Lazer scooter builder, three rider presets, session markers, and local loadout saving. TypeScript, Three.js, Rapier and Vite. Solo play runs locally without an account. Public park publishing uses a small authenticated Sites service.
+
+## Owner editor and public park publishing
+
+The private owner download is `releases/Scoot-with-Friends-Owner-Windows.zip`.
+Extract it and launch **Owner Editor.cmd**. Main menu ? Park Editor ? Enable Owner Editing unlocks existing assets, including whole trees, paths and the dirt riding track. New assets, curved paths, terrain tools, undo/redo, named local saves and JSON import/export are available. Test Ride uses the current layout; Return to Editor retains it. **Publish to Public Game** sends the validated layout to the existing public site, with a previous-layout backup. Never share the owner ZIP: it contains publishing permission. The ordinary Windows ZIP does not.
+
+**Pro / Arcade** is saved in Settings. Pro retains stance-specific A/X controls; Arcade uses A hop, B whip and X push / airborne barspin. Grounded Bri gestures initiate a bounded pop. Ordinary crashes recover on foot near the crash; A speeds up recovery. Water triggers a splash and shore recovery.
+
+The browser game and local drafts remain usable without coding credits. Publishing requires internet access. Public layout state lives in the Sites R2 binding; the publishing key exists only in a secret environment value and the ignored owner configuration, never browser code or the friend package.
 
 ## Play
 

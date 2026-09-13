@@ -65,6 +65,14 @@ export class AudioEngine {
   }
   event(e: GameEvent) {
     if (!this.context || !this.master) return;
+    if (e.type === "splash") {
+      const buffer=this.context.createBuffer(1,this.context.sampleRate*.65,this.context.sampleRate);
+      const data=buffer.getChannelData(0);
+      for(let i=0;i<data.length;i++) data[i]=(Math.random()*2-1)*Math.pow(1-i/data.length,2)*.7;
+      const source=this.context.createBufferSource(), filter=this.context.createBiquadFilter();
+      source.buffer=buffer; filter.type="lowpass";filter.frequency.value=1200;
+      source.connect(filter).connect(this.master);source.start(); return;
+    }
     let f = 0,
       g = 0.13,
       d = 0.08;
