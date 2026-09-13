@@ -227,7 +227,7 @@ export class HUD {
         (s.tricks.controlStyle === "arcade"
           ? "<dt>A</dt><dd>Quick hop</dd>"
           : "") +
-        "<dt>RS DOWN / RELEASE</dt><dd>Hold down to crouch and load; release or sweep out to pop. Ramps also launch naturally with speed.</dd>" +
+        "<dt>RS BUNNY HOP</dt><dd>Hold RS fully down to crouch, then move it back up at least 90% toward the rider to pop. A sideways move alone will not jump.</dd>" +
         "<dt>LT + " +
         mapping.whipLabel +
         "</dt><dd>Heelwhip</dd><dt>RT + " +
@@ -239,7 +239,7 @@ export class HUD {
         "<dd>Barspin / opposite barspin. Tap once or hold continuous rotations.</dd>" +
         "<dt>LB / RB DURING WHIP</dt><dd>At 65-90%: tap and release to rewind; hold 0.18 seconds for kickless. Repeat at the next catch window.</dd>" +
         "<dt>LB / RB DURING BARSPIN</dt><dd>Rewind only opposite the current spin: LB left / RB right. Whip windows take priority.</dd>" +
-        "<dt>RS CIRCULAR SWEEP</dt><dd>Bri / Inward Bri from ground or air. Load and sweep for a higher pop; kickless requires an active whip.</dd>" +
+        "<dt>RS CIRCULAR SWEEP</dt><dd>Complete a full circular sweep for Bri / Inward Bri from ground or air. Load first for a higher pop; kickless requires an active whip.</dd>" +
         "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
         "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Tuck. LT + Y: Deck Grab. Both triggers + Y: Superman.</dd>" +
         "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +

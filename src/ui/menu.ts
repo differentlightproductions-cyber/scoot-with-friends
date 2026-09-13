@@ -149,6 +149,20 @@ export class GameMenu {
           () => this.onEditor(),
           "Build and save your own lines",
         );
+        add("TRICK BOOK", () => this.show("tricks"), "Every trick and its input");
+        break;
+      case "tricks":
+        title = "TRICK BOOK";
+        subtitle = "READ THE MOVEMENT, THEN MAKE IT YOURS";
+        add("BUNNY HOP", () => {}, "RS fully down to crouch, then return it 90% up to pop. Hold down longer for more height.");
+        add("TAILWHIP / BARSPIN", () => {}, "Pro: stance whip button / B. Arcade: B whip / X bars. Tap once or hold for continuous rotations.");
+        add("HEEL / FINGER WHIP", () => {}, "LT + whip = heelwhip. RT + whip = fingerwhip. LT + RT + whip = opposite fingerwhip.");
+        add("BRI / INWARD BRI", () => {}, "Circle RS all the way around. Direction chooses Bri or inward. Load RS down before the circle for a bigger takeoff.");
+        add("KICKLESS / REWIND", () => {}, "During a caught whip window, tap LB/RB to rewind. Hold either bumper briefly to turn the caught whip into a kickless.");
+        add("SPINS / FAKIE", () => {}, "Use LS while airborne to spin and shift your weight. Land rolling backward to enter fakie; hold it to build score.");
+        add("GRINDS / MANUALS", () => {}, "RT asks for a rail catch. LB + RS up/down starts a nose manual/manual; keep RS balanced.");
+        add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y tuck, LT + Y deck grab, both = superman. Bumpers + Y add can-can, one-foot, or no-foot.");
+        add("WALKING", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench.");
         break;
       case "maps":
         title = "MAP SELECT";

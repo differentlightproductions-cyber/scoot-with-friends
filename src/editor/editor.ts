@@ -537,7 +537,7 @@ export class ParkEditor {
       )
       .join(
         "",
-      )}<details><summary>Terrain / Paths</summary>${["raise", "lower", "smooth", "flatten"].map((t) => `<button data-brush="${t}">${t}</button>`).join("")}<label>Brush radius<input id="brush-radius" type="number" min="0.5" max="20" step="0.5" value="${this.brushRadius}"></label><label>Strength<input id="brush-strength" type="number" min="0.05" max="3" step="0.1" value="${this.brushStrength}"></label><label>Path surface<select id="path-material">${["dirt", "asphalt", "concrete", "gravel"].map((m) => `<option ${m === this.pathMaterial ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Path width<input id="path-width" type="number" min="0.5" max="15" step="0.5" value="${this.pathWidth}"></label><button data-do="path">Draw Path</button><button data-do="finishPath">Finish Path</button></details></aside><aside class="editor-inspector"><h2>${o ? esc(o.type) : base ? "Existing asset" : "Select / Place"}</h2><button data-do="select">Select</button><button data-tool="translate">Move (G)</button><button data-tool="rotate">Rotate (T)</button><button data-tool="scale">Resize (J)</button><label>Grid snap<select id="editor-grid">${[0, 0.1, 0.25, 0.5].map((v) => `<option ${this.grid === v ? "selected" : ""} value="${v}">${v || "Free"}</option>`).join("")}</select></label><label>Angle snap<select id="editor-angle">${[0, 5, 15, 45].map((v) => `<option ${this.angle === v ? "selected" : ""} value="${v}">${v || "Free"}</option>`).join("")}</select></label>${
+      )}<details open><summary>Terrain / Paths</summary><p class="terrain-help">The BMX sand is terrain, not an item. Pick a brush, then drag directly over it. Raise/lower changes the sand and collision. The wooden park remains protected.</p><button data-do="focusBmx">Focus BMX terrain</button>${["raise", "lower", "smooth", "flatten"].map((t) => `<button data-brush="${t}">${t}</button>`).join("")}<label>Brush radius<input id="brush-radius" type="number" min="0.5" max="20" step="0.5" value="${this.brushRadius}"></label><label>Strength<input id="brush-strength" type="number" min="0.05" max="3" step="0.1" value="${this.brushStrength}"></label><label>Path surface<select id="path-material">${["dirt", "asphalt", "concrete", "gravel"].map((m) => `<option ${m === this.pathMaterial ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Path width<input id="path-width" type="number" min="0.5" max="15" step="0.5" value="${this.pathWidth}"></label><button data-do="path">Draw Path</button><button data-do="finishPath">Finish Path</button></details></aside><aside class="editor-inspector"><h2>${o ? esc(o.type) : base ? "Existing asset" : "Select / Place"}</h2><button data-do="select">Select</button><button data-tool="translate">Move (G)</button><button data-tool="rotate">Rotate (T)</button><button data-tool="scale">Resize (J)</button><label>Grid snap<select id="editor-grid">${[0, 0.1, 0.25, 0.5].map((v) => `<option ${this.grid === v ? "selected" : ""} value="${v}">${v || "Free"}</option>`).join("")}</select></label><label>Angle snap<select id="editor-angle">${[0, 5, 15, 45].map((v) => `<option ${this.angle === v ? "selected" : ""} value="${v}">${v || "Free"}</option>`).join("")}</select></label>${
       o
         ? [
             "x",
@@ -609,6 +609,18 @@ export class ParkEditor {
         this.notice = "Click points along your path.";
         this.ui();
       },
+      focusBmx: () => {
+        this.mode = "lower";
+        this.pathMode = false;
+        this.brushRadius = 6;
+        this.brushStrength = 0.35;
+        this.gizmo.detach();
+        this.orbit.target.set(-62, 0, 3);
+        this.camera.position.set(-48, 19, 34);
+        this.notice =
+          "BMX terrain ready. Drag over the sand to lower it away from the sidewalk.";
+        this.ui();
+      },
       finishPath: () => this.finishPath(),
       debug: () => {
         this.showDebug = !this.showDebug;
@@ -654,7 +666,8 @@ export class ParkEditor {
         (b.onclick = () => {
           this.mode = b.dataset.brush as any;
           this.gizmo.detach();
-          this.notice = "Drag across the surrounding terrain.";
+          this.notice =
+            "Drag on the park ground. This reshapes the BMX sand too; wooden ramps stay protected.";
           this.ui();
         }),
     );

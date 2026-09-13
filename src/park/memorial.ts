@@ -196,7 +196,17 @@ export function buildMemorialGrounds(park: Park) {
   patch(47.75, 78.25, 7.75, 18.25, 0.125, metalHeight, 0x333c42);
   patch(58.75, 72.25, -14.25, -1.75, 0.125, metalHeight, 0x333c42);
   patch(80.75, 85.25, -15.25, -7.75, 0.125, metalHeight, 0x333c42);
-  patch(-81, -43, -28, 34, 0.25, bmxHeight, 0xc3a16f);
+  // The BMX track is authored terrain, so brush strokes rebuild both its
+  // visible sand and matching collision surface.
+  patch(
+    -81,
+    -43,
+    -28,
+    34,
+    0.25,
+    (x, z) => brushHeight(x, z, bmxHeight(x, z)),
+    0xc3a16f,
+  );
   const metalRail = (
     name: string,
     a: THREE.Vector3,

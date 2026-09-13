@@ -40,7 +40,7 @@ The H guide updates automatically from the same stance mapping used by gameplay 
 | Fingerwhip | RT + A | RT + X |
 | Opposite fingerwhip | LT + RT + A | LT + RT + X |
 
-RS down hold/release loads and pops. Ramps launch naturally without preload; a timed pop adds a modest boost. Release LB before loading a manual hop; LB + RS remains manual entry/balance.
+RS down hold then a 90%-up return loads and pops; sideways movement alone does not pop. Ramps launch naturally without preload; a timed pop adds a modest boost. Release LB before loading a manual hop; LB + RS remains manual entry/balance. The main-menu Trick Book and the in-session H guide list every input.
 
 B taps/holds barspins; RB + B reverses the initial direction. In the 65-90% whip window, tap/release either bumper to rewind, or hold 0.18 seconds for a contextual kickless. Repeated windows allow longer sequences. A deck window consumes the bumper before the barspin/body systems; bar rewinds require the opposite current direction (LB left, RB right). Kickless cannot start from neutral air or a scoop gesture. RS circles perform Bri / Inward Bri immediately after pop.
 

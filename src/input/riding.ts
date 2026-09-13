@@ -32,6 +32,7 @@ export function ridingButtons(
 export class StickPreload {
   amount = 0;
   dwell = 0;
+  private returnWait = 0;
   popped = false;
   step(dt: number, input: InputFrame, supported: boolean, sweeping = false) {
     this.popped = false;
@@ -41,6 +42,7 @@ export class StickPreload {
       Math.abs(input.rx) < 0.5 &&
       input.held.leftModifier < 0.5;
     if (down && supported) {
+      this.returnWait = 0;
       this.dwell += dt;
       this.amount = clamp(
         this.amount + (dt / TUNE.preloadTime) * input.ry,
@@ -48,17 +50,28 @@ export class StickPreload {
         1,
       );
     } else if (sweeping && supported) {
+      // A circular RS gesture owns the stick until it has finished. Do not
+      // mistake its first sideways movement for a hop release.
+      this.returnWait = 0;
       return null;
-    } else if (!down && this.dwell >= 0.06 && this.amount > 0) {
+    } else if (input.ry <= -0.82 && this.dwell >= 0.06 && this.amount > 0) {
+      // A bunny hop completes when RS travels back up toward the rider.
       this.popped = supported;
       const charge = this.amount;
       this.amount = this.dwell = 0;
+      this.returnWait = 0;
       return this.popped ? charge : null;
-    } else if (!supported || !down) this.amount = this.dwell = 0;
+    } else if (!supported) this.reset();
+    else if (this.amount > 0) {
+      // Leave a short window to finish the upward motion without letting a
+      // loaded hop become an accidental later camera movement.
+      this.returnWait += dt;
+      if (this.returnWait > 0.7) this.reset();
+    } else this.dwell = 0;
     return null;
   }
   reset() {
-    this.amount = this.dwell = 0;
+    this.amount = this.dwell = this.returnWait = 0;
     this.popped = false;
   }
 }

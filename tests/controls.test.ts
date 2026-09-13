@@ -15,7 +15,7 @@ function window(t: Tricks) {
   for (let i = 0; i < 240 && !t.deck.canRewind; i++) t.input(dt, emptyInput());
   assert.ok(t.deck.canRewind);
 }
-test("RS dwell loads analog charge and releases without neutral lock; no airborne loading or single-flick hop", () => {
+test("RS dwell loads analog charge and only pops after a full upward return; no airborne loading or single-flick hop", () => {
   const p = new StickPreload(),
     f = emptyInput();
   f.ry = 1;
@@ -23,6 +23,10 @@ test("RS dwell loads analog charge and releases without neutral lock; no airborn
   assert.equal(p.amount, 1);
   f.rx = 1;
   f.ry = 0.3;
+  assert.equal(p.step(dt, f, true), null);
+  assert.equal(p.popped, false);
+  f.rx = 0;
+  f.ry = -0.9;
   assert.equal(p.step(dt, f, true), 1);
   assert.equal(p.popped, true);
   f.rx = 0;
