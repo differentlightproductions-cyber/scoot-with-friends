@@ -3,6 +3,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import { Events } from "../core/events";
 import { InputFrame } from "../input/input";
+import { ridingButtons, StickPreload } from "../input/riding";
 import {
   Park,
   SPAWNS,
@@ -69,6 +70,10 @@ export class Simulation {
   pitch = 0;
   roll = 0;
   charge = 0;
+  preload = new StickPreload();
+  airYawInput = 0;
+  spineLaunchVelocity = new THREE.Vector3();
+  spineLaunchAngle = 0;
   state: RideState = "Grounded";
   grounded = true;
   grind: GrindContact | null = null;
@@ -134,6 +139,7 @@ export class Simulation {
     return Math.hypot(this.velocity.x, this.velocity.z);
   }
   get context() {
+    if (!this.walking && this.preload.amount > 0) return "preload";
     return this.manual.active
       ? "manual"
       : this.grind
@@ -143,6 +149,9 @@ export class Simulation {
           : "camera";
   }
   reset(index = this.spawnIndex, restart = false) {
+    this.preload.reset();
+    this.spineLaunchVelocity.set(0, 0, 0);
+    this.spineLaunchAngle = 0;
     this.spawnIndex = index;
     const s = SPAWNS[index];
     this.position.set(s.x, terrainHeight(s.x, s.z) + TUNE.radius, s.z);
@@ -248,12 +257,29 @@ export class Simulation {
     }
     return { height, normal };
   }
+  private redirectSpine(direction: number, lean: number) {
+    const speed = Math.hypot(this.velocity.z, this.velocity.y);
+    const ratio = clamp(
+      0.16 + Math.max(0, speed - 9) * 0.007 - lean * 0.025,
+      0.1,
+      0.23,
+    );
+    this.velocity.z = direction * speed * ratio;
+    this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
+    this.spineLaunchVelocity.copy(this.velocity);
+    this.spineLaunchAngle =
+      (Math.atan2(this.velocity.y, Math.abs(this.velocity.z)) * 180) / Math.PI;
+  }
   private pop(charge: number, lean = 0) {
     const linked = this.manual.active || !!this.grind;
     this.finishManual();
     this.finishGrind();
-    const hop = TUNE.hopMin + (TUNE.hopMax - TUNE.hopMin) * charge;
-    this.velocity.addScaledVector(this.normal, 0.8 + charge * 0.4);
+    const rampPop = this.normal.y < 0.85 && this.velocity.y > 1;
+    const hop = rampPop
+      ? 0.45 + charge * 1.05
+      : TUNE.hopMin + (TUNE.hopMax - TUNE.hopMin) * charge;
+    if (!rampPop)
+      this.velocity.addScaledVector(this.normal, 0.8 + charge * 0.4);
     this.velocity.y = Math.max(0, this.velocity.y) + hop;
     this.transitionAir = this.normal.y < 0.85 && this.rampLean > 0.1;
     if (this.transitionAir) {
@@ -268,6 +294,26 @@ export class Simulation {
         across * Math.cos(angle) - up * Math.sin(angle) - across,
       );
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
+    }
+    const lip = OUTDOOR
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+    if (rampPop && lip && lip.distance < 0.55) {
+      this.lipClearTimer = TUNE.transitionRailClearTime;
+      if (lip.module.kind === "spine") this.redirectSpine(lip.direction, lean);
+      else if (lip.module.kind === "quarter") {
+        const speed = Math.hypot(this.velocity[lip.axis], this.velocity.y);
+        const ratio =
+          clamp((speed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
+          clamp(lean, 0, 1) * 0.06;
+        this.velocity[lip.axis] = lip.direction * speed * ratio;
+        this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
+      }
     }
     this.body.setTranslation(
       this.position.clone().add(new THREE.Vector3(0, 0.06, 0)),
@@ -288,6 +334,7 @@ export class Simulation {
   bail(reason: string) {
     if (this.state === "Bail") return;
     this.state = "Bail";
+    this.preload.reset();
     this.grounded = false;
     this.bailTimer = 0;
     this.manual.reset();
@@ -582,7 +629,10 @@ export class Simulation {
     this.hopBuffer = Math.max(0, this.hopBuffer - dt);
     this.position.copy(this.body.translation());
     this.velocity.copy(this.body.linvel());
-    if (this.marker.step(dt, input, this)) return;
+    if (this.marker.step(dt, input, this)) {
+      this.preload.reset();
+      return;
+    }
     this.compression = damp(
       this.compression,
       this.grounded ? input.held.pumpGrind : 0,
@@ -597,8 +647,10 @@ export class Simulation {
       !Number.isFinite(
         this.position.lengthSq() + this.velocity.lengthSq() + this.yaw,
       ) ||
-      Math.abs(this.position.x) > 34 ||
-      Math.abs(this.position.z) > 46 ||
+      Math.abs(this.position.x) > (OUTDOOR ? 113 : 34) ||
+      (OUTDOOR
+        ? this.position.z < -166 || this.position.z > 78
+        : Math.abs(this.position.z) > 46) ||
       this.position.y < -8 ||
       this.position.y > 35
     ) {
@@ -674,6 +726,7 @@ export class Simulation {
       this.spin = 0;
       this.fakie.reset();
       this.events.emit({ type: "dismount", walking: this.walking });
+      this.preload.reset();
       if (!this.walking) this.state = "Grounded";
     }
     if (this.walking) {
@@ -709,13 +762,23 @@ export class Simulation {
     else this.normal.lerp(support.normal, 1 - Math.exp(-18 * dt)).normalize();
     if (wasGrounded && !this.grounded && !this.grind) {
       const leavingLip = OUTDOOR
-        ? outdoorLip(this.position.x, this.position.z, this.velocity.z)
+        ? outdoorLip(
+            this.position.x,
+            this.position.z,
+            this.velocity.z,
+            this.velocity.x,
+          )
         : null;
       if (leavingLip && leavingLip.distance < 0.55 && this.velocity.y > 0.3) {
         this.lipClearTimer = TUNE.transitionRailClearTime;
         this.popTimer = 0.12;
+        if (leavingLip.module.kind === "spine")
+          this.redirectSpine(leavingLip.direction, input.lean);
         if (leavingLip.module.kind === "quarter") {
-          const planeSpeed = Math.hypot(this.velocity.z, this.velocity.y);
+          const planeSpeed = Math.hypot(
+            this.velocity[leavingLip.axis],
+            this.velocity.y,
+          );
           const ratio =
             clamp(
               (planeSpeed - TUNE.quarterOverDeckSpeed) * 0.04,
@@ -723,7 +786,8 @@ export class Simulation {
               0.35,
             ) -
             clamp(input.lean, 0, 1) * 0.06;
-          this.velocity.z = leavingLip.direction * planeSpeed * ratio;
+          this.velocity[leavingLip.axis] =
+            leavingLip.direction * planeSpeed * ratio;
           this.velocity.y = planeSpeed * Math.sqrt(1 - ratio * ratio);
         }
         this.events.emit({ type: "pop", charge: 0 });
@@ -738,10 +802,16 @@ export class Simulation {
     }
     if (this.grounded) this.lastGround = this.elapsed;
     // Preload survives the lip briefly and can buffer a release just before contact.
-    if (input.held.hop > 0.5)
-      this.charge = clamp(this.charge + dt / TUNE.preloadTime, 0, 1);
-    if (input.released.hop) {
-      this.bufferCharge = this.charge;
+    const rsPop = this.preload.step(
+      dt,
+      input,
+      this.grounded ||
+        !!this.grind ||
+        this.elapsed - this.lastGround < TUNE.coyoteTime,
+    );
+    this.charge = this.preload.amount;
+    if (rsPop !== null) {
+      this.bufferCharge = rsPop;
       this.hopBuffer = TUNE.hopBuffer;
       this.charge = 0;
     }
@@ -908,7 +978,7 @@ export class Simulation {
       if (current > 0)
         this.velocity.multiplyScalar(Math.max(0, current - loss) / current);
       if (
-        input.pressed.pushDeck &&
+        input.pressed[ridingButtons(this.tricks.stance).push] &&
         this.pushTimer === 0 &&
         !this.manual.active &&
         !revert.reverting
@@ -956,7 +1026,7 @@ export class Simulation {
         // Ignore the entry flick for a fraction of a second, then give the stick full balance control.
         const result = this.manual.step(
           dt,
-          this.manualEntryLock > 0 ? 0 : input.ry,
+          this.manualEntryLock > 0 || this.preload.amount > 0 ? 0 : input.ry,
           (speed - this.lastSpeed) / dt,
         );
         if (this.manual.duration > 0.25 && !this.manualRecorded) {
@@ -1025,11 +1095,12 @@ export class Simulation {
       this.yaw += rotation;
       this.tricks.yaw += rotation;
       this.airWeight.step(dt, input.lean, this.yaw, this.velocity);
+      this.airYawInput = input.steer;
       const basePitch = this.airWeight.basePitch(this.yaw, this.airTime);
       this.pitch = damp(
         this.pitch,
-        basePitch + this.airWeight.pitchBias,
-        8,
+        clamp(basePitch + this.airWeight.pitchBias, -1.25, 1.25),
+        12,
         dt,
       );
       this.roll = damp(this.roll, input.steer * 0.07, 4, dt);
@@ -1039,7 +1110,12 @@ export class Simulation {
     }
     if (this.velocity.length() > 28) this.velocity.setLength(28);
     const lip = OUTDOOR
-      ? outdoorLip(this.position.x, this.position.z, this.velocity.z)
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
       : null;
     const onTransition =
       !!lip &&
@@ -1054,14 +1130,16 @@ export class Simulation {
       this.velocity.y > 0.3 &&
       this.popTimer === 0
     ) {
+      if (lip.module.kind === "spine")
+        this.redirectSpine(lip.direction, input.lean);
       if (lip.module.kind === "quarter") {
-        const planeSpeed = Math.hypot(this.velocity.z, this.velocity.y);
+        const planeSpeed = Math.hypot(this.velocity[lip.axis], this.velocity.y);
         // The transition turns existing momentum; it never assigns jump energy.
         // Only surplus speed produces a meaningful outward component over the deck.
         const outwardRatio =
           clamp((planeSpeed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
           clamp(input.lean, 0, 1) * 0.06;
-        this.velocity.z = lip.direction * planeSpeed * outwardRatio;
+        this.velocity[lip.axis] = lip.direction * planeSpeed * outwardRatio;
         this.velocity.y =
           planeSpeed * Math.sqrt(Math.max(0, 1 - outwardRatio * outwardRatio));
       }
@@ -1171,6 +1249,24 @@ export class Simulation {
       dropIn: { phase: this.dropIn.phase, lean: this.dropIn.lean },
       mantle: !!this.mantle,
       stance: this.tricks.stance,
+      pushButton: ridingButtons(this.tricks.stance).pushLabel,
+      tailwhipButton: ridingButtons(this.tricks.stance).whipLabel,
+      rsPreloadAmount: this.preload.amount,
+      rsPopDetected: this.preload.popped,
+      activeWhip: Math.abs(this.tricks.deck.velocity) > 1,
+      whipDirection: Math.sign(this.tricks.deck.velocity),
+      whipProgress: this.tricks.deck.progress,
+      bumperHeldDuration: this.tricks.bumperHeldDuration,
+      rewindCandidate:
+        !!this.tricks.pendingBumper ||
+        this.tricks.deck.canRewind ||
+        this.tricks.bars.canRewind,
+      kicklessCandidate:
+        !!this.tricks.pendingBumper || this.tricks.deck.canRewind,
+      airLeanForwardBack: this.airWeight.shift,
+      airYawInput: this.airYawInput,
+      spineLaunchVelocity: this.spineLaunchVelocity.toArray(),
+      spineLaunchAngle: this.spineLaunchAngle,
       leadingFoot: this.tricks.stance === "regular" ? "left" : "right",
       naturalWhipDirection: this.tricks.naturalDirection,
       naturalBarDirection: this.tricks.naturalDirection,

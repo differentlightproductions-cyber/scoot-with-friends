@@ -59,8 +59,8 @@ try {
         g.sim.grounded &&
           Math.abs(g.sim.position.y - (bench.seat + 0.22)) < 0.1,
       );
-      a(0.1, { held: { hop: 1 } });
-      a(1 / 120, { released: { hop: true } });
+      a(0.1, { ry: 1 });
+      a(1 / 120, { ry: 0 });
       check("Can hop off bench " + bench.id, !g.sim.grounded);
     }
     place(-20, 2, 0);

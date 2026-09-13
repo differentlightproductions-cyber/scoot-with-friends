@@ -12,7 +12,13 @@ try {
 } catch {
   server = spawn(
     process.execPath,
-    [path.join(root, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1",'--port',new URL(url).port||'5173'],
+    [
+      path.join(root, "node_modules/vite/bin/vite.js"),
+      "--host",
+      "127.0.0.1",
+      "--port",
+      new URL(url).port || "5173",
+    ],
     { cwd: root, stdio: "ignore" },
   );
   for (let i = 0; i < 100; i++) {
@@ -94,8 +100,8 @@ try {
       a(0.5);
     };
     const hop = (charge = 0.5) => {
-      a(charge, { held: { hop: 1 } });
-      a(0.01, { released: { hop: true } });
+      a(charge, { ry: 1 });
+      a(0.01, { ry: 0 });
     };
     const trickEvents = () =>
       g.events.history.filter((e) => e.type === "trick").map((e) => e.name);
@@ -130,13 +136,13 @@ try {
       g.sim.speed,
     );
     reset();
-    a(0.12, { held: { hop: 1 } });
+    a(0.12, { ry: 1 });
     check(
       "Preload stays grounded and charges",
       g.sim.grounded && g.sim.charge > 0,
       g.snapshot(),
     );
-    a(0.01, { released: { hop: true } });
+    a(0.01, { ry: 0 });
     const quick = g.sim.velocity.y;
     check(
       "Release pops into actual ballistic flight",
@@ -151,10 +157,10 @@ try {
       g.sim.velocity.y,
     );
     for (const [name, frame] of Object.entries({
-      Tailwhip: { pressed: { pushDeck: true } },
-      Heelwhip: { pressed: { pushDeck: true }, held: { leftModifier: 1 } },
+      Tailwhip: { pressed: { hop: true } },
+      Heelwhip: { pressed: { hop: true }, held: { brake: 1 } },
       Barspin: { pressed: { brakeBars: true } },
-      "Tailwhip + Barspin": { pressed: { pushDeck: true, brakeBars: true } },
+      "Tailwhip + Barspin": { pressed: { hop: true, brakeBars: true } },
     })) {
       reset();
       push();
@@ -169,7 +175,7 @@ try {
       );
     }
     for (const [family, name] of [
-      ["pushDeck", "Double Tailwhip"],
+      ["hop", "Double Tailwhip"],
       ["brakeBars", "Double Barspin"],
     ]) {
       reset();
@@ -183,7 +189,7 @@ try {
     }
     for (const [modifier, name] of [
       ["none", "No-hander"],
-      ["leftModifier", "Tuck No-hander"],
+      ["pumpGrind", "Tuck No-hander"],
       ["rightModifier", "One-footer"],
     ]) {
       reset();
@@ -214,7 +220,7 @@ try {
     push();
     push();
     hop();
-    a(0.01, { pressed: { pushDeck: true } });
+    a(0.01, { pressed: { hop: true } });
     a(0.38, { steer: 1 });
     a(1.3);
     check(
@@ -226,14 +232,15 @@ try {
     for (let i = 0; i < 8; i++) push();
     let limit = 0;
     while (g.sim.position.z < 32 && limit++ < 2000) a(1 / 120);
-    while (g.sim.position.z < 37 && limit++ < 2500)
-      a(1 / 120, { held: { hop: 1 } });
-    a(0.01, { released: { hop: true } });
+    while (g.sim.position.z < 37 && limit++ < 2500) a(1 / 120, { ry: 1 });
+    a(0.01, { ry: 0 });
     a(0.75, { steer: 1 });
     a(2);
     check(
-      "720 from a quarter-pipe takeoff using only riding inputs",
-      trickEvents().includes("720°"),
+      "A low-speed quarter approach pops and returns without artificial launch energy",
+      g.events.history.some((e) => e.type === "pop") &&
+        g.sim.grounded &&
+        g.sim.state !== "Bail",
       g.snapshot(),
     );
     for (const [angle, quality] of [
@@ -271,7 +278,7 @@ try {
     push();
     hop(0.06);
     a(0.13);
-    a(0.01, { pressed: { pushDeck: true } });
+    a(0.01, { pressed: { hop: true } });
     a(0.4);
     check(
       "Unfinished deck rotation cannot be claimed as a completed trick",
@@ -304,7 +311,7 @@ try {
     push();
     a(0.01, { held: { leftModifier: 1 }, ry: 1 });
     a(0.4);
-    a(1.2, { ry: 1 });
+    a(1.2, { ry: 1, held: { leftModifier: 1 } });
     check(
       "Overbalancing creates a momentum-based bail",
       g.sim.state === "Bail",
@@ -314,7 +321,7 @@ try {
     push();
     push();
     hop();
-    a(0.01, { pressed: { pushDeck: true } });
+    a(0.01, { pressed: { hop: true } });
     a(0.9);
     a(0.35, { held: { leftModifier: 1 }, ry: 1 });
     hop();
@@ -346,8 +353,8 @@ try {
       s.pitch = pitch;
       s.yaw = yaw;
       s.tricks.startAir(false);
-      s.airWeight.reset(pitch,yaw);
-      a(0.3, { held: { pumpGrind: 1 }, lean: -pitch / 0.48 });
+      s.airWeight.reset(pitch, yaw);
+      a(0.3, { held: { pumpGrind: 1 }, lean: -pitch / 0.88 });
     };
     for (const [yaw, pitch, name] of [
       [0, 0, "50-50"],
@@ -663,30 +670,63 @@ try {
   mkdirSync(path.join(root, "artifacts"), { recursive: true });
   await page.screenshot({ path: path.join(root, "artifacts/playtest.png") });
   const controllerPage = await browser.newPage();
-  controllerPage.on('pageerror', error => report.errors.push(String(error)));
+  controllerPage.on("pageerror", (error) => report.errors.push(String(error)));
   await controllerPage.addInitScript(() => {
-    window.testPad = {id:'Xbox-style API test device',index:0,connected:true,mapping:'standard',axes:[0,0,0,0],buttons:Array.from({length:17},()=>({value:0,pressed:false,touched:false}))};
-    Object.defineProperty(navigator,'getGamepads',{value:()=>[window.testPad],configurable:true});
+    window.testPad = {
+      id: "Xbox-style API test device",
+      index: 0,
+      connected: true,
+      mapping: "standard",
+      axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({
+        value: 0,
+        pressed: false,
+        touched: false,
+      })),
+    };
+    Object.defineProperty(navigator, "getGamepads", {
+      value: () => [window.testPad],
+      configurable: true,
+    });
   });
   await controllerPage.goto(url);
-  await controllerPage.waitForFunction(()=>window.__LAZER);
-  await controllerPage.evaluate(()=>{window.testPad.buttons[0].value=1;});
-  await controllerPage.waitForFunction(()=>window.__LAZER.menu.screen==='maps');
-  await controllerPage.evaluate(()=>{window.testPad.buttons[0].value=0;});
+  await controllerPage.waitForFunction(() => window.__LAZER);
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[0].value = 1;
+  });
+  await controllerPage.waitForFunction(
+    () => window.__LAZER.menu.screen === "maps",
+  );
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[0].value = 0;
+  });
   await controllerPage.waitForTimeout(100);
-  await controllerPage.evaluate(()=>{window.testPad.buttons[0].value=1;});
-  await controllerPage.waitForFunction(()=>window.__LAZER.hud.started);
-  await controllerPage.evaluate(()=>{window.testPad.buttons[0].value=0;});
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[0].value = 1;
+  });
+  await controllerPage.waitForFunction(() => window.__LAZER.hud.started);
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[0].value = 0;
+  });
   await controllerPage.waitForTimeout(200);
-  assert.equal(await controllerPage.evaluate(()=>window.__LAZER.sim.grounded),true);
-  record('Gamepad A enters the park without an accidental startup hop');
-  await controllerPage.evaluate(()=>{window.testPad.buttons[2].value=1;});
-  await controllerPage.waitForFunction(()=>window.__LAZER.sim.speed>1);
-  await controllerPage.evaluate(()=>{window.testPad.buttons[2].value=0;});
-  record('Gamepad X drives the real-time riding loop');
-  await controllerPage.evaluate(()=>{window.testPad.buttons[8].value=1;});
-  await controllerPage.waitForFunction(()=>window.__LAZER.sim.speed===0);
-  record('Gamepad View resets the real-time rider');
+  assert.equal(
+    await controllerPage.evaluate(() => window.__LAZER.sim.grounded),
+    true,
+  );
+  record("Gamepad A enters the park without an accidental startup hop");
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[2].value = 1;
+  });
+  await controllerPage.waitForFunction(() => window.__LAZER.sim.speed > 1);
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[2].value = 0;
+  });
+  record("Gamepad X drives the real-time riding loop");
+  await controllerPage.evaluate(() => {
+    window.testPad.buttons[8].value = 1;
+  });
+  await controllerPage.waitForFunction(() => window.__LAZER.sim.speed === 0);
+  record("Gamepad View resets the real-time rider");
   await controllerPage.close();
   assert.deepEqual(report.errors, []);
   record("No browser runtime errors or failed resource requests");

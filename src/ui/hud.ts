@@ -1,3 +1,4 @@
+import { ridingButtons } from "../input/riding";
 import { Simulation } from "../physics/simulation";
 import { Input, InputFrame } from "../input/input";
 import { Events } from "../core/events";
@@ -18,16 +19,14 @@ export class HUD {
   root: HTMLElement;
   constructor(public events: Events) {
     document.querySelector("#app")!.innerHTML = `
-      <header><div class="wordmark">SCOOT<span>WITH FRIENDS</span></div><div class="location">${OUTDOOR ? "SUNSET PLAZA <b>02</b>" : "WAREHOUSE <b>01</b>"}<span id="score">SESSION 0 / LINE 0</span></div></header>
+      <header><div class="wordmark">SCOOT<span>WITH FRIENDS</span></div><div class="location">${OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>"}<span id="score">SESSION 0 / LINE 0</span></div></header>
       <div id="start" class="overlay"><div class="start-copy"><div class="eyebrow">AN INDOOR FREESTYLE SESSION</div><h1>FIND<br>YOUR<br><i>FLOW.</i></h1><p>One scooter. An empty park.<br>Make your next line a little better.</p><button id="ride" class="primary">A <span>RIDE</span> ↗</button><div id="connection">Connect a controller · or press Enter</div><small>SCOOT WITH FRIENDS</small></div></div>
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
       <div id="feedback"></div>
       <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
-      <footer><div class="speed"><strong id="speed">00</strong><span>KM/H</span><i id="charge"></i></div><div id="hint">X PUSH &nbsp; / &nbsp; HOLD A, RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
-      <aside id="help" hidden><div class="eyebrow">THE CONTROLS</div><h2>RIDE / REPEAT</h2><dl>
-      <dt>LEFT STICK</dt><dd>Steer / spin; forward/back shifts air weight</dd><dt>X</dt><dd>Tap to push · tailwhip in air</dd><dt>LB + X</dt><dd>Heelwhip in air</dd><dt>A</dt><dd>Hold to preload · release to hop</dd><dt>B</dt><dd>Tap barspin / hold continuous spin in air</dd><dt>LT</dt><dd>Progressive brake</dd><dt>RT</dt><dd>Compress to pump · hold to grind</dd><dt>RIGHT STICK</dt><dd>Orbit camera · tune trick speed in air</dd><dt>LB + RS ↓ / ↑</dt><dd>Enter manual / nose manual</dd><dt>RS ↑ / ↓</dt><dd>Balance after the entry flick</dd><dt>LS CLICK ON FOOT</dt><dd>Toggle run / carry scooter</dd><dt>Y ON GROUND</dt><dd>Get off / back on / LS to walk</dd><dt>Y / LB+Y / RB+Y IN AIR</dt><dd>No-hander / tuck / one-footer</dd><dt>RS CLICK</dt><dd>Recenter camera</dd><dt>D-PAD UP</dt><dd>Tap return to marker / hold to set</dd><dt>VIEW</dt><dd>Reset rider</dd><dt>MENU</dt><dd>Pause / settings</dd></dl>
-      <p>Tap X or B for one rotation; hold to keep spinning, then release to catch. Separate caught spins are named as sequences. Assist helps nearby descending rail entries; RT widens the catch window. Keep your entry angle and steer gently on the rail. Strong LS turns revert a fakie; light turns keep it rolling. Left Stick up/down changes airborne pitch for feeble/smith contact.</p><div class="eyebrow">KEYBOARD FALLBACK</div><p>A/D steer · W/S pitch · X push/whip · B barspin · Space preload/hop · Shift LB · E RB · Ctrl LT · C RT · arrows RS · Y walk/body / F run / M marker · V recenter · R reset · Esc pause · F3 debug.</p><p>ON FOOT: A jumps or climbs a nearby low ledge. Y near quarter coping sets up a drop-in; lean LS forward to commit, pull back to rebalance, or B to cancel.</p><p>ADVANCED: LT/RT + X fingerwhip. During 65–90% of a whip or barspin, press the opposite-direction bumper to rewind (LB left / RB right); repeat with alternating bumpers. RS circular sweep: Bri / Inward Bri. RS lower half-circle then neutral: Kickless. Y + RS up: tuck; down: Superman; left/right: Can Can. RB + Y: One Foot; both bumpers + Y: No Foot. Release poses before landing. Settings selects Regular/Goofy stance; Heelwhip is the opposite whip direction.</p><small>H closes this guide</small></aside>
-      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESSION<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Session</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Switch to ${OUTDOOR ? "Warehouse 01" : "Sunset Plaza 02"}</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
+      <footer><div class="speed"><strong id="speed">00</strong><span>KM/H</span><i id="charge"></i></div><div id="hint">X PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
+      <aside id="help" hidden></aside>
+      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESSION<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Session</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Switch to ${OUTDOOR ? "Warehouse 01" : "Veterans Memorial Park"}</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
     this.root = document.querySelector("#app")!;
     document
@@ -207,6 +206,39 @@ export class HUD {
       `scaleX(${s.charge})`;
     const help = document.querySelector("#help") as HTMLElement;
     help.hidden = !input.help;
+    const mapping = ridingButtons(s.tricks.stance);
+    if (help.dataset.stance !== s.tricks.stance) {
+      help.dataset.stance = s.tricks.stance;
+      help.innerHTML =
+        '<div class="eyebrow">' +
+        s.tricks.stance.toUpperCase() +
+        " CONTROLS</div><h2>RIDE / REPEAT</h2><dl>" +
+        "<dt>" +
+        mapping.pushLabel +
+        "</dt><dd>Tap to push on the ground</dd><dt>" +
+        mapping.whipLabel +
+        "</dt><dd>Tap tailwhip / hold continuous whips in air</dd>" +
+        "<dt>RS DOWN / RELEASE</dt><dd>Hold down to crouch and load; release or sweep out to pop. Ramps also launch naturally with speed.</dd>" +
+        "<dt>LT + " +
+        mapping.whipLabel +
+        "</dt><dd>Heelwhip</dd><dt>RT + " +
+        mapping.whipLabel +
+        "</dt><dd>Fingerwhip; add LT for opposite fingerwhip</dd>" +
+        "<dt>B / RB + B</dt><dd>Barspin / opposite barspin. Tap once or hold continuous rotations.</dd>" +
+        "<dt>LB / RB DURING WHIP</dt><dd>At 65-90%: tap and release to rewind; hold 0.18 seconds for kickless. Repeat at the next catch window.</dd>" +
+        "<dt>LB / RB DURING BARSPIN</dt><dd>Rewind only opposite the current spin: LB left / RB right. Whip windows take priority.</dd>" +
+        "<dt>RS CIRCULAR SWEEP</dt><dd>Bri / Inward Bri in air. Pop straight into a sweep; kickless requires an active whip.</dd>" +
+        "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
+        "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Tuck. LT + Y: Deck Grab. Both triggers + Y: Superman.</dd>" +
+        "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +
+        "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. RT in air requests a grind.</dd>" +
+        "<dt>LB + RS UP / DOWN</dt><dd>Nose manual / manual. RS balances. Release LB then hold RS down to load a hop out.</dd>" +
+        "<dt>Y ON GROUND</dt><dd>Walk / mount. On foot A jumps or climbs, B sits near benches; LS click runs carrying scooter.</dd>" +
+        "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd>" +
+        "<dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
+        "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
+        "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";
+    }
     const line = document.querySelector("#trick-line") as HTMLElement;
     line.style.opacity =
       this.started &&
@@ -230,16 +262,17 @@ export class HUD {
       Sitting: "B STAND / A JUMP / Y MOUNT",
       DropInReady: "LS FORWARD TO COMMIT / BACK TO REBALANCE / B CANCEL",
       DropInCommit: "LEAN INTO THE TRANSITION",
-      Airborne: "LS ROTATE  /  X WHIP  /  B BARSPIN  /  RT CATCH RAIL",
-      Manual: "RIGHT STICK BALANCE  /  HOLD A, RELEASE TO HOP OUT",
-      NoseManual: "RIGHT STICK BALANCE  /  HOLD A, RELEASE TO HOP OUT",
-      Grinding: "HOLD A, RELEASE TO HOP OUT  /  RS LEAN",
+      Airborne: `LS ROTATE / ${mapping.whipLabel} WHIP / B BARSPIN / RT CATCH RAIL`,
+      Manual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
+      NoseManual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
+      Grinding: "RS DOWN HOLD / RELEASE TO HOP OUT  /  RS LEAN",
       Bail: "VIEW / R TO RESET  ·  BACK UP IN A MOMENT",
-      Preloading: "RELEASE A TO POP  /  KEEP YOUR SPEED",
+      Preloading: "RELEASE RS DOWN TO POP  /  KEEP YOUR SPEED",
       SketchyLanding: "EASE THE STEERING  /  RIDE IT OUT",
     };
     document.querySelector("#hint")!.textContent =
-      hints[s.state] ?? "X PUSH / A HOP / LT BRAKE / Y WALK";
+      hints[s.state] ??
+      `${mapping.pushLabel} PUSH / RS DOWN HOLD-RELEASE POP / LT BRAKE / Y WALK`;
     const debug = document.querySelector("#debug") as HTMLElement;
     debug.hidden = !input.debug;
     if (input.debug)

@@ -4,7 +4,7 @@ Play online: https://scoot-with-friends.nicsoundcloud22.chatgpt.site
 
 Windows portable copy: releases/Scoot-with-Friends-Windows.zip. Extract all and double-click Play Scoot with Friends.cmd. This works independently of ChatGPT or coding credits.
 
-A playable browser scooter game with Warehouse 01, the photo-inspired Sunset Plaza 02, controller menus, a modular Lazer scooter builder, three rider presets, session markers, and local loadout saving. TypeScript, Three.js, Rapier and Vite. Everything runs locally without an account or backend.
+A playable browser scooter game with Warehouse 01, the photo-inspired Veterans Memorial Park, controller menus, a modular Lazer scooter builder, three rider presets, session markers, and local loadout saving. TypeScript, Three.js, Rapier and Vite. Everything runs locally without an account or backend.
 
 ## Play
 
@@ -17,43 +17,40 @@ Open the address Vite prints. Choose **Ride**, choose a park, then ride. Connect
 
 Current development preview: **http://127.0.0.1:5174/**. Local saving is specific to the browser and origin; another port or browser has a separate profile.
 
-See [Sunset, traversal and advanced trick update](BUILD-4-5.md) for the new stance setting, on-foot A jump/climb, Y coping setup, analog drop-in, fingerwhips, repeated rewinds, bri/kickless gestures and body-pose controls.
+See [Earlier traversal and advanced trick update](BUILD-4-5.md) for the new stance setting, on-foot A jump/climb, Y coping setup, analog drop-in, fingerwhips, repeated rewinds, Bri gestures and contextual kickless and body-pose controls.
 
 ## Controls
 
-| Control | Behavior |
-|---|---|
-| Left Stick | Ground steering; horizontal yaw/spin in air |
-| LS forward/back in air | Forward shifts body forward and nose down; back shifts rearward and nose up |
-| A | Hold to preload, release to hop; also hop out of grinds/manuals |
-| X | Ground: tap to push. Air: tap one tailwhip, hold continuous whips |
-| LB + X | Heelwhips; tap or hold |
-| B | Air: tap one barspin, hold continuous bars. No ground braking |
-| RB + B | Reverse barspins |
-| LT | Analog ground brake |
-| RT | Transition compression/pumping; widen an intentional rail catch |
-| Y | Ground: dismount/remount. Air: hold no-hander |
-| LB + Y / RB + Y | Tuck no-hander / one-footer |
-| LS click | Toggle running on foot, carrying the scooter at waist height |
-| Right Stick | Camera; air trick speed; manual balance; grind lean |
-| LB + RS down/up | Enter manual / nose manual |
-| RS click | Recenter camera |
-| D-pad Up | Hold 0.75 seconds to set a marker; tap/release to return |
-| View | Reset rider at current practice start |
-| Menu | Pause/resume |
+The H guide updates automatically from the same stance mapping used by gameplay (src/input/riding.ts).
 
-Keyboard: A/D steer, W/S weight, Space hop, X push/whip, B bars, Shift LB, E RB, Ctrl LT, C RT, arrows RS, Y dismount/body, F run, M marker, V recenter, R reset, Esc pause. H shows controls; F3 shows diagnostics.
+| Action | Regular | Goofy |
+|---|---|---|
+| Push on ground | X | A |
+| Tailwhip in air (tap/hold) | A | X |
+| Heelwhip | LT + A | LT + X |
+| Fingerwhip | RT + A | RT + X |
+| Opposite fingerwhip | LT + RT + A | LT + RT + X |
 
-Menus: D-pad/LS selects, A confirms, B goes back. RS rotates/zooms previews. In Pause, selecting **Move to practice start** and pressing left/right changes the practice start without a mouse.
+RS down hold/release loads and pops. Ramps launch naturally without preload; a timed pop adds a modest boost. Release LB before loading a manual hop; LB + RS remains manual entry/balance.
+
+B taps/holds barspins; RB + B reverses the initial direction. In the 65-90% whip window, tap/release either bumper to rewind, or hold 0.18 seconds for a contextual kickless. Repeated windows allow longer sequences. A deck window consumes the bumper before the barspin/body systems; bar rewinds require the opposite current direction (LB left, RB right). Kickless cannot start from neutral air or a scoop gesture. RS circles perform Bri / Inward Bri immediately after pop.
+
+Y is No-hander in air; RT + Y Tuck, LT + Y Deck Grab, both triggers + Y Superman. LB + Y Can Can (LS chooses side), RB + Y One Foot, both bumpers + Y No Foot. Release poses before contact. No face button requires simultaneous RS input.
+
+LS steers/spins and shifts airborne weight. LT brakes on ground, RT pumps/requests a grind. Y dismounts/mounts, A jumps/climbs on foot, B sits by benches, LS click runs carrying scooter. D-pad Up tap returns to marker / hold sets it. View resets, Menu pauses. RS click recenters; RS orbits on foot.
+
+Keyboard physical equivalents: Space=A, X=X, B=B, Y=Y; arrows=RS, A/D and W/S=LS, Shift=LB, E=RB, Ctrl=LT, C=RT. F run, M marker, V recenter, R reset, Esc pause, F3 debug.
+
+The outdoor map is now Veterans Memorial Park. Its original wooden ramps are preserved; paths connect the separate metal street park, parking, BMX rollers, lakeside loop and recreation fields. Pause → practice start reaches each main riding area. The metal park includes opposing quarters, a pyramid with stairs/handrail, a ledge with two grind edges, a flat rail and a kicker.
 
 ## Riding notes
 
-- Tap X repeatedly to build momentum; holding it on the ground is not an accelerator.
+- Tap your stance-s push button repeatedly to build momentum; holding it on the ground is not an accelerator.
 - Soft horizontal input gives a slower spin; full input retains fast 540/720 capability. Countersteer to reduce spin. Spins never auto-complete.
 - Light steering preserves fakie. Strong deliberate steering initiates a smooth revert without reversing travel velocity.
 - Hold an air-trick button to keep spinning; release early enough to catch. Continuous doubles retain Double naming. A complete catch between separate rotations produces names such as **Barspin to Barspin**.
 - Grind assist helps a nearby approach. Slides retain entry yaw and a contact offset; gentle steering adjusts the angle. Frontal rail impacts can bail; small clips can be recovered.
-- Ride up Sunset's quarters to pop clear of coping. Natural launch strength depends on approach speed; release A for an additional player-controlled hop. Pulling back at takeoff increases the inward component; use yaw and forward/back weight in air to prepare the return. Landing position remains ballistic with only a small, capped drift adjustment.
+- Ride up the wooden quarters to pop clear of coping. Natural launch strength depends on approach speed; release RS down for an additional player-controlled pop. Pulling back at takeoff increases the inward component; use yaw and forward/back weight in air to prepare the return. Landing position remains ballistic with only a small, capped drift adjustment.
 - Counterweight affects posture, pitch and landing quality. It cannot generate flips or sustained air strafing. High drops can still be sketchy or bail.
 
 ## Sessions and customization

@@ -1,6 +1,6 @@
 {
   "name": "scoot-with-friends",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,7 +11,9 @@
     "test:browser": "node tests/browser.mjs",
     "test:build2": "node tests/build2.browser.mjs",
     "test:build3": "node tests/build3.browser.mjs",
-    "test:advanced": "node tests/advanced.browser.mjs"
+    "test:advanced": "node tests/advanced.browser.mjs",
+    "test:memorial": "node tests/memorial.browser.mjs",
+    "test:polish": "node tests/polish.browser.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
@@ -26,4 +28,3 @@
     "vite": "^7.1.7"
   }
 }
-

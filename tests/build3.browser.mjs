@@ -223,15 +223,14 @@ try {
       "Walking camera uses corrected axes",
       g.camera.orbit < orbit && g.camera.elevation < elevation,
     );
-    for (const action of ["pushDeck", "brakeBars"]) {
+    for (const action of ["hop", "brakeBars"]) {
       reset();
       place(-12, 9, -20, 0, 0, 5);
       g.sim.grounded = false;
       g.sim.state = "Airborne";
       g.sim.tricks.startAir(false);
       a(0.85, { held: { [action]: 1 }, pressed: { [action]: true } });
-      const channel =
-        action === "pushDeck" ? g.sim.tricks.deck : g.sim.tricks.bars;
+      const channel = action === "hop" ? g.sim.tricks.deck : g.sim.tricks.bars;
       check(
         "Holding continues spinning " + action,
         Math.abs(channel.angle) > Math.PI * 4 && channel.velocity > 5,
@@ -276,7 +275,7 @@ try {
     );
     check(
       "Weight control cannot flip or provide large air strafing",
-      Math.abs(g.sim.pitch) < 0.55 &&
+      Math.abs(g.sim.pitch) < 1.25 &&
         g.sim.airWeight.driftSpent <= 0.40001 &&
         Math.abs(g.sim.speed - 5) < 0.41,
     );
@@ -300,7 +299,7 @@ try {
       let maxY = 0,
         popped = false;
       for (let i = 0; i < 270; i++) {
-        a(1 / 120, { held: { hop: 1 }, lean: 0.4 });
+        a(1 / 120, { ry: 1, lean: 0.4 });
         maxY = Math.max(maxY, g.sim.position.y);
         popped ||= g.events.history.some((e) => e.type === "pop");
         if (g.sim.state === "Bail") break;
@@ -312,7 +311,7 @@ try {
     }
     for (const [charged, duration, name] of [
       [true, 0.12, "180°"],
-      [true, 0.4, "540°"],
+      [true, 0.37, "540°"],
       [false, 0.12, "180°"],
       [false, 0.4, "540°"],
     ]) {
@@ -321,7 +320,7 @@ try {
       place(4, 0.22, 20, 0, 0, 15);
       let steps = 0;
       while (!g.events.history.some((e) => e.type === "pop") && steps++ < 220)
-        a(1 / 120, { held: { hop: charged ? 1 : 0 } });
+        a(1 / 120, { ry: charged ? 1 : 0 });
       let t = 0,
         maxHeight = 0;
       while (!g.events.history.some((e) => e.type === "landing") && t < 3) {

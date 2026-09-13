@@ -130,14 +130,14 @@ async function boot() {
       id === "outdoor" ? "?map=outdoor" : location.pathname,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "SUNSET PLAZA <b>02</b>" : "WAREHOUSE <b>01</b>") +
+      (OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>") +
       '<span id="score">SESSION 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
     ).join("");
     document.querySelector('[data-action="map"]')!.textContent = OUTDOOR
       ? "Switch to Warehouse 01"
-      : "Switch to Sunset Plaza 02";
+      : "Switch to Veterans Memorial Park";
     hud.started = false;
     hud.start();
     hud.setPaused(false);

@@ -11,10 +11,10 @@
   },
   {
     id: "outdoor",
-    name: "Sunset Plaza 02",
-    type: "Outdoor / Modular Park",
+    name: "Veterans Memorial Park",
+    type: "Outdoor / Wood + Metal + Trails",
     description:
-      "Aligned tall quarters, a tight spine and connected small and large transfers.",
+      "Wooden transitions, a separate metal street park, BMX rollers and connected lakeside paths.",
     preview: "/previews/outdoor.png",
     spawn: { x: -10, z: -19, yaw: 0 },
     environment: "outdoor",

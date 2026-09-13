@@ -212,8 +212,8 @@ try {
     ]) {
       air();
       a(1 / 120, {
-        pressed: { [channel === "deck" ? "pushDeck" : "brakeBars"]: true },
-        held: direction < 0 ? { leftModifier: 1 } : {},
+        pressed: { [channel === "deck" ? "hop" : "brakeBars"]: true },
+        held: direction < 0 ? { brake: 1 } : {},
       });
       for (let i = 0; i < 2; i++) {
         let guard = 0;
@@ -224,6 +224,7 @@ try {
         a(1 / 120, {
           pressed: { [sign > 0 ? "leftModifier" : "rightModifier"]: true },
         });
+        a(1 / 120);
       }
       land();
       check(
@@ -255,19 +256,19 @@ try {
     a(0.02);
     land();
     check(
-      "Scoop performs and lands Kickless",
-      g.sim.tricks.last === "Kickless",
+      "Standalone scoop does not activate Kickless",
+      !g.sim.tricks.last.includes("Kickless"),
     );
     air();
-    a(1 / 120, { pressed: { pushDeck: true }, held: { brake: 1 } });
+    a(1 / 120, { pressed: { hop: true }, held: { pumpGrind: 1 } });
     land();
     check(
       "Trigger modifier performs and lands Fingerwhip",
       g.sim.tricks.last === "Fingerwhip",
     );
     for (const [name, rx, ry, held] of [
-      ["Superman", 0, 1, {}],
-      ["Can Can", 1, 0, {}],
+      ["Superman", 0, 0, { brake: 1, pumpGrind: 1 }],
+      ["Can Can", 0, 0, { leftModifier: 1 }],
       ["No Foot", 0, 0, { leftModifier: 1, rightModifier: 1 }],
       ["Deck Grab", 0, 0, { brake: 1 }],
     ]) {

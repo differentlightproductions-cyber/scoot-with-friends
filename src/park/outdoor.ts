@@ -1,8 +1,13 @@
 import * as THREE from "three";
 import type { Park } from "./park";
+import {
+  buildMemorialGrounds,
+  extensionHeight,
+  metalQuarters,
+} from "./memorial";
 
 export const outdoorSpawns = [
-  { name: "PLAZA / RUNWAY", x: -10, z: -19, yaw: 0 },
+  { name: "WOOD PARK / RUNWAY", x: -10, z: -19, yaw: 0 },
   { name: "SMALL BOX", x: -1.5, z: 13, yaw: Math.PI },
   { name: "BACK QUARTER", x: 4, z: 18, yaw: 0 },
   { name: "FRONT QUARTER", x: -8, z: -18, yaw: Math.PI },
@@ -10,6 +15,11 @@ export const outdoorSpawns = [
   { name: "DROP / SPINE", x: 4.5, z: 26.2, yaw: Math.PI },
   { name: "DROP / SMALL BOX", x: -1.5, z: 26.2, yaw: Math.PI },
   { name: "DROP / LARGE TRANSFER", x: -10, z: 26.2, yaw: Math.PI },
+  { name: "METAL STREET PARK", x: 64, z: 3, yaw: 0 },
+  { name: "METAL HALF PIPE", x: 63, z: 13, yaw: Math.PI / 2 },
+  { name: "PARKING / PATHS", x: 15, z: -65, yaw: 0 },
+  { name: "BMX ROLLERS", x: -66, z: -30, yaw: 0 },
+  { name: "LAKESIDE TRAIL", x: -86, z: -36, yaw: Math.PI },
 ];
 export interface RampModule {
   id: string;
@@ -111,7 +121,7 @@ export function profile(m: RampModule, z: number) {
   const t = THREE.MathUtils.clamp((z - m.z0) / (deckEnd - m.z0), 0, 1);
   return m.h * t * t * (3 - 2 * t);
 }
-export function outdoorLip(x: number, z: number, vz: number) {
+export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
   for (const m of modules) {
     if (x < m.x0 + 0.2 || x > m.x1 - 0.2) continue;
     for (const lip of rampLips(m)) {
@@ -127,13 +137,27 @@ export function outdoorLip(x: number, z: number, vz: number) {
               : -1;
       const distance = (lip - z) * direction;
       if (distance > -0.4 && distance < 1.3 && vz * direction > 0)
-        return { module: m, lip, direction, distance };
+        return { module: m, lip, direction, distance, axis: "z" as const };
     }
+  }
+  for (const m of metalQuarters) {
+    if (z < m.z0 + 0.2 || z > m.z1 - 0.2) continue;
+    const lip = m.reverse ? m.x1 - 3.2 : m.x0 + 3.2;
+    const direction = m.reverse ? -1 : 1;
+    const distance = (lip - x) * direction;
+    if (distance > -0.4 && distance < 1.3 && vx * direction > 0)
+      return {
+        module: { ...m, kind: "quarter" as const },
+        lip,
+        direction,
+        distance,
+        axis: "x" as const,
+      };
   }
   return null;
 }
 export function outdoorHeight(x: number, z: number) {
-  let height = 0;
+  let height = extensionHeight(x, z);
   for (const m of modules)
     if (x >= m.x0 && x <= m.x1) height = Math.max(height, profile(m, z));
   return height;
@@ -168,6 +192,7 @@ export function buildOutdoor(park: Park) {
   ) =>
     park.box(new THREE.Vector3(x, y, z), new THREE.Vector3(w, h, d), c, solid);
   box(0, -0.15, 0, 230, 0.2, 230, 0x719253);
+  buildMemorialGrounds(park);
   // Dark sheet-metal sides follow each curved profile rather than solid blocks.
   for (const m of modules) {
     for (const x of [m.x0, m.x1]) {
@@ -272,7 +297,7 @@ export function buildOutdoor(park: Park) {
   }
   park.bench("Small box bench", 0.55, 1.4, 1.85, 0.6, 1.35);
   park.rail(
-    "Plaza flat rail",
+    "Wood park flat rail",
     new THREE.Vector3(15, 0.62, -3),
     new THREE.Vector3(15, 0.62, 8),
     "rail",
@@ -281,32 +306,7 @@ export function buildOutdoor(park: Park) {
     box(x, 0.002, 0, 0.012, 0.004, 66, 0x8d9691);
   for (let z = -30; z <= 30; z += 6)
     box(0, 0.002, z, 48, 0.004, 0.012, 0x8d9691);
-  // Planting and distant hills frame the concrete pad without blocking lines.
-  const leaf = new THREE.MeshStandardMaterial({
-    color: 0x3f673c,
-    roughness: 1,
-  });
-  const trunk = new THREE.MeshStandardMaterial({ color: 0x776048 });
-  for (let i = 0; i < 30; i++) {
-    const a = (i / 30) * Math.PI * 2,
-      x = Math.cos(a) * (40 + (i % 3) * 5),
-      z = Math.sin(a) * (51 + (i % 4) * 3);
-    const stem = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.23, 0.38, 4, 7),
-      trunk,
-    );
-    stem.position.set(x, 2, z);
-    scene.add(stem);
-    for (let j = 0; j < 3; j++) {
-      const foliage = new THREE.Mesh(
-        new THREE.ConeGeometry(3.4 - j * 0.65, 5, 9),
-        leaf,
-      );
-      foliage.position.set(x, 4 + j * 1.8, z);
-      foliage.castShadow = true;
-      scene.add(foliage);
-    }
-  }
+  // Trees and paths are authored across the connected memorial grounds.
   for (const x of [-26, 26])
     for (const z of [-28, 28]) {
       box(x, 5, z, 0.13, 10, 0.13, 0xa4adb0);
@@ -317,8 +317,8 @@ export function buildOutdoor(park: Park) {
       new THREE.ConeGeometry(18, 10 + (i % 4) * 3, 5),
       new THREE.MeshStandardMaterial({ color: 0x9da5a4, roughness: 1 }),
     );
-    hill.position.set(-110 + i * 20, 2, 95);
+    hill.position.set(-132 + i * 24, 2, 140);
     scene.add(hill);
   }
-  for (const x of [-27, 27]) park.bench("Plaza bench " + x, x, 0, 0);
+  for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 0);
 }

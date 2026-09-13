@@ -24,9 +24,12 @@ export class ScoreSystem {
                   (Math.abs(raw.briAngle ?? 0) + 0.2) / (Math.PI * 2),
                 ) *
                   300 +
-                Math.trunc(
-                  (Math.abs(raw.kicklessAngle ?? 0) + 0.2) / (Math.PI * 2),
-                ) *
+                (raw.kicklessHistory?.length
+                  ? raw.kicklessHistory.filter((event) => event.completed)
+                      .length
+                  : Math.trunc(
+                      (Math.abs(raw.kicklessAngle ?? 0) + 0.2) / (Math.PI * 2),
+                    )) *
                   200 +
                 ((raw.deckReversals?.length ?? 0) +
                   (raw.barReversals?.length ?? 0)) *

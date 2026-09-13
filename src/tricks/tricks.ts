@@ -3,6 +3,7 @@ import { Events, LandingQuality } from "../core/events";
 import { resolveTrick, TrickRecord, TrickPrimitives } from "./resolver";
 import type { InputFrame } from "../input/input";
 import { StickGesture } from "./gesture";
+import { ridingButtons } from "../input/riding";
 // A torque-limited rotational channel. Inputs add angular targets; angle and angular
 // velocity remain continuous, and an unfinished catch remains a landing hazard.
 export class RotationChannel {
@@ -32,9 +33,10 @@ export class RotationChannel {
       Math.abs(this.velocity) > 1
     );
   }
-  rewind(direction: number, side: string) {
+  rewind(direction: number, side: string, capturedWindow = false) {
     const current = Math.sign(this.segmentEnd - this.segmentStart);
-    if (!this.canRewind || direction === current) return false;
+    if ((!this.canRewind && !capturedWindow) || direction === current)
+      return false;
     this.reversals.push({
       angle: this.angle,
       from: current,
@@ -143,6 +145,25 @@ export function trickName(
   }).name;
 }
 export class Tricks {
+  pendingBumper: {
+    action: "leftModifier" | "rightModifier";
+    side: string;
+    direction: number;
+    elapsed: number;
+    originalTarget: number;
+  } | null = null;
+  bumperHeldDuration = 0;
+  consumedBumpers = new Set<string>();
+  kicklessHistory: {
+    originalDirection: number;
+    direction: number;
+    stance: string;
+    side: string;
+    deckAngle: number;
+    startAngle: number;
+    targetAngle: number;
+    completed: boolean;
+  }[] = [];
   stance: "regular" | "goofy" = "regular";
   get naturalDirection() {
     return this.stance === "regular" ? 1 : -1;
@@ -161,33 +182,81 @@ export class Tricks {
   motionOrder: string[] = [];
   private completed = { deck: 0, bri: 0, kickless: 0 };
   input(dt: number, input: InputFrame) {
-    this.inputContext = this.deck.canRewind
-      ? "deck-rewind"
-      : this.bars.canRewind
-        ? "bar-rewind"
-        : "air";
-    for (const [action, side, direction] of [
+    const buttons = ridingButtons(this.stance);
+    const heel = input.held.brake > 0.5;
+    const finger = input.held.pumpGrind > 0.5;
+    const direction = this.naturalDirection * (heel ? -1 : 1);
+    for (const action of ["leftModifier", "rightModifier"] as const)
+      if (input.held[action] < 0.5 && !input.pressed[action])
+        this.consumedBumpers.delete(action);
+    this.inputContext =
+      this.pendingBumper || this.deck.canRewind
+        ? "deck-rewind"
+        : this.bars.canRewind
+          ? "bar-rewind"
+          : "air";
+    for (const [action, side, requested] of [
       ["leftModifier", "left", -1],
       ["rightModifier", "right", 1],
     ] as const) {
-      if (input.pressed[action]) {
-        const channel =
-          this.inputContext === "deck-rewind"
-            ? this.deck
-            : this.inputContext === "bar-rewind"
-              ? this.bars
-              : null;
-        channel?.rewind(direction, side);
+      if (!input.pressed[action] || this.pendingBumper) continue;
+      if (this.deck.canRewind) {
+        // Capture eligibility now, then slow toward the catch while distinguishing tap/hold.
+        // Both feet can redirect a deck; bars still require the opposite requested direction.
+        const current = Math.sign(
+          this.deck.segmentEnd - this.deck.segmentStart,
+        );
+        this.pendingBumper = {
+          action,
+          side,
+          direction: -current,
+          elapsed: 0,
+          originalTarget: this.deck.target,
+        };
+        this.consumedBumpers.add(action);
+        this.deck.target =
+          this.deck.angle +
+          current *
+            Math.min(0.2, Math.abs(this.deck.segmentEnd - this.deck.angle));
+      } else if (this.bars.canRewind) {
+        this.bars.rewind(requested, side);
+        this.consumedBumpers.add(action);
       }
     }
-    if (
-      input.pressed.pushDeck &&
-      (input.held.brake > 0.4 || input.held.pumpGrind > 0.4)
-    ) {
+    const pending = this.pendingBumper;
+    if (pending) {
+      pending.elapsed += dt;
+      this.bumperHeldDuration = pending.elapsed;
+      if (
+        input.released[pending.action] ||
+        (!input.pressed[pending.action] && input.held[pending.action] < 0.5)
+      ) {
+        this.deck.target = pending.originalTarget;
+        this.deck.rewind(pending.direction, pending.side, true);
+        this.pendingBumper = null;
+      } else if (pending.elapsed >= TUNE.bumperHoldThreshold) {
+        const direction = -pending.direction;
+        const startAngle = this.kickless.target;
+        this.kickless.kick(direction);
+        this.kicklessHistory.push({
+          originalDirection: this.deck.originalDirection,
+          direction,
+          stance: this.stance,
+          side: pending.side,
+          deckAngle: this.deck.angle,
+          startAngle,
+          targetAngle: this.kickless.target,
+          completed: false,
+        });
+        this.deck.target = pending.originalTarget;
+        this.pendingBumper = null;
+      }
+    } else this.bumperHeldDuration = 0;
+    const whipPressed = input.pressed[buttons.whip] && !this.pendingBumper;
+    if (whipPressed && finger) {
       this.finger = true;
-      this.fingerHand = input.held.brake > 0.4 ? -1 : 1;
+      this.fingerHand = direction === 1 ? 1 : -1;
       this.fingerTime = 0.35;
-      const direction = input.held.leftModifier > 0.5 ? -1 : 1;
       this.fingerTargets.push({
         angle: this.deck.target + TAU * direction,
         direction,
@@ -195,51 +264,51 @@ export class Tricks {
       });
     }
     this.fingerTime = Math.max(0, this.fingerTime - dt);
-    this.deck.input(
-      dt,
-      input.pressed.pushDeck,
-      input.held.pushDeck > 0.5,
-      input.held.leftModifier > 0.5 ? -1 : 1,
-    );
+    if (!this.pendingBumper)
+      this.deck.input(
+        dt,
+        whipPressed,
+        input.held[buttons.whip] > 0.5,
+        direction,
+      );
+    const rb =
+      input.held.rightModifier > 0.5 &&
+      !this.consumedBumpers.has("rightModifier");
+    const lb =
+      input.held.leftModifier > 0.5 &&
+      !this.consumedBumpers.has("leftModifier");
     this.bars.input(
       dt,
       input.pressed.brakeBars,
       input.held.brakeBars > 0.5,
-      input.held.rightModifier > 0.5 ? -1 : 1,
+      this.naturalDirection * (rb ? -1 : 1),
     );
-    if (this.fingerTime > 0) this.deck.maxSpeed = TUNE.deckMaxSpeed * 0.72;
-    else this.deck.maxSpeed = TUNE.deckMaxSpeed;
+    this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
     let pose = "";
     if (input.held.body > 0.5) {
       this.gesture.reset();
       pose =
-        input.held.brake > 0.5
-          ? "Deck Grab"
-          : input.ry < -0.55
+        heel && finger
+          ? "Superman"
+          : finger
             ? "Tuck No-hander"
-            : input.ry > 0.55
-              ? "Superman"
-              : Math.abs(input.rx) > 0.55
-                ? "Can Can"
-                : input.held.leftModifier > 0.5 &&
-                    input.held.rightModifier > 0.5
-                  ? "No Foot"
-                  : input.held.leftModifier > 0.5
-                    ? "Tuck No-hander"
-                    : input.held.rightModifier > 0.5
-                      ? "One-footer"
-                      : "No-hander";
+            : heel
+              ? "Deck Grab"
+              : lb && rb
+                ? "No Foot"
+                : lb
+                  ? "Can Can"
+                  : rb
+                    ? "One-footer"
+                    : "No-hander";
     } else {
       const gesture = this.gesture.step(dt, input.rx, input.ry);
-      if (gesture) {
-        if (gesture.kind === "bri") this.bri.kick(gesture.direction);
-        else this.kickless.kick(gesture.direction);
-      }
+      if (gesture?.kind === "bri") this.bri.kick(gesture.direction);
     }
     this.poseBlend += clamp((pose ? 1 : 0) - this.poseBlend, -dt * 7, dt * 7);
     if (pose) {
       this.visualPose = pose;
-      this.poseSide = Math.sign(input.rx) || this.naturalDirection;
+      this.poseSide = Math.sign(input.steer) || this.naturalDirection;
     } else if (this.poseBlend === 0) this.visualPose = "";
     this.step(dt, pose, input.rx);
   }
@@ -297,6 +366,9 @@ export class Tricks {
   constructor(public events: Events) {}
   startAir(fromLink: boolean) {
     this.fingerTargets = [];
+    this.pendingBumper = null;
+    this.consumedBumpers.clear();
+    this.kicklessHistory = [];
     this.bri.reset();
     this.kickless.reset();
     this.gesture.reset();
@@ -319,6 +391,12 @@ export class Tricks {
     this.bars.step(dt, manip);
     this.bri.step(dt);
     this.kickless.step(dt);
+    for (const event of this.kicklessHistory)
+      if (
+        !event.completed &&
+        event.direction * (this.kickless.angle - event.targetAngle) >= -0.2
+      )
+        event.completed = true;
     for (const kind of ["deck", "bri", "kickless"] as const) {
       const turns = Math.abs(this[kind].turns);
       if (turns > this.completed[kind]) this.motionOrder.push(kind);
@@ -366,6 +444,7 @@ export class Tricks {
     raw.briAngle = this.bri.angle;
     raw.kicklessAngle = this.kickless.angle;
     raw.motionOrder = [...this.motionOrder];
+    raw.kicklessHistory = this.kicklessHistory.map((event) => ({ ...event }));
     const resolved = resolveTrick(raw);
     if (resolved.name) {
       const record: TrickRecord = {
@@ -386,6 +465,9 @@ export class Tricks {
     this.visualPose = "";
     this.gesture.reset();
     this.fingerTargets = [];
+    this.pendingBumper = null;
+    this.consumedBumpers.clear();
+    this.kicklessHistory = [];
   }
   add(name: string, record?: TrickRecord) {
     this.last = name;
@@ -405,6 +487,9 @@ export class Tricks {
   }
   reset() {
     this.fingerTargets = [];
+    this.pendingBumper = null;
+    this.consumedBumpers.clear();
+    this.kicklessHistory = [];
     this.deck.reset();
     this.bars.reset();
     this.bri.reset();

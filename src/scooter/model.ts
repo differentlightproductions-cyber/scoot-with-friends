@@ -323,7 +323,7 @@ export class RiderModel {
       side = Math.sign(bri) || 1;
     const inward = side !== s.tricks.naturalDirection;
     this.scooter.rotation.order = "YXZ";
-    this.scooter.rotation.x += (inward ? -1 : 1) * Math.abs(bri);
+    this.scooter.rotation.x += (inward ? 1 : -1) * Math.abs(bri);
     this.scooter.rotation.y = briActive
       ? side * lift * (inward ? 0.12 : 0.65)
       : 0;
@@ -334,7 +334,7 @@ export class RiderModel {
       this.scooter.position.add(
         v(side * 0.34 * lift, 1.01 + 0.22 * lift, 0.26).sub(rotated),
       );
-    this.deckPivot.rotation.y = s.tricks.deck.angle + Math.sin(kickless) * 2.7;
+    this.deckPivot.rotation.y = s.tricks.deck.angle + kickless;
     this.deckPivot.rotation.z = Math.sin(kickless) * 0.45;
     this.barPivot.rotation.y =
       s.tricks.bars.angle + (s.grounded ? -s.steer * 0.15 : 0);
@@ -374,7 +374,7 @@ export class RiderModel {
       this.hips.position.z -= 0.12;
     }
     this.torso.position.z += weight * TUNE.airWeightShiftStrength;
-    this.torso.rotation.x += weight * 0.18;
+    this.torso.rotation.x += weight * 0.36;
     this.hips.position.set(0, 0.88 - c, -0.13 - c * 0.5);
     this.hips.position.z += weight * TUNE.airWeightShiftStrength * 0.65;
     this.hips.position
@@ -535,7 +535,14 @@ export class RiderModel {
           0.27 + Math.sin(s.tricks.bars.angle + sign) * 0.1,
         );
       poseRod(this.upperArms[i], shoulder, elbow);
-      if (briActive) {
+      if (
+        briActive ||
+        Math.abs(s.tricks.kickless.velocity) > 0.1 ||
+        (!s.walking &&
+          !pose &&
+          s.tricks.fingerTime === 0 &&
+          Math.abs(weight) > 0.01)
+      ) {
         hand.copy(
           v(sign * 0.24, 1.01, 0.26)
             .applyEuler(this.scooter.rotation)

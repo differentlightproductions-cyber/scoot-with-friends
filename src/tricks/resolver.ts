@@ -21,6 +21,16 @@ export interface TrickPrimitives {
   fingerTurns?: number;
   briAngle?: number;
   kicklessAngle?: number;
+  kicklessHistory?: {
+    originalDirection: number;
+    direction: number;
+    stance: string;
+    side: string;
+    deckAngle: number;
+    startAngle: number;
+    targetAngle: number;
+    completed: boolean;
+  }[];
   motionOrder?: string[];
 }
 export interface ResolvedTrick {
@@ -139,7 +149,12 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
         (raw.briAngle ?? 0) * natural > 0 ? "Bri Flip" : "Inward Bri",
       ),
     );
-  if (kicklessTurns)
+  if (raw.kicklessHistory?.length) {
+    for (const event of raw.kicklessHistory.filter((event) => event.completed))
+      extras.push(
+        event.direction * natural > 0 ? "Kickless" : "Opposite Kickless",
+      );
+  } else if (kicklessTurns)
     extras.push(
       counted(
         kicklessTurns,

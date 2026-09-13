@@ -21,8 +21,8 @@ test("Mixed normal and finger rotations retain distinct component names", () => 
   t.deck.kick(1);
   for (let i = 0; i < 160; i++) t.input(1 / 120, emptyInput());
   const f = emptyInput();
-  f.pressed.pushDeck = true;
-  f.held.brake = 1;
+  f.pressed.hop = true;
+  f.held.pumpGrind = 1;
   t.input(1 / 120, f);
   for (let i = 0; i < 160; i++) t.input(1 / 120, emptyInput());
   t.finish("clean");
@@ -86,11 +86,11 @@ test("Triggers initiate a slower hand-driven fingerwhip without remapping a norm
   const t = new Tricks(new Events());
   t.startAir(false);
   const f = emptyInput();
-  f.held.brake = 1;
-  f.pressed.pushDeck = true;
+  f.held.pumpGrind = 1;
+  f.pressed.hop = true;
   t.input(1 / 120, f);
   assert.ok(t.fingerTime > 0);
-  assert.equal(t.fingerHand, -1);
+  assert.equal(t.fingerHand, 1);
   for (let i = 0; i < 240; i++) t.input(1 / 120, emptyInput());
   t.finish("clean");
   assert.equal(t.last, "Fingerwhip");

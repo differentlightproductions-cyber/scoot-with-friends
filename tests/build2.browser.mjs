@@ -101,8 +101,8 @@ try {
     check("Y remounts the scooter", !g.sim.walking && g.sim.grounded);
     reset();
     place(0, 1.47, 3, 0, 0, 5);
-    a(0.5, { held: { hop: 1 } });
-    a(0.01, { released: { hop: true } });
+    a(0.5, { ry: 1 });
+    a(0.01, { ry: 0 });
     a(1.5, { steer: 0.55 });
     a(0.2);
     check(
@@ -110,8 +110,8 @@ try {
       g.sim.tricks.history.some((r) => r.name === "360°"),
     );
     reset();
-    a(0.5, { held: { hop: 1 } });
-    a(0.01, { released: { hop: true } });
+    a(0.5, { ry: 1 });
+    a(0.01, { ry: 0 });
     g.camera.reset();
     g.render();
     const heading = g.camera.heading;
@@ -124,8 +124,8 @@ try {
     reset();
     a(0.01, { pressed: { pushDeck: true } });
     a(0.5);
-    a(0.5, { held: { hop: 1 } });
-    a(0.01, { released: { hop: true } });
+    a(0.5, { ry: 1 });
+    a(0.01, { ry: 0 });
     a(0.01, { pressed: { brakeBars: true } });
     a(0.35, { steer: 1 });
     a(1);
