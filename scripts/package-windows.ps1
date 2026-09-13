@@ -4,6 +4,10 @@ $stageRoot = Join-Path $projectRoot 'releases\windows-0.8'
 $friendRoot = Join-Path $stageRoot 'Scoot-with-Friends-Windows'
 $ownerRoot = Join-Path $stageRoot 'Scoot-with-Friends-Owner'
 foreach ($destination in @($friendRoot, $ownerRoot)) {
+    $gameTarget = [IO.Path]::GetFullPath((Join-Path $destination 'game'))
+    $allowedStage = [IO.Path]::GetFullPath($stageRoot) + [IO.Path]::DirectorySeparatorChar
+    if (-not $gameTarget.StartsWith($allowedStage, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unexpected package path' }
+    if (Test-Path -LiteralPath $gameTarget) { Remove-Item -LiteralPath $gameTarget -Recurse -Force }
     New-Item -ItemType Directory -Force -Path "$destination\game", "$destination\runtime" | Out-Null
     Copy-Item -Path "$projectRoot\dist\client\*" -Destination "$destination\game" -Recurse -Force
     Copy-Item -LiteralPath "$projectRoot\portable\server.cjs", "$projectRoot\portable\Play Scoot with Friends.cmd", "$projectRoot\portable\READ ME.txt" -Destination $destination -Force

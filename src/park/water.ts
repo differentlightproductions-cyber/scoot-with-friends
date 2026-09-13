@@ -37,9 +37,8 @@ export class WaterEffects {
     }
   }
   update(dt: number, time: number) {
-    const lake = this.scene.getObjectByName("lake-water") as
-      | THREE.Mesh
-      | undefined;
+    const root = this.scene.getObjectByName("lake-water");
+    const lake = (root instanceof THREE.Mesh ? root : root?.getObjectByProperty("type", "Mesh")) as THREE.Mesh | undefined;
     if (lake) {
       if (lake.userData.waterShader)
         lake.userData.waterShader.uniforms.waterTime.value = time;
