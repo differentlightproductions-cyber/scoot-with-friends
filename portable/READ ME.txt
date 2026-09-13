@@ -1,0 +1,18 @@
+SCOOT WITH FRIENDS - WINDOWS EDITION
+
+1. Right-click the ZIP and choose Extract All.
+2. Open the extracted folder.
+3. Double-click Play Scoot with Friends.cmd.
+4. Your browser opens the game. Choose Ride, then a park.
+
+Keep the launcher window open while playing. Close it when finished.
+Use a recent Chrome or Edge browser on Windows 10/11 (64-bit).
+No installation, ChatGPT account, internet connection, or development tools needed.
+
+Connect an Xbox-style controller and press a button, or use the keyboard.
+Press H in the game for the full controls. Esc pauses.
+Basic keyboard: X push, Space hold/release hop, A/D steer, W/S weight,
+B barspin, Y walk/mount, F run, arrow keys camera, R reset.
+
+Your settings save in this browser on this PC. This is currently a solo
+freestyle prototype; the title does not imply online multiplayer support.

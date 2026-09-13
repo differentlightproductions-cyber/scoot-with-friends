@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.log
+
+releases/
+artifacts/
+work/
+*.tar.gz
+*BRIEF.md
+.codex/
+.agents/

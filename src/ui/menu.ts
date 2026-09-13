@@ -1,0 +1,292 @@
+import * as THREE from "three";
+import { MAPS, type MapId } from "../data/maps";
+import { RIDERS } from "../data/riders";
+import {
+  CATEGORIES,
+  PARTS,
+  selectedPart,
+  type Category,
+  type ScooterLoadout,
+} from "../data/scooterParts";
+import { saveProfile, type LocalProfile } from "../data/loadout";
+import { RiderModel } from "../scooter/model";
+import type { InputFrame } from "../input/input";
+export class GameMenu {
+  screen = "home";
+  category: Category = "deck";
+  product = "";
+  index = 0;
+  private cooldown = 0;
+  previewScene = new THREE.Scene();
+  previewCamera = new THREE.PerspectiveCamera(
+    38,
+    innerWidth / innerHeight,
+    0.01,
+    100,
+  );
+  previewRider: RiderModel;
+  orbit = 0.55;
+  zoom = 3.7;
+  private saveFailed = false;
+  onRide = (_map: MapId) => {};
+  onChange = () => {};
+  private choices: {
+    label: string;
+    detail?: string;
+    action: () => void;
+    selected?: boolean;
+  }[] = [];
+  constructor(
+    public root: HTMLElement,
+    public profile: LocalProfile,
+  ) {
+    this.previewScene.background = new THREE.Color(0xc5cbc1);
+    this.previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6b7970, 2.4));
+    const light = new THREE.DirectionalLight(0xffefdc, 3);
+    light.position.set(-3, 5, 4);
+    this.previewScene.add(light);
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(5, 48),
+      new THREE.MeshStandardMaterial({ color: 0xb6beb2, roughness: 1 }),
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.01;
+    this.previewScene.add(floor);
+    this.previewRider = new RiderModel(this.previewScene);
+    this.previewRider.applyProfile(profile);
+    this.show("home");
+  }
+  show(screen: string) {
+    this.screen = screen;
+    this.index = 0;
+    this.cooldown = 0.18;
+    this.render();
+  }
+  private changed() {
+    this.saveFailed = !saveProfile(this.profile);
+    this.previewRider.applyProfile(this.profile);
+    this.onChange();
+  }
+  private selected(category: Category) {
+    return this.profile.scooter[
+      category === "wheels" ? "frontWheel" : category
+    ];
+  }
+  private render() {
+    const add = (
+      label: string,
+      action: () => void,
+      detail?: string,
+      selected = false,
+    ) => this.choices.push({ label, action, detail, selected });
+    this.choices = [];
+    let title = "FIND YOUR FLOW.",
+      subtitle = "YOUR NEXT SESSION STARTS HERE";
+    switch (this.screen) {
+      case "home":
+        add("RIDE", () => this.show("maps"), "Choose a park");
+        add(
+          "RIDER",
+          () => this.show("rider"),
+          RIDERS.find((r) => r.id === this.profile.riderId)?.name,
+        );
+        add(
+          "SCOOTER",
+          () => this.show("scooter"),
+          "Scoot with Friends / Your custom build",
+        );
+        add("SETTINGS", () => this.show("settings"));
+        break;
+      case "maps":
+        title = "MAP SELECT";
+        subtitle = "TWO PARKS. YOUR LINE.";
+        for (const map of MAPS)
+          add(map.name, () => this.onRide(map.id), map.type);
+        break;
+      case "rider":
+        title = "RIDER";
+        subtitle = "SAME PHYSICS. YOUR STYLE.";
+        for (const rider of RIDERS)
+          add(
+            rider.name,
+            () => {
+              this.profile.riderId = rider.id;
+              this.profile.outfitId = rider.outfitId;
+              this.changed();
+              this.render();
+            },
+            rider.description,
+            this.profile.riderId === rider.id,
+          );
+        break;
+      case "scooter":
+        title = "SCOOTER";
+        subtitle = "SCOOT WITH FRIENDS / BUILT PART BY PART";
+        for (const category of CATEGORIES)
+          add(
+            category.toUpperCase(),
+            () => {
+              this.category = category;
+              this.show("parts");
+            },
+            selectedPart(this.selected(category)).part.name,
+          );
+        break;
+      case "parts":
+        title = this.category.toUpperCase();
+        subtitle = "CHOOSE A LAZER PRODUCT";
+        for (const part of PARTS.filter((p) => p.category === this.category))
+          add(
+            part.name,
+            () => {
+              this.product = part.id;
+              this.show("variants");
+            },
+            part.variants.length + " authored colorways",
+            part.id === this.selected(this.category).partId,
+          );
+        break;
+      case "variants": {
+        const part = PARTS.find((p) => p.id === this.product)!;
+        title = part.name;
+        subtitle =
+          this.category === "wheels"
+            ? "APPLY TO BOTH WHEELS"
+            : "CHOOSE AN AUTHORED COLORWAY";
+        for (const variant of part.variants)
+          add(
+            variant.name,
+            () => {
+              const selection = { partId: part.id, variantId: variant.id };
+              if (this.category === "wheels") {
+                this.profile.scooter.frontWheel = { ...selection };
+                this.profile.scooter.rearWheel = { ...selection };
+              } else
+                this.profile.scooter[this.category as keyof ScooterLoadout] =
+                  selection;
+              this.changed();
+              this.render();
+            },
+            "Included",
+            this.selected(this.category).partId === part.id &&
+              this.selected(this.category).variantId === variant.id,
+          );
+        break;
+      }
+      case "settings":
+        add("STANCE " + this.profile.settings.stance.toUpperCase(), () => {
+          this.profile.settings.stance =
+            this.profile.settings.stance === "regular" ? "goofy" : "regular";
+          this.changed();
+          this.render();
+        });
+        title = "SETTINGS";
+        subtitle = "KEEP THE SESSION FEELING RIGHT";
+        add("SOUND " + (this.profile.settings.sound ? "ON" : "OFF"), () => {
+          this.profile.settings.sound = !this.profile.settings.sound;
+          this.changed();
+          this.render();
+        });
+        add(
+          "GRIND ASSIST " + (this.profile.settings.grindAssist ? "ON" : "OFF"),
+          () => {
+            this.profile.settings.grindAssist =
+              !this.profile.settings.grindAssist;
+            this.changed();
+            this.render();
+          },
+        );
+        break;
+    }
+    if (this.screen !== "home")
+      add(
+        this.screen === "scooter" || this.screen === "rider"
+          ? "SAVE & BACK"
+          : "BACK",
+        () => this.back(),
+      );
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : "Selections save on this device."}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root
+      .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
+      .forEach((button, i) => {
+        button.onclick = () => {
+          this.index = i;
+          this.select();
+        };
+        button.onpointerenter = () => {
+          this.index = i;
+          this.highlight();
+        };
+      });
+    this.highlight();
+  }
+  private highlight() {
+    this.root
+      .querySelectorAll("[data-menu-index]")
+      .forEach((el, i) => el.classList.toggle("selected", i === this.index));
+    if (this.screen === "maps") {
+      const map = MAPS[Math.min(this.index, MAPS.length - 1)];
+      (this.root.querySelector(".map-preview img") as HTMLImageElement).src =
+        map.preview;
+      this.root.querySelector("#map-type")!.textContent = map.type;
+      this.root.querySelector("#map-name")!.textContent = map.name;
+      this.root.querySelector("#map-description")!.textContent =
+        map.description;
+    }
+    this.root
+      .querySelectorAll("[data-menu-index]")
+      [this.index]?.scrollIntoView({ block: "nearest" });
+  }
+  select() {
+    this.choices[this.index]?.action();
+  }
+  back() {
+    this.show(
+      this.screen === "variants"
+        ? "parts"
+        : this.screen === "parts"
+          ? "scooter"
+          : "home",
+    );
+  }
+  update(input: InputFrame, dt: number) {
+    this.cooldown = Math.max(0, this.cooldown - dt);
+    const direction =
+      input.held.marker > 0.5
+        ? -1
+        : input.held.menuDown > 0.5
+          ? 1
+          : Math.abs(input.lean) > 0.5
+            ? Math.sign(input.lean)
+            : 0;
+    if (direction && this.cooldown === 0) {
+      this.index =
+        (this.index + direction + this.choices.length) % this.choices.length;
+      this.cooldown = 0.2;
+      this.highlight();
+    } else if (!direction) this.cooldown = 0;
+    if (input.pressed.hop) this.select();
+    else if (input.pressed.brakeBars || input.pressed.pause) this.back();
+    this.orbit -= input.rx * dt * 1.8;
+    this.zoom = THREE.MathUtils.clamp(
+      this.zoom + input.ry * dt * 1.5,
+      2.2,
+      5.2,
+    );
+  }
+  preview(renderer: THREE.WebGLRenderer) {
+    const scooter = ["scooter", "parts", "variants"].includes(this.screen);
+    this.previewRider.rider.visible = !scooter;
+    const center = new THREE.Vector3(-0.65, scooter ? 0.52 : 0.83, 0),
+      distance = this.zoom * (scooter ? 0.66 : 1);
+    this.previewCamera.aspect = innerWidth / innerHeight;
+    this.previewCamera.position.set(
+      Math.sin(this.orbit) * distance,
+      0.9 + distance * 0.35,
+      Math.cos(this.orbit) * distance,
+    );
+    this.previewCamera.lookAt(center);
+    this.previewCamera.updateProjectionMatrix();
+    renderer.render(this.previewScene, this.previewCamera);
+  }
+}
