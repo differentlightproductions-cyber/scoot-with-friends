@@ -34,7 +34,13 @@ export class StickPreload {
   dwell = 0;
   private returnWait = 0;
   popped = false;
-  step(dt: number, input: InputFrame, supported: boolean, sweeping = false) {
+  step(
+    dt: number,
+    input: InputFrame,
+    supported: boolean,
+    sweeping = false,
+    transitionRelease = false,
+  ) {
     this.popped = false;
     // LB owns manual entry/balance. A deliberate unmodified down hold loads a hop.
     const down =
@@ -54,8 +60,14 @@ export class StickPreload {
       // mistake its first sideways movement for a hop release.
       this.returnWait = 0;
       return null;
-    } else if (input.ry <= -0.82 && this.dwell >= 0.06 && this.amount > 0) {
+    } else if (
+      (input.ry <= -0.82 || (transitionRelease && input.ry < 0.55)) &&
+      this.dwell >= 0.06 &&
+      this.amount > 0
+    ) {
       // A bunny hop completes when RS travels back up toward the rider.
+      // A quarter-pipe is the one exception: once the rider is already
+      // unweighting over a valid lip, a normal release commits that pop.
       this.popped = supported;
       const charge = this.amount;
       this.amount = this.dwell = 0;

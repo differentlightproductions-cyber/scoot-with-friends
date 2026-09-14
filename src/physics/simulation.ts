@@ -981,6 +981,19 @@ export class Simulation {
       }
     }
     // Preload survives the lip briefly and can buffer a release just before contact.
+    const preloadLip = OUTDOOR && this.grounded && !this.manual.active
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+    const transitionRelease =
+      !!preloadLip &&
+      preloadLip.distance > -0.1 &&
+      preloadLip.distance < 0.9 &&
+      this.normal.y < 0.97;
     const rsPop = this.preload.step(
       dt,
       input,
@@ -989,6 +1002,7 @@ export class Simulation {
         this.elapsed - this.lastGround < TUNE.coyoteTime,
       Math.hypot(input.rx, input.ry) > 0.55 &&
         (Math.abs(input.rx) > 0.45 || this.tricks.gesture.confidence > 0.1),
+      transitionRelease,
     );
     this.charge = this.preload.amount;
     if (rsPop !== null) {
@@ -1343,7 +1357,16 @@ export class Simulation {
       this.airSpin.reset();
       this.airWeight.reset(this.pitch, this.yaw);
       this.spin = 0;
-      this.events.emit({ type: "pop", charge: 0 });
+      // A loaded transition pop adds only a small extension to the rider's
+      // existing ramp momentum. This keeps a quarter pipe rideable and makes
+      // the same in-ramp release feel responsive without turning it into a
+      // flat-ground super jump.
+      const transitionCharge = this.preload.amount;
+      if (transitionCharge > 0)
+        this.velocity.y += 0.22 + transitionCharge * 0.78;
+      this.preload.reset();
+      this.charge = 0;
+      this.events.emit({ type: "pop", charge: transitionCharge });
     }
     // The upper guard is too coarse for a rider unweighting over a lip. Temporarily
     // ignore only rail contacts on a valid transition crossing; terrain remains solid.

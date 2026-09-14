@@ -1,5 +1,7 @@
 export const TUNE = {
-  transitionLipReleaseDistance: 0.15,
+  // Begin clearing coping before the rider reaches its collision capsule.
+  // A wider handoff keeps a smooth transition at real riding speeds.
+  transitionLipReleaseDistance: 0.65,
   transitionRailClearTime: 0.18,
   quarterOverDeckSpeed: 12,
   step: 1 / 120,

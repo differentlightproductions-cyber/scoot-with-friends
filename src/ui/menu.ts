@@ -145,9 +145,9 @@ export class GameMenu {
         );
         add("SETTINGS", () => this.show("settings"));
         add(
-          "PARK EDITOR",
+          "PARK EDITOR — TESTING",
           () => this.onEditor(),
-          "Build and save your own lines",
+          "Local beta: build and save your own lines",
         );
         add("TRICK BOOK", () => this.show("tricks"), "Every trick and its input");
         break;

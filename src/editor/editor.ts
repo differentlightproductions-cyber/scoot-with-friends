@@ -522,7 +522,7 @@ export class ParkEditor {
     if (!this.active) return;
     const o = this.layout.objects.find((o) => o.id === this.selected),
       base = this.baseObjects.find((o) => o.userData.baseId === this.selected);
-    this.root.innerHTML = `<header><strong>PARK EDITOR</strong><button data-do="new">New</button><button data-do="save">Save</button><button data-do="saveAs">Save As</button><select id="editor-load"><option value="">Load a saved park…</option>${Object.entries(
+    this.root.innerHTML = `<header><strong>PARK EDITOR <small>IN TESTING</small></strong><button data-do="new">New</button><button data-do="save">Save</button><button data-do="saveAs">Save As</button><select id="editor-load"><option value="">Load a saved park…</option>${Object.entries(
       this.slots(),
     )
       .map(([id, p]) => `<option value="${esc(id)}">${esc(p.title)}</option>`)
