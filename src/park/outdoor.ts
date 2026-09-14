@@ -16,10 +16,10 @@ export const outdoorSpawns = [
   { name: "DROP / SPINE", x: 4.5, z: 26.2, yaw: Math.PI },
   { name: "DROP / SMALL BOX", x: -1.5, z: 26.2, yaw: Math.PI },
   { name: "DROP / LARGE TRANSFER", x: -10, z: 26.2, yaw: Math.PI },
-  { name: "METAL STREET PARK", x: 64, z: 3, yaw: 0 },
-  { name: "METAL HALF PIPE", x: 63, z: 13, yaw: Math.PI / 2 },
+  { name: "METAL STREET PARK", x: -63, z: 6, yaw: 0 },
+  { name: "METAL HALF PIPE", x: -64, z: 16, yaw: Math.PI / 2 },
   { name: "PARKING / PATHS", x: 15, z: -65, yaw: 0 },
-  { name: "BMX ROLLERS", x: -66, z: -30, yaw: 0 },
+  { name: "BMX TRACK GATE", x: 65, z: -25, yaw: 0 },
   { name: "LAKESIDE TRAIL", x: -86, z: -36, yaw: Math.PI },
 ];
 export interface RampModule {

@@ -4,7 +4,15 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
 const clamp = THREE.MathUtils.clamp;
-export const metalQuarters = [
+// The compact metal street plaza and BMX track have traded sides.  Keep the
+// metal layout authored in its original local coordinates, then place it in
+// the former western BMX zone.
+const METAL_SHIFT_X = -127;
+const METAL_SHIFT_Z = 3;
+const mx = (x: number) => x + METAL_SHIFT_X;
+const mz = (z: number) => z + METAL_SHIFT_Z;
+const BMX = { x0: 46, x1: 84, z0: -22, z1: 22 };
+const metalQuarterLocal = [
   {
     id: "metal-west-quarter",
     x0: 48,
@@ -24,6 +32,13 @@ export const metalQuarters = [
     reverse: false,
   },
 ];
+export const metalQuarters = metalQuarterLocal.map((m) => ({
+  ...m,
+  x0: mx(m.x0),
+  x1: mx(m.x1),
+  z0: mz(m.z0),
+  z1: mz(m.z1),
+}));
 function quarterHeight(
   x: number,
   reverse: boolean,
@@ -36,8 +51,10 @@ function quarterHeight(
   return r - Math.sqrt(Math.max(0, r * r - d * d));
 }
 export function metalHeight(x: number, z: number) {
+  x -= METAL_SHIFT_X;
+  z -= METAL_SHIFT_Z;
   let h = 0;
-  for (const m of metalQuarters)
+  for (const m of metalQuarterLocal)
     if (x >= m.x0 && x <= m.x1 && z >= m.z0 && z <= m.z1)
       h = Math.max(h, quarterHeight(x, m.reverse, m.x0, m.x1, m.h));
   // Four-way street pyramid; clear central stairs beside the bank, with a flat catch deck.
@@ -54,19 +71,22 @@ export function metalHeight(x: number, z: number) {
   return h;
 }
 export function bmxHeight(x: number, z: number) {
-  if (x < -81 || x > -43 || z < -28 || z > 34) return 0;
+  if (x < BMX.x0 || x > BMX.x1 || z < BMX.z0 || z > BMX.z1) return 0;
   const edge = Math.min(
-    clamp((x + 81) / 3, 0, 1),
-    clamp((-43 - x) / 3, 0, 1),
-    clamp((z + 28) / 4, 0, 1),
-    clamp((34 - z) / 4, 0, 1),
+    clamp((x - BMX.x0) / 3, 0, 1),
+    clamp((BMX.x1 - x) / 3, 0, 1),
+    clamp((z - BMX.z0) / 3, 0, 1),
+    clamp((BMX.z1 - z) / 3, 0, 1),
   );
-  const lane = Math.floor((x + 81) / 9.5);
+  const lane = Math.floor((x - BMX.x0) / 9.5);
   const roller = Math.pow(
-    Math.max(0, Math.sin(((z + lane * 2) * Math.PI) / 9)),
+    Math.max(0, Math.sin(((z - BMX.z0 + lane * 2) * Math.PI) / 8)),
     2,
   );
-  const berm = Math.pow(clamp((Math.abs(z - 3) - 22) / 7, 0, 1), 2) * 1.8;
+  const berm = Math.pow(
+    clamp((Math.abs(z - (BMX.z0 + BMX.z1) / 2) - 14) / 5, 0, 1),
+    2,
+  ) * 1.55;
   return edge * (roller * (lane % 2 ? 0.85 : 1.25) + berm);
 }
 export function extensionHeight(x: number, z: number) {
@@ -128,7 +148,8 @@ export function buildMemorialGrounds(park: Park) {
   }
   box(0, -0.045, -45, 232, 0.06, 250, 0xb49a73);
   box(5, -0.014, 18, 195, 0.012, 82, 0x7f9b55);
-  box(-62, -0.005, 3, 38, 0.008, 62, 0xc3a16f).name = "Dirt riding track base";
+  box(mx(65), 0.001, mz(0), 46, 0.008, 48, 0xb8bab3).name = "Metal street park base";
+  box(65, -0.005, 0, 42, 0.008, 48, 0xc3a16f).name = "Dirt riding track base";
   const patch = (
     x0: number,
     x1: number,
@@ -172,7 +193,7 @@ export function buildMemorialGrounds(park: Park) {
       }),
     );
     m.name =
-      x0 === -81
+      x0 === BMX.x0
         ? "Dirt riding track"
         : x0 === 47.75
           ? "Metal half pipe"
@@ -192,21 +213,58 @@ export function buildMemorialGrounds(park: Park) {
         .setCollisionGroups(GROUPS.surface),
     ).handle;
   };
-  box(65, 0.001, 0, 46, 0.008, 48, 0xb8bab3);
-  patch(47.75, 78.25, 7.75, 18.25, 0.125, metalHeight, 0x333c42);
-  patch(58.75, 72.25, -14.25, -1.75, 0.125, metalHeight, 0x333c42);
-  patch(80.75, 85.25, -15.25, -7.75, 0.125, metalHeight, 0x333c42);
+  patch(mx(47.75), mx(78.25), mz(7.75), mz(18.25), 0.125, metalHeight, 0x333c42);
+  patch(mx(58.75), mx(72.25), mz(-14.25), mz(-1.75), 0.125, metalHeight, 0x333c42);
+  patch(mx(80.75), mx(85.25), mz(-15.25), mz(-7.75), 0.125, metalHeight, 0x333c42);
   // The BMX track is authored terrain, so brush strokes rebuild both its
   // visible sand and matching collision surface.
   patch(
-    -81,
-    -43,
-    -28,
-    34,
+    BMX.x0,
+    BMX.x1,
+    BMX.z0,
+    BMX.z1,
     0.25,
     (x, z) => brushHeight(x, z, bmxHeight(x, z)),
     0xc3a16f,
   );
+  // The dirt line is self-contained: its fence keeps the dunes off the
+  // surrounding concrete paths and grass, with a clear south-side entrance.
+  const fence = (x0: number, z0: number, x1: number, z1: number) => {
+    const dx = x1 - x0,
+      dz = z1 - z0,
+      length = Math.hypot(dx, dz),
+      angle = Math.atan2(dx, dz);
+    for (const t of [0, 0.5, 1])
+      box(x0 + dx * t, 1.1, z0 + dz * t, 0.12, 2.2, 0.12, 0x6d5941, true);
+    for (const y of [0.7, 1.42]) {
+      const rail = box(
+        (x0 + x1) / 2,
+        y,
+        (z0 + z1) / 2,
+        0.1,
+        0.07,
+        length,
+        0x80654a,
+        true,
+      );
+      rail.rotation.y = angle;
+    }
+  };
+  const fenceX0 = BMX.x0 - 1.2,
+    fenceX1 = BMX.x1 + 1.2,
+    fenceZ0 = BMX.z0 - 2.8,
+    fenceZ1 = BMX.z1 + 1.2,
+    gateX0 = 61,
+    gateX1 = 69;
+  fence(fenceX0, fenceZ0, gateX0, fenceZ0);
+  fence(gateX1, fenceZ0, fenceX1, fenceZ0);
+  fence(fenceX0, fenceZ1, fenceX1, fenceZ1);
+  fence(fenceX0, fenceZ0, fenceX0, fenceZ1);
+  fence(fenceX1, fenceZ0, fenceX1, fenceZ1);
+  box(gateX0, 1.1, fenceZ0, 0.16, 2.2, 0.16, 0x4f4131, true);
+  box(gateX1, 1.1, fenceZ0, 0.16, 2.2, 0.16, 0x4f4131, true);
+  const gate = box(65, 1.1, fenceZ0 + 0.18, 7.6, 0.09, 0.1, 0x9b784e);
+  gate.name = "BMX track entrance gate";
   const metalRail = (
     name: string,
     a: THREE.Vector3,
@@ -231,7 +289,7 @@ export function buildMemorialGrounds(park: Park) {
     for (let z = m.z0; z <= m.z1; z += 2)
       box(back, m.h + 0.6, z, 0.08, 1.2, 0.08, 0x343d42, true);
     for (const y of [m.h + 0.55, m.h + 1.15])
-      box(back, y, 13, 0.08, 0.065, 10, 0x465158, true);
+      box(back, y, mz(13), 0.08, 0.065, 10, 0x465158, true);
     for (const z of [m.z0, m.z1])
       for (let x = m.x0; x < m.x1; x += 0.25) {
         const h = metalHeight(x + 0.125, z);
@@ -241,23 +299,23 @@ export function buildMemorialGrounds(park: Park) {
   // Stair noses and risers make this line read as stairs rather than a dark bank.
   for (let i = 0; i < 5; i++) {
     const y = 1.4 - i * 0.28,
-      z = -5.6 + i * 0.8;
-    box(66.5, y / 2, z, 3, y, 0.8, 0x252c31);
-    box(66.5, y + 0.008, z + 0.34, 3, 0.015, 0.1, 0x929ca0);
+      z = mz(-5.6 + i * 0.8);
+    box(mx(66.5), y / 2, z, 3, y, 0.8, 0x252c31);
+    box(mx(66.5), y + 0.008, z + 0.34, 3, 0.015, 0.1, 0x929ca0);
   }
-  metalRail("Metal stair handrail", v(65, 2.04, -6.8), v(65, 0.55, -1.7));
-  metalRail("Metal pyramid bank rail", v(61, 0.58, -14), v(62.8, 1.96, -9.7));
-  box(51, 0.35, -7, 1.8, 0.7, 10, 0x333c42, true);
+  metalRail("Metal stair handrail", v(mx(65), 2.04, mz(-6.8)), v(mx(65), 0.55, mz(-1.7)));
+  metalRail("Metal pyramid bank rail", v(mx(61), 0.58, mz(-14)), v(mx(62.8), 1.96, mz(-9.7)));
+  box(mx(51), 0.35, mz(-7), 1.8, 0.7, 10, 0x333c42, true);
   for (const side of [-1, 1])
     metalRail(
       "Metal ledge " + side,
-      v(51 + side * 0.86, 0.73, -12),
-      v(51 + side * 0.86, 0.73, -2),
+      v(mx(51 + side * 0.86), 0.73, mz(-12)),
+      v(mx(51 + side * 0.86), 0.73, mz(-2)),
       "ledge",
     );
-  metalRail("Metal flat rail", v(80, 0.6, 0), v(80, 0.6, 7));
+  metalRail("Metal flat rail", v(mx(80), 0.6, mz(0)), v(mx(80), 0.6, mz(7)));
   for (const x of [44, 86])
-    park.bench("Metal park bench " + x, x, 0, 23, 1, 3.5);
+    park.bench("Metal park bench " + x, mx(x), 0, mz(23), 1, 3.5);
   // Broad, level paths give a continuous ride from wood to metal, parking and lake.
   let pathSerial = 0;
   const path = (points: number[][], width = 4, color = 0xc8c5b7) => {

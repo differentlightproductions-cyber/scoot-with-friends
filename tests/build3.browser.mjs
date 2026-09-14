@@ -259,6 +259,18 @@ try {
       g.camera.orbit < orbit && g.camera.elevation < elevation,
     );
     g.sim.reset(0, true);
+    g.camera.reset();
+    g.render();
+    const ridingOrbit = g.camera.orbit,
+      ridingElevation = g.camera.elevation;
+    a(0.2, { rx: 1, ry: 1 });
+    g.render();
+    check(
+      "Riding RS never controls the camera",
+      Math.abs(g.camera.orbit - ridingOrbit) < 0.0001 &&
+        Math.abs(g.camera.elevation - ridingElevation) < 0.0001,
+    );
+    g.sim.reset(0, true);
     g.sim.bail("Test crash");
     a(0.8);
     check(
@@ -293,6 +305,24 @@ try {
     check(
       "A normal RS flick through neutral completes a bunny hop",
       !g.sim.grounded && g.events.history.some((e) => e.type === "pop"),
+    );
+    g.startSession("outdoor", true);
+    g.sim.reset(0, true);
+    place(4, 0.22, 20, 0, 0, 12, 0);
+    let timedFlick = false;
+    for (let i = 0; i < 160 && !timedFlick; i++) {
+      if (g.sim.position.z < 25.3) a(1 / 120, { ry: 1 });
+      else {
+        a(1 / 120, { ry: 0.1 });
+        a(1 / 120, { ry: -1 });
+        timedFlick = true;
+      }
+    }
+    check(
+      "A timed RS pop clears quarter coping instead of being blocked",
+      timedFlick &&
+        g.events.history.some((e) => e.type === "pop" && e.charge > 0.3) &&
+        g.sim.state !== "Bail",
     );
     for (const action of ["hop", "brakeBars"]) {
       reset();

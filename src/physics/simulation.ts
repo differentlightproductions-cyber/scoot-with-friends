@@ -327,8 +327,14 @@ export class Simulation {
           this.velocity.x,
         )
       : null;
-    if (rampPop && lip && lip.distance < 0.55) {
-      this.lipClearTimer = TUNE.transitionRailClearTime;
+    if (lip && lip.distance > -0.25 && lip.distance < 1.25) {
+      // A deliberate takeoff owns the coping for the rest of its short
+      // approach. The terrain stays solid; only the thin coping guard stops
+      // behaving like a wall under a valid upward takeoff.
+      const towardLip = Math.max(2, Math.abs(this.velocity.dot(lip.forward)));
+      const clearance = clamp((lip.distance + 0.35) / towardLip, 0.14, 0.46);
+      const timing = clamp(1 - Math.abs(lip.distance - 0.1) / 0.85, 0, 1);
+      this.lipClearTimer = Math.max(this.lipClearTimer, clearance);
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, lean, lip.forward);
       else if (lip.module.kind === "quarter") {
@@ -336,14 +342,21 @@ export class Simulation {
           this.velocity.dot(lip.forward),
           this.velocity.y,
         );
-        const ratio =
-          clamp((speed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
-          clamp(lean, 0, 1) * 0.06;
+        // Match the useful spine transfer: clear the lip mostly upward, with
+        // only enough outward travel to keep the rider from clipping coping.
+        const ratio = clamp(
+          0.075 + Math.max(0, speed - 8) * 0.008 - clamp(lean, 0, 1) * 0.025,
+          0.045,
+          0.17,
+        );
         this.velocity.addScaledVector(
           lip.forward,
           speed * ratio - this.velocity.dot(lip.forward),
         );
         this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
+        // Timing at coping is useful but remains a small rider extension,
+        // never an arcade launch multiplier.
+        this.velocity.y += timing * (0.12 + charge * 0.22);
       }
     }
     this.body.setTranslation(
@@ -1019,7 +1032,15 @@ export class Simulation {
       this.airSpin.reset();
     }
     if (this.grounded) this.lastGround = this.elapsed;
-    const supportedForTrick = this.grounded || !!this.grind;
+    const edgeGrace =
+      this.elapsed - this.lastGround < TUNE.coyoteTime &&
+      (!OUTDOOR || !!outdoorLip(
+        this.position.x,
+        this.position.z,
+        this.velocity.z,
+        this.velocity.x,
+      ));
+    const supportedForTrick = this.grounded || !!this.grind || edgeGrace;
     const gesture =
       supportedForTrick &&
       input.held.body < 0.5 &&
@@ -1063,7 +1084,7 @@ export class Simulation {
         lip.distance < 0.9 &&
         intent.age < 0.16;
       if (!waitForLip) {
-        if (this.grounded || this.grind)
+        if (supportedForTrick)
           this.pop(Math.max(0.15, intent.charge), input.lean);
         this.tricks.bri.kick(intent.direction);
         this.groundIntent = null;
@@ -1071,7 +1092,7 @@ export class Simulation {
       }
     }
     // Preload survives the lip briefly and can buffer a release just before contact.
-    const preloadLip = OUTDOOR && this.grounded && !this.manual.active
+    const preloadLip = OUTDOOR && supportedForTrick && !this.manual.active
       ? outdoorLip(
           this.position.x,
           this.position.z,

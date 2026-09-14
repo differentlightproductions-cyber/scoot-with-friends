@@ -75,10 +75,10 @@ try {
       );
     }
     for (const [x, z, yaw, time, name] of [
-      [25, 0, Math.PI / 2, 3, "wood-to-metal link"],
+      [-35, 0, -Math.PI / 2, 3, "wood-to-metal link"],
       [0, -60, 0, 4, "parking to wooden park"],
-      [65, -60, 0, 5, "parking to metal park"],
-      [-35, -15, 0, 5, "BMX side path"],
+      [-62, -60, 0, 5, "parking to metal park"],
+      [35, -15, Math.PI / 2, 5, "BMX side path"],
       [-107, 0, 0, 3, "lakeside loop"],
     ]) {
       const s = place(x, z, 6, yaw);
@@ -91,11 +91,11 @@ try {
       );
     }
     for (const [x, z, yaw, name] of [
-      [63, 13, Math.PI / 2, "east metal quarter"],
-      [63, 13, -Math.PI / 2, "west metal quarter"],
-      [62, -19, 0, "pyramid bank"],
-      [83, -19, 0, "metal kicker"],
-      [-66, -27, 0, "BMX rollers"],
+      [-64, 16, Math.PI / 2, "east metal quarter"],
+      [-64, 16, -Math.PI / 2, "west metal quarter"],
+      [-65, -16, 0, "pyramid bank"],
+      [-44, -16, 0, "metal kicker"],
+      [65, -21, 0, "BMX rollers"],
     ]) {
       const s = place(x, z, 11, yaw);
       let maxY = 0,
@@ -116,6 +116,11 @@ try {
     check(
       "Metal stair rail, ledge sides and flat rail are grind surfaces",
       g.park.rails.filter((r) => r.id.startsWith("Metal ")).length >= 5,
+    );
+    check(
+      "Metal plaza and BMX track occupy their swapped sides",
+      g.park.rails.some((r) => r.id === "Metal flat rail" && r.a.x < 0) &&
+        g.park.scene.children.some((o) => o.name === "BMX track entrance gate"),
     );
     check(
       "Metal stairs have distinct treads",

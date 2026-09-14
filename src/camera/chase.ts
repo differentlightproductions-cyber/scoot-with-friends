@@ -33,7 +33,9 @@ export class ChaseCamera {
         );
     this.heading +=
       wrap(velocityYaw - this.heading) * (1 - Math.exp(-4.8 * follow * dt));
-    const cameraMode = s.context === "camera";
+    // On the scooter the right stick is reserved exclusively for preload,
+    // manuals and trick gestures.  Only on-foot movement can orbit the camera.
+    const cameraMode = s.walking || !!s.sitting;
     if (s.dropIn.phase) {
       this.heading += wrap(s.yaw - this.heading) * (1 - Math.exp(-2 * dt));
       this.elevation = damp(this.elevation, 0.3, 2, dt);
