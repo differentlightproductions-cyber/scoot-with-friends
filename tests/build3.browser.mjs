@@ -286,6 +286,14 @@ try {
       "Leaning out of a coping stall drops the rider in",
       !g.sim.stall && g.sim.velocity.z > 0,
     );
+    g.sim.reset(0, true);
+    a(0.3, { ry: 1 });
+    a(1 / 120, { ry: 0.1 });
+    a(1 / 120, { ry: -1 });
+    check(
+      "A normal RS flick through neutral completes a bunny hop",
+      !g.sim.grounded && g.events.history.some((e) => e.type === "pop"),
+    );
     for (const action of ["hop", "brakeBars"]) {
       reset();
       place(-12, 9, -20, 0, 0, 5);

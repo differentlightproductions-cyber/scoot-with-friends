@@ -1094,7 +1094,9 @@ export class Simulation {
         (Math.abs(input.rx) > 0.45 || this.tricks.gesture.confidence > 0.1),
       transitionRelease,
     );
-    this.charge = this.preload.amount;
+    // A short internal window preserves a physical RS flick through neutral,
+    // but the rider stands up as soon as the user stops actively holding down.
+    this.charge = input.ry > 0.55 ? this.preload.amount : 0;
     if (rsPop !== null) {
       this.bufferCharge = rsPop;
       this.hopBuffer = TUNE.hopBuffer;

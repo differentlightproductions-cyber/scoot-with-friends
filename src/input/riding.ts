@@ -32,6 +32,7 @@ export function ridingButtons(
 export class StickPreload {
   amount = 0;
   dwell = 0;
+  private upwardWindow = 0;
   popped = false;
   step(
     dt: number,
@@ -47,6 +48,7 @@ export class StickPreload {
       Math.abs(input.rx) < 0.5 &&
       input.held.leftModifier < 0.5;
     if (down && supported) {
+      this.upwardWindow = 0;
       this.dwell += dt;
       this.amount = clamp(
         this.amount + (dt / TUNE.preloadTime) * input.ry,
@@ -68,17 +70,21 @@ export class StickPreload {
       this.popped = supported;
       const charge = this.amount;
       this.amount = this.dwell = 0;
+      this.upwardWindow = 0;
       return this.popped ? charge : null;
     } else if (!supported) this.reset();
     else if (this.amount > 0) {
-      // Neutral release abandons the preload. The rider model then eases the
-      // visual pose upright instead of leaving the player crouched.
-      this.reset();
+      // A real upward flick crosses neutral before it reaches the pop zone.
+      // Preserve the charge for that short gesture window; Simulation clears
+      // its visual crouch immediately when the stick is no longer held down.
+      this.upwardWindow += dt;
+      if (this.upwardWindow > 0.24) this.reset();
     } else this.dwell = 0;
     return null;
   }
   reset() {
     this.amount = this.dwell = 0;
+    this.upwardWindow = 0;
     this.popped = false;
   }
 }

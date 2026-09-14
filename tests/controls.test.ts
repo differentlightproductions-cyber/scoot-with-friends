@@ -34,6 +34,13 @@ test("RS dwell loads analog charge and only pops after a full upward return; no 
   p.step(dt, f, true);
   f.ry = 0;
   assert.equal(p.step(dt, f, true), null);
+  assert.ok(p.amount > 0);
+  f.ry = -0.9;
+  assert.ok((p.step(dt, f, true) ?? 0) > 0);
+  f.ry = 1;
+  p.step(dt, f, true);
+  f.ry = 0;
+  for (let i = 0; i < 30; i++) p.step(dt, f, true);
   assert.equal(p.amount, 0);
   f.ry = 1;
   for (let i = 0; i < 60; i++) p.step(dt, f, false);
