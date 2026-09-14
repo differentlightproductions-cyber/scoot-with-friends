@@ -11,6 +11,7 @@ export interface GrindContact {
   contactOffset: number;
   entryPitch: number;
   lateralSpeed: number;
+  intent: number;
 }
 export function findGrind(
   rails: Rail[],
@@ -21,7 +22,8 @@ export function findGrind(
   assist: boolean,
   intentional = false,
 ): GrindContact | null {
-  if (velocity.length() < TUNE.grindMinSpeed || velocity.y > 2.2) return null;
+  // A rising rider is airing out or clearing an obstacle, never looking to lock in.
+  if (velocity.length() < TUNE.grindMinSpeed || velocity.y > 0.85) return null;
   let best: GrindContact | null = null,
     bestDist = Infinity;
   for (const rail of rails) {
@@ -31,17 +33,20 @@ export function findGrind(
     const t = clamp(position.clone().sub(rail.a).dot(direction) / len, 0, 1);
     if (t < 0.001 || t > 0.999) continue;
     const point = rail.a.clone().addScaledVector(delta, t);
-    const lateral = Math.hypot(position.x - point.x, position.z - point.z);
+    const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
+    const signedOffset = position.clone().sub(point).dot(side);
+    const lateral = Math.abs(signedOffset);
     const height = position.y - point.y;
+    const maxDistance = assist
+      ? intentional
+        ? TUNE.grindIntentDistance
+        : TUNE.grindDistance
+      : TUNE.grindExactDistance;
+    const maxHeight = assist && intentional ? TUNE.grindCaptureHeight : 0.28;
     if (
-      lateral >
-        (assist
-          ? intentional
-            ? TUNE.grindIntentDistance
-            : TUNE.grindDistance
-          : TUNE.grindExactDistance) ||
+      lateral > maxDistance ||
       height < -0.06 ||
-      height > (assist ? TUNE.grindCaptureHeight : 0.42)
+      height > maxHeight
     )
       continue;
     const speed = velocity.dot(direction);
@@ -53,15 +58,45 @@ export function findGrind(
         .normalize()
         .dot(direction.clone().setY(0).normalize()),
     );
-    if (
-      approach <
-      (assist
-        ? intentional
-          ? TUNE.grindIntentAlignment
-          : TUNE.grindApproachAlignment
-        : 0.74)
-    )
-      continue;
+    const minApproach = assist
+      ? intentional
+        ? TUNE.grindIntentAlignment
+        : TUNE.grindApproachAlignment
+      : 0.9;
+    if (approach < minApproach) continue;
+    // Entry must be converging on the rail unless the rider is already almost
+    // exactly over it. This makes crossing a rail feel deliberate rather than magnetic.
+    const lateralVelocity = velocity.dot(side);
+    const crossing =
+      lateral < 0.07
+        ? 1
+        : clamp((-Math.sign(signedOffset) * lateralVelocity) / 1.2, 0, 1);
+    // With no explicit grind hold, a rider must genuinely be crossing the rail.
+    // Holding the grind control permits a carefully aligned parallel landing,
+    // but still has to pass the full distance/height/alignment score below.
+    if (!intentional && lateral >= 0.07 && crossing < 0.45) continue;
+    const crossingScore = intentional && crossing < 0.45 ? 0.45 : crossing;
+    const distanceScore = 1 - lateral / maxDistance;
+    const alignmentScore = clamp(
+      (approach - minApproach) / Math.max(0.01, 1 - minApproach),
+      0,
+      1,
+    );
+    const heightScore = 1 - Math.abs(height - 0.12) / maxHeight;
+    const descentScore = velocity.y <= 0 ? 1 : clamp(1 - velocity.y / 0.85, 0, 1);
+    const intentScore = clamp(
+      distanceScore * 0.32 +
+        alignmentScore * 0.25 +
+        clamp(heightScore, 0, 1) * 0.13 +
+        descentScore * 0.15 +
+        crossingScore * 0.15,
+      0,
+      1,
+    );
+    const requiredScore = intentional
+      ? TUNE.grindHeldIntentScore
+      : TUNE.grindNaturalIntentScore;
+    if (intentScore < requiredScore) continue;
     const yawDifference = Math.abs(
       wrap(yaw - Math.atan2(direction.x, direction.z)),
     );
@@ -76,8 +111,6 @@ export function findGrind(
             ? "Feeble"
             : "50-50";
     if (lateral < bestDist) {
-      const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
-      const signedOffset = position.clone().sub(point).dot(side);
       const reach = sideways * 0.25 + (1 - sideways) * 0.06;
       best = {
         rail,
@@ -88,7 +121,8 @@ export function findGrind(
         name,
         contactOffset: clamp(signedOffset, -reach, reach),
         entryPitch: pitch,
-        lateralSpeed: velocity.dot(side) * 0.35,
+        lateralSpeed: velocity.dot(side) * 0.7,
+        intent: intentScore,
       };
       bestDist = lateral;
     }

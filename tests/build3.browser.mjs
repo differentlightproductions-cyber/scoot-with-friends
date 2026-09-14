@@ -445,6 +445,46 @@ try {
           !g.events.history.some((e) => e.type === "railImpact"),
       );
     }
+    // A deliberate RT approach gets a small rail catch window; merely passing
+    // beside the same rail must stay free for other air controls.
+    g.startSession("warehouse", true);
+    reset();
+    const rail = g.park.rails.find((r) => r.kind === "rail");
+    const point = rail.a.clone().lerp(rail.b, 0.5);
+    const direction = rail.b.clone().sub(rail.a).normalize();
+    const side = direction.clone().set(direction.z, 0, -direction.x);
+    const setRailApproach = () => {
+      place(
+        point.x + side.x * 0.18,
+        point.y + 0.28,
+        point.z + side.z * 0.18,
+        direction.x * 5 - side.x,
+        -1,
+        direction.z * 5 - side.z,
+        Math.atan2(direction.x, direction.z),
+      );
+      g.sim.grounded = false;
+      g.sim.state = "Airborne";
+      g.sim.airTime = 0.2;
+      g.sim.tricks.startAir(false);
+    };
+    setRailApproach();
+    a(1 / 120);
+    check("A nearby rail does not auto-capture the rider", !g.sim.grind);
+    setRailApproach();
+    a(1 / 120, { held: { pumpGrind: 1 } });
+    check("Held grind intent catches a close aligned rail", !!g.sim.grind);
+    g.sim.reset(0, true);
+    a(0.4);
+    const startSpeed = g.sim.speed;
+    a(0.01, { pressed: { hop: true }, held: { hop: 1 } });
+    a(1.45, { held: { hop: 1 } });
+    check(
+      "Holding A repeats grounded pushes without starting an air trick",
+      g.sim.grounded &&
+        g.sim.speed > startSpeed + 2 &&
+        g.events.history.filter((e) => e.type === "push").length >= 2,
+    );
     return results;
   });
   physics.forEach(record);

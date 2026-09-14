@@ -215,7 +215,7 @@ test("combo survives linked states, expires on ordinary riding, and resets after
   t.reset();
   assert.equal(t.last, "");
 });
-test("grind requires close aligned descending trajectory and assist toggle changes capture width", () => {
+test("grind requires a close, descending, deliberate approach", () => {
   const rail = {
     id: "test",
     a: new Vector3(0, 0.6, 0),
@@ -224,17 +224,20 @@ test("grind requires close aligned descending trajectory and assist toggle chang
   };
   const p = new Vector3(0.3, 0.8, 3),
     vel = new Vector3(0, -1, 5);
-  assert(findGrind([rail], p, vel, 0, 0, true));
+  // A held grind intent gets a small forgiveness window; proximity alone does not.
+  assert(findGrind([rail], p, vel, 0, 0, true, true));
+  assert.equal(findGrind([rail], p, vel, 0, 0, true), null);
   assert.equal(findGrind([rail], p, vel, 0, 0, false), null);
   assert.equal(
-    findGrind([rail], new Vector3(2, 0.8, 3), vel, 0, 0, true),
+    findGrind([rail], new Vector3(2, 0.8, 3), vel, 0, 0, true, true),
     null,
   );
-  assert.equal(findGrind([rail], p, new Vector3(5, -1, 0), 0, 0, true), null);
-  assert.equal(findGrind([rail], p, vel, 0, -0.2, true)?.name, "Feeble");
-  assert.equal(findGrind([rail], p, vel, 0, 0.2, true)?.name, "Smith");
+  assert.equal(findGrind([rail], p, new Vector3(5, -1, 0), 0, 0, true, true), null);
+  assert.equal(findGrind([rail], p, new Vector3(0, 1, 5), 0, 0, true, true), null);
+  assert.equal(findGrind([rail], p, vel, 0, -0.2, true, true)?.name, "Feeble");
+  assert.equal(findGrind([rail], p, vel, 0, 0.2, true, true)?.name, "Smith");
   assert.equal(
-    findGrind([rail], p, vel, Math.PI / 2, 0, true)?.name,
+    findGrind([rail], p, vel, Math.PI / 2, 0, true, true)?.name,
     "Deck Slide",
   );
 });

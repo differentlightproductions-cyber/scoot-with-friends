@@ -83,6 +83,7 @@ export class Simulation {
   grindCandidate = "—";
   grindDuration = 0;
   pushTimer = 0;
+  pushHoldTime = 0;
   pumpTimer = 0;
   popTimer = 0;
   airTime = 0;
@@ -221,6 +222,7 @@ export class Simulation {
     this.hopBuffer = 0;
     this.airTime = 0;
     this.pushTimer = 0;
+    this.pushHoldTime = 0;
     this.lastLanding = "";
     this.grindCooldown = 0.3;
     this.lastPump = false;
@@ -294,6 +296,29 @@ export class Simulation {
     this.spineLaunchAngle =
       (Math.atan2(this.velocity.y, Math.abs(this.velocity.z)) * 180) / Math.PI;
   }
+  private redirectBox(
+    forward: THREE.Vector3,
+    charge = 0,
+    timing = 0,
+  ) {
+    const across = this.velocity.dot(forward);
+    const speed = Math.hypot(Math.max(0, across), this.velocity.y);
+    // A box takes off upward first. Faster approaches increase both height and
+    // carry, but the forward ratio eases down so speed cannot turn it into a
+    // long, flat overshoot.
+    const forwardRatio = clamp(0.64 - Math.max(0, speed - 4) * 0.014, 0.48, 0.64);
+    const vertical = clamp(
+      speed * Math.sqrt(1 - forwardRatio * forwardRatio) +
+        charge * (0.3 + timing * 0.45),
+      3.2,
+      10.5,
+    );
+    this.velocity.addScaledVector(
+      forward,
+      Math.max(1.7, speed * forwardRatio) - across,
+    );
+    this.velocity.y = Math.max(this.velocity.y, vertical);
+  }
   private pop(charge: number, lean = 0) {
     const linked = this.manual.active || !!this.grind;
     this.finishManual();
@@ -337,6 +362,8 @@ export class Simulation {
       this.lipClearTimer = Math.max(this.lipClearTimer, clearance);
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, lean, lip.forward);
+      else if (lip.module.kind === "box")
+        this.redirectBox(lip.forward, charge, timing);
       else if (lip.module.kind === "quarter") {
         const speed = Math.hypot(
           this.velocity.dot(lip.forward),
@@ -534,6 +561,26 @@ export class Simulation {
       this.body.setGravityScale(1, true);
     }
   }
+  private hasGrindOverride(input: InputFrame) {
+    const buttons = ridingButtons(this.tricks.stance, this.tricks.controlStyle);
+    return (
+      !!this.groundIntent ||
+      this.preload.amount > 0.08 ||
+      this.tricks.gesture.confidence > 0.08 ||
+      Math.abs(this.tricks.deck.velocity) > 0.15 ||
+      Math.abs(this.tricks.bars.velocity) > 0.15 ||
+      Math.abs(this.tricks.bri.velocity) > 0.15 ||
+      Math.abs(this.tricks.kickless.velocity) > 0.15 ||
+      this.tricks.poseBlend > 0.05 ||
+      input.pressed[buttons.whip] ||
+      input.pressed.brakeBars ||
+      input.held.body > 0.3 ||
+      input.held.leftModifier > 0.3 ||
+      input.held.rightModifier > 0.3 ||
+      Math.abs(input.rx) > 0.58 ||
+      Math.abs(input.ry) > 0.58
+    );
+  }
   private captureGrind(input: InputFrame) {
     if (
       this.grounded ||
@@ -543,6 +590,24 @@ export class Simulation {
       this.grindCooldown > 0
     )
       return;
+    // Tricks, a transition exit, and a drop-in all have a higher priority than a rail.
+    const lip = OUTDOOR
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+    const transitionExit =
+      !!lip &&
+      lip.distance > -0.35 &&
+      lip.distance < 1.1 &&
+      (this.normal.y < 0.97 || this.rampLean > 0.08 || this.velocity.y > 0.35);
+    if (this.dropIn.phase || this.hasGrindOverride(input) || transitionExit) {
+      this.grindCandidate = "—";
+      return;
+    }
     const candidate = findGrind(
       this.park.rails,
       this.position.clone().add(new THREE.Vector3(0, -0.12, 0)),
@@ -565,7 +630,8 @@ export class Simulation {
       this.body.collider(0).setSensor(true);
       this.railGuard.setSensor(true);
       this.state = "Grinding";
-      this.velocity.copy(candidate.direction).multiplyScalar(candidate.speed);
+      // Preserve the rider's approach on entry. The lower spring below blends
+      // into the rail over a moment instead of snapping to a fixed track.
       this.events.emit({
         type: "grindCatch",
         name: candidate.name,
@@ -962,6 +1028,34 @@ export class Simulation {
     const support = this.support();
     if (OUTDOOR)
       support.normal = terrainNormal(this.position.x, this.position.z);
+    const copingLip = OUTDOOR
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+    const brakingForSpine =
+      this.grounded &&
+      input.held.brake > 0.35 &&
+      this.popTimer === 0 &&
+      !this.hasGrindOverride(input) &&
+      copingLip?.module.kind === "spine" &&
+      copingLip.distance > -0.25 &&
+      copingLip.distance < 1.1;
+    if (brakingForSpine) {
+      // LT says “settle into the coping.” It first sheds momentum through the
+      // real approach, then becomes a stall only when the rider has slowed at it.
+      this.velocity.multiplyScalar(Math.exp(-TUNE.copingStallBrake * dt));
+      if (
+        copingLip!.distance < 0.14 &&
+        this.speed < TUNE.copingStallSettleSpeed
+      ) {
+        this.startStall(copingLip!.forward);
+        return;
+      }
+    }
     const gap =
       this.position.y -
       (support.height + TUNE.radius / Math.max(0.55, support.normal.y));
@@ -1035,6 +1129,8 @@ export class Simulation {
             input.lean,
             leavingLip.forward,
           );
+        if (leavingLip.module.kind === "box")
+          this.redirectBox(leavingLip.forward, this.preload.amount, 0.65);
         if (leavingLip.module.kind === "quarter") {
           const planeSpeed = Math.hypot(
             this.velocity.dot(leavingLip.forward),
@@ -1089,10 +1185,29 @@ export class Simulation {
       this.tricks.stance,
       this.tricks.controlStyle,
     ).whip;
+    const takeoffLip = OUTDOOR
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+    const atTakeoff =
+      !!takeoffLip &&
+      takeoffLip.distance > -0.25 &&
+      takeoffLip.distance < 1.25;
+    // Holding physical A while firmly on flat ground becomes a push after a
+    // short delay. A tap still keeps the established tailwhip behavior.
+    const waitingForPush =
+      whip === "hop" && this.grounded && !atTakeoff && input.held.hop > 0.5;
+    const barButton =
+      this.tricks.controlStyle === "arcade" ? "pushDeck" : "brakeBars";
     if (
       supportedForTrick &&
-      (input.pressed[whip] ||
-        (this.tricks.controlStyle === "arcade" && input.pressed.hop))
+      ((!waitingForPush && input.pressed[whip]) ||
+        (this.tricks.controlStyle === "arcade" && input.pressed.hop) ||
+        (atTakeoff && input.pressed[barButton]))
     ) {
       this.pop(Math.max(0.15, this.preload.amount), input.lean);
       this.preload.reset();
@@ -1169,6 +1284,21 @@ export class Simulation {
     );
     this.steer = damp(this.steer, input.steer, TUNE.steeringResponse, dt);
     if (this.grind) {
+      // Any fresh trick or hard sideways pop releases the rail immediately.
+      if (
+        input.pressed.brakeBars ||
+        input.pressed[ridingButtons(this.tricks.stance, this.tricks.controlStyle).whip] ||
+        Math.abs(input.rx) > 0.72
+      ) {
+        this.finishGrind();
+        this.grounded = false;
+        this.state = "Airborne";
+        this.tricks.startAir(true);
+        this.popTimer = 0.1;
+        this.airTime = 0;
+      }
+    }
+    if (this.grind) {
       this.grindDuration += dt;
       this.state = "Grinding";
       this.grounded = false;
@@ -1189,8 +1319,8 @@ export class Simulation {
       const spring = this.grindAssist
         ? settling
           ? TUNE.grindLateralSpring
-          : 18
-        : 18;
+          : 12
+        : 10;
       g.lateralSpeed +=
         (-(lateral - g.contactOffset) * spring -
           g.lateralSpeed * (settling ? TUNE.grindLateralDamping : 5)) *
@@ -1329,13 +1459,27 @@ export class Simulation {
           tangent,
           sign * TUNE.crouchDownhillGain * Math.min(1.25, speed / 10) * dt,
         );
-      if (
-        input.pressed[
-          ridingButtons(this.tricks.stance, this.tricks.controlStyle).push
-        ] &&
-        this.pushTimer === 0 &&
+      const pushButton = ridingButtons(
+        this.tricks.stance,
+        this.tricks.controlStyle,
+      ).push;
+      const holdingPush =
+        input.held[pushButton] > 0.5 ||
+        (pushButton !== "hop" && input.held.hop > 0.5);
+      const pushAllowed =
         !this.manual.active &&
-        !revert.reverting
+        !revert.reverting &&
+        this.normal.y > 0.96 &&
+        brake < 0.35 &&
+        this.rampLean < 0.22;
+      this.pushHoldTime = holdingPush && pushAllowed
+        ? this.pushHoldTime + dt
+        : 0;
+      if (
+        (input.pressed[pushButton] ||
+          (holdingPush && this.pushHoldTime >= TUNE.pushHoldDelay)) &&
+        this.pushTimer === 0 &&
+        pushAllowed
       ) {
         this.velocity.addScaledVector(
           tangent,
@@ -1476,7 +1620,7 @@ export class Simulation {
       this.grounded &&
       !this.walking &&
       !this.manual.active &&
-      this.normal.y < 0.95;
+      (this.normal.y < 0.95 || lip.module.kind === "box");
     if (
       onTransition &&
       lip.distance <= TUNE.transitionLipReleaseDistance &&
@@ -1486,6 +1630,8 @@ export class Simulation {
     ) {
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, input.lean, lip.forward);
+      if (lip.module.kind === "box")
+        this.redirectBox(lip.forward, this.preload.amount, 0.7);
       if (lip.module.kind === "quarter") {
         const planeSpeed = Math.hypot(
           this.velocity.dot(lip.forward),
@@ -1593,7 +1739,13 @@ export class Simulation {
       const severe = railImpact >= TUNE.railImpactBailSpeed;
       this.events.emit({ type: "railImpact", speed: railImpact, bail: severe });
       if (severe) {
-        if (lip?.module.kind === "spine") this.startStall(lip.forward);
+        if (
+          lip?.module.kind === "spine" &&
+          input.held.brake > 0.35 &&
+          this.popTimer === 0 &&
+          !this.hasGrindOverride(input)
+        )
+          this.startStall(lip.forward);
         else {
           const reaction = after
             .clone()
