@@ -340,15 +340,18 @@ export class RiderModel {
       s.tricks.bars.angle + (s.grounded ? -s.steer * 0.15 : 0);
     this.wheelAngle += (s.speed * dt) / 0.055;
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
-    this.crouch = damp(
-      this.crouch,
+    const crouchTarget =
       (s.sitting?.id ? 0.8 : 0) +
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * 0.65 : 0) +
-        (s.popTimer > 0 ? 0.1 : 0),
-      16,
+        (s.popTimer > 0 ? 0.1 : 0);
+    // Loading is quick; a released, unpopped crouch has a visible recovery.
+    this.crouch = damp(
+      this.crouch,
+      crouchTarget,
+      crouchTarget < this.crouch ? 5.5 : 16,
       dt,
     );
     const c = this.crouch,

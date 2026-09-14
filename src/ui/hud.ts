@@ -67,7 +67,7 @@ export class HUD {
           e.quality === "sketchy" ? "warn" : "",
         );
       if (e.type === "bail") {
-        this.feedback(`${e.reason.toUpperCase()} / VIEW TO RESET`, "warn");
+        this.feedback(`${e.reason.toUpperCase()} / PRESS A TO GET UP`, "warn");
         document.querySelector("#line-status")!.textContent = "LINE LOST";
         this.lineAge = 0;
         this.lineEnded = true;
@@ -227,7 +227,7 @@ export class HUD {
         (s.tricks.controlStyle === "arcade"
           ? "<dt>A</dt><dd>Quick hop</dd>"
           : "") +
-        "<dt>RS BUNNY HOP</dt><dd>Hold RS fully down to crouch, then move it back up at least 90% toward the rider to pop. A sideways move alone will not jump.</dd>" +
+        "<dt>RS BUNNY HOP / TUCK</dt><dd>Hold RS fully down to crouch, then move it back up at least 90% toward the rider to pop. Letting it return neutral stands you up smoothly. Holding a tuck reduces drag at speed and adds a small downhill gain.</dd>" +
         "<dt>LT + " +
         mapping.whipLabel +
         "</dt><dd>Heelwhip</dd><dt>RT + " +
@@ -246,7 +246,8 @@ export class HUD {
         "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. RT in air requests a grind.</dd>" +
         "<dt>LB + RS UP / DOWN</dt><dd>Nose manual / manual. RS balances. Release LB then hold RS down to load a hop out.</dd>" +
         "<dt>Y ON GROUND</dt><dd>Walk / mount. On foot A jumps or climbs, B sits near benches; LS click runs carrying scooter.</dd>" +
-        "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd>" +
+        "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd><dt>SPINE STALL</dt><dd>Awkward spine-coping landings settle into a stall. Use LS left/right to adjust, then lean LS forward or back to drop in.</dd>" +
+        "<dt>BAIL</dt><dd>After a crash, let the fall finish, then press A to get back up.</dd>" +
         "<dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
         "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
         "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";

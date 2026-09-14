@@ -5,6 +5,7 @@ export class AudioEngine {
   roll: GainNode | null = null;
   grind: GainNode | null = null;
   filter: BiquadFilterNode | null = null;
+  private nextFootstep = 0;
   enabled = true;
   async start() {
     if (!this.context) {
@@ -40,7 +41,14 @@ export class AudioEngine {
     }
     if (this.context.state === "suspended") await this.context.resume();
   }
-  update(speed: number, grounded: boolean, grinding: boolean, paused: boolean) {
+  update(
+    speed: number,
+    grounded: boolean,
+    grinding: boolean,
+    paused: boolean,
+    walking = false,
+    running = false,
+  ) {
     if (
       !this.context ||
       !this.roll ||
@@ -56,12 +64,42 @@ export class AudioEngine {
       0.05,
     );
     this.roll.gain.setTargetAtTime(
-      grounded ? Math.min(0.18, speed * 0.012) : 0,
+      grounded && !walking ? Math.min(0.18, speed * 0.012) : 0,
       t,
       0.09,
     );
     this.filter.frequency.setTargetAtTime(250 + speed * 60, t, 0.12);
     this.grind.gain.setTargetAtTime(grinding ? 0.22 : 0, t, 0.06);
+    if (
+      this.enabled &&
+      !paused &&
+      walking &&
+      grounded &&
+      speed > 0.45 &&
+      t >= this.nextFootstep
+    ) {
+      this.footstep(running);
+      this.nextFootstep = t + (running ? 0.27 : 0.42);
+    }
+    if (!walking) this.nextFootstep = 0;
+  }
+  private footstep(running: boolean) {
+    if (!this.context || !this.master) return;
+    const t = this.context.currentTime;
+    const oscillator = this.context.createOscillator();
+    const gain = this.context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(running ? 112 : 84, t);
+    oscillator.frequency.exponentialRampToValueAtTime(38, t + 0.07);
+    gain.gain.setValueAtTime(running ? 0.065 : 0.045, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    oscillator.connect(gain).connect(this.master);
+    oscillator.start(t);
+    oscillator.stop(t + 0.1);
+    oscillator.onended = () => {
+      oscillator.disconnect();
+      gain.disconnect();
+    };
   }
   event(e: GameEvent) {
     if (!this.context || !this.master) return;

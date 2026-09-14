@@ -5,6 +5,7 @@ import type { InputFrame } from "../input/input";
 import { TUNE } from "../core/config";
 import { OUTDOOR } from "../park/park";
 import { GROUPS } from "../physics/groups";
+import type { DropInMarker } from "./drop-in";
 export interface SessionMarker {
   mapId: string;
   position: [number, number, number];
@@ -12,6 +13,7 @@ export interface SessionMarker {
   pitch: number;
   roll: number;
   normal: [number, number, number];
+  dropIn: DropInMarker | null;
 }
 export class MarkerSystem {
   saved: SessionMarker | null = null;
@@ -59,13 +61,11 @@ export class MarkerSystem {
       !s.grounded ||
       s.sitting ||
       s.mantle ||
-      s.dropIn.phase ||
+      s.dropIn.phase === "commit" ||
       s.grind ||
       s.manual.active ||
       s.state === "Bail" ||
       s.recovery > 0.3 ||
-      Math.abs(s.position.x) > 31.8 ||
-      Math.abs(s.position.z) > 43.8 ||
       !Number.isFinite(s.position.lengthSq() + s.yaw) ||
       !this.clearAt(s, s.position)
     ) {
@@ -79,6 +79,7 @@ export class MarkerSystem {
       pitch: s.pitch,
       roll: 0,
       normal: s.normal.toArray(),
+      dropIn: s.dropIn.markerState(),
     };
     this.feedback(s, "MARKER SET", 1);
     return true;
@@ -90,9 +91,12 @@ export class MarkerSystem {
       return false;
     }
     const position = new THREE.Vector3(...mark.position);
+    // A ready drop-in is a verified position on a transition. The general
+    // clearance capsule is intentionally too conservative for that stance.
+    const restoringReadyDropIn = mark.dropIn?.phase === "ready";
     if (
       mark.mapId !== (OUTDOOR ? "outdoor" : "warehouse") ||
-      !this.clearAt(s, position, mark.yaw)
+      (!restoringReadyDropIn && !this.clearAt(s, position, mark.yaw))
     ) {
       this.feedback(s, "CAN'T RETURN TO MARKER HERE");
       return false;
@@ -105,6 +109,13 @@ export class MarkerSystem {
     s.pitch = mark.pitch;
     s.roll = mark.roll;
     s.normal.fromArray(mark.normal);
+    s.dropIn.restoreMarker(mark.dropIn ?? null);
+    if (mark.dropIn) {
+      s.walking = false;
+      s.running = false;
+      s.grounded = true;
+      s.state = mark.dropIn.phase === "ready" ? "DropInReady" : "DropInCommit";
+    }
     s.body.setTranslation(position, true);
     s.body.setRotation(
       new THREE.Quaternion().setFromAxisAngle(

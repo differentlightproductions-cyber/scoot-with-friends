@@ -6,6 +6,16 @@ import { modules, rampLips } from "../park/outdoor";
 import { clamp, damp, wrap } from "../core/config";
 import { GROUPS } from "../physics/groups";
 
+export interface DropInMarker {
+  phase: "ready" | "commit";
+  lean: number;
+  time: number;
+  lip: number;
+  direction: number;
+  height: number;
+  origin: [number, number, number];
+}
+
 /** A stable coping balance point, followed by a short continuous tipping phase.
  * No launch velocity is assigned: normal riding gravity accelerates the release. */
 export class DropIn {
@@ -20,6 +30,29 @@ export class DropIn {
     this.phase = null;
     this.lean = 0;
     this.time = 0;
+  }
+  markerState(): DropInMarker | null {
+    return this.phase
+      ? {
+          phase: this.phase,
+          lean: this.lean,
+          time: this.time,
+          lip: this.lip,
+          direction: this.direction,
+          height: this.height,
+          origin: this.origin.toArray(),
+        }
+      : null;
+  }
+  restoreMarker(state: DropInMarker | null) {
+    if (!state) return this.reset();
+    this.phase = state.phase;
+    this.lean = state.lean;
+    this.time = state.time;
+    this.lip = state.lip;
+    this.direction = state.direction;
+    this.height = state.height;
+    this.origin.fromArray(state.origin);
   }
   setup(s: Simulation) {
     const edges = OUTDOOR

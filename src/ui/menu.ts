@@ -154,7 +154,7 @@ export class GameMenu {
       case "tricks":
         title = "TRICK BOOK";
         subtitle = "READ THE MOVEMENT, THEN MAKE IT YOURS";
-        add("BUNNY HOP", () => {}, "RS fully down to crouch, then return it 90% up to pop. Hold down longer for more height.");
+        add("BUNNY HOP / TUCK", () => {}, "RS fully down to crouch, then return it 90% up to pop. A neutral release stands up; holding a tuck reduces drag at speed and helps on downhills.");
         add("TAILWHIP / BARSPIN", () => {}, "Pro: stance whip button / B. Arcade: B whip / X bars. Tap once or hold for continuous rotations.");
         add("HEEL / FINGER WHIP", () => {}, "LT + whip = heelwhip. RT + whip = fingerwhip. LT + RT + whip = opposite fingerwhip.");
         add("BRI / INWARD BRI", () => {}, "Circle RS all the way around. Direction chooses Bri or inward. Load RS down before the circle for a bigger takeoff.");
@@ -162,7 +162,8 @@ export class GameMenu {
         add("SPINS / FAKIE", () => {}, "Use LS while airborne to spin and shift your weight. Land rolling backward to enter fakie; hold it to build score.");
         add("GRINDS / MANUALS", () => {}, "RT asks for a rail catch. LB + RS up/down starts a nose manual/manual; keep RS balanced.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y tuck, LT + Y deck grab, both = superman. Bumpers + Y add can-can, one-foot, or no-foot.");
-        add("WALKING", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench.");
+        add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
+        add("COPING STALL", () => {}, "Landing awkwardly on a spine coping settles into a stall. Shift with LS left/right, then lean forward or back to drop in.");
         break;
       case "maps":
         title = "MAP SELECT";

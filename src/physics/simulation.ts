@@ -33,6 +33,7 @@ export type RideState =
   | "Grinding"
   | "Landing"
   | "SketchyLanding"
+  | "Stall"
   | "Bail"
   | "Walking"
   | "Sitting"
@@ -88,6 +89,11 @@ export class Simulation {
   recovery = 0;
   landTimer = 0;
   bailTimer = 0;
+  stall: {
+    anchor: THREE.Vector3;
+    direction: THREE.Vector3;
+    offset: number;
+  } | null = null;
   manualEntryLock = 0;
   elapsed = 0;
   distance = 0;
@@ -209,6 +215,7 @@ export class Simulation {
     this.tricks.reset();
     this.normal.set(0, 1, 0);
     this.bailTimer = 0;
+    this.stall = null;
     this.recovery = 0;
     this.popTimer = 0;
     this.hopBuffer = 0;
@@ -375,6 +382,67 @@ export class Simulation {
     this.velocity.multiplyScalar(0.72);
     this.velocity.y = Math.max(1.5, this.velocity.y);
     this.events.emit({ type: "bail", reason });
+  }
+  private startStall(forward: THREE.Vector3) {
+    const direction = forward.clone().setY(0);
+    if (direction.lengthSq() < 0.01)
+      direction.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    else direction.normalize();
+    this.stall = { anchor: this.position.clone(), direction, offset: 0 };
+    this.velocity.set(0, 0, 0);
+    this.grounded = true;
+    this.state = "Stall";
+    this.finishManual();
+    this.preload.reset();
+    this.tricks.finish("clean");
+    this.body.collider(0).setCollisionGroups(GROUPS.chassisSurfaceOnly);
+    this.railGuard.setSensor(true);
+    this.body.setTranslation(this.position, true);
+    this.body.setLinvel(this.velocity, true);
+    this.events.emit({
+      type: "marker",
+      message: "SPINE STALL / LEAN LS TO DROP",
+      progress: 0,
+    });
+  }
+  private stepStall(dt: number, input: InputFrame) {
+    const stall = this.stall;
+    if (!stall) return false;
+    const side = new THREE.Vector3(stall.direction.z, 0, -stall.direction.x);
+    stall.offset = clamp(stall.offset + input.steer * dt * 0.8, -0.8, 0.8);
+    this.position.copy(stall.anchor).addScaledVector(side, stall.offset);
+    this.yaw = damp(
+      this.yaw,
+      Math.atan2(stall.direction.x, stall.direction.z),
+      7,
+      dt,
+    );
+    this.pitch = damp(this.pitch, 0, 8, dt);
+    this.roll = damp(this.roll, input.steer * 0.08, 8, dt);
+    if (Math.abs(input.lean) > 0.58) {
+      const release = stall.direction
+        .clone()
+        .multiplyScalar(input.lean < 0 ? 1 : -1);
+      this.velocity.copy(release.multiplyScalar(2.8));
+      this.velocity.y = 0.65;
+      this.yaw = Math.atan2(release.x, release.z);
+      this.grounded = false;
+      this.state = "Airborne";
+      this.airTime = 0;
+      this.lipClearTimer = TUNE.transitionRailClearTime;
+      this.body.setGravityScale(1, true);
+      this.tricks.startAir(false, true);
+      this.airWeight.reset(this.pitch, this.yaw);
+      this.airSpin.reset();
+      this.stall = null;
+    }
+    this.body.setTranslation(this.position, true);
+    this.body.setLinvel(this.velocity, true);
+    this.body.setRotation(
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw),
+      true,
+    );
+    return true;
   }
   recoverLocally() {
     const origin = this.waterBail ? this.lastSafeGround : this.position;
@@ -775,13 +843,14 @@ export class Simulation {
         this.body.setLinvel(this.velocity, true);
       }
       if (
-        this.bailTimer > (this.waterBail ? 1.1 : 2.0) ||
-        (this.bailTimer > 0.25 && input.pressed.hop)
+        (this.waterBail && this.bailTimer > 1.1) ||
+        (!this.waterBail && this.bailTimer > 0.55 && input.pressed.hop)
       )
         this.recoverLocally();
       return;
     }
     if (this.dropIn.step(this, dt, input)) return;
+    if (this.stepStall(dt, input)) return;
     if (this.sitting) {
       if (input.pressed.brakeBars || input.pressed.body || input.pressed.hop) {
         this.position.copy(this.sitting.origin);
@@ -833,6 +902,27 @@ export class Simulation {
       }
     }
     if (
+      input.pressed.body &&
+      this.walking &&
+      this.running &&
+      this.grounded
+    ) {
+      const direction = this.velocity.clone().setY(0);
+      if (direction.lengthSq() < 0.04)
+        direction.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+      direction.normalize();
+      const mountSpeed = Math.min(
+        TUNE.maxSpeed * 0.72,
+        Math.max(2.6, this.speed + TUNE.runMountBoost),
+      );
+      this.walking = false;
+      this.running = false;
+      this.velocity.copy(direction.multiplyScalar(mountSpeed));
+      this.body.setLinvel(this.velocity, true);
+      this.finishManual();
+      this.events.emit({ type: "dismount", walking: false });
+      return;
+    } else if (
       input.pressed.body &&
       this.walking &&
       this.grounded &&
@@ -1167,11 +1257,23 @@ export class Simulation {
         new THREE.Vector3(0, -TUNE.gravity, 0).projectOnPlane(this.normal),
         dt,
       );
+      const crouching = this.preload.amount > 0.08 && input.ry > 0.55 && !this.manual.active;
+      const downhill = tangent.y * sign;
       const brake = input.held.brake;
-      const loss = (TUNE.rollingDrag + brake * TUNE.brake) * dt;
+      const rollingDrag = crouching && speed > 4
+        ? TUNE.rollingDrag * TUNE.crouchFastDragMultiplier
+        : TUNE.rollingDrag;
+      const loss = (rollingDrag + brake * TUNE.brake) * dt;
       const current = this.velocity.length();
       if (current > 0)
         this.velocity.multiplyScalar(Math.max(0, current - loss) / current);
+      // A tuck trims drag at speed and gains only a modest amount on an
+      // existing downhill line; it cannot manufacture speed on flat ground.
+      if (crouching && downhill < -0.05 && speed > 4)
+        this.velocity.addScaledVector(
+          tangent,
+          sign * TUNE.crouchDownhillGain * Math.min(1.25, speed / 10) * dt,
+        );
       if (
         input.pressed[
           ridingButtons(this.tricks.stance, this.tricks.controlStyle).push
@@ -1188,7 +1290,7 @@ export class Simulation {
         this.events.emit({ type: "push" });
       }
       // Compression while descending and extension through changing curvature preserve energy.
-      const slope = tangent.y * sign;
+      const slope = downhill;
       const pump = input.held.pumpGrind > 0.3;
       if (
         this.pumpTimer === 0 &&
@@ -1413,13 +1515,16 @@ export class Simulation {
       const severe = railImpact >= TUNE.railImpactBailSpeed;
       this.events.emit({ type: "railImpact", speed: railImpact, bail: severe });
       if (severe) {
-        const reaction = after
-          .clone()
-          .addScaledVector(this.velocity, TUNE.railCollisionImpulseScale);
-        this.bail("Rail impact");
-        this.velocity.copy(reaction);
-        this.velocity.y = Math.max(this.velocity.y, 1.5);
-        this.body.setLinvel(this.velocity, true);
+        if (lip?.module.kind === "spine") this.startStall(lip.forward);
+        else {
+          const reaction = after
+            .clone()
+            .addScaledVector(this.velocity, TUNE.railCollisionImpulseScale);
+          this.bail("Rail impact");
+          this.velocity.copy(reaction);
+          this.velocity.y = Math.max(this.velocity.y, 1.5);
+          this.body.setLinvel(this.velocity, true);
+        }
       } else {
         this.recovery = Math.max(this.recovery, 0.65);
         this.state = "SketchyLanding";
@@ -1431,6 +1536,7 @@ export class Simulation {
       this.speed > 4 &&
       Math.hypot(after.x, after.z) < this.speed * 0.25 &&
       this.state !== "Grinding" &&
+      this.state !== "Stall" &&
       (this.state as RideState) !== "Bail" &&
       railImpact === 0 &&
       this.grounded

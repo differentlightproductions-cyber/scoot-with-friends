@@ -411,7 +411,14 @@ async function boot() {
       accumulator -= TUNE.step;
       first = false;
     }
-    audio.update(sim.speed, sim.grounded, !!sim.grind, false);
+    audio.update(
+      sim.speed,
+      sim.grounded,
+      !!sim.grind,
+      false,
+      sim.walking,
+      sim.running,
+    );
     render(dt, accumulator / TUNE.step);
   });
   let pending = emptyInput();

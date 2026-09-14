@@ -194,6 +194,33 @@ try {
           (e) => e.type === "marker" && e.message === "CAN'T SET MARKER HERE",
         ),
     );
+    g.startSession("outdoor", true);
+    g.sim.reset(8, true);
+    a(0.8, { held: { marker: 1 } });
+    check(
+      "Markers work beyond the original skatepark boundary",
+      !!g.sim.marker.saved && Math.abs(g.sim.marker.saved.position[0]) > 31.8,
+    );
+    g.sim.reset(0, true);
+    place(0, 3.82, -26.25, 0, 0, 0, 0);
+    g.sim.walking = true;
+    g.sim.grounded = true;
+    a(0.01, { pressed: { body: true } });
+    check("Drop-in setup is ready for marker", g.sim.dropIn.phase === "ready");
+    a(0.8, { held: { marker: 1 } });
+    const dropMarker = structuredClone(g.sim.marker.saved);
+    g.sim.position.z += 3;
+    g.sim.body.setTranslation(g.sim.position, true);
+    a(0.01, { released: { marker: true } });
+    a(0.03, { held: { marker: 1 } });
+    a(0.01, { released: { marker: true } });
+    check(
+      "Marker restores a ready drop-in position",
+      dropMarker.dropIn?.phase === "ready" &&
+        g.sim.dropIn.phase === "ready" &&
+        Math.abs(g.sim.position.z - dropMarker.position[2]) < 0.001,
+    );
+    g.startSession("warehouse", true);
     reset();
     a(0.01, { pressed: { body: true } });
     a(0.01, { pressed: { sprint: true } });
@@ -207,6 +234,14 @@ try {
       "Carry pose lifts scooter to waist level without lifting rider",
       g.rider.scooter.position.y > 0.9 && g.rider.rider.position.y < 0.1,
     );
+    const runSpeed = g.sim.speed;
+    a(0.01, { pressed: { body: true } });
+    check(
+      "Running Y mounts with a small forward carry",
+      !g.sim.walking && !g.sim.running && g.sim.speed > runSpeed,
+    );
+    a(0.01, { pressed: { body: true } });
+    a(0.01, { pressed: { sprint: true } });
     a(0.01, { pressed: { sprint: true } });
     a(1, { lean: -1 });
     check(
@@ -222,6 +257,34 @@ try {
     check(
       "Walking camera uses corrected axes",
       g.camera.orbit < orbit && g.camera.elevation < elevation,
+    );
+    g.sim.reset(0, true);
+    g.sim.bail("Test crash");
+    a(0.8);
+    check(
+      "A crash remains down until the rider asks to get up",
+      g.sim.state === "Bail" && g.sim.bailTimer > 0.55,
+    );
+    a(0.01, { pressed: { hop: true } });
+    check("A gets the rider back up after a bail", g.sim.state === "Walking");
+    g.sim.reset(0, true);
+    g.sim.stall = {
+      anchor: g.sim.position.clone(),
+      direction: g.sim.position.clone().set(0, 0, 1),
+      offset: 0,
+    };
+    g.sim.state = "Stall";
+    g.sim.grounded = true;
+    const stallX = g.sim.position.x;
+    a(0.5, { steer: 1 });
+    check(
+      "A coping stall permits a small sideways adjustment",
+      g.sim.state === "Stall" && Math.abs(g.sim.position.x - stallX) > 0.1,
+    );
+    a(0.01, { lean: -1 });
+    check(
+      "Leaning out of a coping stall drops the rider in",
+      !g.sim.stall && g.sim.velocity.z > 0,
     );
     for (const action of ["hop", "brakeBars"]) {
       reset();
