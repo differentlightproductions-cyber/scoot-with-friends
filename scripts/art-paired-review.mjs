@@ -1,7 +1,7 @@
 import {chromium} from 'playwright';
 import {mkdirSync,writeFileSync} from 'node:fs';
-mkdirSync('artifacts/art-direction/paired',{recursive:true});
-const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+const software=process.argv.includes('--software');const folder='artifacts/art-direction/'+(software?'paired-software':'paired');mkdirSync(folder,{recursive:true});
+const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:[...(software?['--use-angle=swiftshader','--enable-unsafe-swiftshader']:[]),'--disable-background-timer-throttling','--disable-renderer-backgrounding']});
 const results=[];
 try{for(const [label,port,quality] of [['before',5176,null],['low',5177,'low'],['medium',5177,'medium'],['high',5177,'high']]){
  const p=await b.newPage({viewport:{width:1440,height:900}});const start=Date.now();await p.goto(`http://127.0.0.1:${port}/?map=outdoor`);await p.waitForFunction(()=>window.__LAZER);const loadMs=Date.now()-start;
@@ -16,5 +16,6 @@ try{for(const [label,port,quality] of [['before',5176,null],['low',5177,'low'],[
   frames.sort((a,b)=>a-b);animation.sort((a,b)=>a-b);const extension=gl.getExtension('WEBGL_debug_renderer_info');
   return {browser:navigator.userAgent,gpu:extension?gl.getParameter(extension.UNMASKED_RENDERER_WEBGL):'',quality:quality??'previous release',viewport:[innerWidth,innerHeight],pixelRatio:g.renderer.getPixelRatio(),frameMedianMs:frames[40],frame95Ms:frames[76],animationMedianMs:animation[45],animation95Ms:animation[85],drawCalls:g.renderer.info.render.calls,triangles:g.renderer.info.render.triangles,textures:g.renderer.info.memory.textures,position:g.sim.position.toArray(),physicsTimestep:g.park.world.timestep};
  },quality);
- result.loadMs=loadMs;results.push({label,...result});await p.screenshot({path:`artifacts/art-direction/paired/${label}.png`});await p.close();console.log(label,result.frameMedianMs);
-}writeFileSync('artifacts/art-direction/paired/metrics.json',JSON.stringify({hardware:'Intel Core i5-13500, RTX 4060 Ti installed; test explicitly uses SwiftShader software rendering',method:'Same 1440×900 viewport, mapped X push route, following camera, 90 steps, final 80 render/physics timings with a blocking pixel read. This short controlled workload is not a sustained hardware or phone benchmark.',results},null,2));}finally{await b.close();}
+ result.loadMs=loadMs;results.push({label,...result});await p.screenshot({path:`${folder}/${label}.png`});await p.close();console.log(label,result.frameMedianMs);
+}writeFileSync(folder+'/metrics.json',JSON.stringify({hardware:software?'Intel Core i5-13500; SwiftShader software rendering':'Intel Core i5-13500; NVIDIA RTX 4060 Ti / Direct3D11',method:'Same 1440×900 viewport, mapped X push route, following camera, 90 steps, final 80 render/physics timings with a blocking pixel read. This short controlled workload is not a sustained hardware or phone benchmark.',results},null,2));}finally{await b.close();}
+
