@@ -947,6 +947,18 @@ body.ui-open #trick-line,body.ui-open #feedback,body.ui-open #balance,body.ui-op
 #start .game-menu button.selected small{color:#e1eeeb}
 #start[data-screen=home] .game-menu button:nth-child(-n+2){font-size:25px;padding:19px 18px;background:#d95c3b;color:white}
 #start[data-screen=home] .game-menu button:nth-child(-n+2) small{color:#fff0e5}
+#start[data-screen=home] .game-menu button.selected,
+#start[data-screen=home] .game-menu button:focus-visible{background:#173e40;color:#fff;outline:3px solid #fff;outline-offset:-5px;box-shadow:inset 7px 0 0 #ffca7c}
+#start[data-screen=home] .game-menu button.selected span::before{content:"› ";color:#ffca7c}
+#account-dialog{max-width:460px;width:calc(100% - 48px);max-height:85dvh;overflow:auto;border:0;border-radius:18px;background:#edf0e9;color:#173e40;padding:26px;z-index:100}
+#account-dialog::backdrop{background:#102027dc}
+#account-dialog p{font-size:14px;line-height:1.5}#account-dialog h2{margin-top:0}
+#account-dialog label{display:block;margin:14px 0 6px;font-weight:700}
+#account-dialog input,#account-dialog textarea{box-sizing:border-box;display:block;width:100%;padding:12px;margin-top:5px;font:16px system-ui;background:white;color:#142b2c;border:1px solid #6d8581;border-radius:6px}
+#account-dialog button{display:block;width:100%;padding:12px;margin:10px 0;background:#24494b;color:white;border:0;border-radius:8px;font-size:15px;text-align:left}
+#account-dialog button:focus-visible,#account-dialog input:focus-visible,#account-dialog textarea:focus-visible{outline:3px solid #d75f3b;outline-offset:2px}
+#account-dialog button:disabled{opacity:.5}#account-dialog [role=status]{min-height:24px;font-weight:700}
+#account-dialog [hidden]{display:none!important}#account-dialog .recovery-code{border:2px solid #c0613f;padding:12px;border-radius:8px}
 #start .menu-save-note,#start .menu-controls{font-size:12px;line-height:1.45;letter-spacing:0;color:#4b605f}
 #start .build-number{font-size:10px}
 #start .map-preview{width:48%;right:5%;top:22%;color:#203a3d}

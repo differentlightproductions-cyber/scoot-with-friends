@@ -1,7 +1,10 @@
 ﻿import { parkAPI } from "./park-api";
 import assets from "../work/site-assets.json";
+import { authAPI } from "./auth-api";
 export default {
   async fetch(request: Request, env: any) {
+    const accountResponse = await authAPI(request, env);
+    if (accountResponse) return accountResponse;
     const response = await parkAPI(request, env);
     if (response) return response;
     const url = new URL(request.url);

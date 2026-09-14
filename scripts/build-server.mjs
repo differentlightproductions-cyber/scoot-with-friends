@@ -43,4 +43,5 @@ await build({
 });
 fs.mkdirSync("dist/.openai", { recursive: true });
 fs.copyFileSync(".openai/hosting.json", "dist/.openai/hosting.json");
+fs.cpSync("drizzle", "dist/.openai/drizzle", { recursive: true });
 console.log("Built browser game and secure park publisher.");

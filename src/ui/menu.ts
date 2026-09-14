@@ -1,6 +1,7 @@
 import {SHOPS,shopStock} from '../data/shops';
 import {CreditEconomy,owns} from '../data/credit';
 import {BODY_BUILDS} from '../scooter/body-fit';
+import {AccountPanel} from './account';
 import {loadProfile} from '../data/loadout';
 import { version } from '../../package.json';
 import * as THREE from "three";
@@ -19,6 +20,7 @@ import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
+  accountPanel = new AccountPanel();
   screen = "home";
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
   private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
@@ -176,6 +178,7 @@ export class GameMenu {
         add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
         add("CUSTOMIZATION",()=>this.show("customization"),"Character, clothing, and scooter");
         add("SETTINGS",()=>this.show("settings"),"Preferences and trick book");
+        add("ACCOUNT",()=>{void this.accountPanel.open();},"Sign in / Create account");
         break;
       case "play":
         title="PLAY";subtitle="YOUR NEXT SESH";
@@ -418,7 +421,7 @@ export class GameMenu {
     }else this.focusTarget.set(0,.83,0);
     this.root
       .querySelectorAll("[data-menu-index]")
-      .forEach((el, i) => el.classList.toggle("selected", i === this.index));
+      .forEach((el, i) => {el.classList.toggle("selected", i === this.index);if(i===this.index){el.setAttribute('aria-current','true');el.scrollIntoView({block:'nearest'});}else el.removeAttribute('aria-current');});
     if (this.screen === "maps") {
       const map = PARK_MAPS[Math.min(this.index, 1)];
       (this.root.querySelector(".map-preview img") as HTMLImageElement).src =
@@ -450,6 +453,7 @@ export class GameMenu {
     );
   }
   update(input: InputFrame, dt: number) {
+    if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
     this.cooldown = Math.max(0, this.cooldown - dt);
     const direction =
       input.held.marker > 0.5

@@ -1,0 +1,28 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {DatabaseSync} from 'node:sqlite';
+import {readFileSync} from 'node:fs';
+import {authAPI, type AuthDB} from '../server/auth-api';
+test('hosted accounts: registration, secure sessions, login, recovery, limits and isolation from local saves',async()=>{
+ const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../drizzle/0000_game_accounts.sql',import.meta.url),'utf8'));
+ const db:AuthDB={prepare(query){let values:any[]=[];return {bind(...args){values=args;return this;},async first(){return sql.prepare(query).get(...values)??null;},async run(){return sql.prepare(query).run(...values);}} as any;},async batch(statements){sql.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sql.exec('COMMIT');return results;}catch(e){sql.exec('ROLLBACK');throw e;}}};
+ const origin='https://game.example',password='test-only-strong-password',username='test_rider';let cookie='';
+ const call=async(action:string,data?:unknown,otherOrigin=origin)=>authAPI(new Request(origin+'/api/account/'+action,{method:data?'POST':'GET',headers:{origin:otherOrigin,'content-type':'application/json',cookie},...(data?{body:JSON.stringify(data)}:{})}),{DB:db}) as Promise<Response>;
+ let res=await call('register',{username,password});assert.equal(res.status,200);const first=await res.json();assert.equal(first.account.username,username);assert.equal(first.recovery.length,64);assert.match(res.headers.get('set-cookie')!,/Secure; HttpOnly; SameSite=Strict/);cookie=res.headers.get('set-cookie')!.split(';')[0];
+ const stored=sql.prepare('SELECT * FROM game_accounts').get()!;assert.notEqual(stored.password_hash,password);assert.notEqual(stored.recovery_hash,first.recovery);
+ assert.equal((await(await call('session')).json()).account.id,first.account.id);
+ assert.equal((await call('register',{username:username.toUpperCase(),password})).status,409);
+ assert.equal((await call('logout',{},'https://evil.example')).status,403);
+ await call('logout',{});assert.equal((await(await call('session')).json()).account,null);
+ assert.equal((await call('login',{username,password:password+'wrong'})).status,401);
+ res=await call('login',{username,password});assert.equal(res.status,200);cookie=res.headers.get('set-cookie')!.split(';')[0];const oldCookie=cookie;
+ res=await call('recover',{username,password:password+'new',recovery:first.recovery});assert.equal(res.status,200);const recovered=await res.json();assert.notEqual(recovered.recovery,first.recovery);
+ assert.equal((await(await call('session')).json()).account,null);cookie=res.headers.get('set-cookie')!.split(';')[0];assert.notEqual(cookie,oldCookie);
+ assert.equal((await call('recover',{username,password,recovery:first.recovery})).status,401);
+ assert.equal((await call('delete',{password:password+'new'})).status,200);assert.equal((await(await call('session')).json()).account,null);
+ assert.equal((await call('register',{username:'charizard495',password})).status,409);
+ assert.equal((await call('register',{username:'x',password:'short'})).status,400);
+ assert.equal((await call('login',{padding:'x'.repeat(3000)})).status,413);
+ for(let i=0;i<24;i++)res=await call('login',{username:'different',password});assert.equal(res!.status,429);
+ assert.equal(sql.prepare('SELECT COUNT(*) AS n FROM game_accounts').get()!.n,0);sql.close();
+});

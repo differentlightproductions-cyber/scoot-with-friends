@@ -1,0 +1,9 @@
+# Game accounts
+
+The public Sites Worker exposes same-origin `/api/account/{session,register,login,logout,recover,delete}`. D1 `DB` stores case-folded unique usernames, salted PBKDF2-SHA256 hashes (600,000 iterations using @noble/hashes), hashed random session/recovery credentials, and atomic request counters. Cookies are Secure, HttpOnly, SameSite=Strict, host-only, seven days. JSON mutations check Origin and size. No password, recovery code, or session token is logged or saved in browser storage. Recovery codes are one-use and replace passwords/revoke sessions. Username Charizard495 remains reserved pending owner provisioning; registration never grants privileges.
+
+Account identity is deliberately separate from the current device-local loadout, progress and alpha Credit. This update does not turn those balances into a secure wallet, synchronize equipment across devices, add admin privileges, or connect the internet room server. Local/portable copies remain playable without login and explain that online accounts require the published website. The previous Node SQLite accounts/starter store is not the deployed D1 identity database and is not silently migrated.
+
+Deploy the existing Sites project with `d1: DB`, preserving `r2: PARKS`. The build copies ordered SQL migration and Drizzle journal into `dist/.openai/drizzle`. Never commit a database or actual credentials. User account creation must happen in the game UI, not through chat. Account deletion requires an authenticated session and current password; it leaves local game progress untouched.
+
+Tests: `npm test`, `npm run build`, `node tests/menu-focus.browser.mjs`, `node tests/ui-polish.browser.mjs`. Real registration/login/session/recovery must also be checked on the deployed Worker because password hashing depends on host execution limits.
