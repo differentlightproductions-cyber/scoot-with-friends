@@ -1,3 +1,4 @@
+import {SHOPS,shopStock} from '../data/shops';
 import * as THREE from 'three';
 import {Park,registerShop} from './park';
 import {blankLayout,makeObject,setActiveLayout} from '../editor/layout';
@@ -5,11 +6,7 @@ import {buildObject} from '../editor/assets';
 import {PARTS,defaultScooter,type Category,type PartSelection} from '../data/scooterParts';
 import {ScooterAssembly} from '../scooter/assembly';
 import {refineShop} from './shop-detail';
-export const SHOP_DISPLAYS:{x:number;z:number;category:Category;label:string}[]=[
- {x:-4.7,z:-.3,category:'wheels',label:'Wheels / pairs'},{x:-4.7,z:2.5,category:'clamp',label:'Clamps'},
- {x:4.8,z:3,category:'bars',label:'Handlebars'},{x:-4.7,z:5,category:'deck',label:'Decks'},
- {x:4.8,z:.2,category:'fork',label:'Forks'},{x:4.8,z:5.5,category:'grips',label:'Grips'},
- {x:0,z:6.8,category:'bearings',label:'Bearings / hardware'}];
+export const SHOP_DISPLAYS=SHOPS.find(s=>s.id==='techno_gravity')!.displays;
 export const shopLayout=blankLayout();shopLayout.title='Techno Gravity DIY alley';
 for(const [type,x,z,w,h,l]of [['Mini Ramp',-7,24,8,1.8,16],['Bank',7,18,3,1,3],['Grind Box',7,26,1.2,.55,4],['Flat Rail',1,23,.1,.65,5]] as const){const o=makeObject(type,x,z);Object.assign(o,{id:'tg-'+type.replaceAll(' ','-'),width:w,height:h,length:l,radius:3.5,deck:1,coping:true,material:'wood'});shopLayout.objects.push(o);}
 const V=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
@@ -39,7 +36,7 @@ function buildShop(park:Park){
  const product=(selection:PartSelection)=>{const key=selection.partId+selection.variantId;if(prototypes.has(key))return prototypes.get(key)!;const root=new THREE.Group(),a=new ScooterAssembly(root),loadout=defaultScooter(),part=PARTS.find(p=>p.id===selection.partId)!;if(part.category==='wheels'){loadout.frontWheel=selection;loadout.rearWheel=selection;}else loadout[part.category]=selection;a.build(loadout);root.updateMatrixWorld(true);const out=new THREE.Group();root.traverse(o=>{if(o instanceof THREE.Mesh&&o.userData.part===part.id){if(part.category==='wheels'&&o.parent?.userData.slot==='rearWheel')return;const g=o.geometry.clone().applyMatrix4(o.matrixWorld),m=new THREE.Mesh(g,o.material);out.add(m);}});const bounds=new THREE.Box3().setFromObject(out),center=bounds.getCenter(new THREE.Vector3());out.children.forEach(o=>o.position.sub(center));prototypes.set(key,out);return out;};
  const place=(partId:string,variantId:string,x:number,y:number,z:number,scale=1,yaw=Math.PI/2)=>{const group=product({partId,variantId}).clone();group.position.set(x,y,z);group.scale.setScalar(scale);group.rotation.y=yaw;scene.add(group);};
  for(const x of [-5.8,5.8])for(const z of [0,3,6]){box(x,.25,z,1.0,.5,2.65,0x222a2b);const collider=box(x,.75,z,1,1,2.65,0xb9d4ce);(collider.material as THREE.Material).dispose();(collider as THREE.Mesh).material=glassMat;for(const y of [.53,.86,1.2]){const shelf=box(x,y,z,.92,.012,2.6,0x394442,false);if(y>1)shelf.visible=false;}for(const sx of [-.49,.49]){for(const y of [.51,1.23])box(x+sx,y,z,.025,.025,2.65,0x657373,false);for(const dz of [-1.31,1.31])box(x+sx,.87,z+dz,.025,.73,.025,0x657373,false);}}
- for(const display of SHOP_DISPLAYS){const parts=PARTS.filter(p=>p.category===display.category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')),x=display.x<0?-5.8:display.x>0?5.8:0;let n=0;
+ for(const display of SHOP_DISPLAYS){const parts=shopStock('techno_gravity',display.category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')),x=display.x<0?-5.8:display.x>0?5.8:0;let n=0;
   for(const p of parts)for(const variant of p.variants){if(n>=12)break;const row=Math.floor(n/4),col=n%4;place(p.id,variant.id,x+(row-1)*.22,.65+row*.18,display.z-.85+col*.48,p.category==='bars'?.85:p.category==='deck'?1:1.25,p.category==='bars'?0:Math.PI/2);n++;}
   sign(display.label.toUpperCase(),x,1.35,display.z,1.4,.25,'#efe3c4','#2a3637',x<0?Math.PI/2:x>0?-Math.PI/2:Math.PI);
  }

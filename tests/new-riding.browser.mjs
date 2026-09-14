@@ -1,6 +1,6 @@
 import {chromium} from 'playwright';import {mkdirSync,writeFileSync} from 'node:fs';
 const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
-try{const page=await browser.newPage();await page.goto('http://127.0.0.1:5180/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.rider.human);
+try{const page=await browser.newPage();await page.goto('http://127.0.0.1:5182/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.rider.human);
  const result=await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);g.startSession('outdoor',true);const {terrainHeight,terrainNormal}=await import('/src/park/park.ts');const checks=[],data=[];const check=(n,p,d)=>{if(!p)throw Error(n+' '+JSON.stringify(d??g.snapshot()));checks.push(n);};const a=(t,f={})=>g.advance(t,f,false);
   function place(x,z,speed=0){const s=g.sim;s.reset(0,true);a(.25);s.normal.copy(terrainNormal(x,z));s.position.set(x,terrainHeight(x,z)+.22/Math.max(.55,s.normal.y),z);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.yaw=s.previousYaw=0;s.velocity.set(0,0,speed).projectOnPlane(s.normal).normalize().multiplyScalar(speed);s.body.setLinvel(s.velocity,true);s.grounded=true;s.lastGround=s.elapsed;return s;}
   for(const style of ['pro','arcade'])for(const stance of ['regular','goofy']){
@@ -9,6 +9,6 @@ try{const page=await browser.newPage();await page.goto('http://127.0.0.1:5180/?m
    s=place(-9,-18,9);s.tricks.controlStyle=style;s.tricks.stance=stance;check('Flat ground is not a fastplant '+style+stance,s.fastplantOpportunity()===null);
    a(.25,{ry:1});a(1/120,{ry:-1});check('RS hop grants current-air flip eligibility '+style+stance,s.bodyFlip.origin==='manual_hop');const yaw=s.yaw; a(.25,{held:{brake:1,pumpGrind:1},lean:-1});check('Pure flip rotates without invented yaw '+style+stance,s.bodyFlip.angle>.3&&Math.abs(s.yaw-yaw)<.0001);check('Flip chord does not add fingerwhip '+style+stance,s.tricks.deck.target===0);
   }
-  let s=place(-9,25.8,9);a(.025);check('Natural ramp air remains ineligible',s.bodyFlip.origin==='natural_ramp_air');a(.2,{held:{brake:1,pumpGrind:1},lean:-1});check('Natural ramp air cannot start ordinary flip',!s.bodyFlip.active);
+  let s=place(-9,25.8,9);a(.025);check('Natural ramp air retains takeoff origin',s.bodyFlip.origin==='natural_ramp_air');a(.2,{held:{brake:1,pumpGrind:1},lean:-1});check('Natural ramp air permits a controlled body flip',s.bodyFlip.active);
   return {checks,data};});mkdirSync('artifacts/complete-update',{recursive:true});writeFileSync('artifacts/complete-update/new-riding.json',JSON.stringify(result,null,2));console.log(result.checks.length+' new riding checks passed',result.data);
 }finally{await browser.close();}

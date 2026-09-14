@@ -68,6 +68,7 @@ export class Simulation {
   bodyFlip = new BodyFlipControl();
   crash:CrashMotion|null=null;
   private flipTakeoffIntent=false;
+  private airQuarter:ReturnType<typeof outdoorLip>=null;
   private departureLip:ReturnType<typeof outdoorLip>=null;
   private launchLip(){
     const current=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
@@ -199,7 +200,7 @@ export class Simulation {
   reset(index = this.spawnIndex, restart = false) {
     this.crash?.dispose();this.crash=null;
 
-    this.bodyFlip.reset();
+    this.bodyFlip.reset();this.airQuarter=null;
     this.departureLip=null;
     this.fastplant=null;this.plantQueued=-1;this.plantLatched=false;
     this.resolvingSpawn = true;
@@ -390,6 +391,7 @@ export class Simulation {
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
     }
     const lip = this.launchLip();
+    this.airQuarter=lip?.module.kind==="quarter"?lip:null;
     if (lip && lip.distance > -0.25 && lip.distance < 1.25) {
       // A deliberate takeoff owns the coping for the rest of its short
       // approach. The terrain stays solid; only the thin coping guard stops
@@ -499,7 +501,7 @@ export class Simulation {
     this.crash?.dispose();this.crash=new CrashMotion(this.world,this.position,this.velocity,this.yaw,this.pitch);
     this.state = "Bail";
     this.getUpTimer = 0;
-    this.bodyFlip.reset();
+    this.bodyFlip.reset();this.airQuarter=null;
     this.fastplant=null;this.plantQueued=-1;
     this.preload.reset();
     this.grounded = false;
@@ -949,13 +951,15 @@ export class Simulation {
       quality = "sketchy";
     this.lastLanding = quality;
     this.events.emit({ type: "landing", quality, impact });
-    this.tricks.finish(quality);
+    const quarter=this.airQuarter?.module;
+    this.tricks.flairContext=!!quarter&&'x0' in quarter&&quality!=='failed'&&support.normal.y<.96&&this.position.x>=quarter.x0&&this.position.x<=quarter.x1&&this.position.z>=quarter.z0&&this.position.z<=quarter.z1;
+    this.tricks.finish(quality);this.airQuarter=null;
     if (quality === "failed") {
       this.bail("Unaligned landing");
       return;
     }
     this.grounded = true;
-    this.pitch=wrap(this.pitch);this.bodyFlip.reset();
+    this.pitch=wrap(this.pitch);this.bodyFlip.reset();this.airQuarter=null;
     this.state = quality === "sketchy" ? "SketchyLanding" : "Landing";
     this.landTimer = 0.25;
     this.landingCompression = clamp(impact / 12, 0.15, 1);
@@ -1280,7 +1284,7 @@ export class Simulation {
           )
         : null;
       if (leavingLip && leavingLip.distance < 0.55 && this.velocity.y > 0.3) {
-        this.departureLip=leavingLip;
+        this.departureLip=leavingLip;this.airQuarter=leavingLip.module.kind==="quarter"?leavingLip:null;
         this.lipClearTimer = TUNE.transitionRailClearTime;
         this.popTimer = 0.12;
         if (leavingLip.module.kind === "spine")
@@ -1725,7 +1729,7 @@ export class Simulation {
       this.airTime += dt;
       this.rampLean = damp(this.rampLean, 0, 4, dt);
       this.fakie.step(dt, this.yaw, this.velocity.x, this.velocity.z, 0, false);
-      const flipChord=input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||((this.bodyFlip.origin==='manual_hop'||this.bodyFlip.origin==='fastplant')&&Math.abs(input.lean)>.25));
+      const flipChord=input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||Math.abs(input.lean)>.25);
       this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch);
       this.spin = this.airSpin.step(
         dt,
@@ -1777,7 +1781,7 @@ export class Simulation {
       this.velocity.y > 0.3 &&
       this.popTimer === 0
     ) {
-      this.departureLip=lip;
+      this.departureLip=lip;this.airQuarter=lip.module.kind==="quarter"?lip:null;
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, input.lean, lip.forward);
       if (lip.module.kind === "box")

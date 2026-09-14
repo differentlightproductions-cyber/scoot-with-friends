@@ -26,5 +26,12 @@ export class CreditEconomy {
  buy(s:PartSelection){return this.transact(w=>{const part=PARTS.find(p=>p.id===s.partId);if(!part?.variants.some(v=>v.id===s.variantId))return 'Product unavailable';if(owns(w,s))return 'Already owned';
   const price=part.creditPrice??0;if(w.credit+w.testCredit<price)return 'Not enough Credit';
   const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;w.owned.push(ownershipKey(s));return 'ok';});}
+ equip(s:PartSelection,expectedRevision:number){
+  const run=()=>{const profile=loadProfile();if((profile.equipmentRevision??0)!==expectedRevision)return {error:'Your setup changed in another tab. Reopen the menu and retry.'};
+   const part=PARTS.find(p=>p.id===s.partId);if(!part?.variants.some(v=>v.id===s.variantId)||!owns(profile.wallet,s))return {error:'You do not own this colorway.'};
+   if(part.category==='wheels'){profile.scooter.frontWheel={...s};profile.scooter.rearWheel={...s};}else profile.scooter[part.category]={...s};
+   profile.equipmentRevision=expectedRevision+1;if(!saveProfile(profile))return {error:'Could not save. Your equipped setup is unchanged.'};return {profile};};
+  const op=this.queue.then(()=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('swf-alpha-wallet',run):run());this.queue=op.then(()=>{},()=>{});return op;
+ }
  setTestCredit(amount:number,owner:boolean){if(!owner)return Promise.resolve('Owner access required');return this.transact(w=>{w.testCredit=Math.max(0,Math.min(CREDIT_POLICY.maxBalance,Math.floor(amount)||0));return 'ok';});}
 }

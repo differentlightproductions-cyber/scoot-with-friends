@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "server/rooms.ts",
+    "server/start-rooms.ts",
+    "src/network/protocol.ts",
+    "server/accounts.ts"
+  ],
+  "compilerOptions": {
+    "types": [
+      "node",
+      "vite/client"
+    ]
+  }
+}

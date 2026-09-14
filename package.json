@@ -18,10 +18,14 @@
     "test:addendum": "node tests/addendum.browser.mjs",
     "test:riding": "node tests/riding-focus.browser.mjs",
     "test:visual": "node tests/visual-detail.browser.mjs",
-    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1"
+    "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
+    "rooms": "tsx server/start-rooms.ts",
+    "build:rooms": "tsc --noEmit -p tsconfig.rooms.json && node scripts/build-rooms.mjs",
+    "start:rooms": "node dist/rooms/start.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",
+    "@node-rs/argon2": "^2.2.1",
     "three": "0.180.0",
     "ws": "^8.21.3"
   },

@@ -176,7 +176,7 @@ export class ParkEditor {
       const result = await response.json();
       if (!response.ok) throw Error(result.error || "Publishing failed.");
       this.notice =
-        "Published! Players get this park when they next start a session.";
+        "Published! Players get this park when they next start a Sesh.";
     } catch (e) {
       this.notice = (e as Error).message;
     } finally {

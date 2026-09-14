@@ -18,6 +18,7 @@ export interface Interactable {
 interface StoredRide {ownerId:string; rackId:string; slot:number; loadout:ScooterLoadout; mesh:THREE.Group}
 export class WorldInteractions {
  readonly items:Interactable[]=[];
+ online=false;
  readonly prompt=document.createElement('div');
  stored:StoredRide|null=null;
  active: {type:string; time:number; duration:number; start:THREE.Vector3; end:THREE.Vector3; from:THREE.Quaternion; to:THREE.Quaternion; mesh?:THREE.Group; finish?:()=>void;itemId?:string;source?:THREE.Vector3;opened?:boolean;consumed?:boolean}|null=null;
@@ -58,12 +59,13 @@ export class WorldInteractions {
  }
  dispose(){this.prompt.remove();for(const group of [this.prop,this.water]){group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});group.removeFromParent();}}
  private rack(s:Simulation,id:string,base:THREE.Vector3){
+  if(this.online){this.openOptions('RACKS UNAVAILABLE ONLINE',[{label:'Shared rack storage is still in testing',action:()=>{}}]);return;}
   if(this.active)return;
   if(this.stored){
    if(this.stored.rackId!==id)return;
    const stored=this.stored;
    this.active={type:'grab',time:0,duration:.65,start:stored.mesh.position.clone(),end:s.position.clone().add(new THREE.Vector3(.48,-.22,0)),from:stored.mesh.quaternion.clone(),to:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),mesh:stored.mesh,finish:()=>{
-    this.profile.scooter=structuredClone(stored.loadout);s.hasScooter=true;stored.mesh.removeFromParent();stored.mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});this.stored=null;
+    s.hasScooter=true;stored.mesh.removeFromParent();stored.mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});this.stored=null;
    }};
   }else if(s.hasScooter){
    const mesh=new THREE.Group();new ScooterAssembly(mesh).build(this.profile.scooter);this.park.scene.add(mesh);
@@ -130,6 +132,7 @@ export class WorldInteractions {
   return input;
  }
  render(rider:RiderModel){
+  if(this.stored&&JSON.stringify(this.stored.loadout)!==JSON.stringify(this.profile.scooter)){new ScooterAssembly(this.stored.mesh).build(this.profile.scooter);this.stored.loadout=structuredClone(this.profile.scooter);}
   rider.scooter.visible=!this.stored || this.active?.type==='grab'&&this.active.time>=this.active.duration;
   this.refreshProp();this.prop.visible=!!this.profile.pockets.held&&!!this.current?.walking&&this.current?.state!=='Bail';
   if(this.prop.visible){rider.root.updateMatrixWorld(true);rider.hands[0].getWorldQuaternion(this.prop.quaternion);this.prop.position.copy(rider.hands[0].localToWorld(new THREE.Vector3(0,-.035,.075)));this.prop.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2));}

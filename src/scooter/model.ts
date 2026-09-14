@@ -428,6 +428,22 @@ export class RiderModel {
       this.headDetails.visible=false;this.helmet.visible=false;
     });}
   }
+  dispose(){this.humanRequest++;this.human?.dispose();this.human=undefined;const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();this.root.traverse(o=>{if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])materials.add(m);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.root.removeFromParent();}
+  posePreviewHands() {
+    this.root.updateMatrixWorld(true);
+    const inverse=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();
+    for(let i=0;i<2;i++){
+      const sign=i===0?-1:1,socket=this.assembly.gripSockets[i];
+      const rotation=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
+      const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.009,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
+      const shoulder=v(sign*.19,.17,0).applyEuler(this.torso.rotation).add(this.torso.position);
+      const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
+      const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.38,-.12,-.9).normalize(),bend);
+      poseRod(this.upperArms[i],shoulder,elbow);poseRod(this.forearms[i],elbow,hand);
+      this.hands[i].position.copy(hand);this.hands[i].quaternion.copy(rotation);this.hands[i].userData.openHand=0;
+    }
+    this.garmentSkins.forEach(g=>g.update());this.human?.update(0);this.root.updateMatrixWorld(true);
+  }
   update(s: Simulation, dt: number, alpha: number) {
     if(s.state==='Bail'&&s.crash){this.crashPose(s);return;}
     const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
@@ -501,6 +517,7 @@ export class RiderModel {
       (s.sitting?.id ? 0.8 : s.emote?.id === "sit" ? .65 : 0) +
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
+        (s.bodyFlip.active?Math.min(.32,Math.abs(s.bodyFlip.velocity)*.055):0) +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * (0.4 + s.landingCompression) : 0) +
         (s.popTimer > 0 ? 0.1 : 0);
@@ -558,7 +575,7 @@ export class RiderModel {
     this.helmet.position.set(0, (this.human?1.55:1.57) - c, -0.025 + c * 0.3);
     this.head.position.z += weight * TUNE.airWeightShiftStrength*.2;
     if(usingItem){this.scooter.position.set(.68,0,-.10);this.scooter.rotation.set(0,0,-.2);}
-    this.head.rotation.set(0,0,0);
+    this.head.rotation.set(s.bodyFlip.active?THREE.MathUtils.clamp(s.bodyFlip.velocity*.025,-.15,.15):0,0,0);
     if(s.emote) {
       const t=s.emote.time,fade=Math.min(1,t*6,(s.emote.duration-t)*6);
       if(s.emote.id==="nod"||s.emote.id==="laugh")this.head.rotation.x=Math.sin(t*9)*.2*fade;
@@ -774,7 +791,7 @@ export class RiderModel {
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
         const riderRotation=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();gripRotation.premultiply(riderRotation);
-        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,.035,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
+        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.009,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
       }
       if(grabbingHand){
         const deckTarget=this.rider.worldToLocal(this.assembly.deckSocket.getWorldPosition(new THREE.Vector3()));

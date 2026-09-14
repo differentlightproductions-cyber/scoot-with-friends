@@ -58,7 +58,7 @@ export class HumanCharacter {
     // The hand mesh uses the real fingers from the source mesh, bent into a
     // compact authored grip in the semantic hand frame rather than flat strips.
     const dominant=data.skinIndex[i][0],name=data.names[dominant];
-    if(data.handPoses[i]){pos.fromArray(data.handPoses[i].closed);relaxed.fromArray(data.handPoses[i].open);const side=name.endsWith('.R')?0:1,anchor=V(data.anchors[dominant][0]),center=anchor.add(new THREE.Vector3(0,-.035,data.handFrames[side].length)),dy=pos.y-center.y,dz=pos.z-center.z,r=Math.hypot(dy,dz),radius=(model.hands[side].userData.gripRadius??.024)+.005;if(r<radius&&r>.00001){pos.y=center.y+dy*radius/r;pos.z=center.z+dz*radius/r;}}
+    if(data.handPoses[i]){pos.fromArray(data.handPoses[i].closed);relaxed.fromArray(data.handPoses[i].open);}
     const uvKey=grid?(data.uv[t]??[0,0]).map(v=>Math.round(v/(quality==='low'?.04:.02))).join(','):t;
     const key=slot+':'+(grid?pos.toArray().map(v=>Math.round(v/grid)).join(','):i)+':'+uvKey+':'+data.skinIndex[i][0];
     let index=cache.get(key);if(index===undefined){index=p.length/3;cache.set(key,index);p.push(...pos.toArray());for(let side=0;side<2;side++)opened[side].push(...(name===('hand.'+(side===0?'R':'L'))?relaxed:pos).toArray());const lid=pos.clone();if(name==='head'&&quality!=='low')for(const pt of data.eyes){const e=V(pt),dx=Math.abs(pos.x-e.x),dy=pos.y-e.y;if(dx<.021&&Math.abs(dy)<.024&&pos.z>e.z-.012){const strength=(1-dx/.021)*Math.max(0,1-Math.abs(Math.abs(dy)-.01)/.016);lid.y+=(dy>0?-.016:.006)*strength;}}blinked.push(...lid.toArray());uv.push(...(data.uv[t]??[0,0]).slice(0,2));skin.push(...data.skinIndex[i]);weights.push(...data.skinWeight[i]);}return index;

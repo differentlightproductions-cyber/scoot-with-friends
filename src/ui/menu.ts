@@ -1,3 +1,4 @@
+import {SHOPS,shopStock} from '../data/shops';
 import {CreditEconomy,owns} from '../data/credit';
 import {BODY_BUILDS} from '../scooter/body-fit';
 import {loadProfile} from '../data/loadout';
@@ -18,10 +19,27 @@ import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
 export class GameMenu {
   screen = "home";
+  seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
+  private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
+  openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
+  private applySesh(){
+    const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return;}
+    for(const item of Object.values(this.profile.scooter))if(!owns(latest.wallet,item)){this.notice='An equipped item is not owned.';this.render();return;}
+    const nextRevision=(this.profile.equipmentRevision??0)+1;this.profile.equipmentRevision=nextRevision;
+    if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return;}
+    Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes saved on this device.';this.saveFailed=false;this.render();
+  }
+  private closeSesh(){this.profile=this.savedProfile!;this.savedProfile=null;this.seshOpen=false;this.root.hidden=true;this.root.classList.remove('sesh-overlay');this.onCloseSesh();}
+
   shopOpen=false;onCloseShop=()=>{};owner=()=>false;economy=new CreditEconomy();notice='';private pendingVariant='';private buying=false;
-  openShop(category:Category){this.shopOpen=true;this.root.hidden=false;this.category=category;this.show('parts');}
-  private equip(partId:string,variantId:string){const part=PARTS.find(p=>p.id===partId)!;const selection={partId,variantId};if(!owns(loadProfile().wallet,selection))return;
-   if(part.category==='wheels'){this.profile.scooter.frontWheel={...selection};this.profile.scooter.rearWheel={...selection};}else this.profile.scooter[part.category]=selection;this.changed();this.render();}
+  activeShop=SHOPS[0];
+  openShop(category:Category,shopId='techno_gravity'){this.activeShop=SHOPS.find(s=>s.id===shopId)??SHOPS[0];this.shopOpen=true;this.root.hidden=false;this.category=category;this.show('parts');}
+  private async equip(partId:string,variantId:string){
+    if(this.buying)return;const part=PARTS.find(p=>p.id===partId)!,selection={partId,variantId};if(!owns(loadProfile().wallet,selection))return;
+    if(this.seshOpen){if(part.category==='wheels'){this.profile.scooter.frontWheel={...selection};this.profile.scooter.rearWheel={...selection};}else this.profile.scooter[part.category]=selection;this.changed();this.render();return;}
+    this.buying=true;this.notice='Saving equipment?';this.render();const result=await this.economy.equip(selection,this.profile.equipmentRevision??0);this.buying=false;
+    if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Equipped / saved on this device.';this.saveFailed=false;}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();
+  }
 
   category: Category = "deck";
   product = "";
@@ -49,6 +67,7 @@ export class GameMenu {
   onRide = (_map: MapId) => {};
   onChange = () => {};
   onEditor = () => {};
+  networkChoices=():{label:string;detail?:string;action:()=>void}[]=>[];
   private choices: {
     label: string;
     detail?: string;
@@ -125,6 +144,7 @@ export class GameMenu {
     this.render();
   }
   private changed() {
+    if(this.seshOpen){this.previewRider.applyProfile(this.profile);return;}
     this.saveFailed = !saveProfile(this.profile);
     this.previewRider.applyProfile(this.profile);
     this.onChange();
@@ -135,7 +155,7 @@ export class GameMenu {
     ];
   }
   private render() {
-    this.root.classList.toggle('shop-overlay',this.shopOpen);
+    this.root.classList.toggle('shop-overlay',this.shopOpen);this.root.classList.toggle('sesh-overlay',this.seshOpen);
     const add = (
       label: string,
       action: () => void,
@@ -144,10 +164,14 @@ export class GameMenu {
     ) => this.choices.push({ label, action, detail, selected });
     this.choices = [];
     let title = "FIND YOUR FLOW.",
-      subtitle = "YOUR NEXT SESSION STARTS HERE";
+      subtitle = "YOUR NEXT SESH STARTS HERE";
     switch (this.screen) {
+      case "online":
+        title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
-        add("RIDE", () => this.show("maps"), "Choose a park");
+        add("RIDE", () => this.show("maps"), "Choose a destination");
+        add("SHOPS",()=>this.show("shops"),"Visit a shop, browse parts and ride its local spot");
+        add("PRIVATE FREE-RIDE",()=>this.show("online"),"Meet friends in a private room");
         add(
           "RIDER",
           () => this.show("rider"),
@@ -175,22 +199,30 @@ export class GameMenu {
         add("TAILWHIP / BARSPIN", () => {}, "Pro: stance whip button / B. Arcade: B whip / X bars. Tap once or hold for continuous rotations.");
         add("HEEL / FINGER WHIP", () => {}, "LT + whip = heelwhip. RT + whip = fingerwhip. LT + RT + whip = opposite fingerwhip.");
         add("BRI / INWARD BRI", () => {}, "RS down → lower-left → left = Bri. Down → lower-right → right = Inward. A complete circle still works. Finish the scoop near a ramp lip for an upward pop.");
-        add("KICKLESS / REWIND", () => {}, "While a whip is about 65–90% through its current sweep, flick RS up quickly for Kickless. Tap LB/RB to reverse the current deck motion. Hold a bumper briefly for the older Kickless input.");
-        add("FRONTFLIP / BACKFLIP", () => {}, "Complete a manual RS bunny hop first. In that same air, hold LT + RT and move LS forward/back. Diagonal LS adds spin. Release eases rotation; countersteer brakes it. Natural ramp air alone does not unlock flips.");
+        add("KICKLESS / REWIND", () => {}, "During an active whip: tap the opposite-direction bumper to Rewind, or hold it for Kickless. Regular natural whip: LB; Goofy: RB. Heelwhips swap those sides. Attempts can fail if landed unfinished. RS up remains an alternate Kickless flick.");
+        add("FRONTFLIP / BACKFLIP", () => {}, "During any valid air, hold LT + RT and move LS forward/back. Diagonal LS adds spin. Release eases rotation; countersteer brakes it. Natural ramp air and scooter trick combinations also permit flips.");
         add('SUPERMAN / GRABS',()=>{},'In the air, hold RT + Y for Superman (one trigger). LT + Y grabs the deck. LT + LB + Y tucks no-hands. RS charged takeoffs still work with a body-trick chord held.');
         add("FASTPLANT FRONTFLIP", () => {}, "At a reachable ramp/drop edge with enough speed and space, hold RT + LS forward and press physical A. The back foot plants, pushes once, then releases. Flat ground and midair cannot plant.");
         add("SPINS / FAKIE", () => {}, "Use LS while airborne to spin and shift your weight. Land rolling backward to enter fakie; hold it to build score.");
         add("GRINDS / MANUALS", () => {}, "RT asks for a close rail catch. Hold RS gently 20–50% down/up for manual/nose manual, then balance. A deeper down stroke loads a hop out. LB + RS remains an alternate manual input.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y Superman; LT + Y deck grab; LT + LB + Y tuck. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
-        add("ON-FOOT SOCIAL", () => {}, "Hold D-pad Left and choose with RS, release to emote or build in the Warehouse. Hold D-pad Right for local chat. Enter sends; Esc/B cancels. No multiplayer connection yet.");
+        add("ON-FOOT SOCIAL", () => {}, "Hold D-pad Left and choose with RS, release to emote or build in the Warehouse. Hold D-pad Right for local chat. Enter sends; Esc/B cancels. Private room chat is shared with connected friends; solo chat stays local.");
         add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
+        break;
+      case 'travel':
+        title='TRAVEL TO '+MAPS.find(m=>m.id===this.travelMap)!.name;subtitle='YOUR OWNED GEAR TRAVELS WITH YOU';
+        add('TRAVEL',()=>{const target=this.travelMap;this.closeSesh();this.onRide(target);},'Unapplied setup edits are discarded. Current attempt ends.');add('CANCEL',()=>this.show('maps'));break;
+      case "shops":
+        title='SHOPS';subtitle='LOCAL SHOPS / PLACES TO RIDE';
+        for(const shop of SHOPS)add(shop.name,()=>{if(this.seshOpen){this.travelMap=shop.mapId;this.show('travel');}else this.onRide(shop.mapId);},shop.description,this.currentMap===shop.mapId);
         break;
       case "maps":
         title = "MAP SELECT";
         subtitle = "THREE PLACES. YOUR LINE.";
         for (const map of MAPS)
-          add(map.name, () => this.onRide(map.id), map.type);
+          add(map.name, () => {if(this.seshOpen){this.travelMap=map.id;this.show('travel');}else this.onRide(map.id);}, map.type,this.seshOpen&&map.id===this.currentMap);
+        add("SHOPS",()=>this.show("shops"),"Browse shops and their riding spots");
         break;
       case "rider":
         add('BACKPACK',()=>{this.profile.pockets.backpack=!this.profile.pockets.backpack;this.changed();this.render();},this.profile.pockets.backpack?'Equipped / same inventory':'Off / Pockets');
@@ -239,8 +271,8 @@ export class GameMenu {
         break;
       case "parts":
         title = this.category.toUpperCase();
-        subtitle = "AUTHORED PARTS / "+loadProfile().wallet.credit+" CREDIT";
-        for (const part of PARTS.filter((p) => p.category === this.category))
+        subtitle = (this.shopOpen?this.activeShop.name.toUpperCase():"AUTHORED PARTS")+" / "+loadProfile().wallet.credit+" CREDIT";
+        for (const part of (this.shopOpen?shopStock(this.activeShop.id,this.category):PARTS.filter((p) => p.category === this.category)))
           add(
             part.name,
             () => {
@@ -261,7 +293,7 @@ export class GameMenu {
         for (const variant of part.variants)
           add(
             variant.name,
-            () => {this.pendingVariant=variant.id;if(owns(loadProfile().wallet,{partId:part.id,variantId:variant.id}))this.equip(part.id,variant.id);else this.show('purchase');},
+            () => {this.pendingVariant=variant.id;if(owns(loadProfile().wallet,{partId:part.id,variantId:variant.id}))this.equip(part.id,variant.id);else if(this.seshOpen){this.notice='Visit Techno Gravity to purchase this part.';this.render();}else this.show('purchase');},
             owns(loadProfile().wallet,{partId:part.id,variantId:variant.id})?'Owned / Equip':String(part.creditPrice)+' Credit',
             this.selected(this.category).partId === part.id &&
               this.selected(this.category).variantId === variant.id,
@@ -306,7 +338,7 @@ export class GameMenu {
           this.render();
         });
         title = "SETTINGS";
-        subtitle = "KEEP THE SESSION FEELING RIGHT";
+        subtitle = "KEEP THE SESH FEELING RIGHT";
         add("SOUND " + (this.profile.settings.sound ? "ON" : "OFF"), () => {
           this.profile.settings.sound = !this.profile.settings.sound;
           this.changed();
@@ -323,14 +355,15 @@ export class GameMenu {
         );
         break;
     }
+    if(this.seshOpen && ["rider","scooter","settings"].includes(this.screen))add("APPLY / SAVE CHANGES",()=>this.applySesh(),"Appearance refreshes when safely grounded; no points awarded.");
     if (this.screen !== "home")
       add(
-        this.screen === "scooter" || this.screen === "rider"
+        !this.seshOpen && (this.screen === "scooter" || this.screen === "rider")
           ? "SAVE & BACK"
-          : "BACK",
+          : this.seshOpen&&["rider","scooter","settings"].includes(this.screen)?"CANCEL / BACK":"BACK",
         () => this.back(),
       );
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<MAPS.length?`<img class="map-list-thumb" src="${MAPS[i].preview}" alt="${MAPS[i].name}">`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -400,6 +433,8 @@ export class GameMenu {
   }
   back() {
     if(this.buying)return;
+    if(this.seshOpen&&["rider","scooter","settings","maps","shops","online"].includes(this.screen)){this.closeSesh();return;}
+    if(this.seshOpen&&this.screen==="travel"){this.show("maps");return;}
     if(this.shopOpen&&this.screen==="parts"){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();return;}
     if(["purchase","purchased"].includes(this.screen)){this.show("variants");return;}
     this.show(
@@ -440,17 +475,19 @@ export class GameMenu {
     if (Math.abs(input.ry) > 0.05) this.zoomTarget = this.zoom;
   }
   preview(renderer: THREE.WebGLRenderer) {
+    this.previewRider.posePreviewHands();
     const scooter=["scooter","parts","variants","purchase","purchased"].includes(this.screen);
     this.previewRider.rider.visible=!scooter;
     const floor=this.previewScene.getObjectByName('Preview floor');if(floor)floor.visible=!this.shopOpen;
-    const x=this.shopOpen?Math.round(innerWidth*.40):0,w=this.shopOpen?Math.round(innerWidth*.55):innerWidth,h=this.shopOpen?Math.round(innerHeight*.62):innerHeight,y=this.shopOpen?Math.round(innerHeight*.20):0;
+    const compact=this.shopOpen||this.seshOpen;
+    const x=compact?Math.round(innerWidth*.40):0,w=compact?Math.round(innerWidth*.55):innerWidth,h=compact?Math.round(innerHeight*.62):innerHeight,y=compact?Math.round(innerHeight*.20):0;
     const center=this.focus.clone().add(this.pan);if(!this.shopOpen)center.x-=.5;
     const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
     this.previewCamera.aspect=w/h;
     this.previewCamera.position.set(this.focus.x+this.pan.x+Math.sin(this.orbit)*distance,this.focus.y+this.pan.y+distance*.22,this.focus.z+this.pan.z+Math.cos(this.orbit)*distance);
     this.previewCamera.lookAt(center);this.previewCamera.updateProjectionMatrix();
-    if(this.shopOpen){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
+    if(compact){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
     renderer.render(this.previewScene,this.previewCamera);
-    if(this.shopOpen){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
+    if(compact){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
   }
 }

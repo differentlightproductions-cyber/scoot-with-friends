@@ -27,3 +27,7 @@ test-results/
 scripts/extend-focus.cjs
 references/techno-gravity/
 assets-source/humans/system-assets.zip
+.data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

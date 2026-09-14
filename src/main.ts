@@ -1,3 +1,5 @@
+import {shopForMap} from './data/shops';
+import {FreeRide} from './network/client';
 import {CreditEconomy} from './data/credit';
 import { ParkEditor } from "./editor/editor";
 import { buildObject, deformGroundLayers } from "./editor/assets";
@@ -86,13 +88,27 @@ async function boot() {
   audio.enabled = profile.settings.sound;
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
+  const network=new FreeRide(scene,profile,()=>sim);
+  network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
+  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  events.on(e=>{if(e.type==='playerChat'&&network.status==='Connected')network.send({type:'chat',message:e.message});});
   const menu = new GameMenu(document.querySelector("#start")!, profile);
+  network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
+  menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
+    {label:network.status,action:()=>{}},
+    ...(network.id?[{label:'COPY INVITE',action:()=>void navigator.clipboard.writeText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
+    ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
+    {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
+    {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
+    ])];
+  network.onChange=()=>{if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   menu.economy=economy;menu.owner=()=>editor.owner;menu.onCloseShop=()=>{input.clear();pending=emptyInput();accumulator=0;};
   const shopPrompt=document.createElement("div");shopPrompt.className="world-prompt";shopPrompt.hidden=true;document.body.append(shopPrompt);
   const fidelity=new VisualFidelity(renderer);
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
-  menu.onChange = () => {
-    rider.applyProfile(profile);
+  let appearancePending=false;
+  menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
+  menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
     sim.grindAssist = profile.settings.grindAssist;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
@@ -120,7 +136,7 @@ async function boot() {
     }
   }
   void latestPark();
-  menu.onRide = async (id) => {
+  const loadDestination = async (id:MapId) => {
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if (id === "outdoor") await latestPark();
     setActiveLayout(id === "outdoor" ? publicLayout : null);
@@ -128,7 +144,10 @@ async function boot() {
     startSession(id, true);
     if (id === "outdoor" && publicLayout) applyLayout(publicLayout, false);
   };
+  network.loadMap=async id=>{await loadDestination(id as MapId);};
+  menu.onRide=async id=>{if(network.id){await network.changeMap(id);return;}await loadDestination(id);};
   menu.onEditor = () => {
+    if(network.id){menu.notice="Leave the room before editing a park.";menu.show("online");return;}
     if (
       !editor.history.past.length &&
       !editor.layout.objects.length &&
@@ -287,8 +306,8 @@ async function boot() {
       "?map="+id,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY":"WAREHOUSE <b>01</b>") +
-      '<span id="score">SESSION 0 / LINE 0</span>';
+      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":"WAREHOUSE <b>01</b>") +
+      '<span id="score">SESH 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
     ).join("");
@@ -357,7 +376,13 @@ async function boot() {
             reset();
             break;
           case "map":
-            startSession(OUTDOOR ? "warehouse" : "outdoor");
+          case "rider":
+          case "scooter":
+          case "online":
+          case "settings":
+            menu.openSesh(button.dataset.action==="map"?"maps":button.dataset.action!,ACTIVE_MAP as MapId);
+            (document.querySelector("#pause") as HTMLElement).hidden=true;
+            input.clear();pending=emptyInput();accumulator=0;
             break;
           case "sound":
             audio.enabled = !audio.enabled;
@@ -392,15 +417,16 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
+    if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;}
     daylight.update(dt,profile.settings.daylight,sim.position);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
-    interactions.render(rider);
+    interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
-    if (hud.started) renderer.render(scene, camera.camera);
-    if(!hud.started||menu.shopOpen)menu.preview(renderer);
+    if (hud.started){network.render(camera.camera,dt);renderer.render(scene, camera.camera);}
+    if(!hud.started||menu.shopOpen||menu.seshOpen)menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
@@ -418,7 +444,7 @@ async function boot() {
       editor.update(frame, dt);
       return;
     }
-    if(menu.shopOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
+    if(menu.shopOpen||menu.seshOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if (!hud.started) {
       menu.update(frame, dt);
       render(dt);
@@ -443,7 +469,7 @@ async function boot() {
       if (!stillHeld) startHopBlocked = false;
     }
     shopPrompt.hidden=true;
-    if(ACTIVE_MAP==='techno_gravity'&&sim.walking){const displays=[[-4.7,-.3,'wheels'],[-4.7,2.5,'clamp'],[4.8,3,'bars'],[-4.7,5,'deck'],[4.8,.2,'fork'],[4.8,5.5,'grips'],[0,6.8,'bearings']] as const;const nearest=displays.find(([x,z])=>Math.hypot(sim.position.x-x,sim.position.z-z)<1.6);if(nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest[2];if(frame.pressed.brakeBars){menu.openShop(nearest[2]);input.clear();accumulator=0;render(dt);return;}}}
+    if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
     if(builder.placement)frame=builder.update(sim,frame,dt);
     else {
       frame = social.update(sim, frame, dt);
@@ -502,6 +528,7 @@ async function boot() {
       menu,
       editor,
       profile,
+      network,
       startSession,
       exitToMenu,
       get rider() {

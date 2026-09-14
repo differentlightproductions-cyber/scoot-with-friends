@@ -64,7 +64,7 @@ export class ScooterAssembly {
   }
   const grips=get('grips');this.gripSockets=[];
   for(const s of [-1,1]){
-   const r=grips.part.shape==='soft'?.029:.024;
+   const r=grips.part.shape==='soft'?.019:.0165;
    add(this.barPivot,lathe([[0,-.065],[r*.83,-.065],[r,-.06],[r,.06],[r*.88,.065],[0,.065]]).rotateZ(Math.PI/2),grips.variant.color,grips.part.id,'rubber',v(s*(bw-.055),1.01,-.04));
    for(let j=0;j<16;j++)add(this.barPivot,new THREE.TorusGeometry(r,.0012,6,24).rotateY(Math.PI/2),grips.variant.color,grips.part.id,'rubber',v(s*(bw-.115+j*.008),1.01,-.04));
    add(this.barPivot,lathe([[0,-.004],[r,-.004],[r+.002,0],[r,.006],[0,.006]]).rotateZ(Math.PI/2),0x263333,grips.part.id,'rubber',v(s*(bw+.014),1.01,-.04));

@@ -6,6 +6,7 @@ import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
 export interface LocalProfile {
   version: 1 | 2 | 3;
+  equipmentRevision?:number;
   wallet:AlphaWallet;
   outfit: Outfit;
   riderOutfits:Record<string,Outfit>;
@@ -52,6 +53,7 @@ export function loadProfile(): LocalProfile {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3].includes(saved.version)) return profile;
     profile.wallet=validWallet(saved.wallet);
+    profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
     profile.pockets=validPockets(saved.pockets);
     if(BODY_BUILDS.includes(saved.bodyBuild))profile.bodyBuild=saved.bodyBuild;
     for(const slot of OUTFIT_SLOTS)if(CLOTHING.some(p=>p.category===slot&&p.id===saved.outfit?.[slot]))profile.outfit[slot]=saved.outfit[slot];

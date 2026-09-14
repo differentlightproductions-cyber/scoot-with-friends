@@ -9,4 +9,7 @@ test('confirmed rewards, atomic purchases, duplicate input, storage failure and 
  assert.equal(await e.setTestCredit(1000,false),'Owner access required');assert.equal(await e.setTestCredit(1000,true),'ok');
  const wheel={partId:'mafioso-wheels-petal',variantId:'mafioso_wheels_petal_oilslick'};fail=true;assert.match(await e.buy(wheel),/Saving failed/);assert.equal(loadProfile().wallet.testCredit,1000);assert.equal(owns(loadProfile().wallet,wheel),false);fail=false;
  assert.equal(await e.buy(wheel),'ok');assert.equal(loadProfile().wallet.testCredit,945);assert.equal(loadProfile().wallet.credit,1);assert.ok(owns(loadProfile().wallet,wheel));
+ const equipped=await e.equip(wheel,0);assert.ok(equipped.profile);assert.deepEqual(loadProfile().scooter.frontWheel,wheel);assert.deepEqual(loadProfile().scooter.rearWheel,wheel);assert.equal(loadProfile().equipmentRevision,1);
+ assert.ok((await e.equip(part,0)).error);assert.deepEqual(loadProfile().scooter.frontWheel,wheel);
+ fail=true;assert.ok((await e.equip(part,1)).error);fail=false;assert.equal(loadProfile().equipmentRevision,1);
 });

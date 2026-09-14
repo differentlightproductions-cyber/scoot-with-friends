@@ -929,3 +929,7 @@ body.editing #app {
 .shop-overlay .game-menu button.selected{background:#304944;color:#fff}.shop-overlay .game-menu button small{font-size:12px}
 .shop-overlay .game-menu .build-number,.shop-overlay #connection{display:none}.shop-overlay .menu-controls,.shop-overlay .menu-save-note{font-size:11px}
 @media(max-width:800px){.shop-overlay .game-menu{left:2%;top:8%;bottom:7%;width:34%;max-width:none;padding:10px}.shop-overlay .game-menu h1{font-size:21px}.shop-overlay .game-menu button{font-size:13px}.shop-overlay .menu-save-note{display:none}.shop-overlay .menu-controls{font-size:10px}}
+
+.sesh-overlay{background:#10202a88!important}.sesh-overlay .game-menu{width:38vw;max-height:84dvh;margin:5dvh 0 0 3vw;overflow:auto;background:#14242eee;padding:20px;border-radius:12px}.sesh-overlay .game-menu h1{font-size:28px}.sesh-overlay .map-preview{width:28vw;right:8vw;top:25vh}.sesh-overlay .map-preview img{max-height:180px;object-fit:cover}.sesh-overlay .game-menu button{font-size:16px}.sesh-overlay .menu-save-note{font-size:14px}
+.remote-name{position:fixed;transform:translate(-50%,-100%);white-space:pre-line;max-width:230px;background:#13222bcc;color:white;border-radius:5px;padding:4px 8px;font:14px sans-serif;pointer-events:none;z-index:8;text-align:center}
+.map-list-thumb{width:92px;height:56px;object-fit:cover;float:right;margin-left:12px;border-radius:4px}.network-status{position:fixed;right:18px;bottom:70px;font:14px sans-serif;color:white;background:#17262bcc;padding:6px 10px;border-radius:5px;z-index:9;pointer-events:none}

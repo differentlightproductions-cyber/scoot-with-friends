@@ -3,6 +3,7 @@ import type { LandingQuality } from "../core/events";
 export interface TrickPrimitives {
   bodyYaw: number;
   flipPitch: number;
+  flairContext?:boolean;
   deckAngle: number;
   barAngle: number;
   deckTurns: number;
@@ -197,9 +198,11 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
   }
   if (raw.out && name) name += " Out";
   if(flipName)name=`${flipName}${degrees?' '+degrees:''}${parts.length?' + '+parts.join(' + '):''}${raw.out?' Out':''}`;
+  const flair=raw.flairContext&&raw.flipPitch<0&&flips===1&&degrees===180;
+  if(flair)name=['Flair',...parts].filter(Boolean).join(' + ');
   return {
     name,
-    recognized: rule?.id ?? (downside ? "downside-whip" : null),
+    recognized: flair?"flair":rule?.id ?? (downside ? "downside-whip" : null),
     components,
     raw: { ...raw, states: [...raw.states], direction: { ...raw.direction } },
   };

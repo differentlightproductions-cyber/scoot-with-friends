@@ -188,7 +188,8 @@ export class Tricks {
   private completed = { deck: 0, bri: 0, kickless: 0 };
   private kicklessBuffer=0;
   private continueKickless(side:string,direction:number) {
-    if(Math.abs(this.bri.velocity)>1||this.poseBlend>.25||this.fingerTime>0)return false;
+    // A low or overlapping attempt still starts its physical animation; landing decides success.
+    this.fingerTime=0;
     const startAngle=this.kickless.target;
     this.kickless.kick(direction);
     this.kicklessHistory.push({originalDirection:this.deck.originalDirection,direction,stance:this.stance,side,deckAngle:this.deck.angle,startAngle,targetAngle:this.kickless.target,completed:false});
@@ -214,12 +215,12 @@ export class Tricks {
       ["rightModifier", "right", 1],
     ] as const) {
       if (!input.pressed[action] || this.pendingBumper) continue;
-      if (this.deck.canRewind) {
-        // Capture eligibility now, then slow toward the catch while distinguishing tap/hold.
-        // Both feet can redirect a deck; bars still require the opposite requested direction.
+      if ((Math.abs(this.deck.velocity)>.05||this.deck.mismatch>.02)&&Math.abs(this.deck.segmentEnd-this.deck.segmentStart)>.02) {
+        // Capture an active whip without a narrow percentage gate; the bumper chooses return direction.
         const current = Math.sign(
           this.deck.segmentEnd - this.deck.segmentStart,
         );
+        if(requested!==-current)continue;
         this.pendingBumper = {
           action,
           side,
@@ -307,7 +308,7 @@ export class Tricks {
                     : "No-hander";
     } else {
       const gesture = this.gesture.step(dt, input.rx, input.ry);
-      if (gesture?.kind === "bri" && Math.abs(this.kickless.velocity)<1 && this.fingerTime===0) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
+      if (gesture?.kind === "bri") this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
       if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=.16;
       this.kicklessBuffer=Math.max(0,this.kicklessBuffer-dt);
       if(this.kicklessBuffer>0&&(this.deck.canRewind||this.pendingBumper)&&Math.abs(this.kickless.velocity)<1){
@@ -326,6 +327,7 @@ export class Tricks {
   bars = new RotationChannel(TUNE.barAcceleration, TUNE.barMaxSpeed);
   yaw = 0;
   flip = 0;
+  flairContext=false;
   fastplant = false;
   body = new Set<string>();
   bodyTime = 0;
@@ -395,7 +397,7 @@ export class Tricks {
     this.deck.reset();
     this.bars.reset();
     this.yaw = 0;
-    this.flip = 0;
+    this.flip = 0;this.flairContext=false;
     this.fastplant = false;
     this.body.clear();
     this.bodyTime = 0;
@@ -458,6 +460,7 @@ export class Tricks {
     const raw: TrickPrimitives = {
       bodyYaw: this.yaw,
       flipPitch: this.flip,
+      flairContext:this.flairContext,
       fastplant: this.fastplant,
       deckAngle: this.deck.angle,
       barAngle: this.bars.angle,

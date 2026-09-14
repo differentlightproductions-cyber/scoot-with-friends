@@ -88,8 +88,9 @@ test("Bumper tap rewinds but held bumper transitions to kickless; eligibility su
       t.deck.kick(direction);
       window(t);
       const f = emptyInput();
-      f.pressed.leftModifier = true;
-      f.held.leftModifier = 1;
+      const bumper=direction===1?"leftModifier":"rightModifier";
+      f.pressed[bumper] = true;
+      f.held[bumper] = 1;
       run(t, hold ? 0.21 : 0.06, f);
       if (!hold) run(t, dt);
       assert.equal(t.deck.reversals.length, hold ? 0 : 1);
@@ -152,4 +153,18 @@ test("Neutral bumper holds and RS scoops cannot create kickless, body family nee
     run(t, 0.3, f);
     assert.ok(t.body.has(name));
   }
+});
+
+test('stance-directional bumper attempts animate early and late without a landing-success gate',()=>{
+ for(const stance of ['regular','goofy'] as const)for(const hold of [false,true])for(const progress of [.08,.4,.96]){
+  const t=new Tricks(new Events());t.stance=stance;t.startAir(false);const d=t.naturalDirection;t.deck.kick(d);
+  t.deck.angle=d*Math.PI*2*progress;t.deck.velocity=d*8;
+  const correct=d===1?'leftModifier':'rightModifier',wrong=d===1?'rightModifier':'leftModifier';
+  let f=emptyInput();f.pressed[wrong]=true;f.held[wrong]=1;run(t,dt,f);assert.equal(t.pendingBumper,null);
+  f=emptyInput();f.pressed[correct]=true;f.held[correct]=1;run(t,hold?.21:.025,f);if(!hold)run(t,dt);
+  const before=hold?t.kickless.angle:t.deck.angle;run(t,.12);const after=hold?t.kickless.angle:t.deck.angle;
+  assert.notEqual(after,before,'accepted attempt must move the model channel');
+  assert.equal(hold?t.kicklessHistory.length:t.deck.reversals.length,1);
+  t.reset();assert.equal(t.pendingBumper,null);assert.equal(t.kicklessHistory.length,0);
+ }
 });
