@@ -11,3 +11,17 @@ work/
 .agents/
 
 owner-private.json
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
+.DS_Store
+.vscode/
+.cache/
+coverage/
+playwright-report/
+test-results/
+scripts/extend-focus.cjs

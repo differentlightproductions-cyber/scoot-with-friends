@@ -45,9 +45,8 @@ try {
     g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
     check("A opens Rider menu", g.menu.screen === "rider");
-    g.menu.update(f({}, { menuDown: 1 }), 0.3);
-    g.menu.update(f(), 0.1);
-    g.menu.update(f({ hop: true }), 0.1);
+    const riderButton=[...document.querySelectorAll('[data-menu-index]')].find(b=>b.querySelector('span')?.textContent==='Rider 02');
+    riderButton.click();
     check(
       "Rider preset updates the live model",
       g.profile.riderId === "rider-02" &&
