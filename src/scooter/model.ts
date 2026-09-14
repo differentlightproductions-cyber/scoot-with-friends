@@ -751,7 +751,7 @@ export class RiderModel {
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
         const riderRotation=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();gripRotation.premultiply(riderRotation);
-        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,.03,-.018).applyQuaternion(gripRotation));
+        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,.035,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
       }
       if(grabbingHand){
         const deckTarget=this.rider.worldToLocal(this.assembly.deckSocket.getWorldPosition(new THREE.Vector3()));

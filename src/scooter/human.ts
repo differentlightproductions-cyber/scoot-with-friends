@@ -3,7 +3,7 @@ import {detailTexture,lathe,tube} from './surfaces';
 export interface HumanRig {rider:THREE.Group;hips:THREE.Object3D;torso:THREE.Object3D;head:THREE.Object3D;neck:THREE.Object3D;helmet:THREE.Object3D;upperArms:THREE.Object3D[];forearms:THREE.Object3D[];hands:THREE.Object3D[];thighs:THREE.Object3D[];shins:THREE.Object3D[];shoes:THREE.Object3D[]}
 export type CharacterQuality='low'|'medium'|'high';
 type MeshAsset={positions:number[][];skinIndex:number[][];skinWeight:number[][];uv:number[][];faces:number[][][];remove?:number[];lod?:Record<string,number[][][]>};
-type Asset=MeshAsset&{names:string[];anchors:number[][][];eyes:number[][];garments:Record<string,MeshAsset>;hair:MeshAsset};
+type Asset=MeshAsset&{names:string[];anchors:number[][][];eyes:number[][];handFrames:{across:number[];along:number[];normal:number[];length:number}[];garments:Record<string,MeshAsset>;hair:MeshAsset};
 const assets=new Map<string,Asset>(),requests=new Map<string,Promise<void>>();
 export function loadHuman(id:string){
  const key=['rider-01','rider-02','rider-03'].includes(id)?id:'rider-01';
@@ -23,6 +23,7 @@ export class HumanCharacter {
  constructor(private model:HumanRig,public id:string,public quality:CharacterQuality,private outfit:{top:string;bottom:string;head:string},colors:number[]){
   const data=assets.get(id)!;if(!data)throw Error('Human must be loaded before construction');
   this.group.name='Anatomical rider '+id;this.group.userData.quality=quality;
+  model.hands.forEach((hand,i)=>{hand.userData.palmLength=data.handFrames[i].length;});
   this.drivers=[model.hips,model.torso,model.head,model.neck,model.upperArms[0],model.forearms[0],model.hands[0],model.thighs[0],model.shins[0],model.shoes[0],model.upperArms[1],model.forearms[1],model.hands[1],model.thighs[1],model.shins[1],model.shoes[1]];
   data.names.forEach((name,i)=>{const [a,b]=data.anchors[i].map(V),limb=/upper\.|lower\.|thigh\.|shin\.|neck/.test(name),frame=new THREE.Matrix4();
    if(name==='head')a.add(new THREE.Vector3(0,-.04,-.008));
@@ -54,7 +55,18 @@ export class HumanCharacter {
     // The hand mesh uses the real fingers from the source mesh, bent into a
     // compact authored grip in the semantic hand frame rather than flat strips.
     const dominant=data.skinIndex[i][0],name=data.names[dominant];
-    if(name.startsWith('hand.')&&data.skinWeight[i][0]>.65){const a=V(data.anchors[dominant][0]),b=V(data.anchors[dominant][1]),q=new THREE.Quaternion().setFromUnitVectors(b.sub(a).normalize(),new THREE.Vector3(0,-1,0));const h=pos.clone().sub(a).applyQuaternion(q);relaxed.copy(a).add(h);const t=Math.max(0,-h.y-.021),angle=Math.min(2.4,t/.025);h.y=-.021-Math.sin(angle)*.025;h.z+= (1-Math.cos(angle))*.025;pos.copy(a).add(h);}
+    if(name.startsWith('hand.')&&data.skinWeight[i][0]>.65){
+     const a=V(data.anchors[dominant][0]),frame=data.handFrames[name.endsWith('.R')?0:1];
+     const offset=pos.clone().sub(a),length=offset.dot(V(frame.along)),thickness=offset.dot(V(frame.normal));
+     const h=new THREE.Vector3(offset.dot(V(frame.across)),0,0),palm=frame.length;
+     // Keep the palm and wrist volume. Only the fingers curl around the grip;
+     // flattening every proximal vertex onto the knuckle plane collapses wrists.
+     relaxed.copy(a).add(new THREE.Vector3(h.x,thickness,length));
+     const finger=Math.max(0,length-palm),angle=Math.min(3.05,finger/.026);
+     h.y=thickness-(1-Math.cos(angle))*.026;
+     h.z=length<=palm?length:palm+Math.sin(angle)*.026;
+     pos.copy(a).add(h);
+    }
     const uvKey=grid?(data.uv[t]??[0,0]).map(v=>Math.round(v/(quality==='low'?.04:.02))).join(','):t;
     const key=slot+':'+(grid?pos.toArray().map(v=>Math.round(v/grid)).join(','):i)+':'+uvKey+':'+data.skinIndex[i][0];
     let index=cache.get(key);if(index===undefined){index=p.length/3;cache.set(key,index);p.push(...pos.toArray());for(let side=0;side<2;side++)opened[side].push(...(name===('hand.'+(side===0?'R':'L'))?relaxed:pos).toArray());const lid=pos.clone();if(name==='head'&&quality!=='low')for(const pt of data.eyes){const e=V(pt),dx=Math.abs(pos.x-e.x),dy=pos.y-e.y;if(dx<.021&&Math.abs(dy)<.024&&pos.z>e.z-.012){const strength=(1-dx/.021)*Math.max(0,1-Math.abs(Math.abs(dy)-.01)/.016);lid.y+=(dy>0?-.016:.006)*strength;}}blinked.push(...lid.toArray());uv.push(...(data.uv[t]??[0,0]).slice(0,2));skin.push(...data.skinIndex[i]);weights.push(...data.skinWeight[i]);}return index;
