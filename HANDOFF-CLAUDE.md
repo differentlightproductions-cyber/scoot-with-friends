@@ -1,5 +1,17 @@
 # September 14 UI alpha handoff
 
+## Latest account and menu follow-up (public version 21)
+
+Live game: https://scoot-with-friends.nicsoundcloud22.chatgpt.site/?map=outdoor . Deployed application source: `980f9d6f9a9eb091f1bea35aeda958123135838c`. Subsequent handoff-only commit does not alter the deployed application. The owner explicitly requested this GitHub upload again so Claude can continue; future uploads still need fresh authorization.
+
+Main-menu Play and Shops now use a distinct deep-teal selected color, light outline and arrow. Selection scrolls into view. Keyboard navigation verified in Chrome on the published build. ACCOUNT is visible on the main menu with username/password registration, login, logout, refresh and one-use recovery-code password reset. Registration/session identity is persisted in the existing Sites project's new D1 DB binding; PARKS R2 is retained. Passwords use salted PBKDF2-SHA256 / 600,000 iterations, sessions use hashed random credentials and Secure/HttpOnly/SameSite=Strict cookies. Mutations validate Origin, JSON size and rate limits. See ACCOUNT-NOTES.md and server/auth-api.ts.
+
+Verified: 48 unit/service tests pass; production build passes; UI regression browser checks pass. Actual public Chrome registration, logout, returning login, secure cookie, account refresh and reload persistence passed. Registration took 4454 ms in that single live test. The passing live test account was deleted. An earlier test failed after logout due to the registration screen remaining selected; fixed in 980f9d6. That earlier random qa_ account may remain orphaned because its cleanup ran after logout; it has no permissions or progress. Do not expose password hashes when inspecting account records.
+
+Limits: accounts identify users only. Equipment, alpha Credit and game progress remain device-local, are NOT cloud-synced, and are not a secure paid wallet. The old Node accounts/starter data layer is separate and not migrated. Charizard495 is reserved but not provisioned; no owner/admin privileges are granted through registration. Recovery uses the displayed code, not email. Password entry belongs in the game UI, never chat. Local/Windows copies explain that online accounts require the published website and remain playable offline. Internet multiplayer still requires its own approved persistent room host; this account update does not complete it. Physical mobile account/controller tests remain unverified.
+
+Current app changes were published only to the existing Site. GitHub main and feature/private-multiplayer should contain these changes plus this note after this requested handoff. Start Claude from updated main in a separate clone/worktree. Preserve the current D1 tables/migration journal and do not republish a pre-account build over them.
+
 Start a separate clone/worktree from the updated GitHub main branch. Do not reuse this agent's working checkout while it is running. The user explicitly authorized this upload; it does not grant blanket permission for future GitHub pushes.
 
 This pass changes menu presentation, loading, static shop display generation and cosmetic accessory fit only. No riding physics/input thresholds/scoring rules changed.
