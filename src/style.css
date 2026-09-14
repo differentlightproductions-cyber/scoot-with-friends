@@ -892,3 +892,18 @@ body.editing #app {
 #park-editor footer small {
   display: block;
 }
+#trick-attempt{position:absolute;left:4vw;bottom:25vh;max-width:75vw;font-size:clamp(18px,2.3vw,34px);font-weight:900;font-style:italic;letter-spacing:-.03em;color:#f2dfb5;text-shadow:2px 3px #183034;pointer-events:none;transform:rotate(-2deg)}
+#trick-attempt.provisional{border-left:5px solid #ec6845;padding-left:12px}
+#trick-attempt.shatter span{display:inline-block;animation:trick-shatter 1.05s ease-in forwards}
+@keyframes trick-shatter{20%{opacity:1}100%{transform:translate(calc((var(--i) - 3)*11px),calc(60px + var(--i)*9px)) rotate(calc((var(--i) - 3)*7deg));opacity:0}}
+@media(prefers-reduced-motion:reduce){#trick-attempt.shatter span{animation:none;opacity:.35}}
+#emote-wheel{position:fixed;width:340px;height:340px;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,#183034e8 25%,#183034cc 26%,#183034ee 69%,#efdcc780 70%);z-index:30;color:#f4e4c8;pointer-events:none}
+#emote-wheel strong{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:14px;letter-spacing:.16em}
+#emote-wheel span{position:absolute;transform:translate(-50%,-50%);font-size:12px;text-transform:uppercase;white-space:nowrap;padding:8px 10px;border-radius:8px}
+#emote-wheel span.selected{background:#ea673f;color:white}
+#social-chat{position:fixed;bottom:18%;left:50%;transform:translateX(-50%);width:min(420px,80vw);background:#183034ed;padding:14px;border-left:4px solid #ea673f;z-index:35}
+#social-chat input{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid #f4e4c866;background:transparent;color:#fff;font-size:18px;padding:8px;outline:none}
+#social-chat small{display:block;font-size:10px;margin-top:10px;color:#c8d3c6}
+#player-bubble{position:fixed;transform:translate(-50%,-100%);max-width:230px;background:#f2ead9ed;color:#203937;border-radius:10px;padding:9px 13px;font-size:14px;line-height:1.35;overflow-wrap:anywhere;box-shadow:0 3px 8px #0003;pointer-events:none;z-index:15}
+#player-bubble:after{content:"";position:absolute;top:100%;left:50%;border:6px solid transparent;border-top-color:#f2ead9ed}
+#player-nameplate{position:fixed;color:white;pointer-events:none}

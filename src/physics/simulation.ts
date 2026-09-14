@@ -55,6 +55,7 @@ export class Simulation {
     null;
   walking = false;
   sitting: { id: string; origin: THREE.Vector3 } | null = null;
+  hasScooter = true;
   running = false;
   marker = new MarkerSystem();
   airWeight = new AirWeightControl();
@@ -84,11 +85,15 @@ export class Simulation {
   grindDuration = 0;
   pushTimer = 0;
   pushHoldTime = 0;
+  emote: { id: string; time: number; duration: number } | null = null;
+  private pendingPushTap = false;
+  private lastRS = { x: 0, y: 0 };
   pumpTimer = 0;
   popTimer = 0;
   airTime = 0;
   recovery = 0;
   landTimer = 0;
+  landingCompression = 0;
   bailTimer = 0;
   stall: {
     anchor: THREE.Vector3;
@@ -115,6 +120,13 @@ export class Simulation {
   private manualRecorded = false;
   private lastSpeed = 0;
   private grindCooldown = 0;
+  private releasingRail: number | undefined;
+  contactEvents = new RAPIER.EventQueue(true);
+  private contactHooks: RAPIER.PhysicsHooks = {
+    filterContactPair: (a,b) => this.grindCooldown > 0 && this.releasingRail !== undefined &&
+      (a===this.releasingRail || b===this.releasingRail) ? null : RAPIER.SolverFlags.COMPUTE_IMPULSE,
+    filterIntersectionPair: () => true,
+  };
   constructor(
     public world: RAPIER.World,
     public park: Park,
@@ -132,7 +144,8 @@ export class Simulation {
         .setMass(65)
         .setFriction(0)
         .setRestitution(0)
-        .setCollisionGroups(GROUPS.chassis),
+        .setCollisionGroups(GROUPS.chassis)
+        .setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS),
       this.body,
     );
     this.railGuard = world.createCollider(
@@ -141,7 +154,8 @@ export class Simulation {
         .setDensity(0)
         .setFriction(0.05)
         .setRestitution(0)
-        .setCollisionGroups(GROUPS.railGuard),
+        .setCollisionGroups(GROUPS.railGuard)
+        .setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS),
       this.body,
     );
     this.tricks = new Tricks(events);
@@ -164,6 +178,7 @@ export class Simulation {
   resolvingSpawn = false;
   reset(index = this.spawnIndex, restart = false) {
     this.resolvingSpawn = true;
+    this.releasingRail = undefined;
     this.groundIntent = null;
     this.waterBail = false;
     this.preload.reset();
@@ -223,6 +238,7 @@ export class Simulation {
     this.airTime = 0;
     this.pushTimer = 0;
     this.pushHoldTime = 0;
+    this.pendingPushTap = false;
     this.lastLanding = "";
     this.grindCooldown = 0.3;
     this.lastPump = false;
@@ -307,15 +323,12 @@ export class Simulation {
     // carry, but the forward ratio eases down so speed cannot turn it into a
     // long, flat overshoot.
     const forwardRatio = clamp(0.64 - Math.max(0, speed - 4) * 0.014, 0.48, 0.64);
-    const vertical = clamp(
+    const vertical =
       speed * Math.sqrt(1 - forwardRatio * forwardRatio) +
-        charge * (0.3 + timing * 0.45),
-      3.2,
-      10.5,
-    );
+        charge * (0.3 + timing * 0.45);
     this.velocity.addScaledVector(
       forward,
-      Math.max(1.7, speed * forwardRatio) - across,
+      speed * forwardRatio - across,
     );
     this.velocity.y = Math.max(this.velocity.y, vertical);
   }
@@ -448,6 +461,16 @@ export class Simulation {
   private stepStall(dt: number, input: InputFrame) {
     const stall = this.stall;
     if (!stall) return false;
+    const gesture=this.tricks.gesture.step(dt,input.rx,input.ry);
+    const loaded=this.preload.step(dt,input,true,Math.abs(input.rx)>.45);
+    const whip=ridingButtons(this.tricks.stance,this.tricks.controlStyle).whip;
+    if(input.pressed[whip] || input.pressed.brakeBars || gesture?.kind==="bri" || loaded!==null){
+      this.stall=null;
+      this.pop(loaded ?? Math.max(.15,this.preload.amount),input.lean);
+      this.lipClearTimer=.3;
+      if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction);
+      return false;
+    }
     const side = new THREE.Vector3(stall.direction.z, 0, -stall.direction.x);
     stall.offset = clamp(stall.offset + input.steer * dt * 0.8, -0.8, 0.8);
     this.position.copy(stall.anchor).addScaledVector(side, stall.offset);
@@ -553,6 +576,7 @@ export class Simulation {
   }
   private finishGrind() {
     if (this.grind) {
+      this.releasingRail = this.grind.rail.colliderHandle;
       if (this.grindDuration > 0.08) this.tricks.add(this.grind.name);
       this.grind = null;
       this.grindCooldown = 0.22;
@@ -572,6 +596,7 @@ export class Simulation {
       Math.abs(this.tricks.bri.velocity) > 0.15 ||
       Math.abs(this.tricks.kickless.velocity) > 0.15 ||
       this.tricks.poseBlend > 0.05 ||
+      (!this.grounded && Math.abs(input.steer) > 0.3) ||
       input.pressed[buttons.whip] ||
       input.pressed.brakeBars ||
       input.held.body > 0.3 ||
@@ -608,15 +633,19 @@ export class Simulation {
       this.grindCandidate = "—";
       return;
     }
+    const contact = this.position.clone().add(new THREE.Vector3(0, -0.12, 0));
+    // Sweep a single fixed physics step ahead so a valid deck contact engages
+    // before the rigid-body rail collision can bounce it away.
     const candidate = findGrind(
       this.park.rails,
-      this.position.clone().add(new THREE.Vector3(0, -0.12, 0)),
+      contact,
       this.velocity,
       this.yaw,
       this.pitch,
       this.grindAssist,
       input.held.pumpGrind > 0.3,
-    );
+    ) ?? findGrind(this.park.rails, contact.clone().addScaledVector(this.velocity, TUNE.step),
+      this.velocity, this.yaw, this.pitch, this.grindAssist, input.held.pumpGrind > 0.3);
     this.grindCandidate = candidate?.rail.id ?? "—";
     if (
       candidate &&
@@ -626,8 +655,10 @@ export class Simulation {
       this.tricks.finish("clean");
       this.grind = candidate;
       this.grindDuration = 0;
+      this.velocity.y = candidate.direction.y * candidate.speed;
       this.body.setGravityScale(0, true);
-      this.body.collider(0).setSensor(true);
+      this.body.collider(0).setSensor(false);
+      this.body.collider(0).setCollisionGroups(GROUPS.chassisSurfaceOnly);
       this.railGuard.setSensor(true);
       this.state = "Grinding";
       // Preserve the rider's approach on entry. The lower spring below blends
@@ -784,9 +815,13 @@ export class Simulation {
     );
     this.body.setLinvel(this.velocity, true);
     this.world.timestep = dt;
-    this.world.step();
+    this.world.step(this.contactEvents, this.contactHooks);
     this.position.copy(this.body.translation());
     this.velocity.copy(this.body.linvel());
+    if (!this.grounded || this.walking || this.grind || this.manual.active || input.held.brake > 0.35) {
+      this.pushHoldTime = 0;
+      this.pendingPushTap = false;
+    }
     this.tricks.tick(dt, false);
   }
   private land(support: { height: number; normal: THREE.Vector3 }) {
@@ -829,6 +864,7 @@ export class Simulation {
     this.grounded = true;
     this.state = quality === "sketchy" ? "SketchyLanding" : "Landing";
     this.landTimer = 0.25;
+    this.landingCompression = clamp(impact / 12, 0.15, 1);
     this.recovery = quality === "sketchy" ? TUNE.recoveryTime : 0;
     this.velocity.addScaledVector(
       support.normal,
@@ -841,6 +877,10 @@ export class Simulation {
     this.body.setTranslation(this.position, true);
   }
   step(dt: number, input: InputFrame) {
+    if (!this.grounded || this.walking || this.grind || this.manual.active || input.held.brake > 0.35) {
+      this.pushHoldTime = 0;
+      this.pendingPushTap = false;
+    }
     this.previousPosition.copy(this.position);
     this.previousYaw = this.yaw;
     this.elapsed += dt;
@@ -914,7 +954,7 @@ export class Simulation {
       this.velocity.x *= Math.exp(-1.8 * dt);
       this.velocity.z *= Math.exp(-1.8 * dt);
       this.body.setLinvel(this.velocity, true);
-      this.world.step();
+      this.world.step(this.contactEvents, this.contactHooks);
       this.position.copy(this.body.translation());
       if (this.waterBail) {
         this.velocity.multiplyScalar(Math.exp(-7 * dt));
@@ -928,10 +968,20 @@ export class Simulation {
         this.recoverLocally();
       return;
     }
+    if(this.dropIn.phase){
+      const gesture=this.tricks.gesture.step(dt,input.rx,input.ry);
+      const loaded=this.preload.step(dt,input,true,Math.abs(input.rx)>.45);
+      const whip=ridingButtons(this.tricks.stance,this.tricks.controlStyle).whip;
+      if(input.pressed[whip] || gesture?.kind==="bri" || loaded!==null){
+        this.dropIn.reset();this.pop(loaded ?? Math.max(.15,this.preload.amount),input.lean);
+        this.lipClearTimer=.4;
+        if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction);
+      }
+    }
     if (this.dropIn.step(this, dt, input)) return;
     if (this.stepStall(dt, input)) return;
     if (this.sitting) {
-      if (input.pressed.brakeBars || input.pressed.body || input.pressed.hop) {
+      if (input.pressed.brakeBars || input.pressed.body || input.pressed.hop || Math.hypot(input.steer,input.lean)>.2) {
         this.position.copy(this.sitting.origin);
         this.body.setTranslation(this.position, true);
         this.previousPosition.copy(this.position);
@@ -944,7 +994,7 @@ export class Simulation {
         return;
       }
     } else if (this.walking && this.grounded && input.pressed.brakeBars) {
-      const local = (b: (typeof this.park.benches)[number]) =>
+      const local = (b: Park["benches"][number]) =>
         new THREE.Vector3(
           this.position.x - b.x,
           0,
@@ -1047,9 +1097,12 @@ export class Simulation {
     if (brakingForSpine) {
       // LT says “settle into the coping.” It first sheds momentum through the
       // real approach, then becomes a stall only when the rider has slowed at it.
-      this.velocity.multiplyScalar(Math.exp(-TUNE.copingStallBrake * dt));
+      const remaining = Math.max(0.03, copingLip!.distance);
+      const targetSpeed = Math.sqrt(2 * 12 * remaining);
+      if (this.velocity.length() > targetSpeed)
+        this.velocity.setLength(damp(this.velocity.length(), targetSpeed, TUNE.copingStallBrake, dt));
       if (
-        copingLip!.distance < 0.14 &&
+        copingLip!.distance < 0.3 &&
         this.speed < TUNE.copingStallSettleSpeed
       ) {
         this.startStall(copingLip!.forward);
@@ -1066,6 +1119,7 @@ export class Simulation {
     if (
       !this.grounded &&
       this.state === "Airborne" &&
+      this.velocity.y < 0 &&
       support.normal.y < 0.94 &&
       gap > -0.18 &&
       gap < 0.46 &&
@@ -1087,7 +1141,7 @@ export class Simulation {
         const intoSurface = -this.velocity.dot(support.normal);
         this.velocity.addScaledVector(
           support.normal,
-          intoSurface * TUNE.reentryCaptureStrength,
+          intoSurface * TUNE.reentryCaptureStrength * Math.max(0,1-Math.hypot(input.steer,input.lean)),
         );
         this.pitch = damp(this.pitch, slopePitch, 4, dt);
       }
@@ -1106,7 +1160,7 @@ export class Simulation {
     }
     if ((this.state as RideState) === "Bail") {
       this.body.setLinvel(this.velocity, true);
-      this.world.step();
+      this.world.step(this.contactEvents, this.contactHooks);
       return;
     }
     if (OUTDOOR && this.grounded) this.normal.copy(support.normal);
@@ -1200,16 +1254,22 @@ export class Simulation {
     // Holding physical A while firmly on flat ground becomes a push after a
     // short delay. A tap still keeps the established tailwhip behavior.
     const waitingForPush =
-      whip === "hop" && this.grounded && !atTakeoff && input.held.hop > 0.5;
+      whip === "hop" && this.grounded && !this.grind && !atTakeoff &&
+      this.normal.y > 0.96 && input.held.hop > 0.5;
+    if (waitingForPush && input.pressed.hop) this.pendingPushTap = true;
+    const tapWhip = this.pendingPushTap && input.released.hop && this.pushHoldTime < TUNE.pushHoldDelay;
+    if (input.released.hop || this.pushHoldTime >= TUNE.pushHoldDelay || !this.grounded)
+      this.pendingPushTap = false;
     const barButton =
       this.tricks.controlStyle === "arcade" ? "pushDeck" : "brakeBars";
     if (
       supportedForTrick &&
-      ((!waitingForPush && input.pressed[whip]) ||
+      ((tapWhip || (!waitingForPush && input.pressed[whip])) ||
         (this.tricks.controlStyle === "arcade" && input.pressed.hop) ||
         (atTakeoff && input.pressed[barButton]))
     ) {
       this.pop(Math.max(0.15, this.preload.amount), input.lean);
+      if (tapWhip) this.tricks.deck.kick(this.tricks.naturalDirection * (input.held.brake > 0.5 ? -1 : 1));
       this.preload.reset();
     }
     if (this.groundIntent) {
@@ -1264,7 +1324,9 @@ export class Simulation {
     );
     // A short internal window preserves a physical RS flick through neutral,
     // but the rider stands up as soon as the user stops actively holding down.
-    this.charge = input.ry > 0.55 ? this.preload.amount : 0;
+    this.lastRS = { x: input.rx, y: input.ry };
+    this.charge = this.grounded && !this.manual.active && input.held.leftModifier < 0.5
+      ? clamp(input.ry, 0, 1) : 0;
     if (rsPop !== null) {
       this.bufferCharge = rsPop;
       this.hopBuffer = TUNE.hopBuffer;
@@ -1300,6 +1362,7 @@ export class Simulation {
     }
     if (this.grind) {
       this.grindDuration += dt;
+      this.score.holdContact(dt, this.grindDuration, true, 1 + Math.abs(this.grind.direction.y));
       this.state = "Grinding";
       this.grounded = false;
       this.body.setGravityScale(0, true);
@@ -1330,7 +1393,7 @@ export class Simulation {
         .multiplyScalar(g.speed)
         .addScaledVector(side, g.lateralSpeed);
       this.velocity.y +=
-        (point.y + 0.14 - this.position.y) * (settling ? 18 : 10);
+        clamp((point.y + 0.14 - this.position.y) * 18, -2, 2);
       this.yaw -= input.steer * TUNE.grindSteering * dt;
       this.pitch = damp(this.pitch, g.entryPitch + input.ry * 0.13, 8, dt);
       if (Math.abs(input.rx) > 0.25)
@@ -1521,6 +1584,7 @@ export class Simulation {
         this.manualRecorded = false;
       }
       if (this.manual.active) {
+        this.score.holdContact(dt, this.manual.duration, false);
         // Ignore the entry flick for a fraction of a second, then give the stick full balance control.
         const result = this.manual.step(
           dt,
@@ -1617,6 +1681,7 @@ export class Simulation {
       : null;
     const onTransition =
       !!lip &&
+      !brakingForSpine &&
       this.grounded &&
       !this.walking &&
       !this.manual.active &&
@@ -1673,11 +1738,11 @@ export class Simulation {
     }
     // The upper guard is too coarse for a rider unweighting over a lip. Temporarily
     // ignore only rail contacts on a valid transition crossing; terrain remains solid.
-    const crossing = onTransition || this.lipClearTimer > 0;
+    const crossing = onTransition || brakingForSpine || this.lipClearTimer > 0;
     this.body
       .collider(0)
       .setCollisionGroups(
-        crossing ? GROUPS.chassisSurfaceOnly : GROUPS.chassis,
+        this.grind ? GROUPS.chassisSurfaceOnly : crossing ? GROUPS.chassisClearCoping : GROUPS.chassis,
       );
     this.railGuard.setSensor(!!this.grind || crossing);
     this.body.setLinvel(this.velocity, true);
@@ -1689,7 +1754,7 @@ export class Simulation {
       true,
     );
     this.world.timestep = dt;
-    this.world.step();
+    this.world.step(this.contactEvents, this.contactHooks);
     const after = new THREE.Vector3().copy(this.body.linvel());
     let railImpact = 0;
     if (!this.grind && this.railImpactCooldown === 0) {
@@ -1792,6 +1857,14 @@ export class Simulation {
   }
   snapshot() {
     return {
+      cumulativeYaw: this.tricks.yaw * 180 / Math.PI,
+      rightStick: this.lastRS,
+      surfaceNormal: this.normal.toArray(),
+      surfaceTangent: new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).projectOnPlane(this.normal).normalize().toArray(),
+      activeTrick: this.tricks.attempt,
+      provisionalScore: this.tricks.attempt ? this.score.preview(this.tricks.attempt.raw) : 0,
+      recentTrickSignatures: this.score.recent,
+      grindCandidateScore: this.grind?.intent ?? 0,
       state: this.state,
       walking: this.walking,
       sitting: this.sitting?.id ?? null,

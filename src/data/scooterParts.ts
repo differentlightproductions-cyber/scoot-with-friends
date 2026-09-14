@@ -24,6 +24,11 @@ export interface ScooterPart {
   name: string;
   category: Category;
   shape: string;
+  model: string;
+  material: 'metal'|'rubber';
+  thumbnail: string | null;
+  unlocked: boolean;
+  priceFuture: number | null;
   variants: PartVariant[];
   unlockType: "free";
   premium: false;
@@ -59,6 +64,11 @@ const make = (
   name: "Lazer " + name,
   category,
   shape,
+  model: shape,
+  material: category==='grips'?'rubber':'metal',
+  thumbnail: null,
+  unlocked: true,
+  priceFuture: null,
   variants: variants.map((color) => ({
     id: color,
     name: color[0].toUpperCase() + color.slice(1),

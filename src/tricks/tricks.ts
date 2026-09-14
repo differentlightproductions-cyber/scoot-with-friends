@@ -415,13 +415,38 @@ export class Tricks {
     this.airborne = false;
     this.landing = quality;
     if (quality === "failed") return;
+    const raw = this.primitives();
+    const resolved = resolveTrick(raw);
+    if (resolved.name) {
+      const record: TrickRecord = { ...resolved, id: this.nextRecordId++, landing: quality };
+      this.history.push(record);
+      if (this.history.length > 256) this.history.shift();
+      this.add(record.name, record);
+    }
+    this.deck.reset();
+    this.bars.reset();
+    this.bodyState = "";
+    this.bri.reset();
+    this.kickless.reset();
+    this.poseBlend = 0;
+    this.visualPose = "";
+    this.gesture.reset();
+    this.fingerTargets = [];
+    this.pendingBumper = null;
+    this.consumedBumpers.clear();
+    this.kicklessHistory = [];
+  }
+  primitives(provisional = false): TrickPrimitives {
+    const count = (channel: RotationChannel) => provisional && Math.abs(channel.angle) > 0.08
+      ? Math.sign(channel.target || channel.angle) * Math.max(1, Math.ceil(Math.abs(channel.angle) / TAU))
+      : channel.turns;
     const raw: TrickPrimitives = {
       bodyYaw: this.yaw,
       flipPitch: this.flip,
       deckAngle: this.deck.angle,
       barAngle: this.bars.angle,
-      deckTurns: this.deck.turns,
-      barTurns: this.bars.turns,
+      deckTurns: count(this.deck),
+      barTurns: count(this.bars),
       states: [...this.body],
       out: this.fromLink,
       direction: {
@@ -443,33 +468,16 @@ export class Tricks {
         f.direction === Math.sign(this.deck.angle) &&
         Math.abs(this.deck.angle) + 0.2 >= Math.abs(f.angle),
     ).length;
-    raw.briAngle = this.bri.angle;
-    raw.kicklessAngle = this.kickless.angle;
+    raw.briAngle = provisional ? count(this.bri) * TAU : this.bri.angle;
+    raw.kicklessAngle = provisional ? count(this.kickless) * TAU : this.kickless.angle;
     raw.motionOrder = [...this.motionOrder];
     raw.kicklessHistory = this.kicklessHistory.map((event) => ({ ...event }));
-    const resolved = resolveTrick(raw);
-    if (resolved.name) {
-      const record: TrickRecord = {
-        ...resolved,
-        id: this.nextRecordId++,
-        landing: quality,
-      };
-      this.history.push(record);
-      if (this.history.length > 256) this.history.shift();
-      this.add(record.name, record);
-    }
-    this.deck.reset();
-    this.bars.reset();
-    this.bodyState = "";
-    this.bri.reset();
-    this.kickless.reset();
-    this.poseBlend = 0;
-    this.visualPose = "";
-    this.gesture.reset();
-    this.fingerTargets = [];
-    this.pendingBumper = null;
-    this.consumedBumpers.clear();
-    this.kicklessHistory = [];
+    return raw;
+  }
+  get attempt() {
+    if (!this.airborne) return null;
+    const resolved = resolveTrick(this.primitives(true));
+    return resolved.name ? { ...resolved, provisional: true, componentCount: resolved.components.length } : null;
   }
   add(name: string, record?: TrickRecord) {
     this.last = name;

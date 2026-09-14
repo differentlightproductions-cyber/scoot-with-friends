@@ -20,6 +20,7 @@ import { RiderModel } from "./scooter/model";
 import { ChaseCamera } from "./camera/chase";
 import { AudioEngine } from "./audio/audio";
 import { HUD } from "./ui/hud";
+import { SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
 import type { MapId } from "./data/maps";
@@ -54,6 +55,7 @@ async function boot() {
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
   const camera = new ChaseCamera();
+  const social = new SocialControls(events);
   rider.applyProfile(profile);
   sim.grindAssist = profile.settings.grindAssist;
   sim.tricks.stance = profile.settings.stance;
@@ -209,6 +211,7 @@ async function boot() {
   function startSession(id: MapId, force = false) {
     if (force || (OUTDOOR ? "outdoor" : "warehouse") !== id) {
       sim.score.dispose();
+      sim.contactEvents.free();
       world.free();
       const geometries = new Set<THREE.BufferGeometry>(),
         materials = new Set<THREE.Material>();
@@ -358,6 +361,7 @@ async function boot() {
     if (hud.started) renderer.render(scene, camera.camera);
     else menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
+    social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };
   renderer.setAnimationLoop(() => {
     const now = performance.now(),
@@ -381,6 +385,7 @@ async function boot() {
       accumulator = 0;
     }
     if (hud.paused) {
+      social.update(sim, emptyInput(), 0, false);
       hud.menu(frame);
       audio.update(0, false, false, true);
       render(dt);
@@ -393,6 +398,7 @@ async function boot() {
       frame.released.hop = false;
       if (!stillHeld) startHopBlocked = false;
     }
+    frame = social.update(sim, frame, dt);
     accumulator += dt;
     let first = true;
     // Keep edges queued until a physics step; otherwise high refresh-rate displays
@@ -457,6 +463,7 @@ async function boot() {
         return park;
       },
       camera,
+      social,
       renderer,
       snapshot: () => sim.snapshot(),
       testing: (value: boolean) => {

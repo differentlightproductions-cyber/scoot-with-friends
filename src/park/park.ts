@@ -1,5 +1,7 @@
 import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { grainTexture } from "./materials";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
@@ -13,6 +15,7 @@ export interface Rail {
   b: THREE.Vector3;
   kind: "rail" | "ledge";
   coping?: boolean;
+  colliderHandle?: number;
 }
 const smooth = (t: number) => {
   t = clamp(t, 0, 1);
@@ -111,6 +114,9 @@ export class Park {
   bench(id: string, x: number, base: number, z: number, width = 1, length = 4) {
     const seat = base + 0.55;
     this.benches.push({ id, x, z, seat, width, length, base, yaw: 0 });
+    for(let i=1;i<5;i++)this.box(
+      new THREE.Vector3(x-width/2+i*width/5,seat+.002,z),
+      new THREE.Vector3(.008,.006,length-.04),0x635746);
     this.box(
       new THREE.Vector3(x, seat - 0.06, z),
       new THREE.Vector3(width, 0.12, length),
@@ -344,8 +350,9 @@ export class Park {
     collision = false,
   ) {
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(size.x, size.y, size.z),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
+      new RoundedBoxGeometry(size.x, size.y, size.z, 1, Math.min(.035,size.x*.08,size.y*.08,size.z*.08)),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.85,
+        map: Math.max(size.x,size.z)>2 && size.y<.5 ? grainTexture() : null }),
     );
     mesh.position.copy(pos);
     mesh.castShadow = true;
@@ -443,8 +450,8 @@ export class Park {
     ).castShadow = false;
     for (const z of [-18, -12]) this.bench("Warehouse bench " + z, -29, 0, z);
   }
-  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge") {
-    this.rails.push({ id, a, b, kind, coping: id === "Quarter coping" });
+  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id)) {
+    this.rails.push({ id, a, b, kind, coping });
     const direction = b.clone().sub(a);
     const length = direction.length();
     const mid = a.clone().add(b).multiplyScalar(0.5);
@@ -470,9 +477,10 @@ export class Park {
           .setTranslation(mid.x, mid.y, mid.z)
           .setRotation(mesh.quaternion)
           .setFriction(0.05)
-          .setCollisionGroups(GROUPS.rail),
+          .setCollisionGroups(coping ? GROUPS.coping : GROUPS.rail),
       ).handle),
     );
+    this.rails[this.rails.length-1].colliderHandle = mesh.userData.collider;
     if (kind === "rail")
       for (const t of [0.1, 0.9]) {
         const p = a.clone().lerp(b, t),

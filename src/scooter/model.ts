@@ -1,7 +1,10 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { tailored } from "./geometry";
 import { Simulation } from "../physics/simulation";
 import { ScooterAssembly } from "./assembly";
 import { RIDERS } from "../data/riders";
+import { clothing, defaultOutfit } from '../data/outfits';
 import type { LocalProfile } from "../data/loadout";
 import { damp, TUNE } from "../core/config";
 const materials = {
@@ -20,6 +23,7 @@ const materials = {
   pants: new THREE.MeshStandardMaterial({ color: 0x304b4d, roughness: 0.95 }),
   skin: new THREE.MeshStandardMaterial({ color: 0xc69470, roughness: 0.9 }),
   helmet: new THREE.MeshStandardMaterial({ color: 0xdf5434, roughness: 0.55 }),
+  shoe: new THREE.MeshStandardMaterial({ color: 0x263333, roughness: .86 }),
 };
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 function box(
@@ -28,7 +32,7 @@ function box(
   pos: THREE.Vector3,
   mat: THREE.Material,
 ) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), mat);
+  const m = new THREE.Mesh(new RoundedBoxGeometry(size.x, size.y, size.z, 1, Math.min(size.x,size.y,size.z)*0.22), mat);
   m.position.copy(pos);
   m.castShadow = true;
   parent.add(m);
@@ -87,6 +91,11 @@ export class RiderModel {
   shins: THREE.Mesh[] = [];
   shoes: THREE.Mesh[] = [];
   hands: THREE.Group[] = [];
+  hood = new THREE.Group();
+  garmentDetails = new THREE.Group();
+  headDetails = new THREE.Group();
+  shortLegs: THREE.Mesh[] = [];
+  cuffs: THREE.Mesh[] = [];
   knees: THREE.Mesh[] = [];
   neck: THREE.Mesh;
   walkOffset = 0;
@@ -113,6 +122,18 @@ export class RiderModel {
       v(0, 0.88, -0.13),
       this.materials.pants,
     );
+    this.torso.geometry.dispose();
+    this.torso.geometry=tailored([[-.225,.155,.105],[-.19,.158,.112],[-.04,.17,.115],[.13,.195,.12],[.2,.165,.10],[.225,.08,.073]]);
+    this.hips.geometry.dispose();
+    this.hips.geometry=tailored([[-.10,.12,.09],[-.04,.153,.105],[.06,.15,.108],[.085,.14,.10]]);
+    const seam = new THREE.Mesh(new THREE.TorusGeometry(.075,.012,5,14),this.materials.shirt);
+    seam.rotation.x=Math.PI/2;seam.position.y=.226;this.torso.add(seam);
+    const hem = new THREE.Mesh(tailored([[-.225,.158,.108],[-.208,.16,.11]]),this.materials.shirt);
+    this.torso.add(hem);
+    this.torso.add(this.hood);
+    this.torso.add(this.garmentDetails);
+    sphere(this.hood,.12,v(0,.19,-.09),this.materials.shirt,v(1.05,1,.7));
+    this.hood.visible=false;
     this.head = sphere(
       this.rider,
       0.13,
@@ -127,6 +148,7 @@ export class RiderModel {
       this.materials.helmet,
       v(1, 0.73, 1),
     );
+    this.helmet.add(this.headDetails);
     this.neck = rod(
       this.rider,
       v(0, 1.35, 0),
@@ -187,23 +209,24 @@ export class RiderModel {
         sphere(this.rider, 0.077, v(sign * 0.1, 0.53, 0), this.materials.pants),
       );
       const hand = new THREE.Group();
+      hand.position.set(sign*.24,1.035,.26);
       this.rider.add(hand);
       this.hands.push(hand);
       box(hand, v(0.066, 0.065, 0.031), v(0, 0, 0), this.materials.skin);
       for (let f = 0; f < 4; f++) {
         box(
           hand,
-          v(0.012, 0.034, 0.014),
-          v((f - 1.5) * 0.017, -0.045, 0.008),
+          v(0.014, 0.028, 0.018),
+          v((f - 1.5) * 0.017, -0.025, 0.026),
           this.materials.skin,
         );
         const tip = box(
           hand,
-          v(0.012, 0.024, 0.014),
-          v((f - 1.5) * 0.017, -0.064, 0.021),
+          v(0.014, 0.023, 0.017),
+          v((f - 1.5) * 0.017, -0.044, 0.015),
           this.materials.skin,
         );
-        tip.rotation.x = -0.8;
+        tip.rotation.x = 0.9;
       }
       const thumb = box(
         hand,
@@ -256,7 +279,54 @@ export class RiderModel {
           this.materials.black,
         ),
       );
+      const shoe=this.shoes[this.shoes.length-1];
+      shoe.geometry.dispose();
+      shoe.geometry=new RoundedBoxGeometry(.105,.08,.23,2,.028);
+      box(shoe,v(.109,.021,.235),v(0,-.03,0),white);
+      box(shoe,v(.069,.065,.085),v(0,.026,-.05),this.materials.black);
+      box(shoe,v(.055,.055,.074),v(0,.027,.02),this.materials.pants).rotation.x=.3;
+      box(shoe,v(.111,.026,.032),v(0,-.012,-.097),white);
+      for(let j=0;j<3;j++) box(shoe,v(.059,.006,.012),v(0,.046,.003+j*.018),white);
+      const thigh=this.thighs[this.thighs.length-1];
+      thigh.geometry.dispose();thigh.geometry=tailored([[-.5,.079,.077],[-.38,.087,.081],[.18,.099,.093],[.5,.084,.08]]);
+      const shorts=new THREE.Mesh(tailored([[-.51,.09,.09],[-.3,.106,.1],[.18,.102,.098],[.23,.106,.101]]),this.materials.pants);
+      shorts.visible=false;thigh.add(shorts);this.shortLegs.push(shorts);
+      const shin=this.shins[this.shins.length-1];
+      shin.geometry.dispose();shin.geometry=tailored([[-.5,.051,.052],[-.4,.06,.06],[.05,.068,.063],[.5,.075,.074]]);
+      const sleeve=this.upperArms[this.upperArms.length-1];
+      sleeve.geometry.dispose();sleeve.geometry=tailored([[-.5,.073,.07],[-.43,.078,.075],[.3,.08,.075],[.5,.065,.06]]);
     }
+  }
+
+  setClothing(outfit: { top: string; bottom: string; shoes: string; head: string }) {
+    for(const group of [this.garmentDetails,this.headDetails]) {
+      group.traverse(o=>{if(o instanceof THREE.Mesh)o.geometry.dispose();});group.clear();
+    }
+    this.hood.visible=outfit.top==="hoodie";
+    this.helmet.visible=outfit.head!=='none';
+    if(outfit.head==='vented')for(const x of [-.07,0,.07])box(this.headDetails,v(.019,.012,.09),v(x,.09,.025),this.materials.black);
+    if(outfit.head==='visor')box(this.headDetails,v(.24,.022,.11),v(0,.005,.13),this.materials.helmet);
+    if(['helmet','vented','visor'].includes(outfit.head))for(const side of [-1,1])rod(this.headDetails,v(side*.12,-.035,.015),v(side*.06,-.22,.04),.006,this.materials.black);
+    this.forearms.forEach(arm=>arm.material=outfit.top==="tee"?this.materials.skin:this.materials.shirt);
+    this.shins.forEach(leg=>leg.material=outfit.bottom==="shorts"?this.materials.skin:this.materials.pants);
+    this.thighs.forEach(leg=>leg.material=outfit.bottom==="shorts"?this.materials.skin:this.materials.pants);
+    this.knees.forEach(knee=>knee.material=outfit.bottom==="shorts"?this.materials.skin:this.materials.pants);
+    this.shortLegs.forEach(leg=>leg.visible=outfit.bottom==="shorts");
+    if(outfit.top==="jacket"){
+      box(this.garmentDetails,v(.012,.4,.016),v(0,-.015,.117),this.materials.black);
+      for(const side of [-1,1])box(this.garmentDetails,v(.08,.075,.013),v(side*.09,-.12,.11),this.materials.shirt);
+    }
+    if(outfit.top==="hoodie"){
+      box(this.garmentDetails,v(.19,.07,.025),v(0,-.13,.115),this.materials.shirt);
+      for(const side of [-1,1])rod(this.garmentDetails,v(side*.043,.19,.076),v(side*.045,.06,.13),.004,this.materials.black);
+    }
+    if(outfit.head==="cap")box(this.headDetails,v(.23,.018,.18),v(0,-.03,.105),this.materials.helmet);
+    if(outfit.head==="beanie"){
+      const rim=new THREE.Mesh(new THREE.TorusGeometry(.13,.018,5,12),this.materials.helmet);
+      rim.rotation.x=Math.PI/2;rim.position.y=-.04;this.headDetails.add(rim);
+    }
+    this.shoes.forEach(shoe=>{shoe.scale.y=outfit.shoes==="high-top"?1.45:1;shoe.scale.z=outfit.shoes==='skate'?1.07:1;shoe.material=this.materials.shoe;});
+    this.root.userData.clothing={...outfit};
   }
 
   applyProfile(profile: LocalProfile) {
@@ -269,6 +339,11 @@ export class RiderModel {
     this.materials.shirt.color.set(rider.shirt);
     this.materials.pants.color.set(rider.pants);
     this.materials.helmet.color.set(rider.helmet);
+    const outfit=profile.outfit??defaultOutfit();
+    const head=clothing(outfit,'head'),top=clothing(outfit,'top'),bottom=clothing(outfit,'bottom'),shoes=clothing(outfit,'shoes');
+    this.setClothing({head:head.model,top:top.model,bottom:bottom.model,shoes:shoes.model});
+    this.materials.shirt.color.set(top.color);this.materials.pants.color.set(bottom.color);
+    this.materials.helmet.color.set(head.color);this.materials.shoe.color.set(shoes.color);
     this.rider.scale.x = rider.width;
     this.helmet.scale.set(rider.headScale, 0.73 * rider.headScale, 1);
     this.root.userData.riderId = rider.id;
@@ -341,11 +416,11 @@ export class RiderModel {
     this.wheelAngle += (s.speed * dt) / 0.055;
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
     const crouchTarget =
-      (s.sitting?.id ? 0.8 : 0) +
+      (s.sitting?.id ? 0.8 : s.emote?.id === "sit" ? .65 : 0) +
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
         s.compression * 0.16 +
-        (s.landTimer > 0 ? s.landTimer * 0.65 : 0) +
+        (s.landTimer > 0 ? s.landTimer * (0.4 + s.landingCompression) : 0) +
         (s.popTimer > 0 ? 0.1 : 0);
     // Loading is quick; a released, unpopped crouch has a visible recovery.
     this.crouch = damp(
@@ -390,7 +465,15 @@ export class RiderModel {
     this.head.position.set(0, 1.49 - c, -0.01 + c * 0.3);
     this.helmet.position.set(0, 1.57 - c, -0.025 + c * 0.3);
     this.head.position.z += weight * TUNE.airWeightShiftStrength;
+    this.head.rotation.set(0,0,0);
+    if(s.emote) {
+      const t=s.emote.time,fade=Math.min(1,t*6,(s.emote.duration-t)*6);
+      if(s.emote.id==="nod"||s.emote.id==="laugh")this.head.rotation.x=Math.sin(t*9)*.2*fade;
+      if(s.emote.id==="shake")this.head.rotation.y=Math.sin(t*8)*.35*fade;
+      if(s.emote.id==="facepalm")this.head.rotation.x=.25*fade;
+    }
     this.helmet.position.z += weight * TUNE.airWeightShiftStrength;
+    this.helmet.rotation.copy(this.head.rotation);
     poseRod(
       this.neck,
       v(0, 0.225, 0).applyEuler(this.torso.rotation).add(this.torso.position),
@@ -558,6 +641,19 @@ export class RiderModel {
         elbow.x += sign * 0.13;
         poseRod(this.upperArms[i], shoulder, elbow);
       }
+      if(s.emote && s.walking) {
+        const t=s.emote.time,fade=Math.min(1,t*6,(s.emote.duration-t)*6), id=s.emote.id;
+        const target=hand.clone();
+        if(id==="wave"&&i===0)target.set(-.38+Math.sin(t*12)*.08,1.65,.03);
+        if(id==="point"&&i===0)target.set(-.16,1.28,.59);
+        if(id==="clap")target.set(sign*(.035+Math.abs(Math.sin(t*10))*.13),1.23,.34);
+        if(id==="celebrate")target.set(sign*.39,1.74+Math.sin(t*8)*.04,0);
+        if(id==="facepalm"&&i===0)target.copy(this.head.position).add(v(-.02,.045,.13));
+        if(id==="laugh")target.set(sign*.11,.98,.14);
+        if(id==="sit")target.set(sign*.15,.4,.28);
+        hand.lerp(target,fade);elbow.copy(shoulder).lerp(hand,.5);elbow.x+=sign*.08;
+        poseRod(this.upperArms[i],shoulder,elbow);
+      }
       if (s.sitting) {
         hand.set(sign * 0.14, 0.16, 0.25);
         elbow.copy(shoulder).lerp(hand, 0.55);
@@ -565,6 +661,8 @@ export class RiderModel {
       }
       poseRod(this.forearms[i], elbow, hand);
       this.hands[i].position.copy(hand);
+      if(!s.walking && !pose && !briActive && s.tricks.fingerTime===0)
+        this.hands[i].position.y += .018;
       this.hands[i].quaternion.setFromUnitVectors(
         v(0, 1, 0),
         elbow.clone().sub(hand).normalize(),

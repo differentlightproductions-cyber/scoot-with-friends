@@ -1,5 +1,7 @@
 import { activeLayout, brushHeight } from "../editor/layout";
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { addParkPeople } from "./people";
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
@@ -616,27 +618,51 @@ export function buildMemorialGrounds(park: Park) {
     [-29, 20, 5],
   );
   const trunks = new THREE.InstancedMesh(
-    new THREE.CylinderGeometry(0.2, 0.35, 1, 6),
+    mergeGeometries([
+      new THREE.CylinderGeometry(.15,.34,1,7),
+      new THREE.CylinderGeometry(.04,.13,.7,5).rotateZ(.7).translate(-.18,.26,0),
+      new THREE.CylinderGeometry(.04,.12,.64,5).rotateZ(-.85).translate(.2,.23,.02),
+    ]),
     new THREE.MeshStandardMaterial({ color: 0x796248 }),
     trees.length,
   );
   const crowns = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 1),
+    mergeGeometries([
+      new THREE.IcosahedronGeometry(.73,1).scale(1,1.1,1).translate(0,.32,0),
+      new THREE.IcosahedronGeometry(.65,1).translate(-.5,-.08,.1),
+      new THREE.IcosahedronGeometry(.7,1).translate(.45,-.05,-.12),
+      new THREE.IcosahedronGeometry(.53,1).translate(.02,-.18,.48),
+    ]),
     new THREE.MeshStandardMaterial({ color: 0x607f3b, flatShading: true }),
     trees.length,
   );
   const matrix = new THREE.Matrix4(),
     q = new THREE.Quaternion();
   trees.forEach(([x, z, h], i) => {
+    q.setFromAxisAngle(v(0,1,0), i*2.399);
     matrix.compose(v(x, h / 2, z), q, v(1, h, 1));
     trunks.setMatrixAt(i, matrix);
     matrix.compose(v(x, h + 0.8, z), q, v(2.4, h * 0.55, 2.4));
     crowns.setMatrixAt(i, matrix);
+    crowns.setColorAt(i,new THREE.Color().setHSL(.23+(i%4)*.008,.34,.29+(i%5)*.014));
   });
   trunks.castShadow = crowns.castShadow = true;
   trunks.name = "tree-trunks";
   crowns.name = "tree-crowns";
   scene.add(trunks, crowns);
+  addParkPeople(scene);
+  // Bins and lamp bases use the same modest polygon and material budget as
+  // nearby furniture, placed clear of riding paths.
+  const binMat=new THREE.MeshStandardMaterial({color:0x354e48,metalness:.3,roughness:.7});
+  const rimMat=new THREE.MeshStandardMaterial({color:0x89938c,metalness:.65,roughness:.35});
+  for(const [x,z] of [[29,-37],[-27,32],[89,29],[31,-109]]){
+    const bin=new THREE.Mesh(new THREE.CylinderGeometry(.3,.26,.85,12),binMat);
+    bin.position.set(x,.425,z);bin.castShadow=true;bin.name='Park bin';scene.add(bin);
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(.29,.035,5,12),rimMat);
+    rim.rotation.x=Math.PI/2;rim.position.set(x,.86,z);scene.add(rim);
+    const lid=new THREE.Mesh(new THREE.CylinderGeometry(.27,.29,.04,12),rimMat);
+    lid.position.set(x,.84,z);scene.add(lid);
+  }
   const shrubs = new THREE.InstancedMesh(
     new THREE.IcosahedronGeometry(1, 0),
     new THREE.MeshStandardMaterial({ color: 0x72863c, flatShading: true }),

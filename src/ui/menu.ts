@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { MAPS, type MapId } from "../data/maps";
 import { RIDERS } from "../data/riders";
+import { CLOTHING, OUTFIT_SLOTS, clothing, type OutfitSlot } from '../data/outfits';
 import {
   CATEGORIES,
   PARTS,
@@ -15,6 +16,7 @@ export class GameMenu {
   screen = "home";
   category: Category = "deck";
   product = "";
+  outfitSlot:OutfitSlot='head';
   index = 0;
   private cooldown = 0;
   previewScene = new THREE.Scene();
@@ -163,7 +165,8 @@ export class GameMenu {
         add("GRINDS / MANUALS", () => {}, "RT asks for a rail catch. LB + RS up/down starts a nose manual/manual; keep RS balanced.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y tuck, LT + Y deck grab, both = superman. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
-        add("COPING STALL", () => {}, "Landing awkwardly on a spine coping settles into a stall. Shift with LS left/right, then lean forward or back to drop in.");
+        add("ON-FOOT SOCIAL", () => {}, "Hold D-pad Left and choose with LS, release to emote. Hold D-pad Right for local chat. Enter sends; Esc/B cancels. No multiplayer connection yet.");
+        add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
         break;
       case "maps":
         title = "MAP SELECT";
@@ -174,6 +177,7 @@ export class GameMenu {
       case "rider":
         title = "RIDER";
         subtitle = "SAME PHYSICS. YOUR STYLE.";
+        for(const slot of OUTFIT_SLOTS)add(slot.toUpperCase(),()=>{this.outfitSlot=slot;this.show('clothing');},clothing(this.profile.outfit,slot).name);
         for (const rider of RIDERS)
           add(
             rider.name,
@@ -186,6 +190,12 @@ export class GameMenu {
             rider.description,
             this.profile.riderId === rider.id,
           );
+        break;
+      case "clothing":
+        title=this.outfitSlot.toUpperCase();subtitle='AUTHORED GEAR / ALL UNLOCKED';
+        for(const item of CLOTHING.filter(p=>p.category===this.outfitSlot))add(item.name,()=>{
+          this.profile.outfit[this.outfitSlot]=item.id;this.changed();this.render();
+        },'Included',this.profile.outfit[this.outfitSlot]===item.id);
         break;
       case "scooter":
         title = "SCOOTER";
@@ -202,7 +212,7 @@ export class GameMenu {
         break;
       case "parts":
         title = this.category.toUpperCase();
-        subtitle = "CHOOSE A LAZER PRODUCT";
+        subtitle = "CHOOSE A PRODUCT / ALL UNLOCKED";
         for (const part of PARTS.filter((p) => p.category === this.category))
           add(
             part.name,
@@ -242,6 +252,10 @@ export class GameMenu {
         break;
       }
       case "settings":
+        add('TIME OF DAY / '+this.profile.settings.daylight.toUpperCase(),()=>{
+          const phases=['day','sunset','night','sunrise'] as const;
+          this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%phases.length];this.changed();this.render();
+        },'Smooth lighting transition');
         add(
           "CONTROLS " +
             (this.profile.settings.controlStyle === "pro"
@@ -355,7 +369,7 @@ export class GameMenu {
   }
   back() {
     this.show(
-      this.screen === "variants"
+      this.screen === 'clothing' ? 'rider' : this.screen === "variants"
         ? "parts"
         : this.screen === "parts"
           ? "scooter"

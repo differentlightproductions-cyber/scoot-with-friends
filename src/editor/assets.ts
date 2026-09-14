@@ -43,6 +43,7 @@ export function buildObject(park: Park, o: ParkObject) {
       a,
       b,
       ledge ? "ledge" : "rail",
+      ledge && ["Quarter Pipe","Spine","Half Pipe","Mini Ramp"].includes(o.type),
     );
     if (ledge) park.rails.at(-1)!.coping = true;
   };

@@ -121,10 +121,10 @@ test("held fakie scoring banks once, discards bails, and clears on session resta
   assert(s.line >= 100);
   const amount = s.line;
   t.endFakie();
-  t.tick(2, false);
+  t.tick(TUNE.comboTimeout + 0.1, false);
   assert.equal(s.total, amount);
   assert.equal(s.line, 0);
-  t.tick(2, false);
+  t.tick(TUNE.comboTimeout + 0.1, false);
   assert.equal(s.total, amount);
   t.add("Manual");
   e.emit({ type: "bail", reason: "test" });
@@ -209,7 +209,7 @@ test("combo survives linked states, expires on ordinary riding, and resets after
   t.bars.angle = Math.PI * 2;
   t.finish("clean");
   assert.equal(t.line.at(-1), "Barspin Out");
-  t.tick(2, false);
+  t.tick(TUNE.comboTimeout + 0.1, false);
   assert.equal(t.line.length, 0);
   assert(e.history.some((e) => e.type === "line" && e.ended));
   t.reset();

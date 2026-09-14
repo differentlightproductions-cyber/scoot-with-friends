@@ -109,7 +109,7 @@ export const TUNE = {
   walkTurnResponse: 10,
   pumpGain: 1.5,
   pumpCooldown: 0.38,
-  comboTimeout: 1.3,
+  comboTimeout: 3,
   rumble: { pop: 0.12, clean: 0.2, sketchy: 0.38, bail: 0.6 },
 } as const;
 export const TAU = Math.PI * 2;

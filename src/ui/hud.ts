@@ -14,6 +14,8 @@ export class HUD {
   feedbackAge = 10;
   lineEnded = false;
   private pendingResolution: TrickRecord | null = null;
+  private attempt = document.createElement("div");
+  private attemptAge = 0;
   onStart = () => {};
   onReset = (restart = false) => {};
   root: HTMLElement;
@@ -29,6 +31,8 @@ export class HUD {
       <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESSION<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Session</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Switch to ${OUTDOOR ? "Warehouse 01" : "Veterans Memorial Park"}</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
     this.root = document.querySelector("#app")!;
+    this.attempt.id = "trick-attempt";
+    this.root.append(this.attempt);
     document
       .querySelector("#ride")!
       .addEventListener("click", () => this.start());
@@ -67,6 +71,13 @@ export class HUD {
           e.quality === "sketchy" ? "warn" : "",
         );
       if (e.type === "bail") {
+        const content = this.attempt.textContent || "LINE LOST";
+        this.attempt.replaceChildren(...content.split(" ").map((word, index) => {
+          const piece = document.createElement("span"); piece.textContent = word + " ";
+          piece.style.setProperty("--i", String(index % 7)); return piece;
+        }));
+        this.attempt.className = "shatter";
+        this.attemptAge = 1.1;
         this.feedback(`${e.reason.toUpperCase()} / PRESS A TO GET UP`, "warn");
         document.querySelector("#line-status")!.textContent = "LINE LOST";
         this.lineAge = 0;
@@ -89,6 +100,8 @@ export class HUD {
           e.walking ? "ON FOOT / Y TO RIDE" : "BACK ON THE SCOOTER",
         );
       if (e.type === "reset") {
+        this.attempt.textContent = "";
+        this.attemptAge = 0;
         this.pendingResolution = null;
         this.lineAge = 10;
         this.feedbackAge = 10;
@@ -170,6 +183,14 @@ export class HUD {
     fps: number,
     drawCalls: number,
   ) {
+    this.attemptAge = Math.max(0, this.attemptAge - dt);
+    const active = s.tricks.attempt;
+    if (this.attemptAge === 0) {
+      this.attempt.className = active ? "provisional" : "";
+      this.attempt.textContent = active
+        ? `${active.name.toUpperCase()}   ${s.score.preview(active.raw, active.name)}  ×${s.score.multiplier.toFixed(2)} / ATTEMPT`
+        : "";
+    }
     (
       document.querySelector('[data-action="marker"]') as HTMLButtonElement
     ).disabled = !s.marker.saved;
@@ -179,7 +200,7 @@ export class HUD {
     this.lineAge += dt;
     if (s.tricks.fakieRecord) this.lineAge = 0;
     document.querySelector("#score")!.textContent =
-      `SESSION ${s.score.total.toLocaleString()} / LINE ${s.score.line.toLocaleString()}`;
+      `SESSION ${s.score.total.toLocaleString()} / LINE ${s.score.line.toLocaleString()}  ×${s.score.multiplier.toFixed(2)}`;
     document.querySelector("#assist")!.textContent = s.grindAssist
       ? "ON"
       : "OFF";
@@ -221,7 +242,7 @@ export class HUD {
         " CONTROLS</div><h2>RIDE / REPEAT</h2><dl>" +
         "<dt>" +
         mapping.pushLabel +
-        "</dt><dd>Tap to push on the ground</dd><dt>" +
+        "</dt><dd>Tap or hold to repeat pushes; holding A also pushes on flat ground</dd><dt>" +
         mapping.whipLabel +
         "</dt><dd>Tap for a trick takeoff / hold continuous whips in air</dd>" +
         (s.tricks.controlStyle === "arcade"
@@ -243,12 +264,12 @@ export class HUD {
         "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
         "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Tuck. LT + Y: Deck Grab. Both triggers + Y: Superman.</dd>" +
         "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +
-        "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. RT in air requests a grind.</dd>" +
+        "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. LT near spine coping requests a stall. RT in air requests a grind.</dd>" +
         "<dt>LB + RS UP / DOWN</dt><dd>Nose manual / manual. RS balances. Release LB then hold RS down to load a hop out.</dd>" +
         "<dt>Y ON GROUND</dt><dd>Walk / mount. On foot A jumps or climbs, B sits near benches; LS click runs carrying scooter.</dd>" +
-        "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd><dt>SPINE STALL</dt><dd>Awkward spine-coping landings settle into a stall. Use LS left/right to adjust, then lean LS forward or back to drop in.</dd>" +
+        "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd><dt>SPINE STALL</dt><dd>Hold LT while grounded at spine coping to brake into a stall. Use LS left/right to adjust, then lean LS forward or back to drop in.</dd>" +
         "<dt>BAIL</dt><dd>After a crash, let the fall finish, then press A to get back up.</dd>" +
-        "<dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
+        "<dt>ON FOOT: D-PAD LEFT / RIGHT</dt><dd>Hold Left: LS selects an emote, release to perform. Hold Right: local chat; Enter sends, Esc/B cancels. Messages appear above your head.</dd><dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
         "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
         "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";
     }

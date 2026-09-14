@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import {
   defaultScooter,
   selectedPart,
@@ -26,12 +27,17 @@ export class ScooterAssembly {
     this.root.add(this.deckPivot, this.barPivot);
     this.deckPivot.position.z = 0.3;
     this.barPivot.position.z = 0.3;
-    const material = (color: number) =>
-      new THREE.MeshStandardMaterial({
-        color,
-        metalness: 0.55,
-        roughness: 0.42,
-      });
+    const materialCache = new Map<string, THREE.MeshStandardMaterial>();
+    const material = (color: number, part = "metal") => {
+      const rubber = /grip|urethane/.test(part) || color === 0x263333;
+      const chrome = color === 0xb8cbc6 || /bearing|axle|bolt/.test(part);
+      const key = `${part}/${color}/${rubber}/${chrome}`;
+      if(!materialCache.has(key)) materialCache.set(key,new THREE.MeshStandardMaterial({
+        color,metalness:rubber ? 0 : chrome ? .9 : .65,
+        roughness:rubber ? .9 : chrome ? .2 : .38,
+      }));
+      return materialCache.get(key)!;
+    };
     const box = (
       parent: THREE.Object3D,
       size: THREE.Vector3,
@@ -40,8 +46,8 @@ export class ScooterAssembly {
       part: string,
     ) => {
       const m = new THREE.Mesh(
-        new THREE.BoxGeometry(size.x, size.y, size.z),
-        material(color),
+        new RoundedBoxGeometry(size.x, size.y, size.z, 1, Math.min(size.x,size.y,size.z)*.22),
+        material(color, part),
       );
       m.position.copy(pos);
       m.castShadow = true;
@@ -59,7 +65,7 @@ export class ScooterAssembly {
     ) => {
       const m = new THREE.Mesh(
         new THREE.CylinderGeometry(r, r, a.distanceTo(b), 10),
-        material(color),
+        material(color, part),
       );
       m.position.copy(a).add(b).multiplyScalar(0.5);
       m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
@@ -176,14 +182,18 @@ export class ScooterAssembly {
       );
     }
     const clamp = get("clamp");
-    for (let i = 0; i < (clamp.part.shape === "triple" ? 3 : 2); i++)
-      box(
+    for (let i = 0; i < (clamp.part.shape === "triple" ? 3 : 2); i++) {
+      rod(
         this.barPivot,
-        v(0.073, 0.026, 0.068),
-        v(0, 0.39 + i * 0.029, -0.007),
+        v(0, 0.38 + i * 0.029, -0.007),
+        v(0, 0.406 + i * 0.029, -0.007),
+        .039,
         clamp.variant.color,
         clamp.part.id,
       );
+      box(this.barPivot,v(.058,.024,.02),v(0,.393+i*.029,-.043),clamp.variant.color,clamp.part.id);
+      rod(this.barPivot,v(-.037,.393+i*.029,-.044),v(.037,.393+i*.029,-.044),.008,0xb8cbc6,"clamp-bolt");
+    }
     const headset = get("headset");
     rod(
       this.barPivot,
@@ -222,12 +232,7 @@ export class ScooterAssembly {
       parent.add(m);
       this.wheels.push(m);
       const hub = new THREE.Mesh(
-        new THREE.CylinderGeometry(
-          radius * 0.62,
-          radius * 0.62,
-          0.03,
-          12,
-        ).rotateZ(Math.PI / 2),
+        new THREE.TorusGeometry(radius*.61,.006,5,16).rotateY(Math.PI/2),
         material(wheel.variant.color),
       );
       m.add(hub);
@@ -239,7 +244,11 @@ export class ScooterAssembly {
       );
       bearing.userData.part = bearings.part.id;
       m.add(bearing);
-      box(m, v(0.033, 0.007, radius * 0.82), v(0, 0, 0), 0xb8cbc6, "spoke");
+      for(let i=0;i<5;i++) {
+        const a=i*Math.PI*2/5;
+        rod(m,v(0,0,0),v(0,Math.cos(a)*radius*.6,Math.sin(a)*radius*.6),.005,wheel.variant.color,"spoke");
+      }
+      rod(parent,v(-.045,.055,z),v(.045,.055,z),.006,0xb8cbc6,"axle-bolt");
     }
     const brake = get("brake");
     const fender = box(
@@ -254,6 +263,11 @@ export class ScooterAssembly {
       brake.part.id,
     );
     fender.rotation.x = 0.2;
+    for(const sign of [-1,1]) {
+      rod(this.deckPivot,v(sign*(width/2-.015),.105,-length+.09),v(sign*.035,.055,-length),.013,deck.variant.color,deck.part.id);
+      rod(this.barPivot,v(sign*(barWidth+.008),1.01,-.04),v(sign*(barWidth+.018),1.01,-.04),.028,0x263333,"bar-end");
+      rod(this.deckPivot,v(sign*.021,.15,-.09),v(sign*.021,.27,-.005),.008,0xb8cbc6,"neck-weld");
+    }
     box(
       this.deckPivot,
       v(0.07, 0.008, 0.055),

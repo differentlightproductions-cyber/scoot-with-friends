@@ -1,6 +1,9 @@
 import type { TrickRecord } from "../tricks/resolver";
 export type LandingQuality = "clean" | "sketchy" | "failed";
 export type GameEvent =
+  | { type:'worldInteraction'; interaction:string; item:string }
+  | { type: "playerEmote"; playerId: string; emoteId: string; timestamp: number }
+  | { type: "playerChat"; playerId: string; message: string; timestamp: number }
   | { type: "splash"; x: number; z: number }
   | { type: "pop"; charge: number }
   | { type: "push" }

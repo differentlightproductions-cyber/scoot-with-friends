@@ -67,6 +67,7 @@ export function findGrind(
     // Entry must be converging on the rail unless the rider is already almost
     // exactly over it. This makes crossing a rail feel deliberate rather than magnetic.
     const lateralVelocity = velocity.dot(side);
+    if (lateral > 0.055 && signedOffset * lateralVelocity > 0.025) continue;
     const crossing =
       lateral < 0.07
         ? 1

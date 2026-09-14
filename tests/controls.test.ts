@@ -36,7 +36,7 @@ test("RS dwell loads analog charge and only pops after a full upward return; no 
   assert.equal(p.step(dt, f, true), null);
   assert.ok(p.amount > 0);
   f.ry = -0.9;
-  assert.ok((p.step(dt, f, true) ?? 0) > 0);
+  assert.equal(p.step(dt, f, true), null); // A single-step twitch is not a loaded hop.
   f.ry = 1;
   p.step(dt, f, true);
   f.ry = 0;

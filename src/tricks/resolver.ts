@@ -45,8 +45,8 @@ export interface TrickRecord extends ResolvedTrick {
 }
 export const completedDegrees = (radians: number) => {
   const actual = (Math.abs(radians) * 180) / Math.PI,
-    nearest = Math.round(actual / 180) * 180;
-  return Math.abs(actual - nearest) <= 35 ? nearest : 0;
+    nearest = Math.round(actual / 90) * 90;
+  return Math.abs(actual - nearest) <= 22.5 ? nearest : Math.floor(actual / 90) * 90;
 };
 const counted = (n: number, word: string) =>
   `${n === 1 ? "" : n === 2 ? "Double " : n === 3 ? "Triple " : n === 4 ? "Quad " : `${n}× `}${word}`;

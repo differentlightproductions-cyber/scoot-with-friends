@@ -50,6 +50,7 @@ export class Input {
   private pendingReleased = new Set<Action>();
   constructor() {
     window.addEventListener("keydown", (e) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (
         ["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(
           e.code,

@@ -172,15 +172,17 @@ export function buildBaseAssets(
               verts.push(p.x, p.y, p.z);
             }
             const rail = park.railHandles.has(h);
+            const collisionGroups = c.collisionGroups();
             park.world.removeCollider(c, true);
             park.railHandles.delete(h);
             const next = park.world.createCollider(
               RAPIER.ColliderDesc.trimesh(
                 new Float32Array(verts),
                 new Uint32Array(indices),
-              ).setCollisionGroups(rail ? GROUPS.rail : GROUPS.surface),
+              ).setCollisionGroups(rail ? collisionGroups : GROUPS.surface),
             );
             if (rail) park.railHandles.add(next.handle);
+            if (rail) for (const line of park.rails) if(line.colliderHandle===h) line.colliderHandle=next.handle;
             m.userData.collider = next.handle;
             if (edit.hidden) next.setEnabled(false);
             continue;
