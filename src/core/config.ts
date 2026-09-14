@@ -4,6 +4,8 @@ export const TUNE = {
   transitionLipReleaseDistance: 0.65,
   transitionRailClearTime: 0.18,
   quarterOverDeckSpeed: 12,
+  reentryCaptureStrength: 0.24,
+  caseHardImpact: 8.2,
   step: 1 / 120,
   markerHoldDuration: 0.75,
   airWeightShiftStrength: 0.29,

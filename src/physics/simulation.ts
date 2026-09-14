@@ -966,6 +966,38 @@ export class Simulation {
       this.position.y -
       (support.height + TUNE.radius / Math.max(0.55, support.normal.y));
     const wasGrounded = this.grounded;
+    // On a descending, already-aligned transition return, absorb only small
+    // normal errors. This preserves player yaw and allows deliberate fakie
+    // re-entry while making a near-clean rear-wheel catch feel connected.
+    if (
+      !this.grounded &&
+      this.state === "Airborne" &&
+      support.normal.y < 0.94 &&
+      gap > -0.18 &&
+      gap < 0.46 &&
+      this.velocity.dot(support.normal) < -1
+    ) {
+      const velocityYaw = Math.atan2(this.velocity.x, this.velocity.z);
+      const yawError = Math.min(
+        Math.abs(wrap(this.yaw - velocityYaw)),
+        Math.abs(wrap(this.yaw - velocityYaw + Math.PI)),
+      );
+      const slopePitch = -Math.atan2(
+        support.normal
+          .clone()
+          .negate()
+          .dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))),
+        support.normal.y,
+      );
+      if (yawError < 0.78 && Math.abs(wrap(this.pitch - slopePitch)) < 0.95) {
+        const intoSurface = -this.velocity.dot(support.normal);
+        this.velocity.addScaledVector(
+          support.normal,
+          intoSurface * TUNE.reentryCaptureStrength,
+        );
+        this.pitch = damp(this.pitch, slopePitch, 4, dt);
+      }
+    }
     if (
       !this.grind &&
       this.popTimer === 0 &&
@@ -1535,6 +1567,29 @@ export class Simulation {
     }
     if (railImpact > TUNE.railImpactWobbleSpeed) {
       this.railImpactCooldown = TUNE.railImpactCooldown;
+      const catchingLip =
+        this.state === "Airborne" &&
+        this.airTime > 0.1 &&
+        this.velocity.y < -1.5 &&
+        !!lip &&
+        lip.distance > -0.35 &&
+        lip.distance < 0.55;
+      if (catchingLip) {
+        const hardCase = railImpact >= TUNE.caseHardImpact;
+        this.events.emit({
+          type: "marker",
+          message: hardCase ? "HARD CASE" : "CASE / HOLD ON",
+          progress: 0,
+        });
+        if (hardCase) this.bail("Hard coping case");
+        else {
+          this.recovery = Math.max(this.recovery, 0.85);
+          this.state = "SketchyLanding";
+          this.velocity.copy(after).multiplyScalar(0.58);
+          this.velocity.y = Math.max(0.35, this.velocity.y);
+          this.body.setLinvel(this.velocity, true);
+        }
+      } else {
       const severe = railImpact >= TUNE.railImpactBailSpeed;
       this.events.emit({ type: "railImpact", speed: railImpact, bail: severe });
       if (severe) {
@@ -1553,6 +1608,7 @@ export class Simulation {
         this.state = "SketchyLanding";
         this.velocity.copy(after).multiplyScalar(0.82);
         this.body.setLinvel(this.velocity, true);
+      }
       }
     }
     if (
