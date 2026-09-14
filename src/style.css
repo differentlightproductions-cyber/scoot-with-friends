@@ -933,3 +933,34 @@ body.editing #app {
 .sesh-overlay{background:#10202a88!important}.sesh-overlay .game-menu{width:38vw;max-height:84dvh;margin:5dvh 0 0 3vw;overflow:auto;background:#14242eee;padding:20px;border-radius:12px}.sesh-overlay .game-menu h1{font-size:28px}.sesh-overlay .map-preview{width:28vw;right:8vw;top:25vh}.sesh-overlay .map-preview img{max-height:180px;object-fit:cover}.sesh-overlay .game-menu button{font-size:16px}.sesh-overlay .menu-save-note{font-size:14px}
 .remote-name{position:fixed;transform:translate(-50%,-100%);white-space:pre-line;max-width:230px;background:#13222bcc;color:white;border-radius:5px;padding:4px 8px;font:14px sans-serif;pointer-events:none;z-index:8;text-align:center}
 .map-list-thumb{width:92px;height:56px;object-fit:cover;float:right;margin-left:12px;border-radius:4px}.network-status{position:fixed;right:18px;bottom:70px;font:14px sans-serif;color:white;background:#17262bcc;padding:6px 10px;border-radius:5px;z-index:9;pointer-events:none}
+
+/* Alpha navigation: one readable surface; gameplay never bleeds through it. */
+#destination-loading[hidden]{display:none!important}
+body.ui-open #trick-line,body.ui-open #feedback,body.ui-open #balance,body.ui-open #app>footer,body.ui-open .location,body.ui-open .remote-name,body.ui-open .network-status,body.ui-open #shop-prompt{visibility:hidden!important}
+#start{z-index:20;background:linear-gradient(90deg,#eeeee6 0%,#eeeee6 38%,transparent 57%)}
+#start .game-menu{left:4%;top:14%;bottom:4%;width:36%;max-width:470px;margin:0;padding:20px 24px;border-radius:14px;background:#f3f1e9;color:#203a3d;box-shadow:0 10px 40px #152d3018;max-height:none;overflow:hidden}
+#start .game-menu h1{font-size:clamp(28px,3.5vw,48px);margin:12px 0 18px;line-height:1.08}
+#start .game-menu nav{flex:1;padding-right:6px}
+#start .game-menu button{font-size:16px;line-height:1.25;letter-spacing:.2px;padding:13px 14px;border-radius:7px;border-top:0;margin-bottom:4px;color:#203a3d;background:#e6e9e1}
+#start .game-menu button small{font-size:13px;line-height:1.45;color:#4b605f;letter-spacing:0}
+#start .game-menu button.selected,#start .game-menu button:focus-visible{background:#24494b;color:#fff;outline:2px solid #db7959;outline-offset:-2px}
+#start .game-menu button.selected small{color:#e1eeeb}
+#start[data-screen=home] .game-menu button:nth-child(-n+2){font-size:25px;padding:19px 18px;background:#d95c3b;color:white}
+#start[data-screen=home] .game-menu button:nth-child(-n+2) small{color:#fff0e5}
+#start .menu-save-note,#start .menu-controls{font-size:12px;line-height:1.45;letter-spacing:0;color:#4b605f}
+#start .build-number{font-size:10px}
+#start .map-preview{width:48%;right:5%;top:22%;color:#203a3d}
+#feedback{top:12%;font-size:14px;font-weight:600;letter-spacing:.3px;padding:6px 12px;border-radius:20px;background:#14202966;max-width:75vw;text-align:center;text-shadow:0 1px 2px #0008;pointer-events:none}
+#park-editor,#return-editor{display:none!important}
+#pause{z-index:21;background:#172d30d9}.pause-sheet{background:#f3f1e9;color:#203a3d;border-radius:16px;padding:24px;max-height:88dvh;overflow:auto}.pause-sheet button{font-size:16px;padding:11px 14px}.pause-sheet h2{font-size:38px}
+@media(max-width:800px){#start .game-menu{left:2%;top:10%;width:45%;padding:12px;max-width:none}#start .game-menu h1{font-size:26px}#start .game-menu button{font-size:15px;padding:10px}#start .game-menu button small{font-size:12px}#start .menu-controls{font-size:10px}#start .map-preview{width:43%;right:3%}}
+@media(orientation:portrait) and (max-width:600px){#start .game-menu{width:90%;left:5%;background:#f3f1e9f5}#start .map-preview{display:none}}
+
+#start.sesh-overlay,#start.shop-overlay{background:linear-gradient(90deg,#eeeee6 0%,#eeeee6 38%,transparent 57%)!important}
+
+#trick-line{bottom:68px;left:38px;max-width:min(680px,70vw)}
+@media(max-width:700px){#trick-line{left:20px;bottom:58px;max-width:85vw}}
+
+body.ui-open #help,body.ui-open #emote-wheel,body.ui-open #social-chat,body.ui-open #player-bubble,body.ui-open #player-nameplate,body.ui-open .world-prompt{visibility:hidden!important}
+
+#start .map-preview img{max-height:38dvh;aspect-ratio:16/10;object-fit:cover;border-radius:10px;margin-bottom:14px}#start .map-preview h2{font-size:clamp(25px,3vw,40px)}#start .map-preview p{font-size:14px;line-height:1.5}

@@ -17,6 +17,7 @@ import {
 import { saveProfile, type LocalProfile } from "../data/loadout";
 import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
+const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
   screen = "home";
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
@@ -156,6 +157,8 @@ export class GameMenu {
   }
   private render() {
     this.root.classList.toggle('shop-overlay',this.shopOpen);this.root.classList.toggle('sesh-overlay',this.seshOpen);
+    const parkMaps=PARK_MAPS;
+    this.root.dataset.screen=this.screen;
     const add = (
       label: string,
       action: () => void,
@@ -169,27 +172,22 @@ export class GameMenu {
       case "online":
         title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
-        add("RIDE", () => this.show("maps"), "Choose a destination");
-        add("SHOPS",()=>this.show("shops"),"Visit a shop, browse parts and ride its local spot");
-        add("PRIVATE FREE-RIDE",()=>this.show("online"),"Meet friends in a private room");
-        add(
-          "RIDER",
-          () => this.show("rider"),
-          RIDERS.find((r) => r.id === this.profile.riderId)?.name,
-        );
-        add(
-          "SCOOTER",
-          () => this.show("scooter"),
-          "Scoot with Friends / Your custom build",
-        );
-        add("SETTINGS", () => this.show("settings"));
-        add(
-          "PARK EDITOR — TESTING",
-          () => this.onEditor(),
-          "Local beta: build and save your own lines",
-        );
-        add("TRICK BOOK", () => this.show("tricks"), "Every trick and its input");
+        add("PLAY",()=>this.show("play"),"Find your next line");
+        add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
+        add("CUSTOMIZATION",()=>this.show("customization"),"Character, clothing, and scooter");
+        add("SETTINGS",()=>this.show("settings"),"Preferences and trick book");
         break;
+      case "play":
+        title="PLAY";subtitle="YOUR NEXT SESH";
+        add("SOLO",()=>this.show("maps"),"Choose a park and ride");
+        add("PRIVATE FREE-RIDE",()=>this.show("online"),"Invite friends to a private room");break;
+      case "customization":
+        title="CUSTOMIZATION";subtitle="MAKE IT YOURS";
+        add("RIDER",()=>this.show("characters"),RIDERS.find(r=>r.id===this.profile.riderId)?.name);
+        add("SCOOTER",()=>this.show("scooter"),"Parts and authored colorways");break;
+      case "guide":
+        title="HELP & CONTROLS";subtitle="LEARN YOUR NEXT TRICK";
+        add("TRICK BOOK",()=>this.show("tricks"),"Inputs, combinations, and riding controls");break;
       case "tricks":
         add('CAMERA / STATIONARY TRICKS',()=>{},'On foot: RS looks around. On scooter: RS always preloads and tricks, even stopped. No setup toggle. R3/V recenters; L3/F runs on foot.');
         add("CREDIT / ALPHA ECONOMY",()=>{},"Every 100 banked points earns 1 Credit. Buy authored parts at Techno Gravity. Cash is unavailable. Saves stay on this device.");
@@ -219,10 +217,10 @@ export class GameMenu {
         break;
       case "maps":
         title = "MAP SELECT";
-        subtitle = "THREE PLACES. YOUR LINE.";
-        for (const map of MAPS)
+        subtitle = "CHOOSE YOUR PARK";
+        for (const map of PARK_MAPS)
           add(map.name, () => {if(this.seshOpen){this.travelMap=map.id;this.show('travel');}else this.onRide(map.id);}, map.type,this.seshOpen&&map.id===this.currentMap);
-        add("SHOPS",()=>this.show("shops"),"Browse shops and their riding spots");
+
         break;
       case "rider":
         add('BACKPACK',()=>{this.profile.pockets.backpack=!this.profile.pockets.backpack;this.changed();this.render();},this.profile.pockets.backpack?'Equipped / same inventory':'Off / Pockets');
@@ -230,6 +228,10 @@ export class GameMenu {
         title = "RIDER";
         subtitle = "SAME PHYSICS. YOUR STYLE.";
         for(const slot of OUTFIT_SLOTS)add(slot.toUpperCase(),()=>{this.outfitSlot=slot;this.show('clothing');},clothing(this.profile.outfit,slot).name);
+        add('CHANGE CHARACTER',()=>this.show('characters'),RIDERS.find(r=>r.id===this.profile.riderId)?.name);
+        break;
+      case "characters":
+        title="CHOOSE YOUR RIDER";subtitle="THREE RIDERS. YOUR STYLE.";
         for (const rider of RIDERS)
           add(
             rider.name,
@@ -240,7 +242,7 @@ export class GameMenu {
               this.profile.riderId = rider.id;
               this.profile.outfitId = rider.outfitId;
               this.changed();
-              this.render();
+              this.show("rider");
             },
             rider.description,
             this.profile.riderId === rider.id,
@@ -306,6 +308,8 @@ export class GameMenu {
         add('CANCEL',()=>this.show('variants'),'No charge');break;}
       case 'purchased':title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{this.equip(this.product,this.pendingVariant);this.show('variants');});add('KEEP IN INVENTORY',()=>this.show('variants'));break;
       case "settings":
+        title="SETTINGS";subtitle="MAKE YOURSELF AT HOME";
+        add("HELP & CONTROLS",()=>this.show("guide"),"Trick book and controller guide");
         add('USE HELD ITEM',()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / on foot');
         if(this.owner())add('OWNER / ALPHA TEST CREDIT',()=>this.show('test-credit'),'Local testing only; separate from earned Credit.');
 
@@ -355,7 +359,7 @@ export class GameMenu {
         );
         break;
     }
-    if(this.seshOpen && ["rider","scooter","settings"].includes(this.screen))add("APPLY / SAVE CHANGES",()=>this.applySesh(),"Appearance refreshes when safely grounded; no points awarded.");
+    if(this.seshOpen && ["rider","scooter","settings","customization"].includes(this.screen))add("APPLY / SAVE CHANGES",()=>this.applySesh(),"Appearance refreshes when safely grounded; no points awarded.");
     if (this.screen !== "home")
       add(
         !this.seshOpen && (this.screen === "scooter" || this.screen === "rider")
@@ -363,7 +367,7 @@ export class GameMenu {
           : this.seshOpen&&["rider","scooter","settings"].includes(this.screen)?"CANCEL / BACK":"BACK",
         () => this.back(),
       );
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<MAPS.length?`<img class="map-list-thumb" src="${MAPS[i].preview}" alt="${MAPS[i].name}">`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -372,7 +376,7 @@ export class GameMenu {
           this.select();
         };
         button.onpointermove = (event) => {
-          if(event.pointerType!=="mouse"||(!event.movementX&&!event.movementY))return;
+          if(event.pointerType!=="mouse"||(!event.movementX&&!event.movementY)||this.index===i)return;
           this.index = i;
           this.highlight();
         };
@@ -416,7 +420,7 @@ export class GameMenu {
       .querySelectorAll("[data-menu-index]")
       .forEach((el, i) => el.classList.toggle("selected", i === this.index));
     if (this.screen === "maps") {
-      const map = MAPS[Math.min(this.index, MAPS.length - 1)];
+      const map = PARK_MAPS[Math.min(this.index, 1)];
       (this.root.querySelector(".map-preview img") as HTMLImageElement).src =
         map.preview;
       this.root.querySelector("#map-type")!.textContent = map.type;
@@ -433,12 +437,12 @@ export class GameMenu {
   }
   back() {
     if(this.buying)return;
-    if(this.seshOpen&&["rider","scooter","settings","maps","shops","online"].includes(this.screen)){this.closeSesh();return;}
+    if(this.seshOpen&&["customization","settings","maps","shops","online"].includes(this.screen)){this.closeSesh();return;}
     if(this.seshOpen&&this.screen==="travel"){this.show("maps");return;}
     if(this.shopOpen&&this.screen==="parts"){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();return;}
     if(["purchase","purchased"].includes(this.screen)){this.show("variants");return;}
     this.show(
-      ['clothing','body-build'].includes(this.screen) ? 'rider' : this.screen === "variants"
+      this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':['rider','scooter','characters'].includes(this.screen)?'customization':['clothing','body-build'].includes(this.screen) ? 'rider' : this.screen === "variants"
         ? "parts"
         : this.screen === "parts"
           ? "scooter"
@@ -479,15 +483,15 @@ export class GameMenu {
     const scooter=["scooter","parts","variants","purchase","purchased"].includes(this.screen);
     this.previewRider.rider.visible=!scooter;
     const floor=this.previewScene.getObjectByName('Preview floor');if(floor)floor.visible=!this.shopOpen;
-    const compact=this.shopOpen||this.seshOpen;
+    const compact=true;
     const x=compact?Math.round(innerWidth*.40):0,w=compact?Math.round(innerWidth*.55):innerWidth,h=compact?Math.round(innerHeight*.62):innerHeight,y=compact?Math.round(innerHeight*.20):0;
-    const center=this.focus.clone().add(this.pan);if(!this.shopOpen)center.x-=.5;
+    const center=this.focus.clone().add(this.pan);
     const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
     this.previewCamera.aspect=w/h;
     this.previewCamera.position.set(this.focus.x+this.pan.x+Math.sin(this.orbit)*distance,this.focus.y+this.pan.y+distance*.22,this.focus.z+this.pan.z+Math.cos(this.orbit)*distance);
     this.previewCamera.lookAt(center);this.previewCamera.updateProjectionMatrix();
     if(compact){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
-    renderer.render(this.previewScene,this.previewCamera);
+    if(!["maps","shops","play","online","settings","guide","tricks"].includes(this.screen))renderer.render(this.previewScene,this.previewCamera);
     if(compact){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
   }
 }

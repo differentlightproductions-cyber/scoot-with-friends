@@ -1,3 +1,4 @@
+import {loadingStage,finishLoading,loadingFailed} from './ui/loading';
 import {shopForMap} from './data/shops';
 import {FreeRide} from './network/client';
 import {CreditEconomy} from './data/credit';
@@ -35,6 +36,7 @@ import { ACTIVE_MAP } from './park/park';
 import {loadHuman} from './scooter/human';
 import {MobileGate} from './ui/mobile';
 async function boot() {
+  await loadingStage("Loading your rider",15);
   const profile = loadProfile();
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
   await loadHuman(profile.riderId);
@@ -42,6 +44,7 @@ async function boot() {
     hud = new HUD(events),
     input = new Input(),
     audio = new AudioEngine();
+  await loadingStage("Preparing the park",40);
   await RAPIER.init();
   const scene = new THREE.Scene();
   const waterEffects = new WaterEffects(scene);
@@ -136,26 +139,25 @@ async function boot() {
     }
   }
   void latestPark();
+  let destinationLoading=false;
   const loadDestination = async (id:MapId) => {
+    if(destinationLoading)return;destinationLoading=true;input.clear();
+    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if (id === "outdoor") await latestPark();
+    await loadingStage("Building the destination",40);
     setActiveLayout(id === "outdoor" ? publicLayout : null);
     setEditedHeightQuery(null);
     startSession(id, true);
     if (id === "outdoor" && publicLayout) applyLayout(publicLayout, false);
+    await loadingStage("Preparing the view",80);
+    await renderer.compileAsync(scene,camera.camera);
+    await loadingStage("Ready to ride",100);finishLoading();
+    }catch(error){loadingFailed();throw error;}finally{destinationLoading=false;input.clear();pending=emptyInput();accumulator=0;}
   };
   network.loadMap=async id=>{await loadDestination(id as MapId);};
   menu.onRide=async id=>{if(network.id){await network.changeMap(id);return;}await loadDestination(id);};
-  menu.onEditor = () => {
-    if(network.id){menu.notice="Leave the room before editing a park.";menu.show("online");return;}
-    if (
-      !editor.history.past.length &&
-      !editor.layout.objects.length &&
-      publicLayout
-    )
-      editor.history.layout = validateLayout(publicLayout);
-    editor.open();
-  };
+  menu.onEditor = () => {}; // Park editor is shelved for this alpha.
   function applyLayout(layout: ParkLayout, editing: boolean) {
     deformGroundLayers(park);
     const baseObjects = buildBaseAssets(
@@ -311,9 +313,7 @@ async function boot() {
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
     ).join("");
-    document.querySelector('[data-action="map"]')!.textContent = OUTDOOR
-      ? "Switch to Warehouse 01"
-      : "Switch to Veterans Memorial Park";
+    document.querySelector('[data-action="map"]')!.textContent = "Parks";
     hud.started = false;
     hud.start();
     hud.setPaused(false);
@@ -376,6 +376,8 @@ async function boot() {
             reset();
             break;
           case "map":
+          case "customization":
+          case "shops":
           case "rider":
           case "scooter":
           case "online":
@@ -411,6 +413,7 @@ async function boot() {
     renderer.setSize(innerWidth, innerHeight);
     camera.resize();
   });
+  await loadingStage("Ready",100);finishLoading();
   let last = performance.now(),
     accumulator = 0,
     fps = 60,
@@ -425,7 +428,8 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
-    if (hud.started){network.render(camera.camera,dt);renderer.render(scene, camera.camera);}
+    const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
+    if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);renderer.render(scene, camera.camera);}
     if(!hud.started||menu.shopOpen||menu.seshOpen)menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
@@ -440,6 +444,7 @@ async function boot() {
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();
+    if(destinationLoading){audio.update(0,false,false,true);return;}
     if (editor.active) {
       editor.update(frame, dt);
       return;
@@ -577,6 +582,7 @@ async function boot() {
   }
 }
 boot().catch((error) => {
+  loadingFailed();
   console.error(error);
   const loading = document.querySelector("#loading");
   if (loading)

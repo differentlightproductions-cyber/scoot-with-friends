@@ -26,9 +26,9 @@ export class HUD {
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
       <div id="feedback"></div>
       <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
-      <footer><div class="speed"><strong id="speed">00</strong><span>KM/H</span><i id="charge"></i></div><div id="hint">X PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
+      <footer><div id="hint">X PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
       <aside id="help" hidden></aside>
-      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Maps</button><button data-action="rider">Rider / Outfit</button><button data-action="scooter">Scooter</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
+      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Maps</button><button data-action="shops">Shops</button><button data-action="customization">Customization</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
     this.root = document.querySelector("#app")!;
     this.attempt = document.querySelector("#line-text")!;
@@ -63,10 +63,7 @@ export class HUD {
         this.feedback("RAIL CLIP / RIDE IT OUT", "warn");
       if (e.type === "grindCatch")
         this.feedback(`${e.name.toUpperCase()} / ON RAIL`);
-      if (e.type === "dismount")
-        this.feedback(
-          e.walking ? "ON FOOT / Y TO RIDE" : "BACK ON THE SCOOTER",
-        );
+
       if (e.type === "reset") {
         this.attempt.textContent = "";
         this.attemptAge = 0;
@@ -189,11 +186,6 @@ export class HUD {
       .started
       ? "1"
       : "0";
-    document.querySelector("#speed")!.textContent = Math.round(s.speed * 3.6)
-      .toString()
-      .padStart(2, "0");
-    (document.querySelector("#charge") as HTMLElement).style.transform =
-      `scaleX(${s.charge})`;
     const help = document.querySelector("#help") as HTMLElement;
     help.hidden = !input.help;
     const mapping = ridingButtons(s.tricks.stance, s.tricks.controlStyle);

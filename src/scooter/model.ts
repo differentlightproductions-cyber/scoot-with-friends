@@ -389,7 +389,19 @@ export class RiderModel {
   }
 
   applyProfile(profile: LocalProfile) {
-    if(!this.backpack.parent){const fabric=new THREE.MeshStandardMaterial({color:0x34474b,roughness:.95});const bag=new THREE.Mesh(new RoundedBoxGeometry(.29,.36,.14,3,.045),fabric);bag.position.set(0,-.01,-.18);this.backpack.add(bag);const pocket=new THREE.Mesh(new RoundedBoxGeometry(.22,.16,.04,2,.02),fabric);pocket.position.set(0,-.09,-.27);this.backpack.add(pocket);this.rider.add(this.backpack);}
+    if(!this.backpack.parent){
+      this.backpack.name='Fitted canvas backpack';
+      const fabric=new THREE.MeshStandardMaterial({color:0x34474b,roughness:.95}),trim=new THREE.MeshStandardMaterial({color:0x1b292c,roughness:.9});
+      const bag=new THREE.Mesh(new RoundedBoxGeometry(.25,.32,.12,4,.045),fabric);bag.position.set(0,-.015,-.175);bag.castShadow=true;this.backpack.add(bag);
+      const pocket=new THREE.Mesh(new RoundedBoxGeometry(.18,.13,.045,3,.02),fabric);pocket.position.set(0,-.085,-.25);pocket.castShadow=true;this.backpack.add(pocket);
+      for(const side of [-1,1]){const curve=new THREE.CatmullRomCurve3([v(side*.085,-.13,-.17),v(side*.125,.11,-.15),v(side*.12,.21,-.045),v(side*.125,.12,.112),v(side*.13,-.10,.105),v(side*.085,-.14,-.17)]),positions:number[]=[],indices:number[]=[];
+        for(let i=0;i<=32;i++){const p=curve.getPoint(i/32);positions.push(p.x-.016,p.y,p.z,p.x+.016,p.y,p.z);if(i<32){const j=i*2;indices.push(j,j+1,j+2,j+1,j+3,j+2);}}
+        const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geometry.setIndex(indices);geometry.computeVertexNormals();const material=trim.clone();material.side=THREE.DoubleSide;const strap=new THREE.Mesh(geometry,material);strap.castShadow=true;this.backpack.add(strap);
+      }
+      const handle=new THREE.Mesh(tube([v(-.04,.15,-.18),v(-.035,.19,-.18),v(.035,.19,-.18),v(.04,.15,-.18)],.007),trim);this.backpack.add(handle);
+      const zip=new THREE.Mesh(new THREE.BoxGeometry(.14,.004,.005),trim);zip.position.set(0,-.028,-.275);this.backpack.add(zip);this.rider.add(this.backpack);
+    }
+    this.backpack.position.copy(this.torso.position);this.backpack.quaternion.copy(this.torso.quaternion);
     this.backpack.visible=profile.pockets.backpack;
     if(!this.trousers)this.finishCharacter();
     this.assembly.build(profile.scooter);
@@ -433,6 +445,7 @@ export class RiderModel {
   }
   dispose(){this.humanRequest++;this.human?.dispose();this.human=undefined;const geometries=new Set<THREE.BufferGeometry>(),materials=new Set<THREE.Material>();this.root.traverse(o=>{if(o instanceof THREE.Mesh){geometries.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])materials.add(m);}});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.root.removeFromParent();}
   posePreviewHands() {
+    this.backpack.position.copy(this.torso.position);this.backpack.quaternion.copy(this.torso.quaternion);
     this.root.updateMatrixWorld(true);
     const inverse=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();
     for(let i=0;i<2;i++){

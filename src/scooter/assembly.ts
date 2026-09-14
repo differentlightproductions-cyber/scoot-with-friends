@@ -7,7 +7,7 @@ const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
 export class ScooterAssembly {
  deckPivot=new THREE.Group();barPivot=new THREE.Group();wheels:THREE.Mesh[]=[];
  gripSockets:THREE.Object3D[]=[];deckSocket=new THREE.Object3D();
- constructor(public root:THREE.Group){this.build(defaultScooter());}
+ constructor(public root:THREE.Group,loadout:ScooterLoadout=defaultScooter()){this.build(loadout);}
  build(loadout:ScooterLoadout){
   const gs=new Set<THREE.BufferGeometry>(),ms=new Set<THREE.Material>();
   this.root.traverse(o=>{if(o instanceof THREE.Mesh){gs.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])ms.add(m);}});

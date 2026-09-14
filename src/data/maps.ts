@@ -2,9 +2,9 @@
   {
     id: "warehouse",
     name: "Warehouse",
-    type: "Build Your Own",
+    type: "Indoor Free-ride",
     description:
-      "An empty indoor creator space. Dismount and hold D-Pad Left to build your own riding lines.",
+      "An indoor space for a quiet free-ride session. Park editing is unavailable in this alpha.",
     preview: "/previews/warehouse.png",
     spawn: { x: -12, z: -24, yaw: 0 },
     environment: "warehouse",

@@ -45,7 +45,6 @@ export class SocialControls {
   }
   rootOptions(s:Simulation){return [
    {label:'Emotes',action:()=>this.openOptions('EMOTES / RS SELECT',EMOTES.map(e=>({label:e.label,action:()=>this.perform(e.id,s)})))},
-   {label:this.warehouse?'Build':'Build · Warehouse',action:()=>{if(this.warehouse)this.onBuild();}},
    {label:'Chat',action:()=>{this.chat.hidden=false;this.field.focus();}},
    {label:'Scooter',action:()=>this.onScooter()}, {label:'Interact',action:()=>this.onInteract()}, {label:'Items',action:()=>this.onItems()}, {label:'Cancel',action:()=>{}},
   ];}

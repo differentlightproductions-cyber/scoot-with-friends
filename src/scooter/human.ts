@@ -74,7 +74,7 @@ export class HumanCharacter {
   this.headwear=new THREE.Group();this.headwear.name='Hair and seated eyes';this.group.add(this.headwear);
   const headAnchor=V(data.anchors[2][0]).add(new THREE.Vector3(0,-.04,-.008)),eyeMat=new THREE.MeshStandardMaterial({color:0xd6cec2,roughness:.7}),iris=new THREE.MeshStandardMaterial({color:id==='rider-03'?0x67756a:0x342a23,roughness:.7});
   for(const pt of data.eyes){const e=new THREE.Mesh(new THREE.SphereGeometry(.016,quality==='high'?24:12,12),eyeMat);e.position.copy(V(pt).sub(headAnchor));e.scale.set(1,.9,1);this.headwear.add(e);this.eyes.push(e);const pupil=new THREE.Mesh(new THREE.SphereGeometry(.0055,16,12),iris);pupil.position.z=.016;pupil.scale.z=.35;e.add(pupil);const black=new THREE.Mesh(new THREE.SphereGeometry(.0024,12,8),new THREE.MeshStandardMaterial({color:0x141619,roughness:.8}));black.position.z=.0026;pupil.add(black);}
-  this.addHair(data.hair);
+  if(outfit.head==='none')this.addHair(data.hair);
   const used=new Set(data.faces.flatMap(f=>f.map(v=>v[0])));const skull=data.positions.filter((_,i)=>used.has(i)&&data.names[data.skinIndex[i][0]]==='head').map(p=>V(p).sub(headAnchor));
   this.headwear.add(fittedHeadwear(skull,outfit.head,model.helmet instanceof THREE.Mesh?(model.helmet.material as THREE.MeshStandardMaterial).color.getHex():0xb84836,quality));
   this.model.helmet.visible=false;

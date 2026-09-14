@@ -3,16 +3,12 @@ import {tube} from './surfaces';
 export function fittedHeadwear(points:THREE.Vector3[],kind:string,color:number,quality:string){
  const group=new THREE.Group();group.name='Head-fitted '+kind;if(kind==='none')return group;
  const skull=points.filter(p=>p.y>.02&&p.y<.25&&Math.abs(p.x)<.16),bounds=new THREE.Box3().setFromPoints(skull);
- let rx=Math.max(.094,Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x))+.008);
- let rz=Math.max(.106,(bounds.max.z-bounds.min.z)/2+.012);const cz=(bounds.max.z+bounds.min.z)/2;
- const crown=bounds.max.y+.014,helmet=['helmet','vented','visor'].includes(kind),segments=quality==='low'?32:64,rows=quality==='low'?12:22;
+ let rx=Math.max(.073,Math.max(Math.abs(bounds.min.x),Math.abs(bounds.max.x))+.004);
+ let rz=Math.max(.083,(bounds.max.z-bounds.min.z)/2+.005);const cz=(bounds.max.z+bounds.min.z)/2;
+ const crown=bounds.max.y+.009,helmet=['helmet','vented','visor'].includes(kind),segments=quality==='low'?32:64,rows=quality==='low'?12:22;
  const rimAt=(phi:number)=>helmet?-.008+(Math.cos(phi)>0?.063:.028)*Math.cos(phi):kind==='beanie'?.030+.024*Math.cos(phi):.025;
  // A human crown is squarer than an ellipsoid. Fit its full profile, not
  // just the extrema; otherwise the upper temples can poke through the shell.
- for(let attempt=0;attempt<30;attempt++){
-   const clear=skull.every(p=>{const phi=Math.atan2(p.x/rx,(p.z-cz)/rz),rim=rimAt(phi),t=(p.y+.006-rim)/(crown-rim);return t<=0||Math.hypot(p.x/rx,(p.z-cz)/rz)<=Math.pow(Math.max(0,1-t*t),.35);});
-   if(clear)break;rx*=1.006;rz*=1.006;
- }
  const shell=new THREE.MeshStandardMaterial({color,roughness:helmet?.42:.92,metalness:helmet?.12:0,side:THREE.DoubleSide}),liner=new THREE.MeshStandardMaterial({color:0x282c2d,roughness:1,side:THREE.DoubleSide});
  const rings:THREE.Vector3[][]=[];
  for(let inner=0;inner<2;inner++){

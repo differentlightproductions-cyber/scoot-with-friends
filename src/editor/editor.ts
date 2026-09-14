@@ -188,6 +188,7 @@ export class ParkEditor {
     return this.history.layout;
   }
   open(fresh = false) {
+    return; // Shelved: no public or owner editor entry during alpha polish.
     if (fresh) {
       this.history = new LayoutHistory();
       this.selected = "";
