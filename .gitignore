@@ -25,3 +25,5 @@ coverage/
 playwright-report/
 test-results/
 scripts/extend-focus.cjs
+references/techno-gravity/
+assets-source/humans/system-assets.zip

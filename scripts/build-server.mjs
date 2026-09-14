@@ -1,19 +1,16 @@
+import {gzipSync} from 'node:zlib';
 ﻿import fs from "node:fs";
 import path from "node:path";
 import { build } from "esbuild";
 const root = path.resolve("dist");
 const client = path.join(root, "client");
 fs.mkdirSync(client, { recursive: true });
-// Vite emits the browser build at dist; move that output into the client directory.
-for (const entry of fs.readdirSync(root)) {
-  if (["client", "server", ".openai"].includes(entry)) continue;
-  fs.renameSync(path.join(root, entry), path.join(client, entry));
-}
 const types = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript",
   ".css": "text/css",
   ".png": "image/png",
+  ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".svg": "image/svg+xml",
   ".json": "application/json",
@@ -27,7 +24,8 @@ function walk(dir) {
     else
       assets["/" + path.relative(client, p).replaceAll("\\", "/")] = {
         type: types[path.extname(p)] || "application/octet-stream",
-        body: fs.readFileSync(p).toString("base64"),
+        body: gzipSync(fs.readFileSync(p),{level:9}).toString("base64"),
+        encoding: "gzip",
       };
   }
 }

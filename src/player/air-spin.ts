@@ -11,6 +11,7 @@ export class AirSpinControl {
     verticalSpeed: number,
     height: number,
     elapsed: number,
+    rateScale = 1,
   ) {
     const remaining =
       (verticalSpeed +
@@ -37,6 +38,7 @@ export class AirSpinControl {
     const response = Math.pow(magnitude, TUNE.spinResponseExponent);
     const ceiling =
       TUNE.airMaxSpin *
+      rateScale *
       this.authority *
       (0.1 + 0.9 * Math.pow(magnitude, TUNE.spinCeilingExponent));
     // A softer stick supplies less torque and a lower driven ceiling; it does not
@@ -50,6 +52,7 @@ export class AirSpinControl {
         spin +
         direction *
           TUNE.airAcceleration *
+          rateScale *
           this.authority *
           (TUNE.spinAccelerationFloor +
             (1 - TUNE.spinAccelerationFloor) * response) *

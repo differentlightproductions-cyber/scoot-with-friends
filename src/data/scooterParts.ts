@@ -15,6 +15,7 @@ export interface PartVariant {
   id: string;
   name: string;
   color: number;
+  accent?:number;
 }
 export interface ScooterPart {
   id: string;
@@ -30,10 +31,11 @@ export interface ScooterPart {
   unlocked: boolean;
   priceFuture: number | null;
   variants: PartVariant[];
-  unlockType: "free";
+  unlockType: "free"|"credit";
+  creditPrice?:number;
   premium: false;
   priceId: null;
-  owned: true;
+  owned: boolean;
   compatibility: {
     wheelDiameter?: number;
     barDiameter?: number;
@@ -148,6 +150,13 @@ export const PARTS: ScooterPart[] = [
   make("compression", "ihc-compression", "IHC Compression", "ihc", ["black"]),
   make("compression", "scs-compression", "SCS Compression", "scs", ["silver"]),
 ];
+const mafioso=(category:Category,id:string,name:string,shape:string,creditPrice:number,variants:PartVariant[]):ScooterPart=>({...make(category,id,name,shape,['black'],category==='wheels'?110:undefined),brand:'Mafioso',brandId:'mafioso',name:'Mafioso '+name,unlockType:'credit',owned:false,unlocked:false,creditPrice,variants});
+PARTS.push(
+ mafioso('bars','mafioso-bars-y','Crown Y Bars','mafioso-y',75,[{id:'mafioso_bars_y_black_gold',name:'Black / Gold',color:0x171b1e,accent:0xc5a653},{id:'mafioso_bars_y_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_bars_y_chrome',name:'Chrome',color:0xb8cbc6}]),
+ mafioso('wheels','mafioso-wheels-petal','Petal 110 Wheel Pair','petal',55,[{id:'mafioso_wheels_petal_oilslick',name:'Oil Slick / Black',color:0x71989b},{id:'mafioso_wheels_petal_green_gold',name:'Green / Gold',color:0x638845,accent:0xc4a24f}]),
+ mafioso('wheels','mafioso-wheels-broad','Broad Spoke 110 Wheel Pair','broad',55,[{id:'mafioso_wheels_broad_rainbow',name:'Rainbow / Black',color:0x71989b}]),
+ mafioso('clamp','mafioso-clamp-segmented','Segmented Double Clamp','segmented',35,[{id:'mafioso_clamp_segmented_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_clamp_segmented_chrome',name:'Chrome',color:0xb8cbc6},{id:'mafioso_clamp_segmented_black',name:'Black',color:0x171b1e}])
+);
 export type PartSelection = { partId: string; variantId: string };
 export type ScooterLoadout = Record<
   Exclude<Category, "wheels">,

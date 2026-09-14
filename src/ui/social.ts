@@ -16,6 +16,10 @@ export class SocialControls {
   bubble = document.createElement("div");
   nameplate = document.createElement("div");
   selected = -1;
+  options:{label:string;action:()=>void}[]=[];
+  latched=false;
+  onBuild=()=>{};onInteract=()=>{};onScooter=()=>{};
+  warehouse=false;
   private left = 0;
   private right = 0;
   private chatArmed = true;
@@ -24,11 +28,6 @@ export class SocialControls {
   private current: Simulation | null = null;
   constructor(private events: Events) {
     this.wheel.id="emote-wheel"; this.wheel.hidden=true;
-    const center=document.createElement("strong");center.textContent="EMOTES";this.wheel.append(center);
-    EMOTES.forEach((e,i)=>{const b=document.createElement("span"); b.textContent=e.label;
-      const angle=i*Math.PI*2/EMOTES.length-Math.PI/2;
-      b.style.left=`${50+Math.cos(angle)*38}%`;b.style.top=`${50+Math.sin(angle)*38}%`;
-      this.wheel.append(b);});
     this.chat.id="social-chat";this.chat.hidden=true;
     this.field.maxLength=120;this.field.placeholder="Say something…";this.field.setAttribute("aria-label","Local chat message");
     const help=document.createElement("small");help.textContent="LOCAL CHAT · ENTER SENDS · ESC / B CANCELS";
@@ -39,6 +38,17 @@ export class SocialControls {
     this.nameplate.id="player-nameplate";this.nameplate.hidden=true;
     document.body.append(this.wheel,this.chat,this.bubble,this.nameplate);
   }
+  openOptions(title:string,options:{label:string;action:()=>void}[]){
+    this.options=options;this.selected=-1;this.latched=true;this.wheel.hidden=false;this.wheel.replaceChildren();
+    const center=document.createElement('strong');center.textContent=title;this.wheel.append(center);
+    options.forEach((e,i)=>{const b=document.createElement('span');b.textContent=e.label;const a=i*Math.PI*2/options.length-Math.PI/2;b.style.left=(50+Math.cos(a)*38)+'%';b.style.top=(50+Math.sin(a)*38)+'%';this.wheel.append(b);});
+  }
+  rootOptions(s:Simulation){return [
+   {label:'Emotes',action:()=>this.openOptions('EMOTES / RS SELECT',EMOTES.map(e=>({label:e.label,action:()=>this.perform(e.id,s)})))},
+   {label:this.warehouse?'Build':'Build · Warehouse',action:()=>{if(this.warehouse)this.onBuild();}},
+   {label:'Chat',action:()=>{this.chat.hidden=false;this.field.focus();}},
+   {label:'Scooter',action:()=>this.onScooter()}, {label:'Interact',action:()=>this.onInteract()}, {label:'Cancel',action:()=>{}},
+  ];}
   send(message:string) {
     const text=message.trim().slice(0,120);
     if(text && this.current?.walking) {
@@ -59,20 +69,23 @@ export class SocialControls {
     if(s.emote){s.emote.time+=dt;
       if(!s.walking || !s.grounded || f.pressed.sprint || f.pressed.hop || f.pressed.body ||
         Math.hypot(f.steer,f.lean)>.2 || s.emote.time>s.emote.duration || s.state==="Bail")s.emote=null;}
-    if(!enabled||!s.walking||s.sitting){this.wheel.hidden=true;this.closeChat();this.left=this.right=0;this.wasWheel=false;return f;}
+    if(!enabled||!s.walking||s.sitting){this.wheel.hidden=true;this.closeChat();this.left=this.right=0;this.wasWheel=false;this.latched=false;return f;}
     if(!this.chat.hidden){if(f.pressed.brakeBars)this.closeChat();return emptyInput();}
     this.left=f.held.menuLeft>.5?this.left+dt:0;
     this.right=f.held.menuRight>.5?this.right+dt:0;
     if(f.held.menuRight<.5)this.chatArmed=true;
     if(this.right>.2&&this.chatArmed){this.chat.hidden=false;this.chatArmed=false;this.field.focus();return emptyInput();}
-    if(this.left>.16){this.wheel.hidden=false;this.wasWheel=true;
-      this.selected=Math.hypot(f.steer,f.lean)>.45
-        ? Math.round((Math.atan2(f.lean,f.steer)+Math.PI/2+Math.PI*2)%(Math.PI*2)/(Math.PI*2)*EMOTES.length)%EMOTES.length:-1;
-      [...this.wheel.querySelectorAll("span")].forEach((b,i)=>b.classList.toggle("selected",i===this.selected));
+    if(this.left>.16&&!this.wasWheel&&!this.latched){this.openOptions('QUICK WHEEL / RS SELECT',this.rootOptions(s));this.wasWheel=true;}
+    if(!this.wheel.hidden){
+      if(f.held.menuLeft>.5)this.wasWheel=true;
+      if(Math.hypot(f.rx,f.ry)>.45)this.selected=Math.round((Math.atan2(f.ry,f.rx)+Math.PI/2+Math.PI*2)%(Math.PI*2)/(Math.PI*2)*this.options.length)%this.options.length;
+      [...this.wheel.querySelectorAll('span')].forEach((b,i)=>b.classList.toggle('selected',i===this.selected));
+      if(f.pressed.brakeBars){this.wheel.hidden=true;this.wasWheel=this.latched=false;return emptyInput();}
+      if(f.pressed.hop||(this.wasWheel&&f.held.menuLeft<.5)){
+        const option=this.options[this.selected];this.wheel.hidden=true;this.wasWheel=this.latched=false;this.selected=-1;option?.action();
+      }
       return emptyInput();
     }
-    if(this.wasWheel&&f.held.menuLeft<.5){if(this.selected>=0)this.perform(EMOTES[this.selected].id,s);
-      this.wasWheel=false;this.wheel.hidden=true;this.selected=-1;return emptyInput();}
     return f;
   }
   render(head:THREE.Vector3,camera:THREE.Camera,visible:boolean){

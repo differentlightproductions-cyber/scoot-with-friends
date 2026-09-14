@@ -10,7 +10,8 @@ import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns } from "./outdoor";
 export let OUTDOOR =
   typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("map") === "outdoor";
+  !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
+export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "techno_gravity" : "warehouse");
 export interface Rail {
   id: string;
   a: THREE.Vector3;
@@ -31,6 +32,9 @@ export function terrainHeight(x: number, z: number): number {
 }
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
+  return 0;
+}
+export function legacyWarehouseHeight(x:number,z:number){
   let h = 0;
   // Broad quarter pipes with tangent-continuous bottoms and flat decks.
   const q = clamp(Math.abs(z) - 34, 0, 4.8);
@@ -98,9 +102,13 @@ const warehouseSpawns = [
   { name: "STAIRS / DOWN RAIL", x: 15, z: -18, yaw: 0 },
 ];
 export let SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
+let shopBuilder:((park:Park)=>void)|null=null;
+export function registerShop(build:(park:Park)=>void){shopBuilder=build;}
+const shopSpawns=[{name:"TECHNO GRAVITY / FRONTAGE",x:0,z:-11,yaw:0},{name:"DIY ALLEY",x:1,z:14,yaw:0}];
 export function selectPark(id: string) {
+  ACTIVE_MAP = id;
   OUTDOOR = id === "outdoor";
-  SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
+  SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:warehouseSpawns;
 }
 export class Park {
   benches: {
@@ -159,7 +167,11 @@ export class Park {
       buildOutdoor(this);
       return;
     }
-    this.warehouse();
+    if(ACTIVE_MAP==="warehouse")this.warehouse();
+    if(ACTIVE_MAP==="techno_gravity")shopBuilder?.(this);
+  }
+  legacyObstacles() {
+    const scene=this.scene;
     // Distinct, square stair treads replace the visually ramp-like sampled edges.
     for (let i = 0; i < 5; i++) {
       const height = 1.5 - i * 0.3,
@@ -323,7 +335,7 @@ export class Park {
         g.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
       return { g, p, idx };
     };
-    const step = OUTDOOR ? 0.125 : 0.25;
+    const step = OUTDOOR ? 0.125 : 2;
     const { g } = make(step, true);
     const uv:number[]=[];const vertices=g.getAttribute('position');for(let i=0;i<vertices.count;i++)uv.push(vertices.getX(i),vertices.getZ(i));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
     const terrainMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.91,map:surfaceTexture('concrete')});

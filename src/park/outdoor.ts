@@ -1,3 +1,4 @@
+import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
 import type { Park } from "./park";
@@ -186,6 +187,7 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
         };
     }
   }
+  if(!OUTDOOR)return null;
   for (const m of modules) {
     const edit = activeLayout?.baseEdits["base-wood-" + m.id];
     if (edit?.hidden) continue;

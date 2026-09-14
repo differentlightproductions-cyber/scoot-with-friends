@@ -44,6 +44,8 @@ export class Input {
   keys = new Set<string>();
   previous = emptyInput();
   pad: Gamepad | null = null;
+  unsupported=false;
+  private blocked=new Set<Action>();private axesBlocked=false;private padIndex=-1;private activePads=new Set<number>();
   debug = false;
   help = false;
   private pendingPressed = new Set<Action>();
@@ -75,17 +77,23 @@ export class Input {
     window.addEventListener("blur", () => this.clear());
   }
   clear() {
+    for(const a of Object.keys(MAP) as Action[])if(this.previous.held[a]>.15)this.blocked.add(a);
+    this.axesBlocked=true;
     this.keys.clear();
     this.previous = emptyInput();
     this.pendingPressed.clear();
     this.pendingReleased.clear();
   }
   poll() {
-    this.pad =
-      Array.from(navigator.getGamepads?.() ?? []).find((p) => p?.connected) ??
-      null;
+    const pads=Array.from(navigator.getGamepads?.()??[]).filter((p):p is Gamepad=>!!p?.connected);
+    this.unsupported=pads.length>0&&!pads.some(p=>p.mapping==='standard');
+    const usable=pads.filter(p=>p.mapping==='standard');
+    const pressed=usable.filter(p=>p.buttons.some(b=>b.pressed));
+    this.pad=pressed.find(p=>!this.activePads.has(p.index)&&p.index!==this.padIndex)??usable.find(p=>p.index===this.padIndex)??usable[0]??null;this.activePads=new Set(pressed.map(p=>p.index));
+    if((this.pad?.index??-1)!==this.padIndex){this.clear();this.padIndex=this.pad?.index??-1;for(const [a,m]of Object.entries(MAP))if((this.pad?.buttons[m.button]?.value??0)>.15)this.blocked.add(a as Action);}
     const f = emptyInput();
-    const axis = (i: number) => dead(this.pad?.axes[i] ?? 0);
+    if(this.axesBlocked&&(!this.pad||this.pad.axes.slice(0,4).every(v=>Math.abs(v)<.2)))this.axesBlocked=false;
+    const axis = (i: number) => this.axesBlocked?0:dead(this.pad?.axes[i] ?? 0);
     f.steer = clamp(
       axis(0) + Number(this.keys.has("KeyD")) - Number(this.keys.has("KeyA")),
       -1,
@@ -116,6 +124,7 @@ export class Input {
         this.pad?.buttons[m.button]?.value ?? 0,
         Number(this.keys.has(m.key)),
       );
+      if(this.blocked.has(a)){if(f.held[a]<.15)this.blocked.delete(a);f.held[a]=0;this.pendingPressed.delete(a);this.pendingReleased.delete(a);}
       if (f.held[a] > 0.5 && this.previous.held[a] <= 0.5)
         this.pendingPressed.add(a);
       if (f.held[a] <= 0.5 && this.previous.held[a] > 0.5)

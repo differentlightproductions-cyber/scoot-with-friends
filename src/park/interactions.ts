@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Park } from './park';
-import { OUTDOOR, terrainHeight } from './park';
+import { OUTDOOR, ACTIVE_MAP, terrainHeight } from './park';
 import type { Simulation } from '../physics/simulation';
 import type { InputFrame } from '../input/input';
 import { emptyInput } from '../input/input';
@@ -24,7 +24,7 @@ export class WorldInteractions {
  constructor(public park:Park,profile:LocalProfile){
   this.profile=profile;this.prompt.className='world-prompt';this.prompt.hidden=true;document.body.append(this.prompt);
   const scene=park.scene;
-  const locations=OUTDOOR?[[22,-34],[-42,-20],[52,-28]]:[[24,-31]];
+  const locations=OUTDOOR?[[22,-34],[-42,-20],[52,-28]]:ACTIVE_MAP==="techno_gravity"?[[6,-8]]:[[24,-31]];
   for(const [index,[x,z]] of locations.entries()){
    const y=terrainHeight(x,z),base=new THREE.Vector3(x,y,z);
    for(const dx of [-.85,0,.85]){

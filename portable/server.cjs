@@ -1,7 +1,7 @@
 ﻿const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),{spawn}=require('node:child_process');
 const root=path.join(__dirname,'game');const publicOrigin='https://scoot-with-friends.nicsoundcloud22.chatgpt.site';
 let owner=null;try{if(process.env.SWF_ADMIN==='1')owner=JSON.parse(fs.readFileSync(path.join(__dirname,'owner-private.json'),'utf8'));}catch{}
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.wasm':'application/wasm','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.woff':'font/woff','.mp3':'audio/mpeg'};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.wasm':'application/wasm','.json':'application/json','.webp':'image/webp','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.svg':'image/svg+xml','.woff2':'font/woff2','.woff':'font/woff','.mp3':'audio/mpeg'};
 const server=http.createServer(async(req,res)=>{
  const localOrigin='http://127.0.0.1:'+server.address().port;
  if(req.headers.host!=='127.0.0.1:'+server.address().port&&req.headers.host!=='localhost:'+server.address().port){res.writeHead(403).end();return;}

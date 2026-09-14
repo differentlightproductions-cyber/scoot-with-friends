@@ -1,34 +1,19 @@
 ﻿import * as THREE from 'three';
-import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {tailored} from '../scooter/geometry';
+import {loadHuman,HumanCharacter,type HumanRig} from '../scooter/human';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
-export function addParkPeople(scene:THREE.Scene) {
- const skin=new THREE.MeshStandardMaterial({color:0xb98f70,roughness:.95});
- const pants=new THREE.MeshStandardMaterial({color:0x344c52,roughness:1});
- const shoes=new THREE.MeshStandardMaterial({color:0x252c2e,roughness:.9});
- for(const [i,x,z] of [[0,31,-37],[1,34,-37],[2,-26,32],[3,88,29],[4,28,-109],[5,-36,-65]]) {
-  const lod=new THREE.LOD();lod.position.set(x,0,z);lod.rotation.y=i*1.7;lod.name='Park visitor';
-  const shirt=new THREE.MeshStandardMaterial({color:[0xa66b48,0xd4c9ad,0x657c59][i%3],roughness:1});
-  for(const [distance,segments] of [[0,10],[28,6]]){
-   const group=new THREE.Group(),skinParts:THREE.BufferGeometry[]=[],pantsParts:THREE.BufferGeometry[]=[],shoeParts:THREE.BufferGeometry[]=[],shirtParts:THREE.BufferGeometry[]=[];
-   shirtParts.push(tailored([[-.22,.16,.105],[.13,.2,.115],[.22,.08,.065]],segments).translate(0,1.12,0));
-   skinParts.push(new THREE.SphereGeometry(.125,segments,6).scale(.9,1.1,1).translate(0,1.48,0));
-   skinParts.push(new THREE.CylinderGeometry(.05,.055,.14,segments).translate(0,1.33,0));
-   for(const sign of [-1,1]){
-    shirtParts.push(new THREE.CylinderGeometry(.075,.07,.23,segments).rotateZ(sign*.18).translate(sign*.2,1.16,0));
-    skinParts.push(new THREE.CylinderGeometry(.038,.05,.31,segments).rotateZ(sign*.08).translate(sign*.23,.9,.015));
-    skinParts.push(new THREE.SphereGeometry(.052,6,4).scale(.8,1.3,.8).translate(sign*.245,.73,.025));
-    pantsParts.push(tailored([[-.36,.065,.065],[0,.075,.078],[.38,.093,.08]],segments).translate(sign*.093,.5,0));
-    shoeParts.push(new RoundedBoxGeometry(.11,.08,.24,1,.025).translate(sign*.095,.08,.05));
-    if(distance===0)shoeParts.push(new THREE.SphereGeometry(.012,4,3).translate(sign*.045,1.5,.113));
-   }
-   for(const [parts,mat] of [[skinParts,skin],[pantsParts,pants],[shoeParts,shoes],[shirtParts,shirt]] as const){
-    const normalized=parts.map(g=>{const n=g.index?g.toNonIndexed():g;n.deleteAttribute('uv');return n;});
-    const mesh=new THREE.Mesh(mergeGeometries(normalized),mat);mesh.castShadow=distance===0;group.add(mesh);
-    parts.forEach(g=>g.dispose());normalized.forEach(g=>g.dispose());
-   }
-   lod.addLevel(group,distance);
-  }
-  lod.addLevel(new THREE.Group(),95);scene.add(lod);
+const V=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
+function visitor(id:string,quality:'low'|'medium',shirt:number){
+ const rider=new THREE.Group(),point=(x:number,y:number,z:number)=>{const o=new THREE.Object3D();o.position.set(x,y,z);return o;};
+ const rig:HumanRig={rider,hips:point(0,.89,0),torso:point(0,1.16,0),head:point(0,1.5,0),neck:point(0,1.34,0),helmet:new THREE.Object3D(),upperArms:[],forearms:[],hands:[],thighs:[],shins:[],shoes:[]};
+ const limb=(a:THREE.Vector3,b:THREE.Vector3)=>{const o=new THREE.Object3D();o.position.copy(a).lerp(b,.5);o.quaternion.setFromUnitVectors(V(0,1,0),b.clone().sub(a).normalize());o.scale.y=a.distanceTo(b);return o;};
+ rig.neck=limb(V(0,1.35,0),V(0,1.41,0));
+ for(const s of [-1,1]){const shoulder=V(s*.18,1.33,0),elbow=V(s*.235,1.06,-.025),hand=V(s*.2,.83,.04),hip=V(s*.085,.9,0),knee=V(s*.10,.52,.025),foot=V(s*.10,.13,0);rig.upperArms.push(limb(shoulder,elbow));rig.forearms.push(limb(elbow,hand));rig.hands.push(point(hand.x,hand.y,hand.z));rig.thighs.push(limb(hip,knee));rig.shins.push(limb(knee,foot));rig.shoes.push(point(foot.x,foot.y,foot.z));
+  const shoe=new THREE.Mesh(new RoundedBoxGeometry(.105,.09,.24,2,.025),new THREE.MeshStandardMaterial({color:0x303b3e,roughness:.8}));shoe.position.copy(foot).add(V(0,-.045,.04));rider.add(shoe);const sole=new THREE.Mesh(new RoundedBoxGeometry(.109,.022,.245,1,.011),new THREE.MeshStandardMaterial({color:0xd4d2c6,roughness:.9}));sole.position.copy(shoe.position).y-=.042;rider.add(sole);}
+ const human=new HumanCharacter(rig,id,quality,{top:'tee',bottom:'chinos',head:'none'},[0xc69a76,shirt,0x344852]);human.update(1);rider.updateMatrixWorld(true);human.group.traverse(o=>{if(o instanceof THREE.SkinnedMesh)o.skeleton.update();});return rider;
+}
+export function addParkPeople(scene:THREE.Scene){
+ for(const [i,x,z]of [[0,31,-37],[1,34,-37],[2,-26,32],[3,88,29],[4,28,-109],[5,-36,-65]]){
+  const lod=new THREE.LOD();lod.position.set(x,0,z);lod.rotation.y=i*1.7;lod.name='Park visitor / anatomical';scene.add(lod);const id='rider-0'+(i%3+1);
+  void loadHuman(id).then(()=>{if(!scene.children.includes(lod))return;const color=[0xa66b48,0xd4c9ad,0x657c59][i%3];lod.addLevel(visitor(id,'medium',color),0);lod.addLevel(visitor(id,'low',color),24);lod.addLevel(new THREE.Group(),80);}).catch(()=>{});
  }
 }

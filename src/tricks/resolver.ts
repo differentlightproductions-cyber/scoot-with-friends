@@ -1,3 +1,4 @@
+import { TUNE } from '../core/config';
 import type { LandingQuality } from "../core/events";
 export interface TrickPrimitives {
   bodyYaw: number;
@@ -32,6 +33,7 @@ export interface TrickPrimitives {
     completed: boolean;
   }[];
   motionOrder?: string[];
+  fastplant?: boolean;
 }
 export interface ResolvedTrick {
   name: string;
@@ -46,7 +48,8 @@ export interface TrickRecord extends ResolvedTrick {
 export const completedDegrees = (radians: number) => {
   const actual = (Math.abs(radians) * 180) / Math.PI,
     nearest = Math.round(actual / 90) * 90;
-  return Math.abs(actual - nearest) <= 22.5 ? nearest : Math.floor(actual / 90) * 90;
+  if(actual < TUNE.firstSpinThreshold)return 0;
+  return Math.abs(actual - nearest) <= TUNE.spinNameTolerance + 1e-9 ? nearest : Math.floor(actual / 90) * 90;
 };
 const counted = (n: number, word: string) =>
   `${n === 1 ? "" : n === 2 ? "Double " : n === 3 ? "Triple " : n === 4 ? "Quad " : `${n}× `}${word}`;
@@ -165,7 +168,10 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
     );
   parts.push(...extras);
   parts.push(...raw.states);
+  const flips=Math.floor((Math.abs(raw.flipPitch)*180/Math.PI+TUNE.flipNameTolerance)/360);
+  const flipName=flips?`${raw.fastplant?'Fastplant ':''}${flips>1?flips+'× ':''}${raw.flipPitch>0?'Frontflip':'Backflip'}`:'';
   const components = [
+    ...(flipName?[flipName]:[]),
     ...(degrees ? [`${degrees}°`] : []),
     ...(rawDeck ? [rawDeck] : []),
     ...(bars ? [bars] : []),
@@ -190,6 +196,7 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
       .join(" + ");
   }
   if (raw.out && name) name += " Out";
+  if(flipName)name=`${flipName}${degrees?' '+degrees:''}${parts.length?' + '+parts.join(' + '):''}${raw.out?' Out':''}`;
   return {
     name,
     recognized: rule?.id ?? (downside ? "downside-whip" : null),

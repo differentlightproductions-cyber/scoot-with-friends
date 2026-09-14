@@ -12,7 +12,7 @@ export class RotationChannel {
   target = 0;
   holdTime = 0;
   catches: number[] = [];
-  reversals: { angle: number; from: number; to: number; side: string }[] = [];
+  reversals: { angle: number; from: number; to: number; side: string; performed?:boolean }[] = [];
   segmentStart = 0;
   segmentEnd = 0;
   originalDirection = 0;
@@ -31,6 +31,7 @@ export class RotationChannel {
       this.progress >= RotationChannel.rewindWindow[0] &&
       this.progress <= RotationChannel.rewindWindow[1] &&
       Math.abs(this.velocity) > 1
+      && Math.sign(this.velocity)===Math.sign(this.segmentEnd-this.segmentStart)
     );
   }
   rewind(direction: number, side: string, capturedWindow = false) {
@@ -42,6 +43,7 @@ export class RotationChannel {
       from: current,
       to: direction,
       side,
+      performed:false,
     });
     this.reversalAge = 0;
     this.segmentStart = this.angle;
@@ -102,6 +104,8 @@ export class RotationChannel {
       this.angle = this.target;
       this.velocity = 0;
     } else this.angle += move;
+    const reversal=this.reversals.at(-1);
+    if(reversal&&reversal.to*(this.angle-reversal.angle)>.16)reversal.performed=true;
   }
   get mismatch() {
     return Math.abs(wrap(this.angle));
@@ -182,10 +186,19 @@ export class Tricks {
   inputContext = "air";
   motionOrder: string[] = [];
   private completed = { deck: 0, bri: 0, kickless: 0 };
-  input(dt: number, input: InputFrame) {
+  private kicklessBuffer=0;
+  private continueKickless(side:string,direction:number) {
+    if(Math.abs(this.bri.velocity)>1||this.poseBlend>.25||this.fingerTime>0)return false;
+    const startAngle=this.kickless.target;
+    this.kickless.kick(direction);
+    this.kicklessHistory.push({originalDirection:this.deck.originalDirection,direction,stance:this.stance,side,deckAngle:this.deck.angle,startAngle,targetAngle:this.kickless.target,completed:false});
+    if(this.pendingBumper){this.deck.target=this.pendingBumper.originalTarget;this.pendingBumper=null;}
+    return true;
+  }
+  input(dt: number, input: InputFrame, flipChord=false) {
     const buttons = ridingButtons(this.stance, this.controlStyle);
-    const heel = input.held.brake > 0.5;
-    const finger = input.held.pumpGrind > 0.5;
+    const heel = !flipChord && input.held.brake > 0.5;
+    const finger = !flipChord && input.held.pumpGrind > 0.5;
     const direction = this.naturalDirection * (heel ? -1 : 1);
     for (const action of ["leftModifier", "rightModifier"] as const)
       if (input.held[action] < 0.5 && !input.pressed[action])
@@ -237,19 +250,8 @@ export class Tricks {
         this.pendingBumper = null;
       } else if (pending.elapsed >= TUNE.bumperHoldThreshold) {
         const direction = -pending.direction;
-        const startAngle = this.kickless.target;
-        this.kickless.kick(direction);
-        this.kicklessHistory.push({
-          originalDirection: this.deck.originalDirection,
-          direction,
-          stance: this.stance,
-          side: pending.side,
-          deckAngle: this.deck.angle,
-          startAngle,
-          targetAngle: this.kickless.target,
-          completed: false,
-        });
         this.deck.target = pending.originalTarget;
+        this.continueKickless(pending.side,direction);
         this.pendingBumper = null;
       }
     } else this.bumperHeldDuration = 0;
@@ -287,7 +289,7 @@ export class Tricks {
     );
     this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
     let pose = "";
-    if (input.held.body > 0.5) {
+    if (input.held.body > 0.5 && !flipChord) {
       this.gesture.reset();
       pose =
         heel && finger
@@ -305,7 +307,13 @@ export class Tricks {
                     : "No-hander";
     } else {
       const gesture = this.gesture.step(dt, input.rx, input.ry);
-      if (gesture?.kind === "bri") this.bri.kick(gesture.direction);
+      if (gesture?.kind === "bri" && Math.abs(this.kickless.velocity)<1 && this.fingerTime===0) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
+      if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=.16;
+      this.kicklessBuffer=Math.max(0,this.kicklessBuffer-dt);
+      if(this.kicklessBuffer>0&&(this.deck.canRewind||this.pendingBumper)&&Math.abs(this.kickless.velocity)<1){
+        const direction=Math.sign(this.deck.segmentEnd-this.deck.segmentStart);
+        if(this.continueKickless(direction>0?'right':'left',direction))this.kicklessBuffer=0;
+      }
     }
     this.poseBlend += clamp((pose ? 1 : 0) - this.poseBlend, -dt * 7, dt * 7);
     if (pose) {
@@ -318,6 +326,7 @@ export class Tricks {
   bars = new RotationChannel(TUNE.barAcceleration, TUNE.barMaxSpeed);
   yaw = 0;
   flip = 0;
+  fastplant = false;
   body = new Set<string>();
   bodyTime = 0;
   bodyState = "";
@@ -330,6 +339,7 @@ export class Tricks {
   fakieRecord: TrickRecord | null = null;
   fakieDuration = 0;
   private nextRecordId = 1;
+  attemptId = 0;
   holdFakie(dt: number) {
     this.fakieDuration += dt;
     if (this.fakieDuration < 0.25) return;
@@ -356,17 +366,20 @@ export class Tricks {
       };
       this.history.push(this.fakieRecord);
       if (this.history.length > 256) this.history.shift();
-      this.add("Fakie", this.fakieRecord);
+
     }
     this.fakieRecord.raw.fakieSeconds = this.fakieDuration;
   }
-  endFakie() {
+  endFakie(success = true) {
+    if(success && this.fakieRecord)this.add("Fakie",this.fakieRecord);
     this.fakieRecord = null;
     this.fakieDuration = 0;
   }
   landing: LandingQuality = "clean";
   constructor(public events: Events) {}
   startAir(fromLink: boolean, keepGesture = false) {
+    this.kicklessBuffer=0;
+    this.attemptId=this.nextRecordId++;
     this.fingerTargets = [];
     this.pendingBumper = null;
     this.consumedBumpers.clear();
@@ -383,6 +396,7 @@ export class Tricks {
     this.bars.reset();
     this.yaw = 0;
     this.flip = 0;
+    this.fastplant = false;
     this.body.clear();
     this.bodyTime = 0;
     this.airborne = true;
@@ -411,6 +425,7 @@ export class Tricks {
     this.bodyState = bodyState;
   }
   finish(quality: LandingQuality) {
+    this.kicklessBuffer=0;
     if (!this.airborne) return;
     this.airborne = false;
     this.landing = quality;
@@ -418,7 +433,7 @@ export class Tricks {
     const raw = this.primitives();
     const resolved = resolveTrick(raw);
     if (resolved.name) {
-      const record: TrickRecord = { ...resolved, id: this.nextRecordId++, landing: quality };
+      const record: TrickRecord = { ...resolved, id: this.attemptId, landing: quality };
       this.history.push(record);
       if (this.history.length > 256) this.history.shift();
       this.add(record.name, record);
@@ -443,6 +458,7 @@ export class Tricks {
     const raw: TrickPrimitives = {
       bodyYaw: this.yaw,
       flipPitch: this.flip,
+      fastplant: this.fastplant,
       deckAngle: this.deck.angle,
       barAngle: this.bars.angle,
       deckTurns: count(this.deck),
@@ -459,8 +475,8 @@ export class Tricks {
     raw.barCatches = [...this.bars.catches];
     raw.stance = this.stance;
     raw.naturalWhipDirection = this.naturalDirection;
-    raw.deckReversals = [...this.deck.reversals];
-    raw.barReversals = [...this.bars.reversals];
+    raw.deckReversals = this.deck.reversals.filter(r=>r.performed!==false).map(r=>({...r}));
+    raw.barReversals = this.bars.reversals.filter(r=>r.performed!==false).map(r=>({...r}));
     raw.originalDeckDirection = this.deck.originalDirection;
     raw.finger = this.finger;
     raw.fingerTurns = this.fingerTargets.filter(
@@ -477,14 +493,14 @@ export class Tricks {
   get attempt() {
     if (!this.airborne) return null;
     const resolved = resolveTrick(this.primitives(true));
-    return resolved.name ? { ...resolved, provisional: true, componentCount: resolved.components.length } : null;
+    return resolved.name ? { ...resolved, id:this.attemptId, provisional: true, componentCount: resolved.components.length } : null;
   }
   add(name: string, record?: TrickRecord) {
     this.last = name;
     this.line.push(name);
     if (this.line.length > 12) this.line.shift();
     this.ordinary = 0;
-    this.events.emit({ type: "trick", name, record });
+    this.events.emit({ type: "trick", name, record, attemptId:record?.id ?? this.nextRecordId++ });
     this.events.emit({ type: "line", names: [...this.line], ended: false });
   }
   tick(dt: number, linked: boolean) {
@@ -496,6 +512,8 @@ export class Tricks {
     }
   }
   reset() {
+    this.kicklessBuffer=0;
+    this.flip=0;this.fastplant=false;
     this.fingerTargets = [];
     this.pendingBumper = null;
     this.consumedBumpers.clear();
@@ -518,6 +536,6 @@ export class Tricks {
     this.line = [];
     this.last = "";
     this.ordinary = 0;
-    this.endFakie();
+    this.endFakie(false);
   }
 }

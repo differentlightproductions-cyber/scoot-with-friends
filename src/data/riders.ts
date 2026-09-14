@@ -1,7 +1,7 @@
 export const RIDERS = [
   {
     id: "rider-01",
-    name: "Rider 01",
+    name: "Alex",
     outfitId: "sand",
     description: "Sand tee / teal trousers",
     skin: 0xc69470,
@@ -13,7 +13,7 @@ export const RIDERS = [
   },
   {
     id: "rider-02",
-    name: "Rider 02",
+    name: "Malik",
     outfitId: "night",
     description: "Navy hoodie / stone jeans / high tops",
     skin: 0x694736,
@@ -25,9 +25,9 @@ export const RIDERS = [
   },
   {
     id: "rider-03",
-    name: "Rider 03",
+    name: "Rey",
     outfitId: "forest",
-    description: "Forest jacket / charcoal shorts / skate shoes",
+    description: "Forest tee / charcoal shorts / skate shoes",
     skin: 0xe0b79b,
     shirt: 0x547454,
     pants: 0x343941,

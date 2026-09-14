@@ -117,19 +117,23 @@ test("held fakie scoring banks once, discards bails, and clears on session resta
     if (t.fakieRecord) s.holdFakie(1 / 120);
     t.tick(1 / 120, true);
   }
-  assert.equal(t.line.filter((n) => n === "Fakie").length, 1);
-  assert(s.line >= 100);
-  const amount = s.line;
+  assert.equal(t.line.filter((n) => n === "Fakie").length, 0);
+  assert.equal(s.total, 0);
+  assert.equal(s.display?.status, 'pending');
   t.endFakie();
+  assert.equal(t.line.filter((n) => n === "Fakie").length, 1);
+  const amount = s.total;
+  assert(amount >= 100);
   t.tick(TUNE.comboTimeout + 0.1, false);
   assert.equal(s.total, amount);
   assert.equal(s.line, 0);
   t.tick(TUNE.comboTimeout + 0.1, false);
   assert.equal(s.total, amount);
   t.add("Manual");
+  const banked=s.total;
   e.emit({ type: "bail", reason: "test" });
   assert.equal(s.line, 0);
-  assert.equal(s.total, amount);
+  assert.equal(s.total, banked);
   s.restart();
   assert.equal(s.total, 0);
 });
@@ -186,7 +190,7 @@ test("landing distinguishes clean, recoverable, failed and accepts fakie", () =>
 test("manual balances deterministically and both overbalance directions end correctly", () => {
   const m = new ManualBalance();
   m.enter(false);
-  for (let i = 0; i < 120; i++) m.step(1 / 120, 0, 0);
+  for (let i = 0; i < 120; i++) m.step(1 / 120, .30, 0);
   assert(m.active);
   let result = "active";
   for (let i = 0; i < 300 && result === "active"; i++)

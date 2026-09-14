@@ -5,6 +5,7 @@ import { GarmentSkin, sneakerGeometry } from './character-skin';
 import { tube, detailTexture } from './surfaces';
 import { Simulation } from "../physics/simulation";
 import { ScooterAssembly } from "./assembly";
+import {HumanCharacter,loadHuman} from './human';
 import { RIDERS } from "../data/riders";
 import { clothing, defaultOutfit } from '../data/outfits';
 import type { LocalProfile } from "../data/loadout";
@@ -73,6 +74,8 @@ function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
 }
 export class RiderModel {
+  human?:HumanCharacter;
+  private humanKey='';private humanRequest=0;
   assembly: ScooterAssembly;
   private materials = Object.fromEntries(
     Object.entries(materials).map(([key, value]) => [key, value.clone()]),
@@ -396,7 +399,7 @@ export class RiderModel {
     this.materials.shirt.color.set(top.color);this.materials.pants.color.set(bottom.color);
     this.materials.helmet.color.set(head.color);this.materials.shoe.color.set(shoes.color);
     this.rider.scale.x = rider.width;
-    this.helmet.scale.set(rider.headScale, 0.73 * rider.headScale, 1);
+    this.helmet.scale.set(this.human?1:rider.headScale, this.human?.85:0.73*rider.headScale, this.human?1.12:1);
     this.root.userData.riderId = rider.id;
     this.root.userData.stance = profile.settings.stance;
     for (let i = 0; i < 2; i++) {
@@ -408,18 +411,32 @@ export class RiderModel {
       poseRod(this.shins[i], knee, foot);
     }
     this.garmentSkins.forEach(g=>g.update());
+    const quality=profile.settings.characterQuality==='auto'?profile.settings.fidelity:profile.settings.characterQuality;
+    const key=[rider.id,quality,head.model,top.model,bottom.model,top.color,bottom.color].join(':');
+    if(this.humanKey!==key){const request=++this.humanRequest;void loadHuman(rider.id).then(()=>{
+      if(request!==this.humanRequest)return;
+      this.human?.dispose();this.human=new HumanCharacter(this,rider.id,quality,{head:head.model,top:top.model,bottom:bottom.model},[rider.skin,top.color,bottom.color]);this.humanKey=key;
+      [this.torso,this.head,this.neck,this.hips,...this.hands,...this.knees,...this.upperArms,...this.forearms,...this.thighs,...this.shins].forEach(o=>o.visible=false);
+      this.garmentSkins.forEach(g=>g.mesh.visible=false);this.root.userData.characterRevision='anatomical-riders-1';
+      this.helmet.geometry.dispose();this.helmet.geometry=new THREE.SphereGeometry(.098,32,20,0,Math.PI*2,0,1.72);this.helmet.scale.set(1,.85,1.12);
+      this.headDetails.scale.set(.7,.55,.75);
+    });}
   }
   update(s: Simulation, dt: number, alpha: number) {
+    const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
     this.root.position.copy(s.previousPosition).lerp(s.position, alpha);
     this.root.position.y -= 0.22;
+    this.root.rotation.order='YXZ';
     this.root.rotation.set(
-      0,
+      flip,
       s.previousYaw + (s.yaw - s.previousYaw) * alpha,
       0,
     );
+    // Rotate the complete rider and scooter around the body, not the front axle.
+    if(flip){const offset=v(0,.75,0).sub(v(0,.75,0).applyAxisAngle(v(1,0,0),flip)).applyAxisAngle(v(0,1,0),this.root.rotation.y);this.root.position.add(offset);}
     this.carry = damp(this.carry, s.walking && s.running ? 1 : 0, 8, dt);
     this.scooter.rotation.set(
-      s.pitch * (1 - this.carry),
+      posturePitch * (1 - this.carry),
       0,
       s.roll * (1 - this.carry) + (this.carry * Math.PI) / 2,
     );
@@ -432,7 +449,7 @@ export class RiderModel {
     this.scooter.position.x = this.walkOffset;
     this.scooter.position.z = this.carry * 0.12;
     this.rider.rotation.set(
-      s.pitch * 0.65 - s.rampLean * TUNE.rampLeanAngle,
+      posturePitch * 0.65 - s.rampLean * TUNE.rampLeanAngle,
       0,
       s.roll * 0.9,
     );
@@ -454,15 +471,20 @@ export class RiderModel {
     this.scooter.rotation.y = briActive
       ? side * lift * (inward ? 0.12 : 0.65)
       : 0;
-    this.scooter.rotation.z += Math.sin(kickless) * 0.55;
+    const kicklessActive=Math.abs(s.tricks.kickless.velocity)>.1||s.tricks.kickless.mismatch>.02;
+    const kickLift=Math.sin((Math.abs(kickless)%(Math.PI*2))/2);
+    this.scooter.rotation.z += Math.sign(kickless)*kickLift*.3;
     const pivot = v(0, 1.01, 0.26),
       rotated = pivot.clone().applyEuler(this.scooter.rotation);
     if (briActive)
       this.scooter.position.add(
         v(side * 0.34 * lift, 1.01 + 0.22 * lift, 0.26).sub(rotated),
-      );
-    this.deckPivot.rotation.y = s.tricks.deck.angle + kickless;
-    this.deckPivot.rotation.z = Math.sin(kickless) * 0.45;
+        );
+    else if(kicklessActive)this.scooter.position.add(v(0,1.01+kickLift*.12,.26+kickLift*.06).sub(rotated));
+    // Wrist-driven reverse sweep and return. This is visibly different from
+    // adding another tailwhip; hands stay on the actual grips throughout.
+    this.deckPivot.rotation.y = s.tricks.deck.angle-Math.sign(kickless)*kickLift*Math.PI*1.1;
+    this.deckPivot.rotation.z = Math.sin(kickless) * 0.28;
     this.barPivot.rotation.y =
       s.tricks.bars.angle + (s.grounded ? -s.steer * 0.15 : 0);
     this.wheelAngle += (s.speed * dt) / 0.055;
@@ -481,10 +503,12 @@ export class RiderModel {
       crouchTarget < this.crouch ? 5.5 : 16,
       dt,
     );
+    const fingerReach=s.tricks.fingerTime>0?Math.sin((1-s.tricks.fingerTime/.35)*Math.PI):0;
+    this.scooter.position.y+=fingerReach*.28;
     const grabBlend=s.tricks.visualPose==='Deck Grab'?s.tricks.poseBlend:0;
     this.scooter.position.y+=grabBlend*.13;
-    const c = this.crouch+grabBlend*.4,
-      whip = Math.abs(s.tricks.deck.velocity) > 1;
+    const c = this.crouch+grabBlend*.4+fingerReach*.28,
+      whip = Math.abs(s.tricks.deck.velocity) > 1 || kicklessActive || briActive;
     this.torso.position.set(
       0,
       1.13 - c - s.rampLean * 0.05,
@@ -517,7 +541,7 @@ export class RiderModel {
       .add(v(0, -0.055, 0));
     this.hips.rotation.copy(this.torso.rotation);
     this.head.position.set(0, 1.49 - c, -0.01 + c * 0.3);
-    this.helmet.position.set(0, 1.57 - c, -0.025 + c * 0.3);
+    this.helmet.position.set(0, (this.human?1.55:1.57) - c, -0.025 + c * 0.3);
     this.head.position.z += weight * TUNE.airWeightShiftStrength;
     this.head.rotation.set(0,0,0);
     if(s.emote) {
@@ -601,6 +625,12 @@ export class RiderModel {
             1 - s.tricks.deck.reversalAge / 0.18,
           );
       }
+      if(s.fastplant&&i===rear){
+        const plant=s.fastplant;
+        const target=this.rider.worldToLocal(plant.foot.clone().add(v(0,.045,0)));
+        const contact=plant.launched?Math.max(0,1-(plant.time-TUNE.fastplantContactTime)/.12):Math.min(1,plant.time/.045);
+        foot.lerp(target,contact);
+      }
       this.shoes[i].position.copy(foot);
       if (s.walking) {
         const gait =
@@ -619,6 +649,7 @@ export class RiderModel {
         foot.set(sign * 0.12, -0.49, 0.4);
         this.shoes[i].position.copy(foot);
       }
+      if(s.walking&&!s.sitting){const hip=v(sign*.095,-.015,0).applyEuler(this.hips.rotation).add(this.hips.position),delta=foot.clone().sub(hip),length=delta.length(),direction=delta.clone().normalize();const pole=v(0,0,1).addScaledVector(direction,-direction.z).normalize();knee.copy(hip).lerp(foot,.5).addScaledVector(pole,Math.sqrt(Math.max(.0001,.43*.43-Math.min(.425,length/2)**2)));}
       this.knees[i].position.copy(knee);
       poseRod(
         this.thighs[i],
@@ -715,7 +746,7 @@ export class RiderModel {
         poseRod(this.upperArms[i], shoulder, elbow);
       }
       const grabbingHand=pose==='Deck Grab'&&i===(s.tricks.stance==='regular'?1:0);
-      const holdingGrip=!s.walking&&!s.sitting&&!s.emote&&(!pose||pose==='Deck Grab'&&!grabbingHand)&&s.tricks.fingerTime===0&&Math.abs(s.tricks.bars.velocity)<1;
+      const holdingGrip=!s.walking&&!s.sitting&&!s.emote&&(!pose||pose==='Deck Grab'&&!grabbingHand)&&(s.tricks.fingerTime===0||sign!==s.tricks.fingerHand)&&Math.abs(s.tricks.bars.velocity)<1;
       const gripRotation=new THREE.Quaternion();
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
@@ -728,13 +759,17 @@ export class RiderModel {
         const aroundThigh=deckTarget.clone().add(v(sign*.22,.08,.10));
         hand.copy(aroundThigh.lerp(deckTarget,THREE.MathUtils.smoothstep(blend,.55,1)));
       }
-      if(holdingGrip||pose==='Deck Grab'){
+      const fingerContact=s.tricks.fingerTime>0&&sign===s.tricks.fingerHand;
+      if(fingerContact){const local=this.assembly.deckSocket.position.clone();local.x*=sign;const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(local));const sidePoint=v(sign*.38,Math.max(.55,deckTarget.y+.15),.30);const contact=deckTarget.x*sign>=-.02&&s.tricks.fingerTime>.20;const target=contact?sidePoint.lerp(deckTarget,THREE.MathUtils.smoothstep(fingerReach,.35,.7)):sidePoint;hand.lerp(target,fingerReach);}
+      if(holdingGrip||pose==='Deck Grab'||fingerContact){
         const delta=hand.clone().sub(shoulder);const reach=delta.length();
         if(reach>.68)hand.copy(shoulder).addScaledVector(delta,.68/reach);
-        elbow.copy(shoulder).lerp(hand,.5);elbow.x+=sign*Math.sqrt(Math.max(.0004,.35*.35-Math.min(.34,reach/2)**2));elbow.z-=.035;
+        const bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
+        elbow.copy(shoulder).lerp(hand,.5).addScaledVector((fingerContact||grabbingHand?v(sign*.8,-.3,.7):v(sign*.38,-.12,-.9)).normalize(),bend);
         poseRod(this.upperArms[i],shoulder,elbow);
       }
       poseRod(this.forearms[i], elbow, hand);
+      this.hands[i].userData.openHand=holdingGrip||fingerContact||grabbingHand||this.carry>.5?0:s.emote?1:s.walking?.65:.7;
       this.hands[i].position.copy(hand);
       this.hands[i].quaternion.setFromUnitVectors(
         v(0, 1, 0),
@@ -743,6 +778,7 @@ export class RiderModel {
       if(holdingGrip)this.hands[i].quaternion.copy(gripRotation);
     }
     this.garmentSkins.forEach(g=>g.update());
+    this.human?.update(s.elapsed);
     if (s.state === "Bail") {
       const t = s.bailTimer;
       this.rider.position.set(

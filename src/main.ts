@@ -1,3 +1,4 @@
+import {CreditEconomy} from './data/credit';
 import { ParkEditor } from "./editor/editor";
 import { buildObject, deformGroundLayers } from "./editor/assets";
 import {
@@ -25,8 +26,16 @@ import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
 import type { MapId } from "./data/maps";
 import { VisualFidelity } from './render/fidelity';
+import { WorldInteractions } from './park/interactions';
+import { WarehouseBuilder } from './editor/warehouse';
+import { Daylight } from './park/daylight';
+import { ACTIVE_MAP } from './park/park';
+import {loadHuman} from './scooter/human';
+import {MobileGate} from './ui/mobile';
 async function boot() {
   const profile = loadProfile();
+  if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
+  await loadHuman(profile.riderId);
   const events = new Events(),
     hud = new HUD(events),
     input = new Input(),
@@ -55,8 +64,20 @@ async function boot() {
   let park = new Park(scene, world),
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
+  const economy=new CreditEconomy();economy.onChange=()=>{profile.wallet=loadProfile().wallet;};window.addEventListener("storage",()=>{profile.wallet=loadProfile().wallet;});events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
+  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park);
+  const interact = () => { const f=emptyInput();f.pressed.brakeBars=true;interactions.update(sim,f,0); };
+  social.onInteract=interact;social.onScooter=interact;
+  social.onBuild=()=>social.openOptions('BUILD / RS SELECT',[
+    ...builder.options(sim),...builder.editOptions(sim),
+    {label:'Reset Warehouse',action:()=>social.openOptions('CLEAR YOUR LAYOUT?',[
+      {label:'Cancel',action:()=>{}},{label:'Clear placed objects',action:()=>builder.reset()}
+    ])}, {label:'Cancel',action:()=>{}}
+  ]);
+  social.warehouse=ACTIVE_MAP==='warehouse';
+  camera.mountFlourish=profile.settings.mountFlourish;
   rider.applyProfile(profile);
   sim.grindAssist = profile.settings.grindAssist;
   sim.tricks.stance = profile.settings.stance;
@@ -65,6 +86,8 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const menu = new GameMenu(document.querySelector("#start")!, profile);
+  menu.economy=economy;menu.owner=()=>editor.owner;menu.onCloseShop=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  const shopPrompt=document.createElement("div");shopPrompt.className="world-prompt";shopPrompt.hidden=true;document.body.append(shopPrompt);
   const fidelity=new VisualFidelity(renderer);
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   menu.onChange = () => {
@@ -73,6 +96,7 @@ async function boot() {
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
+    camera.mountFlourish=profile.settings.mountFlourish;
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
     document.querySelector("#sound")!.textContent = audio.enabled
@@ -96,6 +120,7 @@ async function boot() {
   }
   void latestPark();
   menu.onRide = async (id) => {
+    if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if (id === "outdoor") await latestPark();
     setActiveLayout(id === "outdoor" ? publicLayout : null);
     setEditedHeightQuery(null);
@@ -214,7 +239,8 @@ async function boot() {
     if (hud.started) void audio.start();
   });
   function startSession(id: MapId, force = false) {
-    if (force || (OUTDOOR ? "outdoor" : "warehouse") !== id) {
+    if (force || ACTIVE_MAP !== id) {
+      interactions.dispose();builder.dispose();
       sim.score.dispose();
       sim.contactEvents.free();
       world.free();
@@ -244,8 +270,10 @@ async function boot() {
       park = new Park(scene, world);
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);
     }
     sim.reset(0, true);
+    social.warehouse=id==='warehouse';
     rider.applyProfile(profile);
     fidelity.apply(scene,profile.settings.fidelity);
     sim.grindAssist = profile.settings.grindAssist;
@@ -254,10 +282,10 @@ async function boot() {
     history.replaceState(
       null,
       "",
-      id === "outdoor" ? "?map=outdoor" : location.pathname,
+      "?map="+id,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>") +
+      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY":"WAREHOUSE <b>01</b>") +
       '<span id="score">SESSION 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
@@ -343,14 +371,14 @@ async function boot() {
   window.addEventListener("keydown", (e) => {
     if (e.code === "Enter" && !hud.started && !e.repeat) menu.select();
   });
-  window.addEventListener("blur", () => {
-    if (hud.started) hud.setPaused(true);
-  });
+  const suspend=()=>{input.clear();sim.preload.reset();sim.tricks.gesture.clear();sim.hopBuffer=0;sim.groundIntent=null;sim.tricks.pendingBumper=null;sim.tricks.deck.holdTime=sim.tricks.bars.holdTime=0;pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
+  const mobile=new MobileGate(()=>void audio.start(),suspend);
+  window.addEventListener("blur", suspend);
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && hud.started) hud.setPaused(true);
+    if (document.hidden)suspend();
   });
   window.addEventListener("gamepaddisconnected", () => {
-    if (hud.started) hud.setPaused(true);
+    suspend();
   });
   window.addEventListener("resize", () => {
     renderer.setSize(innerWidth, innerHeight);
@@ -362,13 +390,16 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
+    daylight.update(dt,profile.settings.daylight,sim.position);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
+    interactions.render(rider);
     camera.update(sim, frame, dt, alpha);
-    if (hud.started) renderer.render(scene, camera.camera);
+    if (hud.started&&!menu.shopOpen) renderer.render(scene, camera.camera);
     else menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
+    const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };
   renderer.setAnimationLoop(() => {
@@ -378,11 +409,13 @@ async function boot() {
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
     input.poll();
+    if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();
     if (editor.active) {
       editor.update(frame, dt);
       return;
     }
+    if(menu.shopOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if (!hud.started) {
       menu.update(frame, dt);
       render(dt);
@@ -406,7 +439,13 @@ async function boot() {
       frame.released.hop = false;
       if (!stillHeld) startHopBlocked = false;
     }
-    frame = social.update(sim, frame, dt);
+    shopPrompt.hidden=true;
+    if(ACTIVE_MAP==='techno_gravity'&&sim.walking){const displays=[[-4.7,-.3,'wheels'],[-4.7,2.5,'clamp'],[4.8,3,'bars'],[-4.7,5,'deck'],[4.8,.2,'fork'],[4.8,5.5,'grips'],[0,6.8,'bearings']] as const;const nearest=displays.find(([x,z])=>Math.hypot(sim.position.x-x,sim.position.z-z)<1.6);if(nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest[2];if(frame.pressed.brakeBars){menu.openShop(nearest[2]);input.clear();accumulator=0;render(dt);return;}}}
+    if(builder.placement)frame=builder.update(sim,frame,dt);
+    else {
+      frame = social.update(sim, frame, dt);
+      frame = interactions.update(sim,frame,dt,social.wheel.hidden&&social.chat.hidden);
+    }
     accumulator += dt;
     let first = true;
     // Keep edges queued until a physics step; otherwise high refresh-rate displays
@@ -472,6 +511,7 @@ async function boot() {
       },
       camera,
       social,
+      get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},
       renderer,
       fidelity,
       snapshot: () => sim.snapshot(),

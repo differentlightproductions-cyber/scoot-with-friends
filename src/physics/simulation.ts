@@ -1,3 +1,4 @@
+import { activeLayout } from '../editor/layout';
 import { inWater } from "../park/water";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -24,6 +25,7 @@ import { MarkerSystem } from "../player/marker";
 import { outdoorLip } from "../park/outdoor";
 import { DropIn } from "../player/drop-in";
 import { AirWeightControl } from "../player/air-weight";
+import { BodyFlipControl, type TakeoffOrigin } from '../player/body-flip';
 export type RideState =
   | "Grounded"
   | "Preloading"
@@ -40,6 +42,7 @@ export type RideState =
   | "DropInReady"
   | "DropInCommit";
 export class Simulation {
+  get rampWorld(){return OUTDOOR || !!activeLayout?.objects.length;}
   body: RAPIER.RigidBody;
   tricks: Tricks;
   score: ScoreSystem;
@@ -59,6 +62,15 @@ export class Simulation {
   running = false;
   marker = new MarkerSystem();
   airWeight = new AirWeightControl();
+  bodyFlip = new BodyFlipControl();
+  private departureLip:ReturnType<typeof outdoorLip>=null;
+  private launchLip(){
+    const current=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
+    return current ?? (this.velocity.y>0&&this.elapsed-this.lastGround<TUNE.coyoteTime?this.departureLip:null);
+  }
+  fastplant: {time:number;foot:THREE.Vector3;entry:THREE.Vector3;launched:boolean}|null=null;
+  private plantQueued=-1;
+  private plantLatched=false;
   transitionAir = false;
   lipClearTimer = 0;
   walkCameraYaw = 0;
@@ -101,6 +113,7 @@ export class Simulation {
     offset: number;
   } | null = null;
   manualEntryLock = 0;
+  manualIntentTime = 0;
   elapsed = 0;
   distance = 0;
   lastLanding = "";
@@ -140,7 +153,7 @@ export class Simulation {
         .setCanSleep(false),
     );
     world.createCollider(
-      RAPIER.ColliderDesc.ball(OUTDOOR ? 0.08 : 0.2)
+      RAPIER.ColliderDesc.ball(this.rampWorld ? 0.08 : 0.2)
         .setMass(65)
         .setFriction(0)
         .setRestitution(0)
@@ -177,6 +190,9 @@ export class Simulation {
   }
   resolvingSpawn = false;
   reset(index = this.spawnIndex, restart = false) {
+    this.bodyFlip.reset();
+    this.departureLip=null;
+    this.fastplant=null;this.plantQueued=-1;this.plantLatched=false;
     this.resolvingSpawn = true;
     this.releasingRail = undefined;
     this.groundIntent = null;
@@ -316,31 +332,36 @@ export class Simulation {
     forward: THREE.Vector3,
     charge = 0,
     timing = 0,
+    intentional = false,
   ) {
     const across = this.velocity.dot(forward);
     const speed = Math.hypot(Math.max(0, across), this.velocity.y);
     // A box takes off upward first. Faster approaches increase both height and
     // carry, but the forward ratio eases down so speed cannot turn it into a
     // long, flat overshoot.
-    const forwardRatio = clamp(0.64 - Math.max(0, speed - 4) * 0.014, 0.48, 0.64);
+    const forwardRatio = intentional
+      ? clamp(TUNE.boxTrickForwardRatio-Math.max(0,speed-8)*.008,.36,.48)
+      : clamp(0.64 - Math.max(0, speed - 4) * 0.014, 0.48, 0.64);
     const vertical =
       speed * Math.sqrt(1 - forwardRatio * forwardRatio) +
-        charge * (0.3 + timing * 0.45);
+        (intentional?0:charge * (0.3 + timing * 0.45));
     this.velocity.addScaledVector(
       forward,
       speed * forwardRatio - across,
     );
     this.velocity.y = Math.max(this.velocity.y, vertical);
   }
-  private pop(charge: number, lean = 0) {
+  private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
+    this.bodyFlip.begin(origin,this.pitch);
+    this.body.setGravityScale(1,true);
     const linked = this.manual.active || !!this.grind;
     this.finishManual();
     this.finishGrind();
     const rampPop = this.normal.y < 0.85 && this.velocity.y > 1;
-    const hop = rampPop
-      ? 0.45 + charge * 1.05
+    const hop = origin==='fastplant' ? (rampPop?2.4:4.8) : rampPop
+      ? TUNE.rampTrickPopMin + charge * TUNE.rampTrickPopCharge
       : TUNE.hopMin + (TUNE.hopMax - TUNE.hopMin) * charge;
-    if (!rampPop)
+    if (!rampPop && origin!=='fastplant')
       this.velocity.addScaledVector(this.normal, 0.8 + charge * 0.4);
     this.velocity.y = Math.max(0, this.velocity.y) + hop;
     this.transitionAir = this.normal.y < 0.85 && this.rampLean > 0.1;
@@ -357,14 +378,7 @@ export class Simulation {
       );
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
     }
-    const lip = OUTDOOR
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const lip = this.launchLip();
     if (lip && lip.distance > -0.25 && lip.distance < 1.25) {
       // A deliberate takeoff owns the coping for the rest of its short
       // approach. The terrain stays solid; only the thin coping guard stops
@@ -376,7 +390,7 @@ export class Simulation {
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, lean, lip.forward);
       else if (lip.module.kind === "box")
-        this.redirectBox(lip.forward, charge, timing);
+        this.redirectBox(lip.forward, charge, timing, true);
       else if (lip.module.kind === "quarter") {
         const speed = Math.hypot(
           this.velocity.dot(lip.forward),
@@ -385,9 +399,9 @@ export class Simulation {
         // Match the useful spine transfer: clear the lip mostly upward, with
         // only enough outward travel to keep the rider from clipping coping.
         const ratio = clamp(
-          0.075 + Math.max(0, speed - 8) * 0.008 - clamp(lean, 0, 1) * 0.025,
-          0.045,
-          0.17,
+          -0.035 + Math.max(0, speed - 12) * 0.003 - clamp(lean, -1, 1) * 0.09,
+          -0.07,
+          0.11,
         );
         this.velocity.addScaledVector(
           lip.forward,
@@ -411,13 +425,69 @@ export class Simulation {
     this.hopBuffer = 0;
     this.spin = 0;
     this.tricks.startAir(linked, true);
+    this.lastGround=-99;
+    this.departureLip=null;
     this.airWeight.reset(this.pitch, this.yaw);
     this.airSpin.reset();
     this.events.emit({ type: "pop", charge });
   }
+  fastplantOpportunity() {
+    if(!this.grounded||this.walking||this.grind||this.stall||this.dropIn.phase||this.state==='Bail'||this.speed<3||this.tricks.airborne)return null;
+    const forward=new THREE.Vector3(Math.sin(this.yaw),0,Math.cos(this.yaw));
+    if(this.velocity.clone().setY(0).normalize().dot(forward)<.65)return null;
+    const supportAt=(p:THREE.Vector3)=>{
+      const ray=new RAPIER.Ray({x:p.x,y:this.position.y+.35,z:p.z},{x:0,y:-1,z:0});
+      const hit=this.world.castRayAndGetNormal(ray,6,true,undefined,undefined,undefined,this.body,c=>!this.park.railHandles.has(c.handle));
+      return hit&&hit.normal.y>.3?this.position.y+.35-hit.timeOfImpact:null;
+    };
+    const side=this.tricks.stance==='regular'?1:-1;
+    const foot=this.position.clone().add(new THREE.Vector3(Math.cos(this.yaw)*side*.23,0,-Math.sin(this.yaw)*side*.23));
+    const ground=supportAt(foot);if(ground===null||Math.abs(this.position.y-.22-ground)>.32)return null;
+    foot.y=ground;
+    let drop=0;
+    for(const distance of [.6,1,1.6]){const h=supportAt(this.position.clone().addScaledVector(forward,distance));if(h!==null)drop=Math.max(drop,ground-h);}
+    const lip=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
+    const ramp=!!lip&&lip.distance>-.1&&lip.distance<.85&&this.normal.y<.85&&this.velocity.y>1;
+    if(!ramp&&drop<.75)return null;
+    const vy=Math.max(0,this.velocity.y)+(ramp?2.4:4.8);
+    const airtime=(vy+Math.sqrt(vy*vy+2*TUNE.gravity*drop))/TUNE.gravity;
+    return airtime>=TUNE.fastplantMinAirtime?{foot,airtime}:null;
+  }
+  private updateFastplant(dt:number,input:InputFrame):InputFrame|null {
+    if(input.held.hop<.5&&!input.pressed.hop)this.plantLatched=false;
+    if(this.fastplant){
+      const plant=this.fastplant;plant.time+=dt;
+      if(!plant.launched){
+        if(!this.grounded||this.state==='Bail'){this.fastplant=null;return input;}
+        this.charge=Math.sin(Math.min(1,plant.time/TUNE.fastplantContactTime)*Math.PI)*.85;
+        this.velocity.set(0,0,0);this.body.setLinvel(this.velocity,true);this.body.setGravityScale(0,true);
+        if(plant.time<TUNE.fastplantContactTime){this.world.step(this.contactEvents,this.contactHooks);return null;}
+        plant.launched=true;this.velocity.copy(plant.entry);
+        this.pop(0,0,'fastplant');this.tricks.fastplant=true;
+        this.bodyFlip.active=true;this.bodyFlip.velocity=7.8;
+        this.body.setLinvel(this.velocity,true);return null;
+      }
+      if(plant.time>.42||this.grounded||this.state==='Bail')this.fastplant=null;
+    }
+    const opportunity=this.fastplantOpportunity();
+    if(!this.plantLatched&&this.plantQueued<0&&input.pressed.hop&&opportunity)this.plantQueued=0;
+    if(this.plantQueued>=0){
+      this.plantQueued+=dt;
+      if(opportunity&&input.held.pumpGrind>.5&&input.lean<-.35){
+        this.fastplant={time:0,foot:opportunity.foot,entry:this.velocity.clone(),launched:false};
+        this.plantQueued=-1;this.plantLatched=true;this.preload.reset();this.hopBuffer=0;this.pendingPushTap=false;return null;
+      }
+      if(this.plantQueued<TUNE.fastplantChordWindow)return {...input,held:{...input.held,hop:0},pressed:{...input.pressed,hop:false}};
+      this.plantQueued=-1;return {...input,pressed:{...input.pressed,hop:true}};
+    }
+    if(this.plantLatched)return {...input,held:{...input.held,hop:0},pressed:{...input.pressed,hop:false}};
+    return input;
+  }
   bail(reason: string) {
     if (this.state === "Bail") return;
     this.state = "Bail";
+    this.bodyFlip.reset();
+    this.fastplant=null;this.plantQueued=-1;
     this.preload.reset();
     this.grounded = false;
     this.bailTimer = 0;
@@ -468,7 +538,7 @@ export class Simulation {
       this.stall=null;
       this.pop(loaded ?? Math.max(.15,this.preload.amount),input.lean);
       this.lipClearTimer=.3;
-      if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction);
+      if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction*(gesture.short?this.tricks.naturalDirection:1));
       return false;
     }
     const side = new THREE.Vector3(stall.direction.z, 0, -stall.direction.x);
@@ -495,11 +565,13 @@ export class Simulation {
       this.lipClearTimer = TUNE.transitionRailClearTime;
       this.body.setGravityScale(1, true);
       this.tricks.startAir(false, true);
+      this.bodyFlip.begin('natural_ramp_air',this.pitch);
       this.airWeight.reset(this.pitch, this.yaw);
       this.airSpin.reset();
       this.stall = null;
     }
     this.body.setTranslation(this.position, true);
+    this.score.observe(this.tricks.attempt);
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(
       new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw),
@@ -514,7 +586,7 @@ export class Simulation {
       for (let i = 0; i < 16; i++) {
         const x = origin.x + Math.cos((i * Math.PI) / 8) * radius;
         const z = origin.z + Math.sin((i * Math.PI) / 8) * radius;
-        if (OUTDOOR && inWater(x, z, 1.08)) continue;
+        if (this.rampWorld && inWater(x, z, 1.08)) continue;
         if (terrainNormal(x, z).y < 0.75) continue;
         const p = new THREE.Vector3(x, terrainHeight(x, z) + TUNE.radius, z);
         if (
@@ -591,12 +663,12 @@ export class Simulation {
       !!this.groundIntent ||
       this.preload.amount > 0.08 ||
       this.tricks.gesture.confidence > 0.08 ||
-      Math.abs(this.tricks.deck.velocity) > 0.15 ||
-      Math.abs(this.tricks.bars.velocity) > 0.15 ||
-      Math.abs(this.tricks.bri.velocity) > 0.15 ||
-      Math.abs(this.tricks.kickless.velocity) > 0.15 ||
+
+
+
+
       this.tricks.poseBlend > 0.05 ||
-      (!this.grounded && Math.abs(input.steer) > 0.3) ||
+
       input.pressed[buttons.whip] ||
       input.pressed.brakeBars ||
       input.held.body > 0.3 ||
@@ -616,7 +688,7 @@ export class Simulation {
     )
       return;
     // Tricks, a transition exit, and a drop-in all have a higher priority than a rail.
-    const lip = OUTDOOR
+    const lip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -650,7 +722,7 @@ export class Simulation {
     if (
       candidate &&
       this.tricks.deck.mismatch < 0.45 &&
-      this.tricks.bars.mismatch < 0.45
+      this.tricks.bars.mismatch < 0.45 && this.tricks.bri.mismatch < .35 && this.tricks.kickless.mismatch < .35
     ) {
       this.tricks.finish("clean");
       this.grind = candidate;
@@ -862,6 +934,7 @@ export class Simulation {
       return;
     }
     this.grounded = true;
+    this.pitch=wrap(this.pitch);this.bodyFlip.reset();
     this.state = quality === "sketchy" ? "SketchyLanding" : "Landing";
     this.landTimer = 0.25;
     this.landingCompression = clamp(impact / 12, 0.15, 1);
@@ -884,6 +957,7 @@ export class Simulation {
     this.previousPosition.copy(this.position);
     this.previousYaw = this.yaw;
     this.elapsed += dt;
+    this.score.tick(dt);
     this.lipClearTimer = Math.max(0, this.lipClearTimer - dt);
     this.railImpactCooldown = Math.max(0, this.railImpactCooldown - dt);
     this.pushTimer = Math.max(0, this.pushTimer - dt);
@@ -927,7 +1001,7 @@ export class Simulation {
     }
     this.getUpTimer = Math.max(0, this.getUpTimer - dt);
     if (
-      OUTDOOR &&
+      this.rampWorld &&
       inWater(this.position.x, this.position.z) &&
       this.position.y < 0.35 &&
       !this.waterBail
@@ -975,7 +1049,7 @@ export class Simulation {
       if(input.pressed[whip] || gesture?.kind==="bri" || loaded!==null){
         this.dropIn.reset();this.pop(loaded ?? Math.max(.15,this.preload.amount),input.lean);
         this.lipClearTimer=.4;
-        if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction);
+        if(gesture?.kind==="bri")this.tricks.bri.kick(gesture.direction*(gesture.short?this.tricks.naturalDirection:1));
       }
     }
     if (this.dropIn.step(this, dt, input)) return;
@@ -1074,11 +1148,14 @@ export class Simulation {
       this.walk(dt, input);
       return;
     }
+    const plantInput=this.updateFastplant(dt,input);
+    if(!plantInput)return;
+    input=plantInput;
     this.captureGrind(input);
     const support = this.support();
-    if (OUTDOOR)
+    if (this.rampWorld)
       support.normal = terrainNormal(this.position.x, this.position.z);
-    const copingLip = OUTDOOR
+    const copingLip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1143,7 +1220,7 @@ export class Simulation {
           support.normal,
           intoSurface * TUNE.reentryCaptureStrength * Math.max(0,1-Math.hypot(input.steer,input.lean)),
         );
-        this.pitch = damp(this.pitch, slopePitch, 4, dt);
+        if(!this.bodyFlip.active)this.pitch = damp(this.pitch, slopePitch, 4, dt);
       }
     }
     if (
@@ -1163,10 +1240,10 @@ export class Simulation {
       this.world.step(this.contactEvents, this.contactHooks);
       return;
     }
-    if (OUTDOOR && this.grounded) this.normal.copy(support.normal);
+    if (this.rampWorld && this.grounded) this.normal.copy(support.normal);
     else this.normal.lerp(support.normal, 1 - Math.exp(-18 * dt)).normalize();
     if (wasGrounded && !this.grounded && !this.grind) {
-      const leavingLip = OUTDOOR
+      const leavingLip = this.rampWorld
         ? outdoorLip(
             this.position.x,
             this.position.z,
@@ -1175,6 +1252,7 @@ export class Simulation {
           )
         : null;
       if (leavingLip && leavingLip.distance < 0.55 && this.velocity.y > 0.3) {
+        this.departureLip=leavingLip;
         this.lipClearTimer = TUNE.transitionRailClearTime;
         this.popTimer = 0.12;
         if (leavingLip.module.kind === "spine")
@@ -1210,18 +1288,14 @@ export class Simulation {
       this.state = "Airborne";
       this.airTime = 0;
       this.tricks.startAir(false, true);
+      this.bodyFlip.begin('natural_ramp_air',this.pitch);
       this.airWeight.reset(this.pitch, this.yaw);
       this.airSpin.reset();
     }
     if (this.grounded) this.lastGround = this.elapsed;
     const edgeGrace =
       this.elapsed - this.lastGround < TUNE.coyoteTime &&
-      (!OUTDOOR || !!outdoorLip(
-        this.position.x,
-        this.position.z,
-        this.velocity.z,
-        this.velocity.x,
-      ));
+      (!this.rampWorld || !!this.launchLip());
     const supportedForTrick = this.grounded || !!this.grind || edgeGrace;
     const gesture =
       supportedForTrick &&
@@ -1231,7 +1305,7 @@ export class Simulation {
         : null;
     if (gesture?.kind === "bri")
       this.groundIntent = {
-        direction: gesture.direction,
+        direction: gesture.direction*(gesture.short?this.tricks.naturalDirection:1),
         charge: this.preload.amount,
         age: 0,
       };
@@ -1239,43 +1313,27 @@ export class Simulation {
       this.tricks.stance,
       this.tricks.controlStyle,
     ).whip;
-    const takeoffLip = OUTDOOR
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const takeoffLip = this.launchLip();
     const atTakeoff =
       !!takeoffLip &&
       takeoffLip.distance > -0.25 &&
       takeoffLip.distance < 1.25;
-    // Holding physical A while firmly on flat ground becomes a push after a
-    // short delay. A tap still keeps the established tailwhip behavior.
-    const waitingForPush =
-      whip === "hop" && this.grounded && !this.grind && !atTakeoff &&
-      this.normal.y > 0.96 && input.held.hop > 0.5;
-    if (waitingForPush && input.pressed.hop) this.pendingPushTap = true;
-    const tapWhip = this.pendingPushTap && input.released.hop && this.pushHoldTime < TUNE.pushHoldDelay;
-    if (input.released.hop || this.pushHoldTime >= TUNE.pushHoldDelay || !this.grounded)
-      this.pendingPushTap = false;
     const barButton =
       this.tricks.controlStyle === "arcade" ? "pushDeck" : "brakeBars";
     if (
       supportedForTrick &&
-      ((tapWhip || (!waitingForPush && input.pressed[whip])) ||
+      (input.pressed[whip] ||
         (this.tricks.controlStyle === "arcade" && input.pressed.hop) ||
         (atTakeoff && input.pressed[barButton]))
     ) {
-      this.pop(Math.max(0.15, this.preload.amount), input.lean);
-      if (tapWhip) this.tricks.deck.kick(this.tricks.naturalDirection * (input.held.brake > 0.5 ? -1 : 1));
+      this.pop(Math.max(0.15, this.preload.amount), input.lean,
+        this.tricks.controlStyle==='arcade'&&input.pressed.hop?'manual_hop':'trick_initiated_pop');
       this.preload.reset();
     }
     if (this.groundIntent) {
       const intent = this.groundIntent;
       intent.age += dt;
-      const lip = OUTDOOR
+      const lip = this.rampWorld
         ? outdoorLip(
             this.position.x,
             this.position.z,
@@ -1299,7 +1357,7 @@ export class Simulation {
       }
     }
     // Preload survives the lip briefly and can buffer a release just before contact.
-    const preloadLip = OUTDOOR && supportedForTrick && !this.manual.active
+    const preloadLip = this.rampWorld && supportedForTrick && !this.manual.active
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1312,6 +1370,8 @@ export class Simulation {
       preloadLip.distance > -0.1 &&
       preloadLip.distance < 0.9 &&
       this.normal.y < 0.97;
+    const gentleRS = Math.abs(input.ry)>=TUNE.manualMin && Math.abs(input.ry)<=TUNE.manualMax && Math.abs(input.rx)<.25 && input.held.leftModifier<.3 && input.held.rightModifier<.3;
+    this.manualIntentTime=gentleRS?this.manualIntentTime+dt:0;
     const rsPop = this.preload.step(
       dt,
       input,
@@ -1326,7 +1386,7 @@ export class Simulation {
     // but the rider stands up as soon as the user stops actively holding down.
     this.lastRS = { x: input.rx, y: input.ry };
     this.charge = this.grounded && !this.manual.active && input.held.leftModifier < 0.5
-      ? clamp(input.ry, 0, 1) : 0;
+      ? (input.ry >= TUNE.preloadThreshold ? clamp(input.ry, 0, 1) : 0) : 0;
     if (rsPop !== null) {
       this.bufferCharge = rsPop;
       this.hopBuffer = TUNE.hopBuffer;
@@ -1338,7 +1398,7 @@ export class Simulation {
         this.grind ||
         this.elapsed - this.lastGround < TUNE.coyoteTime)
     )
-      this.pop(this.bufferCharge, input.lean);
+      this.pop(this.bufferCharge, input.lean,'manual_hop');
     const forward = new THREE.Vector3(
       Math.sin(this.yaw),
       0,
@@ -1356,13 +1416,14 @@ export class Simulation {
         this.grounded = false;
         this.state = "Airborne";
         this.tricks.startAir(true);
+        this.bodyFlip.begin('trick_initiated_pop',this.pitch);
         this.popTimer = 0.1;
         this.airTime = 0;
       }
     }
     if (this.grind) {
       this.grindDuration += dt;
-      this.score.holdContact(dt, this.grindDuration, true, 1 + Math.abs(this.grind.direction.y));
+      this.score.holdContact(dt, this.grindDuration, true, 1 + Math.abs(this.grind.direction.y), this.grind.name);
       this.state = "Grinding";
       this.grounded = false;
       this.body.setGravityScale(0, true);
@@ -1408,6 +1469,7 @@ export class Simulation {
         this.finishGrind();
         this.state = "Airborne";
         this.tricks.startAir(true);
+        this.bodyFlip.begin('natural_ramp_air',this.pitch);
         this.popTimer = 0.12;
         this.airTime = 0;
       }
@@ -1527,8 +1589,7 @@ export class Simulation {
         this.tricks.controlStyle,
       ).push;
       const holdingPush =
-        input.held[pushButton] > 0.5 ||
-        (pushButton !== "hop" && input.held.hop > 0.5);
+        input.held[pushButton] > 0.5;
       const pushAllowed =
         !this.manual.active &&
         !revert.reverting &&
@@ -1546,7 +1607,7 @@ export class Simulation {
       ) {
         this.velocity.addScaledVector(
           tangent,
-          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.maxSpeed, 0.05, 1),
+          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.maxSpeed, 0, 1),
         );
         this.pushTimer = TUNE.pushCadence;
         this.events.emit({ type: "push" });
@@ -1574,8 +1635,7 @@ export class Simulation {
       this.lastPump = pump;
       if (
         !this.manual.active &&
-        input.held.leftModifier > 0.5 &&
-        Math.abs(input.ry) > 0.5 &&
+        this.manualIntentTime >= TUNE.manualDwell &&
         speed > 0.7 &&
         this.manualEntryLock === 0
       ) {
@@ -1584,21 +1644,19 @@ export class Simulation {
         this.manualRecorded = false;
       }
       if (this.manual.active) {
-        this.score.holdContact(dt, this.manual.duration, false);
+        this.score.holdContact(dt, this.manual.duration, false, 1, this.manual.nose ? "Nose Manual" : "Manual");
         // Ignore the entry flick for a fraction of a second, then give the stick full balance control.
         const result = this.manual.step(
           dt,
-          this.manualEntryLock > 0 || this.preload.amount > 0 ? 0 : input.ry,
+          this.preload.amount > 0 ? (this.manual.nose ? -.32 : .32) : input.ry,
           (speed - this.lastSpeed) / dt,
         );
-        if (this.manual.duration > 0.25 && !this.manualRecorded) {
-          this.tricks.add(this.manual.nose ? "Nose Manual" : "Manual");
-          this.manualRecorded = true;
-        }
+
         if (result === "loop") {
           this.bail(this.manual.nose ? "Over the bars" : "Looped manual");
         }
         if (result === "drop") {
+          if(this.manual.duration>.18)this.tricks.add(this.manual.nose?"Nose Manual":"Manual");
           this.manualEntryLock = 0.5;
           this.manualRecorded = false;
         }
@@ -1636,7 +1694,7 @@ export class Simulation {
         this.normal,
         -this.velocity.dot(this.normal),
       );
-      if (OUTDOOR && this.velocity.lengthSq() > 0.00001)
+      if (this.rampWorld && this.velocity.lengthSq() > 0.00001)
         this.velocity.setLength(surfaceSpeed);
       this.lastSpeed = speed;
     } else {
@@ -1645,6 +1703,8 @@ export class Simulation {
       this.airTime += dt;
       this.rampLean = damp(this.rampLean, 0, 4, dt);
       this.fakie.step(dt, this.yaw, this.velocity.x, this.velocity.z, 0, false);
+      const flipChord=input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||((this.bodyFlip.origin==='manual_hop'||this.bodyFlip.origin==='fastplant')&&Math.abs(input.lean)>.25));
+      this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch);
       this.spin = this.airSpin.step(
         dt,
         this.spin,
@@ -1652,26 +1712,28 @@ export class Simulation {
         this.velocity.y,
         Math.max(0, gap),
         this.airTime,
+        this.bodyFlip.active?TUNE.flipYawRateScale:1,
       );
       const rotation = this.spin * dt;
       this.yaw += rotation;
       this.tricks.yaw += rotation;
-      this.airWeight.step(dt, input.lean, this.yaw, this.velocity);
+      if(!this.bodyFlip.active)this.airWeight.step(dt, input.lean, this.yaw, this.velocity);
       this.airYawInput = input.steer;
       const basePitch = this.airWeight.basePitch(this.yaw, this.airTime);
-      this.pitch = damp(
+      if(!this.bodyFlip.active)this.pitch = damp(
         this.pitch,
         clamp(basePitch + this.airWeight.pitchBias, -1.25, 1.25),
         12,
         dt,
       );
       this.roll = damp(this.roll, input.steer * 0.07, 4, dt);
-      this.tricks.input(dt, input);
+      this.tricks.flip=this.bodyFlip.angle;
+      this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }
     if (this.velocity.length() > 28) this.velocity.setLength(28);
-    const lip = OUTDOOR
+    const lip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1693,6 +1755,7 @@ export class Simulation {
       this.velocity.y > 0.3 &&
       this.popTimer === 0
     ) {
+      this.departureLip=lip;
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, input.lean, lip.forward);
       if (lip.module.kind === "box")
@@ -1722,6 +1785,7 @@ export class Simulation {
       this.lipClearTimer = TUNE.transitionRailClearTime;
       this.body.setGravityScale(1, true);
       this.tricks.startAir(false, true);
+      this.bodyFlip.begin('natural_ramp_air',this.pitch);
       this.airSpin.reset();
       this.airWeight.reset(this.pitch, this.yaw);
       this.spin = 0;
@@ -1729,10 +1793,9 @@ export class Simulation {
       // existing ramp momentum. This keeps a quarter pipe rideable and makes
       // the same in-ramp release feel responsive without turning it into a
       // flat-ground super jump.
-      const transitionCharge = this.preload.amount;
-      if (transitionCharge > 0)
-        this.velocity.y += 0.22 + transitionCharge * 0.78;
-      this.preload.reset();
+      // A loaded stick is not a completed jump. Preserve the gesture through
+      // the short lip departure window so its upward stroke owns the impulse.
+      const transitionCharge = 0;
       this.charge = 0;
       this.events.emit({ type: "pop", charge: transitionCharge });
     }

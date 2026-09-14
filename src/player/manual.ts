@@ -23,9 +23,10 @@ export class ManualBalance {
     const direction = this.nose ? -1 : 1;
     this.velocity +=
       (this.balance * TUNE.manualStability +
-        input * direction * TUNE.manualSensitivity -
+        (input * direction - .32) * TUNE.manualSensitivity -
         speedChange * 0.028 * direction) *
       dt;
+    if(Math.abs(input)<.12)this.velocity -= 2.2*dt;
     this.velocity *= Math.exp(-0.7 * dt);
     this.balance += this.velocity * dt;
     if (this.balance < -0.55) {

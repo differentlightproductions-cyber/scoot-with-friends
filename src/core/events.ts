@@ -1,6 +1,7 @@
 import type { TrickRecord } from "../tricks/resolver";
 export type LandingQuality = "clean" | "sketchy" | "failed";
 export type GameEvent =
+  | {type:"banked";eventId:string;points:number}
   | { type:'worldInteraction'; interaction:string; item:string }
   | { type: "playerEmote"; playerId: string; emoteId: string; timestamp: number }
   | { type: "playerChat"; playerId: string; message: string; timestamp: number }
@@ -10,7 +11,7 @@ export type GameEvent =
   | { type: "pump" }
   | { type: "landing"; quality: LandingQuality; impact: number }
   | { type: "bail"; reason: string }
-  | { type: "trick"; name: string; record?: TrickRecord }
+  | { type: "trick"; name: string; record?: TrickRecord; attemptId?:number }
   | { type: "railImpact"; speed: number; bail: boolean }
   | { type: "grindCatch"; name: string; assisted: boolean }
   | { type: "dismount"; walking: boolean }

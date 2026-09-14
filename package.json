@@ -1,11 +1,11 @@
 {
   "name": "scoot-with-friends",
-  "version": "0.8.0-alpha.2",
+  "version": "0.9.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
+    "build": "tsc --noEmit && vite build --outDir dist/client && node scripts/build-server.mjs",
     "preview": "vite preview --host 127.0.0.1 --outDir dist/client",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs",
@@ -25,6 +25,7 @@
     "three": "0.180.0"
   },
   "devDependencies": {
+    "meshoptimizer": "0.22.0",
     "@types/node": "^22.0.0",
     "@types/three": "0.180.0",
     "playwright": "1.55.1",

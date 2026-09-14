@@ -52,11 +52,16 @@ export class ScooterAssembly {
   rod(this.root,v(0,.17,.307),v(0,.319,.291),.033,d.variant.color,d.part.id);
   for(const yy of [.179,.309])add(this.root,new THREE.TorusGeometry(.033,.0012,8,32).rotateX(Math.PI/2),d.variant.color,d.part.id,'paint',v(0,yy,.307-(yy-.17)*.107));
   const bars=get('bars'),bw=bars.part.shape==='oversized'?.35:.29,br=bars.part.shape==='oversized'?.019:.016;
-  rod(this.barPivot,v(0,.33,-.009),v(0,bars.part.shape==='y'?.91:1.01,-.04),br,bars.variant.color,bars.part.id);
-  if(bars.part.shape!=='y')rod(this.barPivot,v(-bw,1.01,-.04),v(bw,1.01,-.04),br,bars.variant.color,bars.part.id);
+  rod(this.barPivot,v(0,.33,-.009),v(0,['y','mafioso-y'].includes(bars.part.shape)?.91:1.01,-.04),br,bars.variant.color,bars.part.id);
+  if(!['y','mafioso-y'].includes(bars.part.shape))rod(this.barPivot,v(-bw,1.01,-.04),v(bw,1.01,-.04),br,bars.variant.color,bars.part.id);
   else add(this.barPivot,tube([v(-bw,1.01,-.04),v(-.19,1.01,-.04),v(-.095,.965,-.04),v(0,.942,-.04),v(.095,.965,-.04),v(.19,1.01,-.04),v(bw,1.01,-.04)],br),bars.variant.color,bars.part.id);
-  add(this.barPivot,new THREE.TorusGeometry(br,.0013,8,28).rotateX(Math.PI/2),bars.variant.color,bars.part.id,'paint',v(0,bars.part.shape==='y'?.917:.99,-.039));
-  if(bars.part.shape==='y')for(const s of [-1,1])add(this.barPivot,tube([v(0,.85,-.035),v(s*.025,.89,-.036),v(s*.067,.934,-.04),v(s*.10,.965,-.04)],.007),bars.variant.color,bars.part.id);
+  add(this.barPivot,new THREE.TorusGeometry(br,.0013,8,28).rotateX(Math.PI/2),bars.variant.color,bars.part.id,'paint',v(0,['y','mafioso-y'].includes(bars.part.shape)?.917:.99,-.039));
+  if(['y','mafioso-y'].includes(bars.part.shape))for(const s of [-1,1])add(this.barPivot,tube([v(0,.85,-.035),v(s*.025,.89,-.036),v(s*.067,.934,-.04),v(s*.10,.965,-.04)],.007),bars.variant.color,bars.part.id);
+  if(bars.part.shape==='mafioso-y')for(const sign of [-1,1]){
+   const web=new THREE.Shape();web.moveTo(sign*.014,.858);web.quadraticCurveTo(sign*.04,.922,sign*.115,.974);web.lineTo(sign*.052,.955);web.lineTo(sign*.014,.932);web.closePath();
+   for(const [x,y,rx,ry]of [[.035,.917,.008,.012],[.063,.945,.012,.009]]){const hole=new THREE.Path();hole.absellipse(sign*x,y,rx,ry,sign*.7,Math.PI*2+sign*.7,true);web.holes.push(hole);}
+   const geo=new THREE.ExtrudeGeometry(web,{depth:.008,bevelEnabled:true,bevelSegments:2,steps:1,bevelSize:.001,bevelThickness:.001,curveSegments:16});geo.translate(0,0,-.044);add(this.barPivot,geo,bars.variant.color,bars.part.id);
+  }
   const grips=get('grips');this.gripSockets=[];
   for(const s of [-1,1]){
    const r=grips.part.shape==='soft'?.029:.024;
@@ -67,6 +72,9 @@ export class ScooterAssembly {
   }
   const clamp=get('clamp'),n=clamp.part.shape==='triple'?3:2,h=n*.021;
   add(this.barPivot,new THREE.LatheGeometry([[.018,-h/2],[.027,-h/2],[.028,-h/2+.003],[.028,h/2-.003],[.027,h/2],[.018,h/2]].map(([x,y])=>new THREE.Vector2(x,y)),32,.09,Math.PI*2-.18),clamp.variant.color,clamp.part.id,'paint',v(0,.336+h/2,-.009));
+  if(clamp.part.shape==='segmented')for(let row=0;row<3;row++)for(let face=0;face<10;face++){
+   const angle=.25+face*(Math.PI*2-.5)/10;const geo=plate(.016,.013,.010,.002);geo.rotateX(Math.PI/2);geo.rotateY(angle);add(this.barPivot,geo,clamp.variant.color,clamp.part.id,'paint',v(Math.sin(angle)*.030,.343+row*.014,-.009+Math.cos(angle)*.030));
+  }
   for(let i=0;i<n;i++){
    add(this.barPivot,extrusion([[-.020,-.007],[.020,-.007],[.023,.005],[.018,.009],[-.018,.009]],.012,.002),clamp.variant.color,clamp.part.id,'paint',v(0,.348+i*.021,-.035));
    rod(this.barPivot,v(-.024,.348+i*.021,-.035),v(.024,.348+i*.021,-.035),.003,0xb8cbc6,clamp.part.id,'steel');bolt(this.barPivot,v(-.026,.348+i*.021,-.035),clamp.part.id,.0055);
@@ -85,7 +93,14 @@ export class ScooterAssembly {
    const tyre=lathe([[r*.67,-.011],[r*.86,-.0135],[r*.96,-.0105],[r,-.006],[r,.006],[r*.96,.0105],[r*.86,.0135],[r*.67,.011],[r*.67,-.011]],40).rotateZ(Math.PI/2);
    const wheel=new THREE.Mesh(tyre,mat(0x34403f,'urethane'));wheel.position.set(0,.055,z);wheel.userData.part=w.part.id;wheel.userData.slot=slot;wheel.castShadow=true;parent.add(wheel);this.wheels.push(wheel);
    add(wheel,lathe([[r*.55,-.009],[r*.7,-.011],[r*.74,-.006],[r*.74,.006],[r*.7,.011],[r*.55,.009],[r*.55,-.009]],32).rotateZ(Math.PI/2),w.variant.color,w.part.id,'metal');
-   for(let i=0;i<5;i++)add(wheel,extrusion([[-.004,.008],[.004,.008],[.007,r*.58],[.002,r*.66],[-.004,r*.61]],.012,.0015).rotateY(Math.PI/2).rotateX(i*Math.PI*2/5),w.variant.color,w.part.id,'metal');
+   if(w.part.brandId!=='mafioso')for(let i=0;i<5;i++)add(wheel,extrusion([[-.004,.008],[.004,.008],[.007,r*.58],[.002,r*.66],[-.004,r*.61]],.012,.0015).rotateY(Math.PI/2).rotateX(i*Math.PI*2/5),w.variant.color,w.part.id,'metal');
+   if(w.part.brandId==='mafioso'){
+    const count=w.part.shape==='petal'?8:5,shape=new THREE.Shape();shape.absarc(0,0,r*.70,0,Math.PI*2,false);const center=new THREE.Path();center.absarc(0,0,.007,0,Math.PI*2,true);shape.holes.push(center);
+    for(let n=0;n<count;n++){const a=n*Math.PI*2/count,hole=new THREE.Path(),point=(x:number,y:number):[number,number]=>[Math.cos(a)*x-Math.sin(a)*y,Math.sin(a)*x+Math.cos(a)*y];
+     const p0=point(.017,0);hole.moveTo(...p0);for(const [a,b,c,d,e,f]of [[.021,-.006,.029,-.01,.033,-.008],[.040,-.005,.039,.009,.032,.009],[.023,.010,.019,.005,.017,0]])hole.bezierCurveTo(...point(a,b),...point(c,d),...point(e,f));shape.holes.push(hole);}
+    const core=new THREE.ExtrudeGeometry(shape,{depth:.013,steps:1,bevelEnabled:true,bevelSize:.001,bevelThickness:.001,bevelSegments:2,curveSegments:12});core.translate(0,0,-.0065);core.rotateY(Math.PI/2);add(wheel,core,w.variant.color,w.part.id,'metal');
+    if(w.variant.accent)for(const side of [-1,1])add(wheel,new THREE.TorusGeometry(r*.68,.0015,6,40).rotateY(Math.PI/2),w.variant.accent,w.part.id,'metal',v(side*.01,0,0));
+   }
    add(wheel,lathe([[.005,-.014],[.011,-.014],[.013,-.009],[.013,.009],[.011,.014],[.005,.014],[.005,-.014]],24).rotateZ(Math.PI/2),bearings.variant.color,bearings.part.id,'steel');
    rod(parent,v(-.043,.055,z),v(.043,.055,z),.004,0xb8cbc6,bearings.part.id,'steel');for(const s of [-1,1])bolt(parent,v(s*.043,.055,z),bearings.part.id);
   }
@@ -104,9 +119,9 @@ export class ScooterAssembly {
   const decal=(parent:THREE.Object3D,w:number,h:number,pos:THREE.Vector3,rotation:number,vertical=false)=>{
    const c=document.createElement('canvas');c.width=vertical?128:512;c.height=vertical?512:128;const ctx=c.getContext('2d')!;
    ctx.fillStyle='#e8eee7';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`italic 800 ${vertical?92:94}px Arial`;
-   if(vertical)'LAZER'.split('').forEach((letter,i)=>ctx.fillText(letter,64,55+i*99));else ctx.fillText('LAZER',256,64);
+   const label=parent===this.deckPivot?'LAZER':bars.part.brand.toUpperCase();if(vertical){ctx.font='italic 800 '+(label.length>5?65:92)+'px Arial';label.split('').forEach((letter,i)=>ctx.fillText(letter,64,35+i*460/label.length));}else ctx.fillText(label,256,64);
    const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const m=new THREE.MeshStandardMaterial({map:t,transparent:true,alphaTest:.1,roughness:.5,polygonOffset:true,polygonOffsetFactor:-1});
-   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);mesh.position.copy(pos);mesh.rotation.y=rotation;mesh.userData.part=parent===this.deckPivot?d.part.id:bars.part.id;mesh.name='Lazer product mark';parent.add(mesh);
+   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);mesh.position.copy(pos);mesh.rotation.y=rotation;mesh.userData.part=parent===this.deckPivot?d.part.id:bars.part.id;mesh.name=(parent===this.deckPivot?'Lazer':bars.part.brand)+' product mark';parent.add(mesh);
   };
   decal(this.barPivot,.022,.18,v(0,.56,.001),0,true);
   for(const s of [-1,1])decal(this.deckPivot,.23,.025,v(s*(width/2+.003),.093,-length*.43),s*Math.PI/2);
