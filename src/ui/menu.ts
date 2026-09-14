@@ -253,6 +253,9 @@ export class GameMenu {
         break;
       }
       case "settings":
+        add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{
+          const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();
+        },'Visual detail, resolution and shadows; riding stays identical.');
         add(
           "CONTROLS " +
             (this.profile.settings.controlStyle === "pro"
