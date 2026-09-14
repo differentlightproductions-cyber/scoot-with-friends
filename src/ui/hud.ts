@@ -237,7 +237,7 @@ export class HUD {
         "<dt>GENTLE RS UP / DOWN</dt><dd>Nose manual / manual at 20–50% RS. Neutral settles the wheel. Deep RS down then up pops out.</dd>" +
         "<dt>Y ON GROUND</dt><dd>Walk / mount. On foot A jumps or climbs, B sits near benches; LS click runs carrying scooter.</dd>" +
         "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd><dt>SPINE STALL</dt><dd>Hold LT while grounded at spine coping to brake into a stall. Use LS left/right to adjust, then lean LS forward or back to drop in.</dd>" +
-        "<dt>BAIL</dt><dd>After a crash, let the fall finish, then press A to get back up.</dd>" +
+        "<dt>BAIL</dt><dd>Press A after the fall to get up. Double-tap A to skip the crash.</dd>" +
         "<dt>ON FOOT: D-PAD LEFT / RIGHT</dt><dd>Hold Left: RS selects in the quick wheel, release to perform. Hold Right: local chat; Enter sends, Esc/B cancels. Messages appear above your head.</dd><dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
         "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
         "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";
@@ -264,7 +264,7 @@ export class HUD {
       Manual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
       NoseManual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
       Grinding: "RS DOWN HOLD / RELEASE TO HOP OUT  /  RS LEAN",
-      Bail: s.crash?.canRecover?'A / SPACE: GET UP · Or stay and rest':'FALLING / SETTLING',
+      Bail: s.crash?.canRecover?'A / SPACE: GET UP · Or stay and rest':'FALLING ? DOUBLE-TAP A / SPACE TO SKIP',
       Preloading: "FLICK RS UP TO POP / SIDE SCOOP TO TRICK",
       SketchyLanding: "EASE THE STEERING  /  RIDE IT OUT",
     };

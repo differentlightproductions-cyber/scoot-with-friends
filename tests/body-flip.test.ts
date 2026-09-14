@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {BodyFlipControl} from '../src/player/body-flip.ts';
 import {StickGesture} from '../src/tricks/gesture.ts';
 import {RotationChannel} from '../src/tricks/tricks.ts';
-test('Only a fresh manual hop or supported fastplant unlocks body rotation',()=>{
+test('Every valid airborne origin permits controlled body rotation',()=>{
  for(const origin of ['manual_hop','natural_ramp_air','trick_initiated_pop','fastplant'] as const){
   const flip=new BodyFlipControl();flip.begin(origin,.3);
   for(let n=0;n<60;n++)flip.step(1/120,true,-1,.3);
-  assert.equal(flip.active,origin==='manual_hop'||origin==='fastplant');
+  assert.equal(flip.active,true);
   if(flip.active){assert(flip.angle>1.5 && flip.angle<2.2);const angle=flip.angle;flip.step(1/120,false,0,angle+.3);assert(flip.angle>angle);for(let i=0;i<120;i++)flip.step(1/120,true,1,flip.angle+.3);assert(flip.velocity<0);}
   flip.reset();assert.equal(flip.active,false);assert.equal(flip.origin,'natural_ramp_air');
  }

@@ -75,8 +75,8 @@ export function findGrind(
     // With no explicit grind hold, a rider must genuinely be crossing the rail.
     // Holding the grind control permits a carefully aligned parallel landing,
     // but still has to pass the full distance/height/alignment score below.
-    if (!intentional && lateral >= 0.07 && crossing < 0.45) continue;
-    const crossingScore = intentional && crossing < 0.45 ? 0.45 : crossing;
+    if (!intentional && lateral >= 0.12 && crossing < 0.45) continue;
+    const crossingScore = (intentional||lateral<.12) && crossing < 0.45 ? 0.45 : crossing;
     const distanceScore = 1 - lateral / maxDistance;
     const alignmentScore = clamp(
       (approach - minApproach) / Math.max(0.01, 1 - minApproach),

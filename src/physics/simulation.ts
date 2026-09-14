@@ -112,6 +112,7 @@ export class Simulation {
   landTimer = 0;
   landingCompression = 0;
   bailTimer = 0;
+  private lastBailGetUpPress = -Infinity;
   stall: {
     anchor: THREE.Vector3;
     direction: THREE.Vector3;
@@ -255,6 +256,7 @@ export class Simulation {
     this.tricks.reset();
     this.normal.set(0, 1, 0);
     this.bailTimer = 0;
+    this.lastBailGetUpPress = -Infinity;
     this.stall = null;
     this.recovery = 0;
     this.popTimer = 0;
@@ -496,11 +498,13 @@ export class Simulation {
     if (this.state === "Bail") return;
     this.crash?.dispose();this.crash=new CrashMotion(this.world,this.position,this.velocity,this.yaw,this.pitch);
     this.state = "Bail";
+    this.getUpTimer = 0;
     this.bodyFlip.reset();
     this.fastplant=null;this.plantQueued=-1;
     this.preload.reset();
     this.grounded = false;
     this.bailTimer = 0;
+    this.lastBailGetUpPress = -Infinity;
     this.manual.reset();
     this.grind = null;
     this.body.collider(0).setSensor(false);
@@ -651,6 +655,7 @@ export class Simulation {
     this.waterBail = false;
     this.getUpTimer = 0.75;
     this.bailTimer = 0;
+    this.lastBailGetUpPress = -Infinity;
     this.grindCooldown = 0.4;
   }
   private finishManual() {
@@ -699,9 +704,7 @@ export class Simulation {
     if (
       this.grounded ||
       this.walking ||
-      this.grind ||
-      (!this.grindAssist && input.held.pumpGrind <= 0.3) ||
-      this.grindCooldown > 0
+      this.grind
     )
       return;
     // Tricks, a transition exit, and a drop-in all have a higher priority than a rail.
@@ -718,26 +721,27 @@ export class Simulation {
       lip.distance > -0.35 &&
       lip.distance < 1.1 &&
       (this.normal.y < 0.97 || this.rampLean > 0.08 || this.velocity.y > 0.35);
-    if (this.dropIn.phase || this.hasGrindOverride(input) || transitionExit) {
+    if (this.dropIn.phase || this.popTimer>0 || transitionExit) {
       this.grindCandidate = "—";
       return;
     }
     const contact = this.position.clone().add(new THREE.Vector3(0, -0.12, 0));
     // Sweep a single fixed physics step ahead so a valid deck contact engages
     // before the rigid-body rail collision can bounce it away.
+    const rails=this.park.rails.filter(r=>this.grindCooldown<=0||r.colliderHandle!==this.releasingRail);
     const candidate = findGrind(
-      this.park.rails,
+      rails,
       contact,
       this.velocity,
       this.yaw,
       this.pitch,
       this.grindAssist,
       input.held.pumpGrind > 0.3,
-    ) ?? findGrind(this.park.rails, contact.clone().addScaledVector(this.velocity, TUNE.step),
+    ) ?? findGrind(rails, contact.clone().addScaledVector(this.velocity, TUNE.step),
       this.velocity, this.yaw, this.pitch, this.grindAssist, input.held.pumpGrind > 0.3);
     this.grindCandidate = candidate?.rail.id ?? "—";
     if (
-      candidate &&
+      candidate && Math.abs(wrap(this.pitch))<.55 &&
       this.tricks.deck.mismatch < 0.45 &&
       this.tricks.bars.mismatch < 0.45 && this.tricks.bri.mismatch < .35 && this.tricks.kickless.mismatch < .35
     ) {
@@ -1045,6 +1049,15 @@ export class Simulation {
       this.lastSafeGround.copy(this.position);
     if (this.state === "Bail") {
       this.bailTimer += dt;
+      if(input.pressed.hop){
+        const skip=this.bailTimer-this.lastBailGetUpPress<.65;
+        this.lastBailGetUpPress=this.bailTimer;
+        if(skip){
+          this.recoverLocally();
+          if(!this.crash)this.getUpTimer=0;
+          return;
+        }
+      }
       this.world.step(this.contactEvents, this.contactHooks);
       if(this.crash){this.crash.update(dt);this.position.copy(this.crash.rider.translation());this.position.y-=.4;this.velocity.copy(this.crash.rider.linvel());
         const scooter=this.crash.scooter.translation();
@@ -1401,7 +1414,7 @@ export class Simulation {
     // A short internal window preserves a physical RS flick through neutral,
     // but the rider stands up as soon as the user stops actively holding down.
     this.lastRS = { x: input.rx, y: input.ry };
-    this.charge = this.grounded && !this.manual.active && input.held.leftModifier < 0.5
+    this.charge = (this.grounded||!!this.grind) && !this.manual.active && input.held.leftModifier < 0.5
       ? (input.ry >= TUNE.preloadThreshold ? clamp(input.ry, 0, 1) : 0) : 0;
     if (rsPop !== null) {
       this.bufferCharge = rsPop;
@@ -1426,15 +1439,9 @@ export class Simulation {
       if (
         input.pressed.brakeBars ||
         input.pressed[ridingButtons(this.tricks.stance, this.tricks.controlStyle).whip] ||
-        Math.abs(input.rx) > 0.72
+        chargedSide
       ) {
-        this.finishGrind();
-        this.grounded = false;
-        this.state = "Airborne";
-        this.tricks.startAir(true);
-        this.bodyFlip.begin('trick_initiated_pop',this.pitch);
-        this.popTimer = 0.1;
-        this.airTime = 0;
+        this.pop(Math.max(.15,this.preload.amount),input.lean,'trick_initiated_pop');
       }
     }
     if (this.grind) {
@@ -1455,6 +1462,7 @@ export class Simulation {
         -g.direction.x,
       ).normalize();
       const lateral = this.position.clone().sub(point).dot(side);
+      g.contactOffset=clamp(g.contactOffset+input.steer*.085*dt,-.16,.16);
       const settling = this.grindDuration < TUNE.grindSettleTime;
       const spring = this.grindAssist
         ? settling
@@ -1471,16 +1479,14 @@ export class Simulation {
         .addScaledVector(side, g.lateralSpeed);
       this.velocity.y +=
         clamp((point.y + 0.14 - this.position.y) * 18, -2, 2);
-      this.yaw -= input.steer * TUNE.grindSteering * dt;
-      this.pitch = damp(this.pitch, g.entryPitch + input.ry * 0.13, 8, dt);
-      if (Math.abs(input.rx) > 0.25)
-        this.roll = damp(this.roll, -input.rx * 0.14, 8, dt);
+      this.pitch = damp(this.pitch, g.entryPitch + input.lean * 0.13, 8, dt);
+      this.roll = damp(this.roll, -input.steer * 0.14, 8, dt);
       if (
         g.t < 0 ||
         g.t > 1 ||
         (!settling && Math.abs(lateral - g.contactOffset) > 0.55) ||
         Math.abs(g.speed) < 0.8 ||
-        (Math.abs(input.rx) > 0.95 && this.grindDuration > 0.6)
+        (Math.abs(g.contactOffset) >= .16 && Math.abs(input.steer)>.9)
       ) {
         this.finishGrind();
         this.state = "Airborne";

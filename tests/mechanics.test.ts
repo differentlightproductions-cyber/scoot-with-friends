@@ -226,7 +226,7 @@ test("grind requires a close, descending, deliberate approach", () => {
     b: new Vector3(0, 0.6, 8),
     kind: "rail" as const,
   };
-  const p = new Vector3(0.3, 0.8, 3),
+  const p = new Vector3(0.18, 0.8, 3),
     vel = new Vector3(0, -1, 5);
   // A held grind intent gets a small forgiveness window; proximity alone does not.
   assert(findGrind([rail], p, vel, 0, 0, true, true));

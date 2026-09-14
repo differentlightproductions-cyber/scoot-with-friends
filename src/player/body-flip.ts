@@ -7,7 +7,7 @@ export class BodyFlipControl {
  begin(origin:TakeoffOrigin,pitch=0){this.reset();this.origin=origin;this.basePitch=pitch;}
  reset(){this.origin='natural_ramp_air';this.active=false;this.angle=this.velocity=this.basePitch=0;}
  step(dt:number,chord:boolean,lean:number,currentPitch:number){
-  if(!this.active&&chord&&Math.abs(lean)>.25&&(this.origin==='manual_hop'||this.origin==='fastplant')){this.active=true;this.basePitch=currentPitch;}
+  if(!this.active&&chord&&Math.abs(lean)>.25){this.active=true;this.basePitch=currentPitch;}
   if(!this.active)return currentPitch;
   const magnitude=clamp((Math.abs(lean)-.1)/.9,0,1);
   // Input requests a bounded rate rather than adding torque indefinitely.
