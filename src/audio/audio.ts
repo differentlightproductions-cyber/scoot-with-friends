@@ -4,6 +4,7 @@ export class AudioEngine {
   master: GainNode | null = null;
   roll: GainNode | null = null;
   grind: GainNode | null = null;
+  water:GainNode|null=null;
   filter: BiquadFilterNode | null = null;
   private nextFootstep = 0;
   enabled = true;
@@ -37,6 +38,7 @@ export class AudioEngine {
       this.grind = this.context.createGain();
       this.grind.gain.value = 0;
       noise.connect(high).connect(this.grind).connect(this.master);
+      const splashFilter=this.context.createBiquadFilter();splashFilter.type='bandpass';splashFilter.frequency.value=2400;splashFilter.Q.value=.4;this.water=this.context.createGain();this.water.gain.value=0;noise.connect(splashFilter).connect(this.water).connect(this.master);
       noise.start();
     }
     if (this.context.state === "suspended") await this.context.resume();
@@ -48,6 +50,7 @@ export class AudioEngine {
     paused: boolean,
     walking = false,
     running = false,
+    fountain=false,
   ) {
     if (
       !this.context ||
@@ -70,6 +73,7 @@ export class AudioEngine {
     );
     this.filter.frequency.setTargetAtTime(250 + speed * 60, t, 0.12);
     this.grind.gain.setTargetAtTime(grinding ? 0.22 : 0, t, 0.06);
+    this.water?.gain.setTargetAtTime(fountain&&!paused?.10:0,t,.045);
     if (
       this.enabled &&
       !paused &&
@@ -141,6 +145,8 @@ export class AudioEngine {
       f = 260;
       g = 0.035;
     }
+    if(e.type==='worldInteraction'&&e.interaction==='open'){f=1300;g=.08;d=.075;}
+    if(e.type==='worldInteraction'&&e.interaction==='vend'){f=340;g=.045;d=.12;}
     if (!f) return;
     const o = this.context.createOscillator(),
       a = this.context.createGain(),

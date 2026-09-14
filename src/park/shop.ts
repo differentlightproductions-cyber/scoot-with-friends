@@ -4,6 +4,7 @@ import {blankLayout,makeObject,setActiveLayout} from '../editor/layout';
 import {buildObject} from '../editor/assets';
 import {PARTS,defaultScooter,type Category,type PartSelection} from '../data/scooterParts';
 import {ScooterAssembly} from '../scooter/assembly';
+import {refineShop} from './shop-detail';
 export const SHOP_DISPLAYS:{x:number;z:number;category:Category;label:string}[]=[
  {x:-4.7,z:-.3,category:'wheels',label:'Wheels / pairs'},{x:-4.7,z:2.5,category:'clamp',label:'Clamps'},
  {x:4.8,z:3,category:'bars',label:'Handlebars'},{x:-4.7,z:5,category:'deck',label:'Decks'},
@@ -18,7 +19,7 @@ function buildShop(park:Park){
  scene.background=new THREE.Color(0xa8c4d2);scene.fog=new THREE.Fog(0xa8c4d2,65,150);
  scene.add(new THREE.HemisphereLight(0xfff0dc,0x67736e,1.6));const sun=new THREE.DirectionalLight(0xffe3bf,2.5);sun.position.set(-15,30,-20);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-35;sun.shadow.camera.right=35;sun.shadow.camera.top=35;sun.shadow.camera.bottom=-35;scene.add(sun);
  const box=(x:number,y:number,z:number,w:number,h:number,l:number,c=0xd7c7a8,solid=true)=>park.box(V(x,y,z),V(w,h,l),c,solid);
- const sign=(text:string,x:number,y:number,z:number,w:number,h:number,color='#f3e2bb',bg='#223331',yaw=Math.PI)=>{const c=document.createElement('canvas');c.width=1024;c.height=256;const ctx=c.getContext('2d')!;ctx.fillStyle=bg;ctx.fillRect(0,0,1024,256);ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 74px Arial';ctx.fillText(text,512,128,960);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:t,roughness:.9,side:THREE.DoubleSide}));m.position.set(x,y,z);m.rotation.y=yaw;scene.add(m);return m;};
+ const sign=(text:string,x:number,y:number,z:number,w:number,h:number,color='#f3e2bb',bg='#223331',yaw=Math.PI)=>{const c=document.createElement('canvas');c.width=1024;c.height=256;const ctx=c.getContext('2d')!;ctx.fillStyle=bg;ctx.fillRect(0,0,1024,256);ctx.fillStyle=color;ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 74px Arial';ctx.fillText(text,512,128,960);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshStandardMaterial({map:t,roughness:.9,side:THREE.FrontSide}));m.position.set(x,y,z);m.rotation.y=yaw;scene.add(m);return m;};
  // Modest single retail unit: open entrance and connected sidewalk / side alley.
  box(0,-.052,-19,35,.12,24,0x555b5c);box(0,-.021,-6.8,34,.06,3.5,0xc3c2b8);
  box(0,-.008,2,15.7,.035,13.7,0x2d3934);box(0,3.55,2,16.5,.4,14.5);
@@ -49,8 +50,8 @@ function buildShop(park:Park){
  box(2.4,.5,7.7,2.4,1,1.1,0x2d3534);box(2.4,1.04,7.7,2.6,.07,1.2,0xb19672);box(2.7,1.24,7.7,.35,.35,.28,0x20272a,false);sign('TECHNO GRAVITY',2.4,.7,7.12,2,.3);
  box(-6.6,.85,8,2,.1,1.2,0x9d805c);for(const x of [-7.4,-5.8])box(x,.4,8,.08,.8,1,0x343e3c);for(let i=0;i<6;i++)box(-7.3+i*.25,.94,8,.05,.04,.35,0x777b78,false);
  sign('LAZER / BUILT TO RIDE',-3,2.5,8.84,4,.8);sign('MAFIOSO',3,2.5,8.84,3,.8,'#cab46f');
- for(let i=0;i<8;i++){box(-7.78,2, -2+i*.9,.05,.36,.26,[0x6f8e79,0x382d36,0xaf7356][i%3],false);box(-7.74,2.18,-2+i*.9,.02,.06,.15,0xded5bf,false);}
- for(let i=0;i<5;i++){const shell=new THREE.Mesh(new THREE.SphereGeometry(.14,16,10,0,Math.PI*2,0,1.8),new THREE.MeshStandardMaterial({color:[0xaa5d40,0x2d3d46,0xb7b5a1][i%3]}));shell.position.set(-7.5,2.65,-2+i*1.5);scene.add(shell);}
+ for(let i=0;i<8;i++){box(-7.78,2, 4.4+i*.43,.05,.36,.26,[0x6f8e79,0x382d36,0xaf7356][i%3],false);box(-7.74,2.18,4.4+i*.43,.02,.06,.15,0xded5bf,false);}
+ refineShop(scene,box);
  // Fictional DIY extension: clean riding surfaces with rough background props.
  box(0,-.030,25,28,.07,31,0x666967);for(const o of shopLayout.objects){o.y=.012;buildObject(park,o);}
  for(const x of [-15,15])box(x,1.2,19,.15,2.4,32,0x858376);box(0,1.2,38,30,2.4,.15,0x858376);

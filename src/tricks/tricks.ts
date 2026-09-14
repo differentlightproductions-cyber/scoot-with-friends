@@ -292,9 +292,9 @@ export class Tricks {
     if (input.held.body > 0.5 && !flipChord) {
       this.gesture.reset();
       pose =
-        heel && finger
+        finger
           ? "Superman"
-          : finger
+          : heel && lb
             ? "Tuck No-hander"
             : heel
               ? "Deck Grab"

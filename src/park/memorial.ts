@@ -232,25 +232,15 @@ export function buildMemorialGrounds(park: Park) {
   );
   // The dirt line is self-contained: its fence keeps the dunes off the
   // surrounding concrete paths and grass, with a clear south-side entrance.
+  const wireCanvas=document.createElement('canvas');wireCanvas.width=wireCanvas.height=64;const wireContext=wireCanvas.getContext('2d')!;wireContext.strokeStyle='#a3b1ad';wireContext.lineWidth=2;wireContext.beginPath();wireContext.moveTo(0,32);wireContext.lineTo(32,0);wireContext.lineTo(64,32);wireContext.lineTo(32,64);wireContext.closePath();wireContext.stroke();const wireMap=new THREE.CanvasTexture(wireCanvas);wireMap.wrapS=wireMap.wrapT=THREE.RepeatWrapping;wireMap.repeat.set(12,7);const wireMaterial=new THREE.MeshStandardMaterial({map:wireMap,alphaTest:.35,side:THREE.DoubleSide,roughness:.65,metalness:.45});
   const fence = (x0: number, z0: number, x1: number, z1: number) => {
-    const dx = x1 - x0,
-      dz = z1 - z0,
-      length = Math.hypot(dx, dz),
-      angle = Math.atan2(dx, dz);
-    for (const t of [0, 0.5, 1])
-      box(x0 + dx * t, 1.1, z0 + dz * t, 0.12, 2.2, 0.12, 0x6d5941, true);
-    for (const y of [0.7, 1.42]) {
-      const rail = box(
-        (x0 + x1) / 2,
-        y,
-        (z0 + z1) / 2,
-        0.1,
-        0.07,
-        length,
-        0x80654a,
-        true,
-      );
-      rail.rotation.y = angle;
+    const dx=x1-x0,dz=z1-z0,length=Math.hypot(dx,dz),angle=Math.atan2(dx,dz),count=Math.ceil(length/2.8);
+    for(let i=0;i<=count;i++){const t=i/count,x=x0+dx*t,z=z0+dz*t;box(x,.91,z,.09,1.82,.09,0x657276,true);box(x,1.84,z,.13,.055,.13,0x9ba7a7);}
+    for(let i=0;i<count;i++){const t=(i+.5)/count,x=x0+dx*t,z=z0+dz*t,l=length/count;
+      for(const y of [.19,1.72]){const rail=box(x,y,z,.045,.045,l,0x819293,true);rail.rotation.y=angle;world.getCollider(rail.userData.collider)?.setRotation(rail.quaternion);}
+      const panel=box(x,.96,z,.025,1.48,l-.09,0x798b89,true);panel.rotation.y=angle;world.getCollider(panel.userData.collider)?.setRotation(panel.quaternion);panel.name='BMX chain-link panel';
+      panel.material=wireMaterial;
+      if(i%4===0){const brace=box(x,.95,z,.04,1.64,.04,0x7c8b89);brace.rotation.set(.35,angle,0);}
     }
   };
   const fenceX0 = BMX.x0 - 1.2,
@@ -266,8 +256,25 @@ export function buildMemorialGrounds(park: Park) {
   fence(fenceX1, fenceZ0, fenceX1, fenceZ1);
   box(gateX0, 1.1, fenceZ0, 0.16, 2.2, 0.16, 0x4f4131, true);
   box(gateX1, 1.1, fenceZ0, 0.16, 2.2, 0.16, 0x4f4131, true);
-  const gate = box(65, 1.1, fenceZ0 + 0.18, 7.6, 0.09, 0.1, 0x9b784e);
-  gate.name = "BMX track entrance gate";
+  // Hinged leaves are visibly parked open beside the posts. The opening has
+  // no invisible crossbar collider and connects directly to the approach path.
+  fence(gateX0,fenceZ0,gateX0,fenceZ0+3.4);fence(gateX1,fenceZ0,gateX1,fenceZ0+3.4);
+  for(const x of [gateX0,gateX1])for(const y of [.3,1.4])box(x,y,fenceZ0,.18,.13,.18,0x9ba7a7);
+  for(const x of [gateX0,gateX1]){
+    // The open leaves retain their latch and handle at the free end.
+    box(x+.09,1.0,fenceZ0+3.27,.04,.25,.055,0xb2bab5);
+    box(x+.06,.93,fenceZ0+3.31,.16,.04,.06,0x556367);
+  }
+  // Low timber entrance sign inspired by the supplied BMX entrance photo.
+  // Keep the usable gateway open and omit the reference's city and claims.
+  for(const x of [55.3,59.7])box(x,.72,fenceZ0-.65,.18,1.44,.18,0x72513b,true);
+  for(const y of [.48,1.05])box(57.5,y,fenceZ0-.69,4.9,.25,.12,0x826044,true);
+  box(57.5,.83,fenceZ0-.80,3.9,.72,.12,0x513d2f,true);
+  const gateCanvas=document.createElement('canvas');gateCanvas.width=1024;gateCanvas.height=192;
+  const gateText=gateCanvas.getContext('2d')!;gateText.fillStyle='#eee8d8';gateText.textAlign='center';gateText.textBaseline='middle';gateText.font='bold 100px sans-serif';gateText.fillText('BMX',512,71);gateText.font='36px sans-serif';gateText.fillText('DIRT RIDING AREA',512,146);
+  const gateMap=new THREE.CanvasTexture(gateCanvas);gateMap.colorSpace=THREE.SRGBColorSpace;
+  const gateSign=new THREE.Mesh(new THREE.PlaneGeometry(3.7,.69),new THREE.MeshStandardMaterial({map:gateMap,transparent:true,roughness:1}));
+  gateSign.position.set(57.5,.83,fenceZ0-.866);gateSign.rotation.y=Math.PI;gateSign.name='BMX timber entrance sign';scene.add(gateSign);
   const metalRail = (
     name: string,
     a: THREE.Vector3,
@@ -321,6 +328,7 @@ export function buildMemorialGrounds(park: Park) {
     park.bench("Metal park bench " + x, mx(x), 0, mz(23), 1, 3.5);
   // Broad, level paths give a continuous ride from wood to metal, parking and lake.
   let pathSerial = 0;
+  const pathClearance:{a:number[];b:number[];width:number}[]=[];
   const path = (points: number[][], width = 4, color = 0xc8c5b7) => {
     const pathId = pathSerial++;
     for (let i = 1; i < points.length; i++) {
@@ -328,6 +336,7 @@ export function buildMemorialGrounds(park: Park) {
         b = points[i],
         dx = b[0] - a[0],
         dz = b[1] - a[1];
+      pathClearance.push({a,b,width});
       const mesh = box(
         (a[0] + b[0]) / 2,
         0.006,
@@ -597,6 +606,7 @@ export function buildMemorialGrounds(park: Park) {
   pavilion(27, -113);
   // Instancing keeps the larger reference landscape light enough for normal play.
   const trees: number[][] = [];
+  const clearPlant=(x:number,z:number,r:number)=>!pathClearance.some(({a,b,width})=>{const dx=b[0]-a[0],dz=b[1]-a[1],t=clamp(((x-a[0])*dx+(z-a[1])*dz)/(dx*dx+dz*dz),0,1);return Math.hypot(x-a[0]-dx*t,z-a[1]-dz*t)<width/2+r;})&&!(x>19&&x<37&&Math.abs(z+44)<5)&&!(x>57&&x<73&&z>-30&&z<-20)&&!park.benches.some(b=>Math.hypot(x-b.x,z-b.z)<b.length/2+r+1)&&![[22,-34],[-42,-20],[52,-28]].some(([a,b])=>Math.hypot(x-a,z-b)<5+r);
   for (let i = 0; i < 90; i++) {
     const x = -109 + ((i * 37) % 215),
       z = -99 + ((i * 53) % 174);
@@ -606,7 +616,7 @@ export function buildMemorialGrounds(park: Park) {
       (x > 39 && x < 90 && z > -26 && z < 26) ||
       (x > -83 && x < -41 && z > -31 && z < 37) ||
       (x < -85 && x > -110 && z > -35 && z < 47);
-    if (!excluded) trees.push([x, z, 3.7 + (i % 4) * 0.7]);
+    if (!excluded&&clearPlant(x,z,2.7)) trees.push([x, z, 3.7 + (i % 4) * 0.7]);
   }
   trees.push(
     [-22, -80, 4],
@@ -618,6 +628,7 @@ export function buildMemorialGrounds(park: Park) {
     [91, 20, 4],
     [-29, 20, 5],
   );
+  for(let i=trees.length-1;i>=0;i--)if(!clearPlant(trees[i][0],trees[i][1],2.7))trees.splice(i,1);
   const trunks = new THREE.InstancedMesh(
     mergeGeometries([
       new THREE.CylinderGeometry(.15,.34,1,16),
@@ -677,7 +688,7 @@ export function buildMemorialGrounds(park: Park) {
         Math.abs(x + 28) < 6 ||
         Math.abs(x - 90) < 5);
     matrix.compose(
-      v(x, entrance ? -2 : 0.45, z),
+      v(x, entrance||!clearPlant(x,z,1.1) ? -2 : 0.45, z),
       q,
       v(0.65 + (i % 3) * 0.15, 0.55, 0.65),
     );
@@ -729,7 +740,7 @@ export function buildMemorialGrounds(park: Park) {
   ctx.fillRect(0, 0, 1536, 256);
   ctx.fillStyle = "#f0e9d1";
   ctx.textAlign = "center";
-  ctx.font = "bold 92px sans-serif";
+  let font=92;while(font>30){ctx.font=`bold ${font}px sans-serif`;if(ctx.measureText('VETERANS MEMORIAL PARK').width<1376)break;font--;}
   ctx.fillText("VETERANS MEMORIAL PARK", 768, 110);
   ctx.font = "36px sans-serif";
   ctx.fillText("WOOD PARK  ·  METAL STREET PARK  ·  LAKESIDE TRAIL", 768, 193);
@@ -737,10 +748,11 @@ export function buildMemorialGrounds(park: Park) {
     new THREE.PlaneGeometry(14, 2.34),
     new THREE.MeshBasicMaterial({
       map: new THREE.CanvasTexture(canvas),
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     }),
   );
-  sign.position.set(28, 2, -44);
+  sign.position.set(28, 2, -43.94);sign.name='Veterans Memorial Park sign / front';
   scene.add(sign);
+  box(28,2,-44,14.2,2.48,.10,0x47564b,true);const back=sign.clone();back.position.z=-44.06;back.rotation.y=Math.PI;back.name='Veterans Memorial Park sign / back';scene.add(back);
   for (const x of [22, 34]) box(x, 1.3, -44, 0.16, 2.6, 0.16, 0x4a5746, true);
 }

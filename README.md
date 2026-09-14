@@ -1,6 +1,6 @@
 ﻿# Scoot with Friends
 
-**ALPHA 0.8.0-alpha.1 — NOT READY FOR PUBLIC RELEASE**
+**ALPHA 0.9.0-alpha.2 — PUBLIC TEST BUILD, NOT A FINISHED COMMERCIAL RELEASE**
 
 A browser-based 3D freestyle scooter game built with TypeScript, Vite, Three.js and Rapier. This repository is PRIVATE alpha source. An existing public test build remains available with the owner's authorization; it is not a finished commercial release. Solo freestyle only; multiplayer is not implemented. First scooter parts brand: **Lazer**.
 
@@ -29,7 +29,11 @@ The build checks TypeScript and produces browser assets in `dist/client` and an 
 
 Settings preserve Pro/Arcade and regular/goofy stance. LS steers, controls airborne spin and counterweight. RS down preloads; complete the upward return to hop. Neutral release stands back up. LT brakes on flat and asks for a coping stall. RT asks for a close rail catch. Tap or hold the stance whip button/B for deck/bar rotations. The in-game Trick Book describes advanced gestures. Y mounts/dismounts; LS click runs on foot. B sits near a bench; movement stands up. A recovers after a crash settles. D-pad Left hold selects local emotes on foot; D-pad Right hold opens a local chat bubble. No online chat exists.
 
-Veterans Memorial Park contains the wooden park, metal area, BMX terrain and connecting grounds. The park editor remains **IN TESTING**. Outfits/helmets and scooter colorways save locally. Rack, fountain and lighting foundations are preserved in source but are not wired into gameplay in this safety baseline. The empty warehouse quick builder and remaining Phase 1 features are pending; see SYSTEMS.md.
+Veterans Memorial Park contains the wooden park, metal area, fenced BMX terrain and connecting grounds. Techno Gravity is a separate walkable shop with physical product browsing, device-local Credit purchases and a DIY riding spot. Warehouse provides the quick builder. The park editor remains **IN TESTING**. Outfits, Skinny/Regular/Chunky body builds, scooter colorways and item inventory save locally.
+
+Mounted RS always belongs to riding, even while stopped. On foot RS controls the camera; R3 recenters and L3 runs. In air, RT + Y holds Superman, LT + Y holds Deck Grab, and LT + LB + Y holds Tuck No-hander. LT + RT plus LS controls body flips after a bunny hop; diagonals combine pitch and yaw. Ease LS to slow an established flip, countersteer to brake, and release triggers to damp rotation. No automatic flip completion occurs.
+
+Vending machines grant the selected free alpha item once. D-pad Left → Items opens Pockets or Backpack; RS selects and A confirms. X uses a held item on foot (remappable in Settings). One use opens and consumes a drink, leaving its empty container. Hold, Stow and deliberate Discard use the same saved inventory. Mounting stows the item. Fountains have a cancellable drinking/water interaction. Crashes use collision-aware simplified bodies, settle and remain down until A requests local recovery.
 
 ## Playable backup
 

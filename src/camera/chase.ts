@@ -54,9 +54,11 @@ export class ChaseCamera {
       this.elevation = damp(this.elevation, 0.3, 2, dt);
     }
     if (cameraMode) {
-      this.orbit += input.rx * (s.walking ? -1 : 1) * 2.3 * dt;
+      const rx=input.rx;
+      const ry=input.ry;
+      this.orbit -= rx * 2.3 * dt;
       this.elevation = clamp(
-        this.elevation + input.ry * (s.walking ? -1 : 1) * 0.7 * dt,
+        this.elevation - ry * 0.7 * dt,
         -0.05,
         0.7,
       );

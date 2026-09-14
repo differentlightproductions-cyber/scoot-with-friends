@@ -1,4 +1,5 @@
 import { activeLayout } from '../editor/layout';
+
 import { inWater } from "../park/water";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -26,6 +27,7 @@ import { outdoorLip } from "../park/outdoor";
 import { DropIn } from "../player/drop-in";
 import { AirWeightControl } from "../player/air-weight";
 import { BodyFlipControl, type TakeoffOrigin } from '../player/body-flip';
+import {CrashMotion} from '../player/crash';
 export type RideState =
   | "Grounded"
   | "Preloading"
@@ -59,10 +61,13 @@ export class Simulation {
   walking = false;
   sitting: { id: string; origin: THREE.Vector3 } | null = null;
   hasScooter = true;
+  heldItem:string|null=null;
   running = false;
   marker = new MarkerSystem();
   airWeight = new AirWeightControl();
   bodyFlip = new BodyFlipControl();
+  crash:CrashMotion|null=null;
+  private flipTakeoffIntent=false;
   private departureLip:ReturnType<typeof outdoorLip>=null;
   private launchLip(){
     const current=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
@@ -175,6 +180,7 @@ export class Simulation {
     this.score = new ScoreSystem(events);
     this.reset();
   }
+
   get speed() {
     return Math.hypot(this.velocity.x, this.velocity.z);
   }
@@ -186,10 +192,12 @@ export class Simulation {
         ? "grind"
         : this.state === "Airborne"
           ? "airborne trick"
-          : "camera";
+          : this.walking?"camera":"riding";
   }
   resolvingSpawn = false;
   reset(index = this.spawnIndex, restart = false) {
+    this.crash?.dispose();this.crash=null;
+
     this.bodyFlip.reset();
     this.departureLip=null;
     this.fastplant=null;this.plantQueued=-1;this.plantLatched=false;
@@ -364,6 +372,7 @@ export class Simulation {
     if (!rampPop && origin!=='fastplant')
       this.velocity.addScaledVector(this.normal, 0.8 + charge * 0.4);
     this.velocity.y = Math.max(0, this.velocity.y) + hop;
+    if(origin==='manual_hop'&&this.flipTakeoffIntent)this.velocity.y+=TUNE.flipTakeoffContribution;
     this.transitionAir = this.normal.y < 0.85 && this.rampLean > 0.1;
     if (this.transitionAir) {
       // Lean redirects the launch in the ramp's normal plane. Tangential travel
@@ -464,7 +473,7 @@ export class Simulation {
         if(plant.time<TUNE.fastplantContactTime){this.world.step(this.contactEvents,this.contactHooks);return null;}
         plant.launched=true;this.velocity.copy(plant.entry);
         this.pop(0,0,'fastplant');this.tricks.fastplant=true;
-        this.bodyFlip.active=true;this.bodyFlip.velocity=7.8;
+        this.bodyFlip.active=true;this.bodyFlip.velocity=TUNE.flipMaxRate;
         this.body.setLinvel(this.velocity,true);return null;
       }
       if(plant.time>.42||this.grounded||this.state==='Bail')this.fastplant=null;
@@ -485,6 +494,7 @@ export class Simulation {
   }
   bail(reason: string) {
     if (this.state === "Bail") return;
+    this.crash?.dispose();this.crash=new CrashMotion(this.world,this.position,this.velocity,this.yaw,this.pitch);
     this.state = "Bail";
     this.bodyFlip.reset();
     this.fastplant=null;this.plantQueued=-1;
@@ -501,9 +511,9 @@ export class Simulation {
     this.charge = 0;
     this.hopBuffer = 0;
     this.spin = 0;
-    this.body.setGravityScale(1, true);
-    this.velocity.multiplyScalar(0.72);
-    this.velocity.y = Math.max(1.5, this.velocity.y);
+    this.body.setGravityScale(0, true);this.body.setLinvel({x:0,y:0,z:0},true);
+    this.body.collider(0).setSensor(true);this.railGuard.setSensor(true);
+    this.groundIntent=null;this.dropIn.reset();this.stall=null;
     this.events.emit({ type: "bail", reason });
   }
   private startStall(forward: THREE.Vector3) {
@@ -580,15 +590,19 @@ export class Simulation {
     return true;
   }
   recoverLocally() {
-    const origin = this.waterBail ? this.lastSafeGround : this.position;
+    const origin = this.waterBail||!Number.isFinite(this.position.lengthSq()) ? this.lastSafeGround : this.position;
     let target: THREE.Vector3 | null = null;
+    const usable=(c:RAPIER.Collider)=>!c.isSensor()&&!this.park.railHandles.has(c.handle)&&c.parent()!==this.crash?.rider&&c.parent()!==this.crash?.scooter;
+    for(const center of [origin,this.lastSafeGround]){
     for (const radius of [0, 0.6, 1.2, 2, 3, 5, 8]) {
       for (let i = 0; i < 16; i++) {
-        const x = origin.x + Math.cos((i * Math.PI) / 8) * radius;
-        const z = origin.z + Math.sin((i * Math.PI) / 8) * radius;
+        const x = center.x + Math.cos((i * Math.PI) / 8) * radius;
+        const z = center.z + Math.sin((i * Math.PI) / 8) * radius;
         if (this.rampWorld && inWater(x, z, 1.08)) continue;
-        if (terrainNormal(x, z).y < 0.75) continue;
-        const p = new THREE.Vector3(x, terrainHeight(x, z) + TUNE.radius, z);
+        const top=Math.max(center.y+1.8,terrainHeight(x,z)+1.8);
+        const hit=this.world.castRayAndGetNormal(new RAPIER.Ray({x,y:top,z},{x:0,y:-1,z:0}),Math.max(4,top-terrainHeight(x,z)+1),true,undefined,undefined,undefined,this.body,usable);
+        if(!hit||hit.normal.y<.75)continue;
+        const p = new THREE.Vector3(x,top-hit.timeOfImpact+TUNE.radius+.015,z);
         if (
           this.world.intersectionWithShape(
             p.clone().add(new THREE.Vector3(0, 0.65, 0)),
@@ -598,6 +612,7 @@ export class Simulation {
             GROUPS.chassis,
             undefined,
             this.body,
+            usable,
           )
         )
           continue;
@@ -606,10 +621,12 @@ export class Simulation {
       }
       if (target) break;
     }
+    if(target)break;
+    }
     if (!target) {
-      this.reset();
       return;
     }
+    this.crash?.dispose();this.crash=null;
     this.position.copy(target);
     this.previousPosition.copy(target);
     this.body.setTranslation(target, true);
@@ -632,7 +649,7 @@ export class Simulation {
     this.airSpin.reset();
     this.dropIn.reset();
     this.waterBail = false;
-    this.getUpTimer = 0.45;
+    this.getUpTimer = 0.75;
     this.bailTimer = 0;
     this.grindCooldown = 0.4;
   }
@@ -950,6 +967,8 @@ export class Simulation {
     this.body.setTranslation(this.position, true);
   }
   step(dt: number, input: InputFrame) {
+    this.flipTakeoffIntent=input.held.brake>.5&&input.held.pumpGrind>.5&&Math.abs(input.lean)>.25;
+
     if (!this.grounded || this.walking || this.grind || this.manual.active || input.held.brake > 0.35) {
       this.pushHoldTime = 0;
       this.pendingPushTap = false;
@@ -996,10 +1015,11 @@ export class Simulation {
       this.position.y < -8 ||
       this.position.y > 35
     ) {
-      this.reset();
+      if(this.state==='Bail'){this.position.copy(this.lastSafeGround);this.recoverLocally();}else this.reset();
       return;
     }
     this.getUpTimer = Math.max(0, this.getUpTimer - dt);
+    if(this.getUpTimer>0){this.velocity.set(0,0,0);this.body.setLinvel(this.velocity,true);return;}
     if (
       this.rampWorld &&
       inWater(this.position.x, this.position.z) &&
@@ -1025,19 +1045,14 @@ export class Simulation {
       this.lastSafeGround.copy(this.position);
     if (this.state === "Bail") {
       this.bailTimer += dt;
-      this.velocity.x *= Math.exp(-1.8 * dt);
-      this.velocity.z *= Math.exp(-1.8 * dt);
-      this.body.setLinvel(this.velocity, true);
       this.world.step(this.contactEvents, this.contactHooks);
-      this.position.copy(this.body.translation());
-      if (this.waterBail) {
-        this.velocity.multiplyScalar(Math.exp(-7 * dt));
-        this.velocity.y = -0.6;
-        this.body.setLinvel(this.velocity, true);
-      }
+      if(this.crash){this.crash.update(dt);this.position.copy(this.crash.rider.translation());this.position.y-=.4;this.velocity.copy(this.crash.rider.linvel());
+        const scooter=this.crash.scooter.translation();
+        if(!Number.isFinite(this.position.lengthSq()+this.velocity.lengthSq()+scooter.x+scooter.y+scooter.z)||this.position.y<terrainHeight(this.position.x,this.position.z)-2||scooter.y<terrainHeight(scooter.x,scooter.z)-2){this.recoverLocally();return;}
+        this.body.setTranslation(this.position,true);}
       if (
         (this.waterBail && this.bailTimer > 1.1) ||
-        (!this.waterBail && this.bailTimer > 0.55 && input.pressed.hop)
+        (!this.waterBail && this.crash?.canRecover && input.pressed.hop)
       )
         this.recoverLocally();
       return;
@@ -1132,7 +1147,7 @@ export class Simulation {
       this.dropIn.setup(this)
     )
       return;
-    if (input.pressed.body && this.grounded && !this.grind) {
+    if (input.pressed.body && this.grounded && !this.grind && (this.walking||!(input.held.brake>.5||input.held.pumpGrind>.5||input.held.leftModifier>.5||input.held.rightModifier>.5))) {
       this.walking = !this.walking;
       this.running = false;
       this.finishManual();
@@ -1299,13 +1314,14 @@ export class Simulation {
     const supportedForTrick = this.grounded || !!this.grind || edgeGrace;
     const gesture =
       supportedForTrick &&
-      input.held.body < 0.5 &&
       input.held.leftModifier < 0.5
         ? this.tricks.gesture.step(dt, input.rx, input.ry)
         : null;
-    if (gesture?.kind === "bri")
+    const chargedSide=supportedForTrick&&this.preload.amount>.08&&Math.abs(input.rx)>.85&&Math.abs(input.ry)<.35;
+    if(input.held.body>.5&&(gesture||chargedSide)){this.pop(Math.max(.15,this.preload.amount),input.lean);this.preload.reset();}
+    else if (gesture?.kind === "bri"||chargedSide)
       this.groundIntent = {
-        direction: gesture.direction*(gesture.short?this.tricks.naturalDirection:1),
+        direction: gesture?.kind==='bri'?gesture.direction*(gesture.short?this.tricks.naturalDirection:1):-Math.sign(input.rx)*this.tricks.naturalDirection,
         charge: this.preload.amount,
         age: 0,
       };

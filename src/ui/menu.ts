@@ -1,4 +1,5 @@
 import {CreditEconomy,owns} from '../data/credit';
+import {BODY_BUILDS} from '../scooter/body-fit';
 import {loadProfile} from '../data/loadout';
 import { version } from '../../package.json';
 import * as THREE from "three";
@@ -41,7 +42,8 @@ export class GameMenu {
   focus = new THREE.Vector3(0, 0.52, 0);
   focusTarget = new THREE.Vector3(0, 0.52, 0);
   pan = new THREE.Vector3();
-  focusBox = new THREE.Box3Helper(new THREE.Box3(), 0xf26c38);
+  focusBox = new THREE.Box3Helper(new THREE.Box3(), 0xb9c9c5);
+  isolatedProduct = new THREE.Group();
   private focusKey = "";
   private saveFailed = false;
   onRide = (_map: MapId) => {};
@@ -59,6 +61,7 @@ export class GameMenu {
   ) {
     this.previewScene.background = new THREE.Color(0xc5cbc1);
     this.previewScene.add(this.focusBox);
+    this.previewScene.add(this.isolatedProduct);
     this.focusBox.visible = false;
     let drag: { x: number; y: number; pan: boolean } | null = null;
     window.addEventListener("pointerdown", (e) => {
@@ -93,14 +96,14 @@ export class GameMenu {
         if (this.root.hidden) return;
         this.zoomTarget = THREE.MathUtils.clamp(
           this.zoomTarget + e.deltaY * 0.003,
-          0.8,
+          this.shopOpen?.06:.8,
           7,
         );
       },
       { passive: true },
     );
-    this.previewScene.add(new THREE.HemisphereLight(0xffffff, 0x6b7970, 2.4));
-    const light = new THREE.DirectionalLight(0xffefdc, 3);
+    this.previewScene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2.4));
+    const light = new THREE.DirectionalLight(0xffffff, 3);
     light.position.set(-3, 5, 4);
     this.previewScene.add(light);
     const floor = new THREE.Mesh(
@@ -109,6 +112,7 @@ export class GameMenu {
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.01;
+    floor.name='Preview floor';
     this.previewScene.add(floor);
     this.previewRider = new RiderModel(this.previewScene);
     this.previewRider.applyProfile(profile);
@@ -131,6 +135,7 @@ export class GameMenu {
     ];
   }
   private render() {
+    this.root.classList.toggle('shop-overlay',this.shopOpen);
     const add = (
       label: string,
       action: () => void,
@@ -162,6 +167,7 @@ export class GameMenu {
         add("TRICK BOOK", () => this.show("tricks"), "Every trick and its input");
         break;
       case "tricks":
+        add('CAMERA / STATIONARY TRICKS',()=>{},'On foot: RS looks around. On scooter: RS always preloads and tricks, even stopped. No setup toggle. R3/V recenters; L3/F runs on foot.');
         add("CREDIT / ALPHA ECONOMY",()=>{},"Every 100 banked points earns 1 Credit. Buy authored parts at Techno Gravity. Cash is unavailable. Saves stay on this device.");
         title = "TRICK BOOK";
         subtitle = "READ THE MOVEMENT, THEN MAKE IT YOURS";
@@ -171,10 +177,11 @@ export class GameMenu {
         add("BRI / INWARD BRI", () => {}, "RS down → lower-left → left = Bri. Down → lower-right → right = Inward. A complete circle still works. Finish the scoop near a ramp lip for an upward pop.");
         add("KICKLESS / REWIND", () => {}, "While a whip is about 65–90% through its current sweep, flick RS up quickly for Kickless. Tap LB/RB to reverse the current deck motion. Hold a bumper briefly for the older Kickless input.");
         add("FRONTFLIP / BACKFLIP", () => {}, "Complete a manual RS bunny hop first. In that same air, hold LT + RT and move LS forward/back. Diagonal LS adds spin. Release eases rotation; countersteer brakes it. Natural ramp air alone does not unlock flips.");
+        add('SUPERMAN / GRABS',()=>{},'In the air, hold RT + Y for Superman (one trigger). LT + Y grabs the deck. LT + LB + Y tucks no-hands. RS charged takeoffs still work with a body-trick chord held.');
         add("FASTPLANT FRONTFLIP", () => {}, "At a reachable ramp/drop edge with enough speed and space, hold RT + LS forward and press physical A. The back foot plants, pushes once, then releases. Flat ground and midair cannot plant.");
         add("SPINS / FAKIE", () => {}, "Use LS while airborne to spin and shift your weight. Land rolling backward to enter fakie; hold it to build score.");
         add("GRINDS / MANUALS", () => {}, "RT asks for a close rail catch. Hold RS gently 20–50% down/up for manual/nose manual, then balance. A deeper down stroke loads a hop out. LB + RS remains an alternate manual input.");
-        add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y tuck, LT + Y deck grab, both = superman. Bumpers + Y add can-can, one-foot, or no-foot.");
+        add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y Superman; LT + Y deck grab; LT + LB + Y tuck. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
         add("ON-FOOT SOCIAL", () => {}, "Hold D-pad Left and choose with RS, release to emote or build in the Warehouse. Hold D-pad Right for local chat. Enter sends; Esc/B cancels. No multiplayer connection yet.");
         add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
@@ -186,6 +193,8 @@ export class GameMenu {
           add(map.name, () => this.onRide(map.id), map.type);
         break;
       case "rider":
+        add('BACKPACK',()=>{this.profile.pockets.backpack=!this.profile.pockets.backpack;this.changed();this.render();},this.profile.pockets.backpack?'Equipped / same inventory':'Off / Pockets');
+        add('BODY BUILD',()=>this.show('body-build'),this.profile.bodyBuild.toUpperCase());
         title = "RIDER";
         subtitle = "SAME PHYSICS. YOUR STYLE.";
         for(const slot of OUTFIT_SLOTS)add(slot.toUpperCase(),()=>{this.outfitSlot=slot;this.show('clothing');},clothing(this.profile.outfit,slot).name);
@@ -204,6 +213,10 @@ export class GameMenu {
             rider.description,
             this.profile.riderId === rider.id,
           );
+        break;
+      case 'body-build':
+        title='BODY BUILD';subtitle='COSMETIC FIT / SAME RIDING';
+        for(const build of BODY_BUILDS)add(build.toUpperCase(),()=>{this.profile.bodyBuild=build;this.changed();this.render();},undefined,this.profile.bodyBuild===build);
         break;
       case "clothing":
         title=this.outfitSlot.toUpperCase();subtitle='AUTHORED GEAR / ALL UNLOCKED';
@@ -234,7 +247,7 @@ export class GameMenu {
               this.product = part.id;
               this.show("variants");
             },
-            part.variants.length + " authored colorways",
+            part.brandId.toUpperCase()+' / '+part.variants.length+' colorways / '+(part.creditPrice??0)+' Credit',
             part.id === this.selected(this.category).partId,
           );
         break;
@@ -261,6 +274,7 @@ export class GameMenu {
         add('CANCEL',()=>this.show('variants'),'No charge');break;}
       case 'purchased':title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{this.equip(this.product,this.pendingVariant);this.show('variants');});add('KEEP IN INVENTORY',()=>this.show('variants'));break;
       case "settings":
+        add('USE HELD ITEM',()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / on foot');
         if(this.owner())add('OWNER / ALPHA TEST CREDIT',()=>this.show('test-credit'),'Local testing only; separate from earned Credit.');
 
         add('CHARACTER QUALITY '+this.profile.settings.characterQuality.toUpperCase(),()=>{
@@ -316,7 +330,7 @@ export class GameMenu {
           : "BACK",
         () => this.back(),
       );
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : "${this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.'}"}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${this.choices.map((c, i) => `<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}"><span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`).join("")}</nav><p class="menu-save-note">${this.saveFailed ? "Changes apply now; local saving is unavailable." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${MAPS[Math.min(this.index, MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -346,27 +360,25 @@ export class GameMenu {
       this.zoomTarget = active ? 2.2 : 3.7;
     }
     this.focusBox.visible = active;
-    if (active) {
-      const bounds = new THREE.Box3();
-      this.previewRider.root.updateMatrixWorld(true);
-      this.previewRider.scooter.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          const selected = PARTS.some(
-            (p) => p.id === o.userData.part && p.category === category,
-          );
-          const material = o.material as THREE.MeshStandardMaterial;
-          if (material.emissive) {
-            material.emissive.set(selected ? 0xb95619 : 0);
-            material.emissiveIntensity = selected ? 0.25 : 0;
-          }
-          if (selected) bounds.expandByObject(o);
+    this.isolatedProduct.clear();this.previewRider.scooter.visible=!this.shopOpen;
+    this.previewRider.scooter.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=true;});
+    if(active){
+      const bounds=new THREE.Box3();this.previewRider.root.updateMatrixWorld(true);
+      this.previewRider.scooter.traverse(o=>{if(!(o instanceof THREE.Mesh))return;
+        let rear=false;for(let parent:THREE.Object3D|null=o;parent&&parent!==this.previewRider.scooter;parent=parent.parent)rear ||= parent.userData.slot==='rearWheel';
+        const selected=PARTS.some(p=>p.id===o.userData.part&&p.category===category)&&!rear;
+        if(selected){o.geometry.computeBoundingBox();if(o.geometry.boundingBox)bounds.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
+          // Selected hardware may be nested inside a wheel mesh. Render only
+          // its geometry, independently of the hidden assembled parent.
+          if(this.shopOpen){const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.userData.part=o.userData.part;this.isolatedProduct.add(copy);}
         }
       });
-      if (!bounds.isEmpty()) {
-        this.focusBox.box.copy(bounds).expandByScalar(0.025);
-        bounds.getCenter(this.focusTarget);
-      } else this.focusBox.visible = false;
-    } else this.focusTarget.set(0, 0.83, 0);
+      if(!bounds.isEmpty()){
+        const size=bounds.getSize(new THREE.Vector3()),padding=THREE.MathUtils.clamp(size.length()*.018,.0008,.012);
+        this.focusBox.box.copy(bounds).expandByScalar(padding);bounds.getCenter(this.focusTarget);
+        if(this.shopOpen)this.zoomTarget=Math.max(.075,size.length()*1.85);
+      }else this.focusBox.visible=false;
+    }else this.focusTarget.set(0,.83,0);
     this.root
       .querySelectorAll("[data-menu-index]")
       .forEach((el, i) => el.classList.toggle("selected", i === this.index));
@@ -388,10 +400,10 @@ export class GameMenu {
   }
   back() {
     if(this.buying)return;
-    if(this.shopOpen&&this.screen==="parts"){this.shopOpen=false;this.root.hidden=true;this.onCloseShop();return;}
+    if(this.shopOpen&&this.screen==="parts"){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();return;}
     if(["purchase","purchased"].includes(this.screen)){this.show("variants");return;}
     this.show(
-      this.screen === 'clothing' ? 'rider' : this.screen === "variants"
+      ['clothing','body-build'].includes(this.screen) ? 'rider' : this.screen === "variants"
         ? "parts"
         : this.screen === "parts"
           ? "scooter"
@@ -424,25 +436,21 @@ export class GameMenu {
       return;
     }
     this.orbit -= input.rx * dt * 1.8;
-    this.zoom = THREE.MathUtils.clamp(this.zoom + input.ry * dt * 1.5, 0.8, 7);
+    this.zoom = THREE.MathUtils.clamp(this.zoom + input.ry * dt * 1.5, this.shopOpen?.06:.8, 7);
     if (Math.abs(input.ry) > 0.05) this.zoomTarget = this.zoom;
   }
   preview(renderer: THREE.WebGLRenderer) {
-    const scooter = ["scooter", "parts", "variants","purchase","purchased"].includes(this.screen);
-    this.previewRider.rider.visible = !scooter;
-    const center = this.focus
-        .clone()
-        .add(this.pan)
-        .add(new THREE.Vector3(-0.5, 0, 0)),
-      distance = this.zoom * (scooter ? 0.66 : 1);
-    this.previewCamera.aspect = innerWidth / innerHeight;
-    this.previewCamera.position.set(
-      this.focus.x + this.pan.x + Math.sin(this.orbit) * distance,
-      this.focus.y + this.pan.y + distance * 0.35,
-      this.focus.z + this.pan.z + Math.cos(this.orbit) * distance,
-    );
-    this.previewCamera.lookAt(center);
-    this.previewCamera.updateProjectionMatrix();
-    renderer.render(this.previewScene, this.previewCamera);
+    const scooter=["scooter","parts","variants","purchase","purchased"].includes(this.screen);
+    this.previewRider.rider.visible=!scooter;
+    const floor=this.previewScene.getObjectByName('Preview floor');if(floor)floor.visible=!this.shopOpen;
+    const x=this.shopOpen?Math.round(innerWidth*.40):0,w=this.shopOpen?Math.round(innerWidth*.55):innerWidth,h=this.shopOpen?Math.round(innerHeight*.62):innerHeight,y=this.shopOpen?Math.round(innerHeight*.20):0;
+    const center=this.focus.clone().add(this.pan);if(!this.shopOpen)center.x-=.5;
+    const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
+    this.previewCamera.aspect=w/h;
+    this.previewCamera.position.set(this.focus.x+this.pan.x+Math.sin(this.orbit)*distance,this.focus.y+this.pan.y+distance*.22,this.focus.z+this.pan.z+Math.cos(this.orbit)*distance);
+    this.previewCamera.lookAt(center);this.previewCamera.updateProjectionMatrix();
+    if(this.shopOpen){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
+    renderer.render(this.previewScene,this.previewCamera);
+    if(this.shopOpen){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
   }
 }

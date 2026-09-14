@@ -70,6 +70,7 @@ async function boot() {
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park);
   const interact = () => { const f=emptyInput();f.pressed.brakeBars=true;interactions.update(sim,f,0); };
   social.onInteract=interact;social.onScooter=interact;
+  social.onItems=()=>interactions.openItems(sim);interactions.openOptions=(title,options)=>social.openOptions(title,options);
   social.onBuild=()=>social.openOptions('BUILD / RS SELECT',[
     ...builder.options(sim),...builder.editOptions(sim),
     {label:'Reset Warehouse',action:()=>social.openOptions('CLEAR YOUR LAYOUT?',[
@@ -271,6 +272,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);
+      interactions.openOptions=(title,options)=>social.openOptions(title,options);
     }
     sim.reset(0, true);
     social.warehouse=id==='warehouse';
@@ -395,9 +397,10 @@ async function boot() {
     waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
     interactions.render(rider);
-    camera.update(sim, frame, dt, alpha);
-    if (hud.started&&!menu.shopOpen) renderer.render(scene, camera.camera);
-    else menu.preview(renderer);
+    const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
+    if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    if (hud.started) renderer.render(scene, camera.camera);
+    if(!hud.started||menu.shopOpen)menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
@@ -471,6 +474,7 @@ async function boot() {
       false,
       sim.walking,
       sim.running,
+      interactions.waterActive,
     );
     render(dt, accumulator / TUNE.step);
   });

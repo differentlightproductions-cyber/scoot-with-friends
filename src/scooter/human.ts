@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import {detailTexture,lathe,tube} from './surfaces';
+import {fittedPoint,type BodyBuild} from './body-fit';
+import {fittedHeadwear} from './headwear';
+import {clothEdges} from './cloth-edges';
 export interface HumanRig {rider:THREE.Group;hips:THREE.Object3D;torso:THREE.Object3D;head:THREE.Object3D;neck:THREE.Object3D;helmet:THREE.Object3D;upperArms:THREE.Object3D[];forearms:THREE.Object3D[];hands:THREE.Object3D[];thighs:THREE.Object3D[];shins:THREE.Object3D[];shoes:THREE.Object3D[]}
 export type CharacterQuality='low'|'medium'|'high';
 type MeshAsset={positions:number[][];skinIndex:number[][];skinWeight:number[][];uv:number[][];faces:number[][][];remove?:number[];lod?:Record<string,number[][][]>};
-type Asset=MeshAsset&{names:string[];anchors:number[][][];eyes:number[][];handFrames:{across:number[];along:number[];normal:number[];length:number}[];garments:Record<string,MeshAsset>;hair:MeshAsset};
+type Asset=MeshAsset&{handPoses:Record<string,{open:number[];closed:number[]}>;names:string[];anchors:number[][][];eyes:number[][];handFrames:{across:number[];along:number[];normal:number[];length:number}[];garments:Record<string,MeshAsset>;hair:MeshAsset};
 const assets=new Map<string,Asset>(),requests=new Map<string,Promise<void>>();
 export function loadHuman(id:string){
  const key=['rider-01','rider-02','rider-03'].includes(id)?id:'rider-01';
@@ -20,7 +23,7 @@ export class HumanCharacter {
  private eyes:THREE.Mesh[]=[];private materials:THREE.MeshStandardMaterial[];
  private headwear:THREE.Group;private sourceFrames:THREE.Matrix4[]=[];
  private drivers:THREE.Object3D[];private skeleton:THREE.Skeleton;
- constructor(private model:HumanRig,public id:string,public quality:CharacterQuality,private outfit:{top:string;bottom:string;head:string},colors:number[]){
+ constructor(private model:HumanRig,public id:string,public quality:CharacterQuality,private outfit:{top:string;bottom:string;head:string},colors:number[],public bodyBuild:BodyBuild='regular'){
   const data=assets.get(id)!;if(!data)throw Error('Human must be loaded before construction');
   this.group.name='Anatomical rider '+id;this.group.userData.quality=quality;
   model.hands.forEach((hand,i)=>{hand.userData.palmLength=data.handFrames[i].length;});
@@ -37,7 +40,7 @@ export class HumanCharacter {
   if(quality!=='low')for(const m of this.materials.slice(1)){m.bumpMap=detailTexture('fabric');m.bumpScale=.00035;}
   const opened:number[][]=[[],[]],blinked:number[]=[];
   const p:number[]=[],indices:number[][]=[[],[],[]],skin:number[]=[],weights:number[]=[],uv:number[]=[];const cache=new Map<string,number>();
-  const positions=data.positions.map(V),grid=quality==='low'?.008:quality==='medium'?.004:0;
+  const positions=data.positions.map((p,i)=>fittedPoint(V(p),data.skinIndex[i],data.skinWeight[i],data.anchors,data.names,bodyBuild)),grid=quality==='low'?.004:quality==='medium'?.002:0;
   const garment=data.garments[outfit.top==='long-sleeve'?'hoodie':outfit.top]??data.garments.tee,covered=new Set(garment.remove);
   const normals=positions.map(()=>new THREE.Vector3());for(const f of data.faces){const ids=f.map(v=>v[0]),n=positions[ids[1]].clone().sub(positions[ids[0]]).cross(positions[ids[2]].clone().sub(positions[ids[0]]));ids.forEach(i=>normals[i].add(n));}normals.forEach(n=>n.normalize());
   const isTop=(i:number)=>{const p=positions[i],w=data.skinWeight[i],b=data.skinIndex[i];const arm=b.reduce((n,v,k)=>n+(/upper\.|lower\./.test(data.names[v])?w[k]:0),0);return p.y>1.0&&p.y<1.48&&Math.abs(p.x)<.24||arm>.35&& (outfit.top!=='tee'||p.y>1.27);};
@@ -55,18 +58,7 @@ export class HumanCharacter {
     // The hand mesh uses the real fingers from the source mesh, bent into a
     // compact authored grip in the semantic hand frame rather than flat strips.
     const dominant=data.skinIndex[i][0],name=data.names[dominant];
-    if(name.startsWith('hand.')&&data.skinWeight[i][0]>.65){
-     const a=V(data.anchors[dominant][0]),frame=data.handFrames[name.endsWith('.R')?0:1];
-     const offset=pos.clone().sub(a),length=offset.dot(V(frame.along)),thickness=offset.dot(V(frame.normal));
-     const h=new THREE.Vector3(offset.dot(V(frame.across)),0,0),palm=frame.length;
-     // Keep the palm and wrist volume. Only the fingers curl around the grip;
-     // flattening every proximal vertex onto the knuckle plane collapses wrists.
-     relaxed.copy(a).add(new THREE.Vector3(h.x,thickness,length));
-     const finger=Math.max(0,length-palm),angle=Math.min(3.05,finger/.026);
-     h.y=thickness-(1-Math.cos(angle))*.026;
-     h.z=length<=palm?length:palm+Math.sin(angle)*.026;
-     pos.copy(a).add(h);
-    }
+    if(data.handPoses[i]){pos.fromArray(data.handPoses[i].closed);relaxed.fromArray(data.handPoses[i].open);const side=name.endsWith('.R')?0:1,anchor=V(data.anchors[dominant][0]),center=anchor.add(new THREE.Vector3(0,-.035,data.handFrames[side].length)),dy=pos.y-center.y,dz=pos.z-center.z,r=Math.hypot(dy,dz),radius=(model.hands[side].userData.gripRadius??.024)+.005;if(r<radius&&r>.00001){pos.y=center.y+dy*radius/r;pos.z=center.z+dz*radius/r;}}
     const uvKey=grid?(data.uv[t]??[0,0]).map(v=>Math.round(v/(quality==='low'?.04:.02))).join(','):t;
     const key=slot+':'+(grid?pos.toArray().map(v=>Math.round(v/grid)).join(','):i)+':'+uvKey+':'+data.skinIndex[i][0];
     let index=cache.get(key);if(index===undefined){index=p.length/3;cache.set(key,index);p.push(...pos.toArray());for(let side=0;side<2;side++)opened[side].push(...(name===('hand.'+(side===0?'R':'L'))?relaxed:pos).toArray());const lid=pos.clone();if(name==='head'&&quality!=='low')for(const pt of data.eyes){const e=V(pt),dx=Math.abs(pos.x-e.x),dy=pos.y-e.y;if(dx<.021&&Math.abs(dy)<.024&&pos.z>e.z-.012){const strength=(1-dx/.021)*Math.max(0,1-Math.abs(Math.abs(dy)-.01)/.016);lid.y+=(dy>0?-.016:.006)*strength;}}blinked.push(...lid.toArray());uv.push(...(data.uv[t]??[0,0]).slice(0,2));skin.push(...data.skinIndex[i]);weights.push(...data.skinWeight[i]);}return index;
@@ -81,23 +73,38 @@ export class HumanCharacter {
   this.headwear=new THREE.Group();this.headwear.name='Hair and seated eyes';this.group.add(this.headwear);
   const headAnchor=V(data.anchors[2][0]).add(new THREE.Vector3(0,-.04,-.008)),eyeMat=new THREE.MeshStandardMaterial({color:0xd6cec2,roughness:.7}),iris=new THREE.MeshStandardMaterial({color:id==='rider-03'?0x67756a:0x342a23,roughness:.7});
   for(const pt of data.eyes){const e=new THREE.Mesh(new THREE.SphereGeometry(.016,quality==='high'?24:12,12),eyeMat);e.position.copy(V(pt).sub(headAnchor));e.scale.set(1,.9,1);this.headwear.add(e);this.eyes.push(e);const pupil=new THREE.Mesh(new THREE.SphereGeometry(.0055,16,12),iris);pupil.position.z=.016;pupil.scale.z=.35;e.add(pupil);const black=new THREE.Mesh(new THREE.SphereGeometry(.0024,12,8),new THREE.MeshStandardMaterial({color:0x141619,roughness:.8}));black.position.z=.0026;pupil.add(black);}
-  // Close fitting hair caps follow distinct skull silhouettes; no transparent cards.
-  const hairMat=new THREE.MeshStandardMaterial({color:id==='rider-03'?0x583928:id==='rider-02'?0x191918:0x342720,roughness:1});
-  const hairGeo=new THREE.SphereGeometry(.098,quality==='high'?40:20,quality==='high'?20:12,0,Math.PI*2,0,outfit.head==='helmet'?1.25:1.65);
-  const hair=new THREE.Mesh(hairGeo,hairMat);hair.position.set(0,.016,-.023);hair.scale.set(1,id==='rider-02'?.94:id==='rider-03'?1.12:1.03,1.1);this.headwear.add(hair);
-  if(!['helmet','vented','visor'].includes(outfit.head)){hair.visible=false;this.addHair(data.hair);}
+  this.addHair(data.hair);
+  const used=new Set(data.faces.flatMap(f=>f.map(v=>v[0])));const skull=data.positions.filter((_,i)=>used.has(i)&&data.names[data.skinIndex[i][0]]==='head').map(p=>V(p).sub(headAnchor));
+  this.headwear.add(fittedHeadwear(skull,outfit.head,model.helmet instanceof THREE.Mesh?(model.helmet.material as THREE.MeshStandardMaterial).color.getHex():0xb84836,quality));
+  this.model.helmet.visible=false;
   this.update(0);
  }
  private addHair(asset:MeshAsset){
   const p:number[]=[],uv:number[]=[],skin:number[]=[],weight:number[]=[],index:number[]=[],cache=new Map<string,number>();
-  for(const f of asset.lod?.[this.quality]??asset.faces){const vertices=f.map(([i,t])=>{const key=i+':'+t;let n=cache.get(key);if(n===undefined){n=p.length/3;cache.set(key,n);p.push(...asset.positions[i]);uv.push(...asset.uv[t].slice(0,2));skin.push(2,0,0,0);weight.push(1,0,0,0);}return n;});for(let i=1;i<vertices.length-1;i++)index.push(vertices[0],vertices[i],vertices[i+1]);}
+  for(const f of asset.lod?.[this.quality]??asset.faces){const head=assets.get(this.id)!.anchors[2][0];if(this.outfit.head!=='none'&&f.every(([i])=>asset.positions[i][1]>head[1]-.018))continue;const vertices=f.map(([i,t])=>{const key=i+':'+t;let n=cache.get(key);if(n===undefined){n=p.length/3;cache.set(key,n);p.push(...asset.positions[i]);uv.push(...asset.uv[t].slice(0,2));skin.push(2,0,0,0);weight.push(1,0,0,0);}return n;});for(let i=1;i<vertices.length-1;i++)index.push(vertices[0],vertices[i],vertices[i+1]);}
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(skin,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weight,4));g.setIndex(index);g.computeVertexNormals();const map=new THREE.TextureLoader().load(`/models/humans/hair-${Number(this.id.slice(-2))}-${this.quality}.webp`);map.colorSpace=THREE.SRGBColorSpace;const mat=new THREE.MeshStandardMaterial({map,alphaTest:.5,side:THREE.DoubleSide,roughness:1});const mesh=new THREE.SkinnedMesh(g,mat);mesh.name='Authored hairstyle';mesh.castShadow=true;mesh.frustumCulled=false;this.group.add(mesh);this.group.updateMatrixWorld(true);mesh.bind(this.skeleton,this.mesh.bindMatrix);
  }
  private addClothing(asset:MeshAsset){
   const p:number[]=[],uv:number[]=[],skin:number[]=[],weight:number[]=[],index:number[][]=[[],[]],cache=new Map<string,number>();
   const parents=asset.positions.map((_,i)=>i);const find=(i:number):number=>parents[i]===i?i:parents[i]=find(parents[i]);for(const f of asset.faces)for(const a of f)parents[find(a[0])]=find(f[0][0]);const tops=new Map<number,number>();asset.positions.forEach((p,i)=>tops.set(find(i),Math.max(tops.get(find(i))??0,p[1])));
-  for(const f of asset.lod?.[this.quality]??asset.faces){const y=f.reduce((s,a)=>s+asset.positions[a[0]][1],0)/f.length;if(this.outfit.bottom==='shorts'&&f.every(([i])=>asset.positions[i][1]<.59))continue;const slot=(tops.get(find(f[0][0]))??0)>1.25?0:1;const vertices=f.map(([i,t])=>{const key=i+':'+t;let idx=cache.get(key);if(idx===undefined){idx=p.length/3;cache.set(key,idx);const point=[...asset.positions[i]];if(this.outfit.bottom==="shorts")point[1]=Math.max(.59,point[1]);p.push(...point);uv.push(...asset.uv[t].slice(0,2));skin.push(...asset.skinIndex[i]);weight.push(...asset.skinWeight[i]);}return idx;});for(let n=1;n<vertices.length-1;n++)index[slot].push(vertices[0],vertices[n],vertices[n+1]);}
-  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(skin,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weight,4));g.setIndex(index.flat());g.addGroup(0,index[0].length,0);g.addGroup(index[0].length,index[1].length,1);g.computeVertexNormals();const m=new THREE.SkinnedMesh(g,this.materials.slice(1));m.name='Constructed cloth: collar, sleeves, waistband, pockets and trousers';m.castShadow=true;m.frustumCulled=false;this.group.add(m);this.group.updateMatrixWorld(true);m.bind(this.skeleton,this.mesh.bindMatrix);
+  for(const f of asset.lod?.[this.quality]??asset.faces){
+   if(this.outfit.bottom==='shorts'&&f.every(([i])=>asset.positions[i][1]<.59))continue;
+   const slot=(tops.get(find(f[0][0]))??0)>1.25?0:1;
+   const vertices=f.map(([i,t])=>{
+    const key=i+':'+t;let idx=cache.get(key);if(idx!==undefined)return idx;
+    idx=p.length/3;cache.set(key,idx);const data=assets.get(this.id)!;
+    const joints=[...asset.skinIndex[i]],weights=[...asset.skinWeight[i]],rest=V(asset.positions[i]);
+    // A shirt hem is supported by the pelvis, not the nearby thigh. Nearest
+    // body weights otherwise pull individual hem vertices between the legs.
+    if(slot===0&&rest.y<1.15)for(let k=0;k<4;k++)if(/thigh|shin|foot/.test(data.names[joints[k]]))joints[k]=0;
+    const point=fittedPoint(rest,joints,weights,data.anchors,data.names,this.bodyBuild);
+    if(slot===0){const hem=1-THREE.MathUtils.smoothstep(rest.y,.96,1.16);point.x*=1+hem*.08;point.z+=Math.sign(point.z-data.anchors[0][0][2])*hem*.018;}
+    if(this.outfit.bottom==='shorts')point.y=Math.max(.59,point.y);
+    p.push(...point.toArray());uv.push(...asset.uv[t].slice(0,2));skin.push(...joints);weight.push(...weights);return idx;
+   });
+   for(let n=1;n<vertices.length-1;n++)index[slot].push(vertices[0],vertices[n],vertices[n+1]);
+  }
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(skin,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(weight,4));g.setIndex(index.flat());g.addGroup(0,index[0].length,0);g.addGroup(index[0].length,index[1].length,1);g.computeVertexNormals();clothEdges(g);const m=new THREE.SkinnedMesh(g,this.materials.slice(1));m.name='Constructed cloth: collar, sleeves, waistband, pockets and trousers';m.castShadow=true;m.frustumCulled=false;this.group.add(m);this.group.updateMatrixWorld(true);m.bind(this.skeleton,this.mesh.bindMatrix);
  }
  update(time:number){
   this.drivers.forEach((d,i)=>{d.updateMatrix();this.bones[i].matrix.copy(d.matrix);});

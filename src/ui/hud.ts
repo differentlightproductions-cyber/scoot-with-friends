@@ -231,7 +231,7 @@ export class HUD {
         "<dt>LB / RB DURING BARSPIN</dt><dd>Rewind only opposite the current spin: LB left / RB right. Whip windows take priority.</dd>" +
         "<dt>RS CIRCULAR SWEEP</dt><dd>Complete a full circular sweep for Bri / Inward Bri from ground or air. Load first for a higher pop; kickless requires an active whip.</dd>" +
         "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
-        "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Tuck. LT + Y: Deck Grab. Both triggers + Y: Superman.</dd>" +
+        "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Superman. LT + Y: Deck Grab. LT + LB + Y: Tuck.</dd>" +
         "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +
         "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. LT near spine coping requests a stall. RT in air requests a grind.</dd>" +
         "<dt>GENTLE RS UP / DOWN</dt><dd>Nose manual / manual at 20–50% RS. Neutral settles the wheel. Deep RS down then up pops out.</dd>" +
@@ -264,13 +264,13 @@ export class HUD {
       Manual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
       NoseManual: "RIGHT STICK BALANCE  /  RS DOWN HOLD / RELEASE TO HOP OUT",
       Grinding: "RS DOWN HOLD / RELEASE TO HOP OUT  /  RS LEAN",
-      Bail: "VIEW / R TO RESET  ·  BACK UP IN A MOMENT",
-      Preloading: "RELEASE RS DOWN TO POP  /  KEEP YOUR SPEED",
+      Bail: s.crash?.canRecover?'A / SPACE: GET UP · Or stay and rest':'FALLING / SETTLING',
+      Preloading: "FLICK RS UP TO POP / SIDE SCOOP TO TRICK",
       SketchyLanding: "EASE THE STEERING  /  RIDE IT OUT",
     };
     document.querySelector("#hint")!.textContent =
       hints[s.state] ??
-      `${mapping.pushLabel} PUSH / RS DOWN HOLD-RELEASE POP / LT BRAKE / Y WALK`;
+      `${mapping.pushLabel} PUSH / RS DOWN → UP: POP / LT BRAKE / Y WALK`;
     const debug = document.querySelector("#debug") as HTMLElement;
     debug.hidden = !input.debug;
     if (input.debug)

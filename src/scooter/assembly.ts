@@ -68,7 +68,7 @@ export class ScooterAssembly {
    add(this.barPivot,lathe([[0,-.065],[r*.83,-.065],[r,-.06],[r,.06],[r*.88,.065],[0,.065]]).rotateZ(Math.PI/2),grips.variant.color,grips.part.id,'rubber',v(s*(bw-.055),1.01,-.04));
    for(let j=0;j<16;j++)add(this.barPivot,new THREE.TorusGeometry(r,.0012,6,24).rotateY(Math.PI/2),grips.variant.color,grips.part.id,'rubber',v(s*(bw-.115+j*.008),1.01,-.04));
    add(this.barPivot,lathe([[0,-.004],[r,-.004],[r+.002,0],[r,.006],[0,.006]]).rotateZ(Math.PI/2),0x263333,grips.part.id,'rubber',v(s*(bw+.014),1.01,-.04));
-   const socket=new THREE.Object3D();socket.position.set(s*(bw-.05),1.01,-.04);this.barPivot.add(socket);this.gripSockets.push(socket);
+   const socket=new THREE.Object3D();socket.position.set(s*(bw-.05),1.01,-.04);socket.userData.gripRadius=r;this.barPivot.add(socket);this.gripSockets.push(socket);
   }
   const clamp=get('clamp'),n=clamp.part.shape==='triple'?3:2,h=n*.021;
   add(this.barPivot,new THREE.LatheGeometry([[.018,-h/2],[.027,-h/2],[.028,-h/2+.003],[.028,h/2-.003],[.027,h/2],[.018,h/2]].map(([x,y])=>new THREE.Vector2(x,y)),32,.09,Math.PI*2-.18),clamp.variant.color,clamp.part.id,'paint',v(0,.336+h/2,-.009));
@@ -102,7 +102,8 @@ export class ScooterAssembly {
     if(w.variant.accent)for(const side of [-1,1])add(wheel,new THREE.TorusGeometry(r*.68,.0015,6,40).rotateY(Math.PI/2),w.variant.accent,w.part.id,'metal',v(side*.01,0,0));
    }
    add(wheel,lathe([[.005,-.014],[.011,-.014],[.013,-.009],[.013,.009],[.011,.014],[.005,.014],[.005,-.014]],24).rotateZ(Math.PI/2),bearings.variant.color,bearings.part.id,'steel');
-   rod(parent,v(-.043,.055,z),v(.043,.055,z),.004,0xb8cbc6,bearings.part.id,'steel');for(const s of [-1,1])bolt(parent,v(s*.043,.055,z),bearings.part.id);
+   const axlePart=slot==='frontWheel'?get('fork').part.id:d.part.id;
+   rod(parent,v(-.043,.055,z),v(.043,.055,z),.004,0xb8cbc6,axlePart,'steel');for(const s of [-1,1])bolt(parent,v(s*.043,.055,z),axlePart);
   }
   const brake=get('brake'),arc:THREE.Vector3[]=[];
   for(let j=0;j<=20;j++){const a=-.7+j/20*1.9;arc.push(v(0,.055+Math.cos(a)*.071,-length+Math.sin(a)*.071));}

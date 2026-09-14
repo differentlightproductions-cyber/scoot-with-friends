@@ -138,9 +138,9 @@ test("Neutral bumper holds and RS scoops cannot create kickless, body family nee
   assert.equal(t.kickless.target, 0);
   for (const [name, modifiers] of [
     ["No-hander", {}],
-    ["Tuck No-hander", { pumpGrind: 1 }],
+    ["Tuck No-hander", { brake: 1, leftModifier: 1 }],
     ["Deck Grab", { brake: 1 }],
-    ["Superman", { brake: 1, pumpGrind: 1 }],
+    ["Superman", { pumpGrind: 1 }],
     ["Can Can", { leftModifier: 1 }],
     ["One-footer", { rightModifier: 1 }],
     ["No Foot", { leftModifier: 1, rightModifier: 1 }],

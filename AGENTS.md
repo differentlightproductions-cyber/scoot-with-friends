@@ -1,5 +1,7 @@
 # Project continuity
 
+- Final camera rule (September 14 update): mounted RS ALWAYS controls riding/tricks, including at a stop. On foot RS controls camera. Never reintroduce mounted stationary camera or an L3/R3 Trick Setup toggle. L3 remains Run on foot; R3 remains Recenter.
+
 - Art direction: detailed stylized realism replaces every older low-poly restriction. Read ART-DIRECTION.md. Build convincing human anatomy, smoothly deforming clothing and mechanically coherent Lazer scooters; never revert to visibly primitive placeholders.
 
 - Game title: **Scoot with Friends**. The first scooter parts brand remains **Lazer**.

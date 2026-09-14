@@ -918,3 +918,10 @@ body.editing #app {
 #rotate-device{display:none;position:fixed;top:env(safe-area-inset-top,0);left:0;right:0;z-index:950;text-align:center;padding:10px;background:#18272b;color:white;font-size:14px}
 @media(pointer:coarse){.game-menu{padding:max(18px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-left));max-height:100dvh;overflow:auto}.game-menu h1{font-size:clamp(24px,5vw,46px)}.game-menu nav button{min-height:44px;font-size:16px}.game-menu small,.menu-controls{font-size:12px}.pause-sheet{max-height:92dvh;overflow:auto}footer{padding-bottom:max(8px,env(safe-area-inset-bottom))}.footer-right{display:none}#balance{height:180px}#help{max-height:85dvh;overflow:auto}}
 @media(pointer:coarse) and (orientation:portrait){#rotate-device{display:block}.game-menu{padding-top:54px;width:100%;background:#f1eee8ef}.map-preview{display:none}.game-menu nav{max-height:57dvh}#trick-line{max-width:85vw}footer #hint{display:none}}
+.shop-overlay{background:transparent!important;pointer-events:none!important}
+.shop-overlay .game-menu{pointer-events:auto;left:3%;top:14%;bottom:9%;width:30%;max-width:360px;padding:20px;background:#f0eee7f5;border:1px solid #9ca9a4;border-radius:12px;box-shadow:0 12px 40px #14252d33}
+.shop-overlay .game-menu h1{font-size:30px;margin:10px 0 16px}
+.shop-overlay .game-menu nav{flex:1}.shop-overlay .game-menu button{font-size:14px;padding:10px 8px;letter-spacing:.2px}
+.shop-overlay .game-menu button.selected{background:#304944;color:#fff}.shop-overlay .game-menu button small{font-size:12px}
+.shop-overlay .game-menu .build-number,.shop-overlay #connection{display:none}.shop-overlay .menu-controls,.shop-overlay .menu-save-note{font-size:11px}
+@media(max-width:800px){.shop-overlay .game-menu{left:2%;top:8%;bottom:7%;width:34%;max-width:none;padding:10px}.shop-overlay .game-menu h1{font-size:21px}.shop-overlay .game-menu button{font-size:13px}.shop-overlay .menu-save-note{display:none}.shop-overlay .menu-controls{font-size:10px}}

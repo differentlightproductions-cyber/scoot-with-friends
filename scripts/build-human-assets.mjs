@@ -1,7 +1,7 @@
 // Reproducible CC0 mesh preparation. No MakeHuman application code is used.
 import {readFileSync,writeFileSync,mkdirSync,copyFileSync} from 'node:fs';
 import {MeshoptSimplifier} from 'meshoptimizer';
-import {handFrames} from './human-hand-frames.mjs';
+import {handFrames,handPoses} from './human-hand-frames.mjs';
 await MeshoptSimplifier.ready;
 function levels(mesh){const indices=[],uvs=new Map();for(const f of mesh.faces){f.forEach(([i,t])=>uvs.set(i,t));for(let j=1;j<f.length-1;j++)indices.push(f[0][0],f[j][0],f[j+1][0]);}mesh.lod={};for(const [name,ratio,error]of [['low',.28,.005],['medium',.6,.002]]){const [out]=MeshoptSimplifier.simplify(new Uint32Array(indices),new Float32Array(mesh.positions.flat()),3,Math.floor(indices.length*ratio/3)*3,error,['LockBorder']);const faces=[];for(let i=0;i<out.length;i+=3)faces.push([...out.slice(i,i+3)].map(v=>[v,uvs.get(v)]));mesh.lod[name]=faces;}return mesh;}
 const root='assets-source/humans/',base=[],uv=[],faces=[];let group='';
@@ -35,6 +35,7 @@ for(const [person,target] of ['male.target','rider2.target','female.target'].ent
  const hair=garment(['short01','afro01','ponytail01'][person],'hair',points);
  const out=levels({revision:'anatomical-riders-1',names,anchors,eyes:[avg('eye.R','head'),avg('eye.L','head')],positions:points.map(convert),skinIndex:si,skinWeight:sw,uv,faces,garments,hair});
  out.handFrames=handFrames(out,rig);
+ out.handPoses=handPoses(out,rig,weights);
  writeFileSync(`public/models/humans/rider-${person+1}.json`,JSON.stringify(out,(_,value)=>typeof value==='number'?Math.round(value*1e6)/1e6:value));
  console.log(`Rider ${person+1}: ${faces.length} authored quads, ${points.length} source vertices`);
  const skin=[['young_caucasian_male','young_lightskinned_male_diffuse.png'],['young_african_male','young_darkskinned_male_diffuse.png'],['young_asian_female','young_lightskinned_female_diffuse3.png']][person];copyFileSync(root+'system/skins/'+skin[0]+'/'+skin[1],`public/models/humans/skin-${person+1}.png`);

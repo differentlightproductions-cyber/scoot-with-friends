@@ -1,4 +1,6 @@
 import {emptyWallet,validWallet,type AlphaWallet} from './credit';
+import {BODY_BUILDS,type BodyBuild} from '../scooter/body-fit';
+import {emptyPockets,validPockets,type Pockets} from './items';
 ﻿import { RIDERS } from "./riders";
 import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
@@ -8,6 +10,8 @@ export interface LocalProfile {
   outfit: Outfit;
   riderOutfits:Record<string,Outfit>;
   riderId: string;
+  bodyBuild:BodyBuild;
+  pockets:Pockets;
   outfitId: string;
   scooter: ScooterLoadout;
   settings: {
@@ -29,6 +33,8 @@ export function loadProfile(): LocalProfile {
     outfit: defaultOutfit(),
     riderOutfits:{},
     riderId: RIDERS[0].id,
+    bodyBuild:'regular',
+    pockets:emptyPockets(),
     outfitId: RIDERS[0].outfitId,
     scooter: defaultScooter(),
     settings: {
@@ -46,6 +52,8 @@ export function loadProfile(): LocalProfile {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3].includes(saved.version)) return profile;
     profile.wallet=validWallet(saved.wallet);
+    profile.pockets=validPockets(saved.pockets);
+    if(BODY_BUILDS.includes(saved.bodyBuild))profile.bodyBuild=saved.bodyBuild;
     for(const slot of OUTFIT_SLOTS)if(CLOTHING.some(p=>p.category===slot&&p.id===saved.outfit?.[slot]))profile.outfit[slot]=saved.outfit[slot];
     if(['day','sunset','night','sunrise'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;

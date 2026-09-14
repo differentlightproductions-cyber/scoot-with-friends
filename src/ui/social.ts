@@ -18,7 +18,7 @@ export class SocialControls {
   selected = -1;
   options:{label:string;action:()=>void}[]=[];
   latched=false;
-  onBuild=()=>{};onInteract=()=>{};onScooter=()=>{};
+  onBuild=()=>{};onInteract=()=>{};onScooter=()=>{};onItems=()=>{};
   warehouse=false;
   private left = 0;
   private right = 0;
@@ -47,7 +47,7 @@ export class SocialControls {
    {label:'Emotes',action:()=>this.openOptions('EMOTES / RS SELECT',EMOTES.map(e=>({label:e.label,action:()=>this.perform(e.id,s)})))},
    {label:this.warehouse?'Build':'Build · Warehouse',action:()=>{if(this.warehouse)this.onBuild();}},
    {label:'Chat',action:()=>{this.chat.hidden=false;this.field.focus();}},
-   {label:'Scooter',action:()=>this.onScooter()}, {label:'Interact',action:()=>this.onInteract()}, {label:'Cancel',action:()=>{}},
+   {label:'Scooter',action:()=>this.onScooter()}, {label:'Interact',action:()=>this.onInteract()}, {label:'Items',action:()=>this.onItems()}, {label:'Cancel',action:()=>{}},
   ];}
   send(message:string) {
     const text=message.trim().slice(0,120);

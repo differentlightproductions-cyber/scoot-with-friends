@@ -9,10 +9,14 @@ export class BodyFlipControl {
  step(dt:number,chord:boolean,lean:number,currentPitch:number){
   if(!this.active&&chord&&Math.abs(lean)>.25&&(this.origin==='manual_hop'||this.origin==='fastplant')){this.active=true;this.basePitch=currentPitch;}
   if(!this.active)return currentPitch;
-  const authority=chord?clamp(-lean,-1,1):0;
-  // No automatic completion and no return-to-upright spring.
-  this.velocity+=authority*TUNE.flipAcceleration*dt;
-  this.velocity=clamp(this.velocity,-TUNE.flipMaxRate,TUNE.flipMaxRate)*Math.exp(-(chord&&Math.abs(lean)>.05?.22:TUNE.flipReleaseDamping)*dt);
+  const magnitude=clamp((Math.abs(lean)-.1)/.9,0,1);
+  // Input requests a bounded rate rather than adding torque indefinitely.
+  // Neutral can continue an established rotation, but cannot initiate one.
+  if(chord){const direction=magnitude>0?-Math.sign(lean):Math.sign(this.velocity||this.angle);
+   const target=direction*(TUNE.flipSlowRate+(TUNE.flipMaxRate-TUNE.flipSlowRate)*Math.pow(magnitude,.8));
+   this.velocity+=clamp(target-this.velocity,-TUNE.flipAcceleration*dt,TUNE.flipAcceleration*dt);
+  }else this.velocity*=Math.exp(-TUNE.flipReleaseDamping*dt);
+  this.velocity=clamp(this.velocity,-TUNE.flipMaxRate,TUNE.flipMaxRate);
   this.angle+=this.velocity*dt;
   return this.basePitch+this.angle;
  }

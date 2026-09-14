@@ -1,6 +1,7 @@
 import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
+import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
 import {
   buildMemorialGrounds,
@@ -406,13 +407,6 @@ export function buildOutdoor(park: Park) {
       box(x, 5, z, 0.13, 10, 0.13, 0xa4adb0);
       box(x - 1, 10, z, 2.2, 0.12, 0.35, 0x667273);
     }
-  for (let i = 0; i < 12; i++) {
-    const hill = new THREE.Mesh(
-      new THREE.ConeGeometry(18, 10 + (i % 4) * 3, 5),
-      new THREE.MeshStandardMaterial({ color: 0x9da5a4, roughness: 1 }),
-    );
-    hill.position.set(-132 + i * 24, 2, 140);
-    scene.add(hill);
-  }
+  addDesertRidges(scene);
   for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
 }

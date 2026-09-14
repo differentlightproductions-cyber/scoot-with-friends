@@ -1,6 +1,8 @@
 export const TUNE = {
-  flipAcceleration: 24,
-  flipMaxRate: 9.5,
+  flipAcceleration: 16,
+  flipMaxRate: 6.8,
+  flipSlowRate: 1.8,
+  flipTakeoffContribution: .5,
   flipReleaseDamping: 1.8,
   flipYawRateScale: 0.8,
   flipNameTolerance: 20,
