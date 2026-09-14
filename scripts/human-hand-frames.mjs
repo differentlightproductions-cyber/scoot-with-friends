@@ -23,8 +23,8 @@ export function handPoses(data,rig,weights){
     const start=end?.clone()??a.clone();
     if(segment===1&&finger!==1){start.y=0;start.z=frame.length-.006;}
     let direction;
-    if(finger===1){const sign=side==='R'?1:-1;const target=new THREE.Vector3(sign*(segment===1?.043:segment===2?.030:.012),segment===1?-.007:-.025,frame.length+(segment===1?-.023:segment===2?-.007:.006));direction=target.sub(start).normalize();}
-    else{const angle=[.68,1.48,2.18][segment-1];direction=new THREE.Vector3(0,-Math.sin(angle),Math.cos(angle));}
+    if(finger===1){const sign=side==='R'?1:-1;const target=new THREE.Vector3(sign*(segment===1?.043:segment===2?.030:.012),segment===1?-.007:-.051,frame.length+(segment===1?-.023:segment===2?-.007:.006));direction=target.sub(start).normalize();}
+    else{const angle=[.35,1.55,2.65][segment-1];direction=new THREE.Vector3(0,-Math.sin(angle),Math.cos(angle));}
     end=start.clone().addScaledVector(direction,length);
     const rotation=new THREE.Quaternion().setFromUnitVectors(b.clone().sub(a).normalize(),direction);
     for(const [i,w]of weights[name]??[]){const point=local(new THREE.Vector3().fromArray(data.positions[i])).sub(a).applyQuaternion(rotation).add(start);if(!sums.has(i))sums.set(i,new THREE.Vector3());sums.get(i).addScaledVector(point,w);totals.set(i,(totals.get(i)??0)+w);}

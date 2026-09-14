@@ -150,7 +150,7 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
     extras.push(
       counted(
         briTurns,
-        (raw.briAngle ?? 0) * natural > 0 ? "Bri Flip" : "Inward Bri",
+        (raw.briAngle ?? 0) * natural > 0 ? "Bri" : "Inward",
       ),
     );
   if (raw.kicklessHistory?.length) {
@@ -199,10 +199,12 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
   if (raw.out && name) name += " Out";
   if(flipName)name=`${flipName}${degrees?' '+degrees:''}${parts.length?' + '+parts.join(' + '):''}${raw.out?' Out':''}`;
   const flair=raw.flairContext&&raw.flipPitch<0&&flips===1&&degrees===180;
+  const briAir=raw.flairContext&&degrees===180&&briTurns===1&&!flair;
+  if(briAir)name=[flipName,...parts.map(p=>p==='Bri'?'Bri Air':p==='Inward'?'Inward Air':p)].filter(Boolean).join(' + ');
   if(flair)name=['Flair',...parts].filter(Boolean).join(' + ');
   return {
     name,
-    recognized: flair?"flair":rule?.id ?? (downside ? "downside-whip" : null),
+    recognized: flair?"flair":briAir?"bri-air":rule?.id ?? (downside ? "downside-whip" : null),
     components,
     raw: { ...raw, states: [...raw.states], direction: { ...raw.direction } },
   };

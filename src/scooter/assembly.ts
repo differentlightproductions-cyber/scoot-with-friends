@@ -53,8 +53,8 @@ export class ScooterAssembly {
   for(const yy of [.179,.309])add(this.root,new THREE.TorusGeometry(.033,.0012,8,32).rotateX(Math.PI/2),d.variant.color,d.part.id,'paint',v(0,yy,.307-(yy-.17)*.107));
   const bars=get('bars'),bw=bars.part.shape==='oversized'?.35:.29,br=bars.part.shape==='oversized'?.019:.016;
   rod(this.barPivot,v(0,.33,-.009),v(0,['y','mafioso-y'].includes(bars.part.shape)?.91:1.01,-.04),br,bars.variant.color,bars.part.id);
-  if(!['y','mafioso-y'].includes(bars.part.shape))rod(this.barPivot,v(-bw,1.01,-.04),v(bw,1.01,-.04),br,bars.variant.color,bars.part.id);
-  else add(this.barPivot,tube([v(-bw,1.01,-.04),v(-.19,1.01,-.04),v(-.095,.965,-.04),v(0,.942,-.04),v(.095,.965,-.04),v(.19,1.01,-.04),v(bw,1.01,-.04)],br),bars.variant.color,bars.part.id);
+  if(!['y','mafioso-y'].includes(bars.part.shape))rod(this.barPivot,v(-bw,1.01,-.04),v(bw,1.01,-.04),.011,bars.variant.color,bars.part.id);
+  else add(this.barPivot,tube([v(-bw,1.01,-.04),v(-.19,1.01,-.04),v(-.095,.965,-.04),v(0,.942,-.04),v(.095,.965,-.04),v(.19,1.01,-.04),v(bw,1.01,-.04)],.013),bars.variant.color,bars.part.id);
   add(this.barPivot,new THREE.TorusGeometry(br,.0013,8,28).rotateX(Math.PI/2),bars.variant.color,bars.part.id,'paint',v(0,['y','mafioso-y'].includes(bars.part.shape)?.917:.99,-.039));
   if(['y','mafioso-y'].includes(bars.part.shape))for(const s of [-1,1])add(this.barPivot,tube([v(0,.85,-.035),v(s*.025,.89,-.036),v(s*.067,.934,-.04),v(s*.10,.965,-.04)],.007),bars.variant.color,bars.part.id);
   if(bars.part.shape==='mafioso-y')for(const sign of [-1,1]){

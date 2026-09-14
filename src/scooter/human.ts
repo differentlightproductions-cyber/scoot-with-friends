@@ -1,3 +1,4 @@
+import {legFrame} from './limb-frame';
 import * as THREE from 'three';
 import {detailTexture,lathe,tube} from './surfaces';
 import {fittedPoint,type BodyBuild} from './body-fit';
@@ -30,7 +31,7 @@ export class HumanCharacter {
   this.drivers=[model.hips,model.torso,model.head,model.neck,model.upperArms[0],model.forearms[0],model.hands[0],model.thighs[0],model.shins[0],model.shoes[0],model.upperArms[1],model.forearms[1],model.hands[1],model.thighs[1],model.shins[1],model.shoes[1]];
   data.names.forEach((name,i)=>{const [a,b]=data.anchors[i].map(V),limb=/upper\.|lower\.|thigh\.|shin\.|neck/.test(name),frame=new THREE.Matrix4();
    if(name==='head')a.add(new THREE.Vector3(0,-.04,-.008));
-   if(limb)frame.compose(a.clone().lerp(b,.5),new THREE.Quaternion().setFromUnitVectors(up,b.clone().sub(a).normalize()),new THREE.Vector3(1,a.distanceTo(b),1));
+   if(limb)frame.compose(a.clone().lerp(b,.5),/thigh\.|shin\./.test(name)?legFrame(a,b):new THREE.Quaternion().setFromUnitVectors(up,b.clone().sub(a).normalize()),new THREE.Vector3(1,a.distanceTo(b),1));
    else frame.makeTranslation(a.x,a.y,a.z);
    this.sourceFrames.push(frame);const bone=new THREE.Bone();bone.name='rider:'+name;bone.matrixAutoUpdate=false;bone.matrix.copy(frame);this.group.add(bone);this.bones.push(bone);
   });

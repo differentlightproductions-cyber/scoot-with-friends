@@ -120,8 +120,8 @@ test("Gesture recognition separates both circular sweeps from a lower scoop and 
 });
 test("Bri and kickless names require completed independent scooter rotations", () => {
   for (const [channel, direction, name] of [
-    ["bri", 1, "Bri Flip"],
-    ["bri", -1, "Inward Bri"],
+    ["bri", 1, "Bri"],
+    ["bri", -1, "Inward"],
     ["kickless", 1, "Kickless"],
   ] as const) {
     const t = new Tricks(new Events());

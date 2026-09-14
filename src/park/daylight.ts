@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Park } from './park';
 import { OUTDOOR, terrainHeight } from './park';
 export type DayPhase='day'|'sunset'|'night'|'sunrise';
-const phases={day:{sky:0xb3d2df,sun:0xffedce,power:3.2,ambient:2.4,night:0},sunset:{sky:0xb28283,sun:0xffa05f,power:2,ambient:1.65,night:.35},night:{sky:0x172940,sun:0xadc7ee,power:.75,ambient:1.2,night:1},sunrise:{sky:0xccabb1,sun:0xffc695,power:1.7,ambient:1.8,night:.25}};
+const phases={day:{sky:0xb3d2df,sun:0xffedce,power:3.2,ambient:1.15,night:0},sunset:{sky:0xb28283,sun:0xffa05f,power:2,ambient:.95,night:.35},night:{sky:0x172940,sun:0xadc7ee,power:.75,ambient:1.2,night:1},sunrise:{sky:0xccabb1,sun:0xffc695,power:1.7,ambient:1.8,night:.25}};
 export class Daylight {
  private sky=new THREE.Color();private color=new THREE.Color();
  private lamps:THREE.MeshStandardMaterial[]=[];

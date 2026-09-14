@@ -1754,6 +1754,7 @@ export class Simulation {
       );
       this.roll = damp(this.roll, input.steer * 0.07, 4, dt);
       this.tricks.flip=this.bodyFlip.angle;
+      this.tricks.quarterAir=!!this.airQuarter;
       this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";

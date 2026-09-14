@@ -261,7 +261,7 @@ export function buildOutdoor(park: Park) {
   const { scene } = park;
   scene.background = new THREE.Color(0x9dc6e6);
   scene.fog = new THREE.Fog(0xadcde2, 85, 220);
-  scene.add(new THREE.HemisphereLight(0xe4f1ff, 0x777b46, 2.4));
+  scene.add(new THREE.HemisphereLight(0xe4f1ff, 0x777b46, 1.15));
   const sun = new THREE.DirectionalLight(0xffebcd, 3.2);
   sun.position.set(-28, 45, -22);
   sun.castShadow = true;

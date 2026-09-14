@@ -327,7 +327,7 @@ export class Tricks {
   bars = new RotationChannel(TUNE.barAcceleration, TUNE.barMaxSpeed);
   yaw = 0;
   flip = 0;
-  flairContext=false;
+  flairContext=false;quarterAir=false;
   fastplant = false;
   body = new Set<string>();
   bodyTime = 0;
@@ -397,7 +397,7 @@ export class Tricks {
     this.deck.reset();
     this.bars.reset();
     this.yaw = 0;
-    this.flip = 0;this.flairContext=false;
+    this.flip = 0;this.flairContext=false;this.quarterAir=false;
     this.fastplant = false;
     this.body.clear();
     this.bodyTime = 0;

@@ -8,7 +8,7 @@ const pick=(v:any,keys:string[])=>Object.fromEntries(keys.map(k=>[k,v[k]]));
 export function capture(s:Simulation){
  const p:any={};for(const k of POSE_KEYS)if(typeof s[k as keyof Simulation]==='number'||typeof s[k as keyof Simulation]==='boolean'||typeof s[k as keyof Simulation]==='string')p[k]=s[k as keyof Simulation];
  Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
- p.tricks=pick(s.tricks,['stance','naturalDirection','visualPose','poseBlend','poseSide','fingerTime','fingerHand']);
+ p.tricks=pick(s.tricks,['stance','naturalDirection','quarterAir','yaw','visualPose','poseBlend','poseSide','fingerTime','fingerHand']);
  for(const k of ['deck','bars','bri','kickless'] as const)p.tricks[k]={...pick(s.tricks[k],['angle','velocity','mismatch']),reversals:[],reversalAge:s.tricks[k].reversalAge??1};
  p.crash=s.crash?{age:s.crash.age,rest:s.crash.rest,rider:{position:s.crash.rider.translation(),rotation:s.crash.rider.rotation()},scooter:{position:s.crash.scooter.translation(),rotation:s.crash.scooter.rotation()}}:null;
  return JSON.parse(JSON.stringify(p));

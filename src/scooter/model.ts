@@ -1,3 +1,5 @@
+import {legFrame} from './limb-frame';
+import {briPose} from './bri-pose';
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { tailored } from "./geometry";
@@ -71,7 +73,7 @@ function rod(
 function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   m.position.copy(a).add(b).multiplyScalar(0.5);
   m.scale.y = a.distanceTo(b);
-  m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
+  if(m.userData.legFrame)m.quaternion.copy(legFrame(a,b));else m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
 }
 export class RiderModel {
   human?:HumanCharacter;
@@ -313,6 +315,7 @@ export class RiderModel {
     this.trousers=new GarmentSkin(this.rider,[this.hips,this.thighs[0],this.shins[0],this.thighs[1],this.shins[1]],'pants',[this.materials.pants,this.materials.pants]);
     this.garmentSkins.push(this.trousers);
     for(let i=0;i<2;i++)this.garmentSkins.push(new GarmentSkin(this.rider,[this.upperArms[i],this.forearms[i]],'arm',[this.materials.shirt,this.materials.skin]));
+    [...this.thighs,...this.shins].forEach(m=>m.userData.legFrame=true);
     this.hips.visible=false;this.thighs.forEach(o=>o.visible=false);this.shins.forEach(o=>o.visible=false);this.knees.forEach(o=>o.visible=false);this.upperArms.forEach(o=>o.visible=false);this.forearms.forEach(o=>o.visible=false);
     for(const key of ['shirt','pants','shoe'] as const){this.materials[key].bumpMap=detailTexture('fabric');this.materials[key].bumpScale=.0005;}
     for(let i=0;i<2;i++){
@@ -435,7 +438,7 @@ export class RiderModel {
     for(let i=0;i<2;i++){
       const sign=i===0?-1:1,socket=this.assembly.gripSockets[i];
       const rotation=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
-      const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.009,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
+      const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.012,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
       const shoulder=v(sign*.19,.17,0).applyEuler(this.torso.rotation).add(this.torso.position);
       const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
       const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.38,-.12,-.9).normalize(),bend);
@@ -486,31 +489,34 @@ export class RiderModel {
       kickless = s.tricks.kickless.angle;
     const briActive =
       Math.abs(s.tricks.bri.velocity) > 0.1 || s.tricks.bri.mismatch > 0.02;
+    const bp=briPose(bri,s.tricks.naturalDirection,s.tricks.quarterAir?s.tricks.yaw:0);
+    const baseRotation=this.scooter.rotation.clone();
     const cycle = Math.abs(bri) % (Math.PI * 2),
       lift = Math.sin(cycle / 2),
       side = Math.sign(bri) || 1;
     const inward = side !== s.tricks.naturalDirection;
     this.scooter.rotation.order = "YXZ";
-    this.scooter.rotation.x += (inward ? 1 : -1) * Math.abs(bri);
+    this.scooter.rotation.x += bp.rotation;
     this.scooter.rotation.y = briActive
-      ? side * lift * (inward ? 0.12 : 0.65)
+      ? bp.yaw
       : 0;
     const kicklessActive=Math.abs(s.tricks.kickless.velocity)>.1||s.tricks.kickless.mismatch>.02;
     const kickLift=Math.sin((Math.abs(kickless)%(Math.PI*2))/2);
     this.scooter.rotation.z += Math.sign(kickless)*kickLift*.3;
-    const pivot = v(0, 1.01, 0.26),
-      rotated = pivot.clone().applyEuler(this.scooter.rotation);
-    if (briActive)
-      this.scooter.position.add(
-        v(side * 0.34 * lift, 1.01 + 0.22 * lift, 0.26).sub(rotated),
-        );
-    else if(kicklessActive)this.scooter.position.add(v(0,1.01+kickLift*.12,.26+kickLift*.06).sub(rotated));
-    // Wrist-driven reverse sweep and return. This is visibly different from
-    // adding another tailwhip; hands stay on the actual grips throughout.
     this.deckPivot.rotation.y = s.tricks.deck.angle-Math.sign(kickless)*kickLift*Math.PI*1.1;
     this.deckPivot.rotation.z = Math.sin(kickless) * 0.28;
-    this.barPivot.rotation.y =
-      s.tricks.bars.angle + (s.grounded ? -s.steer * 0.15 : 0);
+    this.barPivot.rotation.y = s.tricks.bars.angle + (s.grounded ? -s.steer*.15 : 0) + (briActive?bp.barLead:0);
+    this.barPivot.updateMatrix();
+    const pivot=v(0,1.01,.26),actualGrip=this.assembly.gripSockets[0].position.clone().lerp(this.assembly.gripSockets[1].position,.5).applyMatrix4(this.barPivot.matrix);
+    if(briActive){
+      const barBase=this.barPivot.rotation.clone();barBase.y-=bp.barLead;
+      const baselineGrip=this.assembly.gripSockets[0].position.clone().lerp(this.assembly.gripSockets[1].position,.5).applyEuler(barBase).add(this.barPivot.position);
+      const desired=baselineGrip.applyEuler(baseRotation).add(v(...bp.offset));
+      this.scooter.position.add(desired.sub(actualGrip.applyEuler(this.scooter.rotation)));
+    }else if(kicklessActive){
+      this.scooter.position.add(pivot.clone().applyEuler(baseRotation).add(v(0,kickLift*.12,kickLift*.06)).sub(pivot.clone().applyEuler(this.scooter.rotation)));
+    }
+    this.root.userData.briDebug={phase:bp.stage,progress:bp.phase,direction:side,angle:bri,relativePosition:this.scooter.position.toArray(),bodyRotation:flip,catching:bp.stage==='catch'};
     this.wheelAngle += (s.speed * dt) / 0.055;
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
     const crouchTarget =
@@ -541,6 +547,8 @@ export class RiderModel {
       -0.045 + c * 0.12 - s.rampLean * 0.12,
     );
     this.torso.rotation.x = 0.10 + c * 0.85;
+    this.torso.rotation.y=briActive?bp.torsoYaw:0;
+    this.torso.position.x-=briActive?side*bp.clearance*.055:0;
     this.torso.rotation.x+=fountainBlend*.39;
     this.torso.position.z+=fountainBlend*.16;
     const weight = s.airWeight.shift;
@@ -607,8 +615,8 @@ export class RiderModel {
       const push =
         i === rear && s.pushTimer > 0 ? 1 - s.pushTimer / TUNE.pushCadence : -1;
       const foot = v(
-        sign * (whip ? 0.22 : 0.043),
-        0.15 + (whip ? 0.2 : 0) + grabBlend*.13,
+        sign * (.043 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:0)*.177),
+        0.15 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:0)*.2 + grabBlend*.13,
         i !== rear ? 0.04 : -0.19,
       );
       if (push >= 0 && !s.walking) {
@@ -710,8 +718,11 @@ export class RiderModel {
         elbow.set(sign * 0.29, 1.08, 0);
       }
       if (this.carry > 0.001) {
-        const grip = i === 0 ? v(0, 1.01, 0.26) : v(0, 0.15, -0.24);
-        grip.applyEuler(this.scooter.rotation).add(this.scooter.position);
+        const low=v(0,.38,.29),high=v(0,1.01,.26),segment=high.clone().sub(low);
+        const localShoulder=this.scooter.worldToLocal(this.rider.localToWorld(shoulder.clone()));
+        const t=THREE.MathUtils.clamp(localShoulder.sub(low).dot(segment)/segment.lengthSq(),0,1);
+        const contact=i===0?low.addScaledVector(segment,t):v(0,.15,-.24);
+        const grip=this.rider.worldToLocal(this.scooter.localToWorld(contact));
         hand.lerp(grip, this.carry);
         elbow.lerp(v(sign * 0.32, 1.13, 0.06), this.carry);
       }
@@ -791,7 +802,15 @@ export class RiderModel {
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
         const riderRotation=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();gripRotation.premultiply(riderRotation);
-        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.009,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
+        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.012,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
+      }
+      const carryingContact=this.carry>.001&&!s.emote&&!s.heldItem;
+      if(carryingContact){
+        const relative=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(this.scooter.getWorldQuaternion(new THREE.Quaternion()));
+        // Align the palm's grip axis with the upright stem or deck edge.
+        const rotation=relative.clone().multiply(i===0?new THREE.Quaternion().setFromUnitVectors(v(1,0,0),v(0,.63,-.03).normalize()):new THREE.Quaternion());
+        gripRotation.copy(this.hands[i].quaternion).slerp(rotation,this.carry);
+        hand.add(v(0,i===0?.030:.038,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation).multiplyScalar(this.carry));
       }
       if(grabbingHand){
         const deckTarget=this.rider.worldToLocal(this.assembly.deckSocket.getWorldPosition(new THREE.Vector3()));
@@ -805,7 +824,7 @@ export class RiderModel {
       const fingerContact=s.tricks.fingerTime>0&&sign===s.tricks.fingerHand;
       if(s.walking&&s.heldItem&&i===0&&!usingItem)hand.set(-.22,.95,.20);
       if(fingerContact){const local=this.assembly.deckSocket.position.clone();local.x*=sign;const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(local));const sidePoint=v(sign*.38,Math.max(.55,deckTarget.y+.15),.30);const contact=deckTarget.x*sign>=-.02&&s.tricks.fingerTime>.20;const target=contact?sidePoint.lerp(deckTarget,THREE.MathUtils.smoothstep(fingerReach,.35,.7)):sidePoint;hand.lerp(target,fingerReach);}
-      if(holdingGrip||grabbingHand||fingerContact){
+      if(holdingGrip||grabbingHand||fingerContact||this.carry>.001){
         const delta=hand.clone().sub(shoulder);const reach=delta.length();
         if(reach>.68)hand.copy(shoulder).addScaledVector(delta,.68/reach);
         const bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
@@ -819,7 +838,7 @@ export class RiderModel {
         v(0, 1, 0),
         elbow.clone().sub(hand).normalize(),
       );
-      if(holdingGrip||grabbingHand)this.hands[i].quaternion.copy(gripRotation);
+      if(holdingGrip||grabbingHand||carryingContact)this.hands[i].quaternion.copy(gripRotation);
       if(s.walking&&s.heldItem&&i===0){const t=s.emote?.time??0,sip=s.emote?.id==='drink'?THREE.MathUtils.smoothstep(t,.48,1)*(1-THREE.MathUtils.smoothstep(t,1.75,2.35)):0;this.hands[i].quaternion.setFromEuler(new THREE.Euler(-.9*sip,0,Math.PI/2));this.hands[i].userData.openHand=0;}
     }
     this.garmentSkins.forEach(g=>g.update());
