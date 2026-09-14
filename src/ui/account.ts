@@ -43,7 +43,7 @@ export class AccountPanel {
   }
   private async submit(action: string, data: unknown) {
     if (this.busy) return; this.busy = true; this.status('Please wait…'); this.dialog.querySelectorAll('button').forEach(b => b.disabled = true);
-    try { const result = await this.request(action, data); this.account = result.account; this.recovery = result.recovery ?? ''; this.render(); this.status(this.account ? 'Signed in. Your local setup is unchanged.' : 'Signed out.'); }
+    try { const result = await this.request(action, data); this.account = result.account; this.recovery = result.recovery ?? ''; if(!this.account)this.mode='login'; this.render(); this.status(this.account ? 'Signed in. Your local setup is unchanged.' : 'Signed out.'); }
     catch (e) { this.status((e as Error).message); this.dialog.querySelectorAll('button').forEach(b => b.disabled = false); }
     finally { this.busy = false; }
   }
