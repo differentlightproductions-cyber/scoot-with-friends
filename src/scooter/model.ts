@@ -12,6 +12,9 @@ import { RIDERS } from "../data/riders";
 import { clothing, defaultOutfit } from '../data/outfits';
 import type { LocalProfile } from "../data/loadout";
 import { damp, TUNE } from "../core/config";
+import { LongboardAssembly } from "../longboard/assembly";
+import { poseLongboard } from "../longboard/pose";
+import { defaultLongboard, type LongboardLoadout } from "../data/longboardParts";
 const materials = {
   deck: new THREE.MeshStandardMaterial({
     color: 0xe65330,
@@ -70,7 +73,7 @@ function rod(
   poseRod(m, a, b);
   return m;
 }
-function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
+export function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   m.position.copy(a).add(b).multiplyScalar(0.5);
   m.scale.y = a.distanceTo(b);
   if(m.userData.legFrame)m.quaternion.copy(legFrame(a,b));else m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
@@ -86,6 +89,13 @@ export class RiderModel {
   ) as typeof materials;
   root = new THREE.Group();
   scooter = new THREE.Group();
+  /** The Sometimes Summer board, built on first use and shown in place of the scooter. */
+  board = new THREE.Group();
+  boardAssembly?: LongboardAssembly;
+  private boardKey = "";
+  /** 0 walking with the board, 1 standing sideways on it. */
+  boardStance = 0;
+  boardWheelAngle = 0;
   deckPivot = new THREE.Group();
   barPivot = new THREE.Group();
   rider = new THREE.Group();
@@ -119,7 +129,8 @@ export class RiderModel {
   private trousers?:GarmentSkin;
   constructor(scene: THREE.Scene) {
     scene.add(this.root);
-    this.root.add(this.scooter, this.rider);
+    this.root.add(this.scooter, this.rider, this.board);
+    this.board.visible = false;
     this.assembly = new ScooterAssembly(this.scooter);
     this.deckPivot = this.assembly.deckPivot;
     this.barPivot = this.assembly.barPivot;
@@ -462,8 +473,26 @@ export class RiderModel {
     }
     this.garmentSkins.forEach(g=>g.update());this.human?.update(0);this.root.updateMatrixWorld(true);
   }
+  /** Builds or rebuilds the longboard when its loadout changes. */
+  setLongboard(loadout: LongboardLoadout = defaultLongboard()) {
+    const key = JSON.stringify(loadout);
+    if (key === this.boardKey && this.boardAssembly) return;
+    this.boardKey = key;
+    if (this.boardAssembly) this.boardAssembly.build(loadout);
+    else this.boardAssembly = new LongboardAssembly(this.board, loadout);
+  }
+  /** Shared end of every pose: clothing, the anatomical mesh and the backpack follow the drivers. */
+  finishPose(elapsed: number) {
+    this.garmentSkins.forEach(g=>g.update());
+    this.human?.update(elapsed);
+    this.backpack.position.copy(this.torso.position);this.backpack.quaternion.copy(this.torso.quaternion);
+  }
   update(s: Simulation, dt: number, alpha: number) {
-    if(s.state==='Bail'&&s.crash){this.crashPose(s);return;}
+    const onBoard = s.rideable === "longboard";
+    this.scooter.visible = !onBoard;
+    this.board.visible = onBoard;
+    if (onBoard) this.setLongboard(this.boardAssembly ? JSON.parse(this.boardKey) : undefined);
+    if(s.state==='Bail'&&s.crash){this.crashPose(s);if(onBoard){this.board.position.copy(this.scooter.position);this.board.quaternion.copy(this.scooter.quaternion);}return;}
     const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
     this.root.position.copy(s.previousPosition).lerp(s.position, alpha);
     // The wheels sit one radius from the centre along the scooter's own up axis.
@@ -493,6 +522,12 @@ export class RiderModel {
     );
     // Rotate the complete rider and scooter around the body, not the front axle.
     if(flip){const offset=v(0,.75,0).sub(v(0,.75,0).applyAxisAngle(v(1,0,0),flip)).applyAxisAngle(v(0,1,0),this.root.rotation.y);this.root.position.add(offset);}
+    // Riding, walking and carrying on the longboard have their own pose;
+    // sitting, emotes and getting up share the scooter's.
+    if (onBoard && !s.sitting && !s.emote && s.getUpTimer <= 0) {
+      poseLongboard(this, s, dt);
+      return;
+    }
     const usingItem=!!s.emote&&['drink','eat','drink-fountain','vend'].includes(s.emote.id);
     const placing = !!s.jumpOn;
     this.placed = placing

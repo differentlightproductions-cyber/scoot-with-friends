@@ -121,6 +121,31 @@ export const TUNE = {
   jumpOnRunSpeed: 3.4, // committed running approach, above a standing hop
   jumpOnBoost: 2.3, // bounded extra carried into riding, applied once
   jumpOnRearm: 0.45, // a fresh on-foot approach and jump is required each time
+  // --- Sometimes Summer longboard ------------------------------------------
+  // Lean steers the trucks; curvature falls with speed so fast riding is
+  // steady. Speed is lost to rolling, air, the foot brake and slides; a tuck
+  // only lowers air resistance and pushing eases off toward its ceiling.
+  boardLeanResponse: 5,
+  boardTuckResponse: 5,
+  boardMaxCurvature: 0.34, // about a 2.9 m radius at walking pace
+  boardCarveAccel: 7.5, // sideways acceleration a full lean holds (about 0.75 g)
+  boardCarveScrub: 0.03,
+  boardPivotSpeed: 1.2,
+  boardPivotRate: 1.4,
+  boardGrip: 10,
+  boardRollingDrag: 0.05,
+  boardAero: 0.0055, // standing: on a 6% grade air alone settles near 13 m/s
+  boardTuckAero: 0.0036,
+  boardFootBrake: 3.4,
+  boardSlideMinSpeed: 3.5,
+  boardSlideSteer: 0.45,
+  boardSlideAngle: 1.15, // about 66 degrees across the direction of travel
+  boardSlideSwing: 9,
+  boardSlideScrub: 3.2,
+  boardPush: 1.6,
+  boardPushMaxSpeed: 9.5,
+  boardPushCadence: 0.7,
+  boardLeanRoll: 0.2,
   // --- Steps and walls ------------------------------------------------------
   // A rise sharper than a curb, measured perpendicular to the surface the rider
   // was on, is a wall rather than a transition. Real transitions curve away from

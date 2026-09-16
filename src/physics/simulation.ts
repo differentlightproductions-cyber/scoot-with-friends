@@ -29,6 +29,8 @@ import { DropIn } from "../player/drop-in";
 import { AirWeightControl } from "../player/air-weight";
 import { BodyFlipControl, type TakeoffOrigin } from '../player/body-flip';
 import {CrashMotion} from '../player/crash';
+import { LongboardMotion } from '../longboard/motion';
+export type RideableKind = "scooter" | "longboard";
 export type RideState =
   | "Grounded"
   | "Preloading"
@@ -88,6 +90,13 @@ export class Simulation {
   bodyFlip = new BodyFlipControl();
   crash:CrashMotion|null=null;
   private flipTakeoffIntent=false;
+  /**
+   * Which rideable the rider is on or carrying. Shared riding physics (ramps,
+   * walls, landings, surface following) serve both; scooter-only systems -
+   * grinds, fastplants, stalls, bar and deck tricks, manuals, flips - check it.
+   */
+  rideable: RideableKind = "scooter";
+  board = new LongboardMotion();
   /** The rail a grind hop left, which it may land straight back on. */
   private hopRail: Rail | null = null;
   /**
@@ -291,6 +300,7 @@ export class Simulation {
     this.jumpOnLanded = 0;
     this.footJumped = false;
     this.surfaceMemory = null;
+    this.board.reset();
     this.hopRail = null;
     this.copingDrop = null;
     this.copingDropHeld = 0;
@@ -381,6 +391,35 @@ export class Simulation {
    */
   rideHeight(normal: THREE.Vector3) {
     return TUNE.radius / Math.max(TUNE.steepRideNormal, normal.y);
+  }
+  /**
+   * Keeps a grounded rider on the surface, shared by every rideable. The Rapier
+   * body stays dynamic for wall and ledge impacts.
+   */
+  private followSurface(
+    support: { height: number; normal: THREE.Vector3; centre: number },
+    gap: number,
+    speed: number,
+  ) {
+    if (gap < 0.16 && gap > -0.5) {
+      this.position.y = support.centre;
+      this.body.setTranslation(this.position, true);
+    }
+    // Following the surface removes the into-surface component; restoring the
+    // magnitude carries that momentum along the surface instead of dropping
+    // it. This used to be gated on rampWorld, so the same slope bled speed in
+    // the warehouse and preserved it outdoors - the single largest source of
+    // "speed feels inconsistent". It now behaves identically on every map.
+    // On flat ground the projection removes nothing, so this is a no-op there.
+    const surfaceSpeed = this.velocity.length();
+    this.velocity.addScaledVector(this.normal, -this.velocity.dot(this.normal));
+    if (this.velocity.lengthSq() > 0.00001) this.velocity.setLength(surfaceSpeed);
+    this.lastSpeed = speed;
+    this.surfaceMemory = {
+      point: new THREE.Vector3(this.position.x, support.height, this.position.z),
+      normal: support.normal.clone(),
+      centre: support.centre,
+    };
   }
   /** Roll that lays the scooter flat on a surface sloping across its heading. */
   private sideSlope(normal: THREE.Vector3) {
@@ -1019,6 +1058,7 @@ export class Simulation {
   }
   private captureGrind(input: InputFrame) {
     if (
+      this.rideable === "longboard" ||
       this.grounded ||
       this.walking ||
       this.grind
@@ -1700,7 +1740,7 @@ export class Simulation {
       this.walk(dt, input);
       return;
     }
-    const plantInput=this.updateFastplant(dt,input);
+    const plantInput=this.rideable==="longboard"?input:this.updateFastplant(dt,input);
     if(!plantInput)return;
     input=plantInput;
     this.captureGrind(input);
@@ -1712,6 +1752,7 @@ export class Simulation {
     if (wall) support = wall;
     const copingLip = this.currentLip();
     const brakingForSpine =
+      this.rideable === "scooter" &&
       this.grounded &&
       input.held.brake > 0.35 &&
       this.popTimer === 0 &&
@@ -1815,12 +1856,14 @@ export class Simulation {
       this.elapsed - this.lastGround < TUNE.coyoteTime &&
       (!this.rampWorld || !!this.launchLip());
     const supportedForTrick = this.grounded || !!this.grind || edgeGrace;
+    const scooterTricks = this.rideable === "scooter";
     const gesture =
+      scooterTricks &&
       supportedForTrick &&
       input.held.leftModifier < 0.5
         ? this.tricks.gesture.step(dt, input.rx, input.ry)
         : null;
-    const chargedSide=supportedForTrick&&this.preload.amount>.08&&Math.abs(input.rx)>.85&&Math.abs(input.ry)<.35;
+    const chargedSide=scooterTricks&&supportedForTrick&&this.preload.amount>.08&&Math.abs(input.rx)>.85&&Math.abs(input.ry)<.35;
     if(input.held.body>.5&&(gesture||chargedSide)){this.pop(Math.max(.15,this.preload.amount),input.lean);this.preload.reset();}
     else if (gesture?.kind === "bri"||chargedSide)
       // Capture the charge the player actually built at the moment the takeoff
@@ -1846,7 +1889,7 @@ export class Simulation {
       supportedForTrick &&
       (input.pressed[whip] ||
         (this.tricks.controlStyle === "arcade" && input.pressed.hop) ||
-        (atTakeoff && input.pressed[barButton]))
+        (scooterTricks && atTakeoff && input.pressed[barButton]))
     ) {
       this.pop(Math.max(0.15, this.preload.amount), input.lean,
         this.tricks.controlStyle==='arcade'&&input.pressed.hop?'manual_hop':'trick_initiated_pop');
@@ -2057,6 +2100,47 @@ export class Simulation {
         this.popTimer = 0.12;
         this.airTime = 0;
       }
+    } else if (this.grounded && this.rideable === "longboard") {
+      this.airWeight.shift = damp(this.airWeight.shift, 0, TUNE.airWeightRecentering, dt);
+      this.airTime = 0;
+      this.body.setGravityScale(0, true);
+      const speed = this.speed;
+      const buttons = ridingButtons(this.tricks.stance, this.tricks.controlStyle);
+      const ride = this.board.ride(
+        dt,
+        {
+          steer: input.steer,
+          push: input.pressed[buttons.push],
+          pushHeld: input.held[buttons.push] > 0.5,
+          brake: input.held.brake,
+          tuck: input.held.pumpGrind,
+          slide: input.held.rightModifier,
+        },
+        this.velocity,
+        this.yaw,
+        this.normal,
+        this.sideSlope(this.normal),
+      );
+      this.yaw = ride.yaw;
+      this.steer = this.board.lean;
+      this.roll = this.recovery > 0
+        ? Math.sin(this.elapsed * 25) * 0.1 * this.recovery + ride.roll
+        : damp(this.roll, ride.roll, 10, dt);
+      if (ride.pushed) this.events.emit({ type: "push" });
+      this.rampLean = damp(this.rampLean, 0, 6, dt);
+      this.pitch = damp(
+        this.pitch,
+        -Math.atan2(ride.tangent.y, Math.hypot(ride.tangent.x, ride.tangent.z)),
+        14,
+        dt,
+      );
+      if ((this.state as RideState) !== "Bail")
+        this.state = this.recovery > 0
+          ? "SketchyLanding"
+          : this.landTimer > 0
+            ? "Landing"
+            : "Grounded";
+      this.followSurface(support, gap, speed);
     } else if (this.grounded) {
       this.airWeight.shift = damp(
         this.airWeight.shift,
@@ -2289,42 +2373,14 @@ export class Simulation {
               : this.landTimer > 0
                 ? "Landing"
                 : "Grounded";
-      // Follow a smooth support surface. The Rapier body remains dynamic for wall/ledge impacts.
-      if (gap < 0.16 && gap > -0.5) {
-        this.position.y =
-          support.centre;
-        this.body.setTranslation(this.position, true);
-      }
-      // Following the surface removes the into-surface component; restoring the
-      // magnitude carries that momentum along the surface instead of dropping
-      // it. This used to be gated on rampWorld, so the same slope bled speed in
-      // the warehouse and preserved it outdoors - the single largest source of
-      // "speed feels inconsistent". It now behaves identically on every map.
-      // On flat ground the projection removes nothing, so this is a no-op there.
-      const surfaceSpeed = this.velocity.length();
-      this.velocity.addScaledVector(
-        this.normal,
-        -this.velocity.dot(this.normal),
-      );
-      if (this.velocity.lengthSq() > 0.00001)
-        this.velocity.setLength(surfaceSpeed);
-      this.lastSpeed = speed;
-      this.surfaceMemory = {
-        point: new THREE.Vector3(
-          this.position.x,
-          support.height,
-          this.position.z,
-        ),
-        normal: support.normal.clone(),
-        centre: support.centre,
-      };
+      this.followSurface(support, gap, speed);
     } else {
       this.state = "Airborne";
       this.body.setGravityScale(1, true);
       this.airTime += dt;
       this.rampLean = damp(this.rampLean, 0, 4, dt);
       this.fakie.step(dt, this.yaw, this.velocity.x, this.velocity.z, 0, false);
-      const flipChord=input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||Math.abs(input.lean)>.25);
+      const flipChord=this.rideable==="scooter"&&input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||Math.abs(input.lean)>.25);
       // Estimated time until the wheels reach the surface below, and the pitch
       // of that surface, so the assist aims at a landing that is actually
       // reachable rather than at world level.
@@ -2404,7 +2460,7 @@ export class Simulation {
       );
       this.tricks.flip=this.bodyFlip.angle;
       this.tricks.quarterAir=!!this.airQuarter;
-      this.tricks.input(dt, input, flipChord);
+      if (this.rideable === "scooter") this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }
