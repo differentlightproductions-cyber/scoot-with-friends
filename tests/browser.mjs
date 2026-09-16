@@ -67,11 +67,24 @@ try {
   await page.waitForFunction(() => window.__LAZER);
   assert(await page.locator("#ride").isVisible());
   record("Startup loads a rendered park with a clear controller prompt");
+  // Home -> PLAY -> SOLO -> first park. Home gained a PLAY submenu, so entering
+  // the park is one confirmation deeper than it used to be.
+  await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
   await page.waitForFunction(() => window.__LAZER.hud.started);
   record("Keyboard can enter the park");
-  await page.keyboard.press("Escape");
+  // hud.started flips true before the destination has finished loading, and that
+  // handoff clears queued input on its way out, so a single Escape can be
+  // swallowed. Press until the pause actually takes.
+  for (
+    let i = 0;
+    i < 20 && !(await page.evaluate(() => window.__LAZER.hud.paused));
+    i++
+  ) {
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+  }
   await page.waitForFunction(() => window.__LAZER.hud.paused);
   await page.locator('[data-action="assist"]').click();
   assert.equal(
@@ -99,28 +112,48 @@ try {
       a(0.01, { pressed: { pushDeck: true } });
       a(0.5);
     };
+    // A loaded hop pops only when RS returns at least 90% up. Releasing to
+    // neutral deliberately stands the rider up instead of popping.
     const hop = (charge = 0.5) => {
       a(charge, { ry: 1 });
-      a(0.01, { ry: 0 });
+      a(0.01, { ry: -1 });
     };
     const trickEvents = () =>
       g.events.history.filter((e) => e.type === "trick").map((e) => e.name);
-    reset();
-    for (let i = 0; i < 5; i++) push();
+    // Push, coast, carve and brake are flat-ground properties. From the wood
+    // park runway the rider reaches a transition by the fifth push and starts
+    // climbing, so the measurement was reading terrain rather than the mechanic.
+    reset(12);
+    const pushSpeeds = [];
+    for (let i = 0; i < 5; i++) {
+      push();
+      pushSpeeds.push(g.sim.speed);
+    }
     let speed = g.sim.speed;
-    check("Repeated pushes build momentum", speed > 7 && speed < 12, speed);
+    check(
+      "Repeated pushes build momentum",
+      pushSpeeds.every((s, i) => i === 0 || s > pushSpeeds[i - 1]) &&
+        speed > 7 &&
+        speed < 12,
+      pushSpeeds,
+    );
     a(1);
     check(
       "Coasting preserves momentum",
       g.sim.speed > speed * 0.9,
       g.sim.speed,
     );
+    // Measure the change in heading, not the absolute world yaw: the latter only
+    // read correctly from a spawn that happened to start facing yaw 0.
+    const yawBefore = g.sim.yaw;
     a(0.5, { steer: 0.5 });
-    check(
-      "Carving changes heading smoothly",
-      Math.abs(g.sim.yaw) > 0.1 && Math.abs(g.sim.yaw) < 1,
-      g.sim.yaw,
+    const carved = Math.abs(
+      Math.atan2(
+        Math.sin(g.sim.yaw - yawBefore),
+        Math.cos(g.sim.yaw - yawBefore),
+      ),
     );
+    check("Carving changes heading smoothly", carved > 0.1 && carved < 1, carved);
     speed = g.sim.speed;
     a(0.4, { held: { brake: 0.6 } });
     check(
@@ -128,12 +161,20 @@ try {
       g.sim.speed > 0 && g.sim.speed < speed,
       g.sim.speed,
     );
-    reset();
+    // Holding push repeats at the push cadence by design. "Not an accelerator"
+    // means holding earns no more than deliberately tapping over the same time,
+    // not that a hold produces a single push.
+    reset(12);
     a(1.5, { held: { pushDeck: 1 }, pressed: { pushDeck: true } });
+    const heldSpeed = g.sim.speed;
+    reset(12);
+    // Tap as fast as the cadence actually allows, so the comparison is fair.
+    for (let t = 0; t < 1.5; t += 1 / 120)
+      a(1 / 120, g.sim.pushTimer === 0 ? { pressed: { pushDeck: true } } : {});
     check(
       "Holding push does not become an accelerator",
-      g.sim.speed < 2.6,
-      g.sim.speed,
+      heldSpeed <= g.sim.speed + 0.25,
+      { heldSpeed, tappedSpeed: g.sim.speed },
     );
     reset();
     a(0.12, { ry: 1 });
@@ -143,9 +184,16 @@ try {
       g.snapshot(),
     );
     a(0.01, { ry: 0 });
+    check(
+      "A neutral release stands the rider up instead of popping",
+      g.sim.grounded,
+      g.sim.velocity.y,
+    );
+    a(0.12, { ry: 1 });
+    a(0.01, { ry: -1 });
     const quick = g.sim.velocity.y;
     check(
-      "Release pops into actual ballistic flight",
+      "Returning RS up pops into actual ballistic flight",
       !g.sim.grounded && quick > 3,
       quick,
     );
@@ -187,15 +235,20 @@ try {
       a(1.3);
       check(`Land ${name}`, g.sim.tricks.last === name, g.snapshot());
     }
-    for (const [modifier, name] of [
-      ["none", "No-hander"],
-      ["pumpGrind", "Tuck No-hander"],
-      ["rightModifier", "One-footer"],
+    // Air pose modifiers, as resolved in Tricks.step: pumpGrind is the "finger"
+    // modifier (Superman) and Tuck No-hander needs brake + left bumper.
+    for (const [modifiers, name] of [
+      [{}, "No-hander"],
+      [{ pumpGrind: 1 }, "Superman"],
+      [{ brake: 1 }, "Deck Grab"],
+      [{ brake: 1, leftModifier: 1 }, "Tuck No-hander"],
+      [{ leftModifier: 1 }, "Can Can"],
+      [{ rightModifier: 1 }, "One-footer"],
     ]) {
       reset();
       push();
       hop();
-      a(0.5, { held: { body: 1, [modifier]: 1 } });
+      a(0.5, { held: { body: 1, ...modifiers } });
       a(1.0);
       check(`Land ${name}`, g.sim.tricks.last === name, g.snapshot());
     }
