@@ -24,7 +24,7 @@ try {
   await page.goto(url);
   await page.waitForFunction(() => window.__LAZER);
   await page.screenshot({ path: "artifacts/main-menu.png" });
-  const menus = await page.evaluate(() => {
+  const menus = await page.evaluate(async () => {
     const g = window.__LAZER;
     g.testing(true);
     g.exitToMenu();
@@ -40,22 +40,41 @@ try {
       held: { ...g.input.previous.held, ...held },
       released: { ...g.input.previous.released },
     });
+    // Home is PLAY / SHOPS / CUSTOMIZATION / SETTINGS / ACCOUNT, and riders live
+    // under Customization > Rider. Riders are named people now, not "Rider 0N".
     g.menu.update(f({}, { menuDown: 1 }), 0.3);
     check("D-pad navigates main menu", g.menu.index === 1);
     g.menu.update(f(), 0.1);
+    g.menu.update(f({}, { menuDown: 1 }), 0.3);
+    check("D-pad reaches Customization", g.menu.index === 2);
+    g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
-    check("A opens Rider menu", g.menu.screen === "rider");
-    const riderButton=[...document.querySelectorAll('[data-menu-index]')].find(b=>b.querySelector('span')?.textContent==='Rider 02');
+    check("A opens Customization", g.menu.screen === "customization");
+    g.menu.update(f(), 0.1);
+    g.menu.update(f({ hop: true }), 0.1);
+    check("A opens the rider list", g.menu.screen === "characters");
+    const riderButton=[...document.querySelectorAll('[data-menu-index]')].find(b=>b.querySelector('span')?.textContent==='Justin');
+    check("The rider list names its characters", !!riderButton);
     riderButton.click();
+    // The live model is rebuilt on the next safe frame rather than immediately,
+    // so the swap can never happen mid-trick. Render one frame first.
+    g.render();
     check(
       "Rider preset updates the live model",
       g.profile.riderId === "rider-02" &&
         g.rider.root.userData.riderId === "rider-02",
     );
+    check("Choosing a character opens that rider", g.menu.screen === "rider");
+    g.menu.update(f({ brakeBars: true }), 0.1);
+    check("B steps back to Customization", g.menu.screen === "customization");
+    g.menu.update(f(), 0.1);
     g.menu.update(f({ brakeBars: true }), 0.1);
     check("B returns to main menu", g.menu.screen === "home");
-    g.menu.show("scooter");
+    // Return to the category list explicitly each pass. Selecting a variant can
+    // route through the purchase screens, so a fixed number of back() calls no
+    // longer lands reliably on "scooter".
     for (let index = 0; index < 10; index++) {
+      g.menu.show("scooter");
       g.menu.index = index;
       g.menu.select();
       check("Category opens " + index, g.menu.screen === "parts");
@@ -67,9 +86,8 @@ try {
       );
       g.menu.index = 0;
       g.menu.select();
-      g.menu.back();
-      g.menu.back();
     }
+    g.menu.show("scooter");
     check(
       "Separate wheel slots receive matching selections",
       g.profile.scooter.frontWheel.partId ===
@@ -92,10 +110,17 @@ try {
       g.menu.orbit < 0.55 && g.menu.zoom > priorZoom,
     );
     g.menu.show("home");
-    g.menu.select();
-    check("Ride opens map selection", g.menu.screen === "maps");
     g.menu.index = 0;
     g.menu.select();
+    check("Play opens the session menu", g.menu.screen === "play");
+    g.menu.index = 0;
+    g.menu.select();
+    check("Solo opens map selection", g.menu.screen === "maps");
+    g.menu.index = 0;
+    g.menu.select();
+    // Starting a session loads its destination asynchronously.
+    for (let i = 0; i < 400 && !g.hud.started; i++)
+      await new Promise((r) => setTimeout(r, 25));
     check(
       "Map selection starts a clean session",
       g.hud.started && !g.hud.paused && g.sim.grounded && !g.sim.marker.saved,
@@ -276,6 +301,14 @@ try {
       "A crash remains down until the rider asks to get up",
       g.sim.state === "Bail" && g.sim.bailTimer > 0.55,
     );
+    a(0.01, { pressed: { hop: true } });
+    check(
+      "A does not lift a rider who is still tumbling",
+      g.sim.state === "Bail",
+    );
+    // Recovery opens once the crash settles, or once it is supported and past
+    // its minimum time. Wait for that rather than assuming a fixed duration.
+    for (let i = 0; i < 400 && !g.sim.crash?.canRecover; i++) a(1 / 120);
     a(0.01, { pressed: { hop: true } });
     check("A gets the rider back up after a bail", g.sim.state === "Walking");
     g.sim.reset(0, true);

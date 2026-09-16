@@ -6,7 +6,7 @@ import { tailored } from "./geometry";
 import { GarmentSkin, sneakerGeometry } from './character-skin';
 import { tube, detailTexture } from './surfaces';
 import { Simulation } from "../physics/simulation";
-import { ScooterAssembly } from "./assembly";
+import {ScooterAssembly, GRIP_PALM_OFFSET} from "./assembly";
 import {HumanCharacter,loadHuman} from './human';
 import { RIDERS } from "../data/riders";
 import { clothing, defaultOutfit } from '../data/outfits';
@@ -451,7 +451,7 @@ export class RiderModel {
     for(let i=0;i<2;i++){
       const sign=i===0?-1:1,socket=this.assembly.gripSockets[i];
       const rotation=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
-      const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.012,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
+      const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
       const shoulder=v(sign*.19,.17,0).applyEuler(this.torso.rotation).add(this.torso.position);
       const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
       const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.38,-.12,-.9).normalize(),bend);
@@ -815,7 +815,7 @@ export class RiderModel {
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
         const riderRotation=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();gripRotation.premultiply(riderRotation);
-        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+.012,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
+        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
       }
       const carryingContact=this.carry>.001&&!s.emote&&!s.heldItem;
       if(carryingContact){

@@ -35,6 +35,14 @@ export class MarkerSystem {
     const guardPosition = new THREE.Vector3(0, 0.43, 0.26)
       .applyQuaternion(rotation)
       .add(position);
+    // The rider's own crash bodies are not an obstruction. They land exactly
+    // where the marker usually is, so counting them made returning to a marker
+    // impossible during the bail it is most needed for. Only one rigid body can
+    // be excluded by argument, so the rest are rejected by predicate.
+    const notSelf = (collider: RAPIER.Collider) => {
+      const parent = collider.parent();
+      return parent !== s.crash?.rider && parent !== s.crash?.scooter;
+    };
     return (
       !s.world.intersectionWithShape(
         guardPosition,
@@ -44,6 +52,7 @@ export class MarkerSystem {
         GROUPS.railGuard,
         undefined,
         s.body,
+        notSelf,
       ) &&
       !s.world.intersectionWithShape(
         position,
@@ -53,6 +62,7 @@ export class MarkerSystem {
         undefined,
         undefined,
         s.body,
+        notSelf,
       )
     );
   }

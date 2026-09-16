@@ -3,6 +3,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { defaultScooter, selectedPart, type ScooterLoadout } from '../data/scooterParts';
 import { lathe, extrusion, plate, tube, detailTexture, sidePlate } from './surfaces';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
+/**
+ * How far the palm centre sits outside the grip surface, so the hand wraps the
+ * grip instead of intersecting it. Defined once and imported everywhere that
+ * places a hand on a grip; it was previously repeated as a literal and the
+ * copies drifted apart.
+ */
+export const GRIP_PALM_OFFSET = 0.012;
 /** Shared riding/preview/rack assembly. Animation origins and wheelbase stay unchanged. */
 export class ScooterAssembly {
  deckPivot=new THREE.Group();barPivot=new THREE.Group();wheels:THREE.Mesh[]=[];

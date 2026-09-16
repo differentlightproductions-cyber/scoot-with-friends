@@ -1,5 +1,7 @@
 ﻿import {chromium} from 'playwright';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,mkdirSync} from 'node:fs';
+// artifacts/ is gitignored, so these output directories do not exist in a fresh clone.
+mkdirSync('artifacts',{recursive:true});
 const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const p=await b.newPage({viewport:{width:1440,height:900}});
 try{
