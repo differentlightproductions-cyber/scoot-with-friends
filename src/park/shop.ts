@@ -109,6 +109,7 @@ function buildShop(park:Park){
  // Mounted flat on the side wall rather than floating beside it, with a visible
  // backing panel, and sized as environmental signage rather than a huge menu.
  box(8.14,1.9,5,.06,.56,1.7,0x34413e,false);
- sign('DIY ALLEY →',8.18,1.9,5,1.6,.4,'#e3d5b5','#34413e',Math.PI/2);
+ // On this wall the lettering runs toward the street, so the arrow leads it.
+ sign('← DIY ALLEY',8.18,1.9,5,1.6,.4,'#e3d5b5','#34413e',Math.PI/2);
  for(let i=0;i<7;i++)box(-13+i*4,.002,-19,.07,.008,7,0xe9e4cc,false);
 }

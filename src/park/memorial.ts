@@ -784,12 +784,11 @@ export function buildMemorialGrounds(park: Park) {
   sign.position.set(28, 2, -43.94);sign.name='Veterans Memorial Park sign / front';
   scene.add(sign);
   box(28,2,-44,14.2,2.48,.10,0x47564b,true);
-  // The back face is the same artwork turned to face the other way, so its
-  // texture has to be flipped horizontally or the lettering reads mirrored.
+  // The back face is a second single-sided plane turned to face the other way.
+  // Turning the plane already makes its lettering read left to right from that
+  // side; flipping the texture as well mirrored it (confirmed in a screenshot).
   const back=sign.clone();
-  const backTexture=new THREE.CanvasTexture(canvas);
-  backTexture.wrapS=THREE.RepeatWrapping;backTexture.repeat.x=-1;backTexture.offset.x=1;
-  back.material=new THREE.MeshBasicMaterial({map:backTexture,side:THREE.FrontSide});
+  back.material=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),side:THREE.FrontSide});
   back.position.z=-44.06;back.rotation.y=Math.PI;back.name='Veterans Memorial Park sign / back';scene.add(back);
   // Posts carry the sign from behind its frame. They used to sit at the board's
   // own z with enough depth to poke through both printed faces, which is why a
