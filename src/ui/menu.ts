@@ -1,5 +1,7 @@
 import {SHOPS,shopStock} from '../data/shops';
 import {CreditEconomy,owns} from '../data/credit';
+import {catalogEntry,completeBoardSelections,bundlePrice,ownsBoard} from '../data/catalog';
+import {LONGBOARD_CATEGORIES,LONGBOARD_PARTS,longboardPart,type LongboardCategory} from '../data/longboardParts';
 import {BODY_BUILDS} from '../scooter/body-fit';
 import {AccountPanel} from './account';
 import {loadProfile} from '../data/loadout';
@@ -24,10 +26,11 @@ export class GameMenu {
   screen = "home";
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
   private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
-  openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
+  openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.longboard=structuredClone(latest.longboard);this.profile.activeRideable=latest.activeRideable;this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
   private applySesh(){
     const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return;}
     for(const item of Object.values(this.profile.scooter))if(!owns(latest.wallet,item)){this.notice='An equipped item is not owned.';this.render();return;}
+    if(this.profile.activeRideable==='longboard'&&!ownsBoard(latest.wallet,this.profile.longboard)){this.notice='Own every part of this board before riding it.';this.render();return;}
     const nextRevision=(this.profile.equipmentRevision??0)+1;this.profile.equipmentRevision=nextRevision;
     if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return;}
     Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes saved on this device.';this.saveFailed=false;this.render();
@@ -36,9 +39,19 @@ export class GameMenu {
 
   shopOpen=false;onCloseShop=()=>{};owner=()=>false;economy=new CreditEconomy();notice='';private pendingVariant='';private buying=false;
   activeShop=SHOPS[0];
+  /** Browsing the Sometimes Summer wall opens the board builder in shop mode. */
+  openBoardShop(shopId='techno_gravity'){this.activeShop=SHOPS.find(s=>s.id===shopId)??SHOPS[0];this.shopOpen=true;this.root.hidden=false;this.show('longboard');}
+  boardCategory:LongboardCategory='deck';
   openShop(category:Category,shopId='techno_gravity'){this.activeShop=SHOPS.find(s=>s.id===shopId)??SHOPS[0];this.shopOpen=true;this.root.hidden=false;this.category=category;this.show('parts');}
   private async equip(partId:string,variantId:string){
-    if(this.buying)return;const part=PARTS.find(p=>p.id===partId)!,selection={partId,variantId};if(!owns(loadProfile().wallet,selection))return;
+    if(this.buying)return;const selection={partId,variantId};if(!owns(loadProfile().wallet,selection))return;
+    const entry=catalogEntry(partId);
+    if(entry?.rideable==='longboard'){
+      if(this.seshOpen){this.profile.longboard[entry.category as LongboardCategory]=selection;this.changed();this.render();return;}
+      this.buying=true;this.notice='Saving board?';this.render();const result=await this.economy.equip(selection,this.profile.equipmentRevision??0);this.buying=false;
+      if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Board saved on this device.';this.saveFailed=false;}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();return;
+    }
+    const part=PARTS.find(p=>p.id===partId)!;
     if(this.seshOpen){if(part.category==='wheels'){this.profile.scooter.frontWheel={...selection};this.profile.scooter.rearWheel={...selection};}else this.profile.scooter[part.category]=selection;this.changed();this.render();return;}
     this.buying=true;this.notice='Saving equipment?';this.render();const result=await this.economy.equip(selection,this.profile.equipmentRevision??0);this.buying=false;
     if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Equipped / saved on this device.';this.saveFailed=false;}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();
@@ -152,6 +165,14 @@ export class GameMenu {
     this.previewRider.applyProfile(this.profile);
     this.onChange();
   }
+  /** Switch the ridden rideable; the other build stays saved untouched. */
+  private async ride(kind:'scooter'|'longboard'){
+    if(this.buying)return;
+    if(kind==='longboard'&&!ownsBoard(loadProfile().wallet,this.profile.longboard)){this.notice='Own a complete Sometimes Summer board first. Techno Gravity sells them.';this.render();return;}
+    if(this.seshOpen){this.profile.activeRideable=kind;this.changed();this.render();return;}
+    this.buying=true;this.render();const result=await this.economy.setRideable(kind,this.profile.equipmentRevision??0);this.buying=false;
+    if(result.profile){Object.assign(this.profile,result.profile);this.onChange();this.notice=kind==='longboard'?'Riding the longboard.':'Riding the scooter.';}else this.notice=result.error??'Could not save';this.render();
+  }
   private selected(category: Category) {
     return this.profile.scooter[
       category === "wheels" ? "frontWheel" : category
@@ -187,7 +208,9 @@ export class GameMenu {
       case "customization":
         title="CUSTOMIZATION";subtitle="MAKE IT YOURS";
         add("RIDER",()=>this.show("characters"),RIDERS.find(r=>r.id===this.profile.riderId)?.name);
-        add("SCOOTER",()=>this.show("scooter"),"Parts and authored colorways");break;
+        add("SCOOTER",()=>this.show("scooter"),"Parts and authored colorways");
+        add("LONGBOARD",()=>this.show("longboard"),"Sometimes Summer / "+(ownsBoard(loadProfile().wallet,this.profile.longboard)?longboardPart(this.profile.longboard.deck).variant.name+' build':'available at Techno Gravity'));
+        add("RIDE / "+this.profile.activeRideable.toUpperCase(),()=>void this.ride(this.profile.activeRideable==='scooter'?'longboard':'scooter'),'Switch what you take out. Both builds stay saved.');break;
       case "guide":
         title="HELP & CONTROLS";subtitle="LEARN YOUR NEXT TRICK";
         add("TRICK BOOK",()=>this.show("tricks"),"Inputs, combinations, and riding controls");break;
@@ -261,6 +284,34 @@ export class GameMenu {
           this.profile.outfit[this.outfitSlot]=item.id;this.changed();this.render();
         },'Included',this.profile.outfit[this.outfitSlot]===item.id);
         break;
+      case "longboard":{
+        title="SOMETIMES SUMMER";subtitle=(this.shopOpen?this.activeShop.name.toUpperCase()+' / ':'')+'DROP-THROUGH LONGBOARD / '+loadProfile().wallet.credit+' CREDIT';
+        const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard);
+        add(this.profile.activeRideable==='longboard'?'RIDING THE LONGBOARD':'RIDE THE LONGBOARD',()=>void this.ride(this.profile.activeRideable==='longboard'?'scooter':'longboard'),ownsIt?(this.profile.activeRideable==='longboard'?'Select to switch back to the scooter':'Both builds stay saved'):'Own a complete board first',this.profile.activeRideable==='longboard');
+        add('COMPLETE BOARD',()=>{if(this.shopOpen)this.show('board-complete');else{this.notice='Complete boards are sold at Techno Gravity.';this.render();}},ownsIt?'Owned':'Deck, trucks, wheels and hardware together');
+        for(const category of LONGBOARD_CATEGORIES)add(category.toUpperCase(),()=>{this.boardCategory=category;this.show('board-variants');},longboardPart(this.profile.longboard[category]).variant.name+' / '+longboardPart(this.profile.longboard[category]).part.name.replace('Sometimes Summer ',''));
+        break;}
+      case "board-complete":{
+        title='COMPLETE BOARD';subtitle='CHOOSE THE DECK GRAPHIC / STARTER TRUCKS, WHEELS AND HARDWARE';
+        const wallet=loadProfile().wallet;
+        for(const variant of LONGBOARD_PARTS.find(p=>p.category==='deck')!.variants){
+          const {missing,price}=bundlePrice(completeBoardSelections(variant.id,this.profile.longboard),s=>owns(wallet,s));
+          add(variant.name.toUpperCase(),()=>{if(!missing.length){void this.equip('ss-drop-through-deck',variant.id);return;}this.pendingVariant=variant.id;this.show('board-purchase');},missing.length?price+' Credit for '+missing.length+' parts':'Owned / Equip',this.profile.longboard.deck.variantId===variant.id);
+        }
+        break;}
+      case "board-purchase":{
+        const wallet=loadProfile().wallet,{missing,price}=bundlePrice(completeBoardSelections(this.pendingVariant,this.profile.longboard),s=>owns(wallet,s));
+        title='CONFIRM PURCHASE';subtitle='Sometimes Summer '+longboardPart({partId:'ss-drop-through-deck',variantId:this.pendingVariant}).variant.name+' complete / '+missing.length+' parts';
+        add(this.buying?'SAVING?':'BUY / '+price+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();const deck=this.pendingVariant;void this.economy.buyCompleteBoard(deck).then(async result=>{this.buying=false;this.profile.wallet=loadProfile().wallet;if(result==='ok'){await this.equip('ss-drop-through-deck',deck);this.notice='Board purchased and saved. Ride it from Customization.';}else this.notice=result;this.show('longboard');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
+        add('CANCEL',()=>this.show('board-complete'),'No charge');break;}
+      case "board-variants":{
+        const part=LONGBOARD_PARTS.find(p=>p.category===this.boardCategory)!,wallet=loadProfile().wallet;
+        title=part.name;subtitle=part.set==='pair'?'SOLD AS A PAIR':part.set==='set-of-4'?'SOLD AS A SET OF FOUR':part.set==='set-of-8'?'SOLD AS A SET OF EIGHT':'CHOOSE AN AUTHORED COLORWAY';
+        for(const variant of part.variants){
+          const selection={partId:part.id,variantId:variant.id},owned=owns(wallet,selection);
+          add(variant.name,()=>{this.product=part.id;this.pendingVariant=variant.id;if(owned)void this.equip(part.id,variant.id);else if(this.shopOpen)this.show('purchase');else{this.notice='Visit Techno Gravity to purchase this part.';this.render();}},owned?'Owned / Equip':part.creditPrice+' Credit',this.profile.longboard[this.boardCategory].variantId===variant.id);
+        }
+        break;}
       case "scooter":
         title = "SCOOTER";
         subtitle = "SCOOT WITH FRIENDS / BUILT PART BY PART";
@@ -306,10 +357,10 @@ export class GameMenu {
         break;
       }
       case 'purchase':{
-        const p=PARTS.find(p=>p.id===this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!;title='CONFIRM PURCHASE';const wallet=loadProfile().wallet;subtitle=p.name+' / '+variant.name;
-        add(this.buying?'SAVING?':'BUY / '+p.creditPrice+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id}).then(result=>{this.buying=false;this.notice=result==='ok'?'Purchased. Saved on this device.':result;this.profile.wallet=loadProfile().wallet;this.show(result==='ok'||result==='Already owned'?'purchased':'variants');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
-        add('CANCEL',()=>this.show('variants'),'No charge');break;}
-      case 'purchased':title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{this.equip(this.product,this.pendingVariant);this.show('variants');});add('KEEP IN INVENTORY',()=>this.show('variants'));break;
+        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!;title='CONFIRM PURCHASE';const wallet=loadProfile().wallet;subtitle=p.name+' / '+variant.name;
+        add(this.buying?'SAVING?':'BUY / '+p.creditPrice+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id}).then(result=>{this.buying=false;this.notice=result==='ok'?'Purchased. Saved on this device.':result;this.profile.wallet=loadProfile().wallet;this.show(result==='ok'||result==='Already owned'?'purchased':p.rideable==='longboard'?'board-variants':'variants');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
+        add('CANCEL',()=>this.show(p.rideable==='longboard'?'board-variants':'variants'),'No charge');break;}
+      case 'purchased':{const back=catalogEntry(this.product)?.rideable==='longboard'?'board-variants':'variants';title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{void this.equip(this.product,this.pendingVariant);this.show(back);});add('KEEP IN INVENTORY',()=>this.show(back));break;}
       case "settings":
         title="SETTINGS";subtitle="MAKE YOURSELF AT HOME";
         add("HELP & CONTROLS",()=>this.show("guide"),"Trick book and controller guide");
@@ -392,13 +443,27 @@ export class GameMenu {
         ? CATEGORIES[Math.min(this.index, CATEGORIES.length - 1)]
         : this.category;
     const active = ["scooter", "parts", "variants","purchase","purchased"].includes(this.screen);
-    if(["parts","variants","purchase","purchased"].includes(this.screen)){const part=this.screen==="parts"?PARTS.filter(p=>p.category===this.category)[this.index]:PARTS.find(p=>p.id===this.product);if(part){const variant=this.screen==="variants"?part.variants[this.index]:part.variants.find(v=>v.id===this.pendingVariant)??part.variants[0];if(variant){const preview=structuredClone(this.profile),selection={partId:part.id,variantId:variant.id};if(part.category==="wheels"){preview.scooter.frontWheel=selection;preview.scooter.rearWheel=selection;}else preview.scooter[part.category]=selection;this.previewRider.applyProfile(preview);}}}
+    const boardScreen=["longboard","board-variants","board-complete","board-purchase"].includes(this.screen)||(["purchase","purchased"].includes(this.screen)&&catalogEntry(this.product)?.rideable==='longboard');
+    this.previewRider.board.visible=boardScreen;
+    if(boardScreen){
+      const preview=structuredClone(this.profile.longboard);
+      if(this.screen==="board-variants"){const part=LONGBOARD_PARTS.find(p=>p.category===this.boardCategory)!;const variant=part.variants[this.index];if(variant)preview[this.boardCategory]={partId:part.id,variantId:variant.id};}
+      if(this.screen==="board-complete"){const variant=LONGBOARD_PARTS.find(p=>p.category==='deck')!.variants[this.index];if(variant)preview.deck={partId:'ss-drop-through-deck',variantId:variant.id};}
+      if(this.screen==="board-purchase")preview.deck={partId:'ss-drop-through-deck',variantId:this.pendingVariant};
+      this.previewRider.setLongboard(preview);
+      this.previewRider.scooter.visible=false;this.focusBox.visible=false;this.isolatedProduct.clear();
+      if(this.focusKey!=='board'){this.focusKey='board';this.pan.set(0,0,0);this.zoomTarget=1.5;}
+      this.focusTarget.set(0,.08,0);
+    }
+    if(!boardScreen&&["parts","variants","purchase","purchased"].includes(this.screen)){const part=this.screen==="parts"?PARTS.filter(p=>p.category===this.category)[this.index]:PARTS.find(p=>p.id===this.product);if(part){const variant=this.screen==="variants"?part.variants[this.index]:part.variants.find(v=>v.id===this.pendingVariant)??part.variants[0];if(variant){const preview=structuredClone(this.profile),selection={partId:part.id,variantId:variant.id};if(part.category==="wheels"){preview.scooter.frontWheel=selection;preview.scooter.rearWheel=selection;}else preview.scooter[part.category]=selection;this.previewRider.applyProfile(preview);}}}
     const key = active ? category : "";
-    if (key !== this.focusKey) {
+    if (boardScreen) {}
+    else if (key !== this.focusKey) {
       this.focusKey = key;
       this.pan.set(0, 0, 0);
       this.zoomTarget = active ? 2.2 : 3.7;
     }
+    if(!boardScreen){
     this.focusBox.visible = active;
     this.isolatedProduct.clear();this.previewRider.scooter.visible=!this.shopOpen;
     this.previewRider.scooter.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=true;});
@@ -419,6 +484,7 @@ export class GameMenu {
         if(this.shopOpen)this.zoomTarget=Math.max(.075,size.length()*1.85);
       }else this.focusBox.visible=false;
     }else this.focusTarget.set(0,.83,0);
+    }
     this.root
       .querySelectorAll("[data-menu-index]")
       .forEach((el, i) => {el.classList.toggle("selected", i === this.index);if(i===this.index){el.setAttribute('aria-current','true');el.scrollIntoView({block:'nearest'});}else el.removeAttribute('aria-current');});
@@ -442,8 +508,11 @@ export class GameMenu {
     if(this.buying)return;
     if(this.seshOpen&&["customization","settings","maps","shops","online"].includes(this.screen)){this.closeSesh();return;}
     if(this.seshOpen&&this.screen==="travel"){this.show("maps");return;}
-    if(this.shopOpen&&this.screen==="parts"){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();return;}
-    if(["purchase","purchased"].includes(this.screen)){this.show("variants");return;}
+    if(this.shopOpen&&(this.screen==="parts"||this.screen==="longboard")){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();return;}
+    if(["purchase","purchased"].includes(this.screen)){this.show(catalogEntry(this.product)?.rideable==='longboard'?'board-variants':'variants');return;}
+    if(["board-variants","board-complete"].includes(this.screen)){this.show("longboard");return;}
+    if(this.screen==="board-purchase"){this.show("board-complete");return;}
+    if(this.screen==="longboard"){this.show("customization");return;}
     this.show(
       this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':['rider','scooter','characters'].includes(this.screen)?'customization':['clothing','body-build'].includes(this.screen) ? 'rider' : this.screen === "variants"
         ? "parts"
@@ -484,7 +553,7 @@ export class GameMenu {
   }
   preview(renderer: THREE.WebGLRenderer) {
     this.previewRider.posePreviewHands();
-    const scooter=["scooter","parts","variants","purchase","purchased"].includes(this.screen);
+    const scooter=["scooter","parts","variants","purchase","purchased","longboard","board-variants","board-complete","board-purchase"].includes(this.screen);
     this.previewRider.rider.visible=!scooter;
     const floor=this.previewScene.getObjectByName('Preview floor');if(floor)floor.visible=!this.shopOpen;
     const compact=true;

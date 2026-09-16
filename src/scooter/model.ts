@@ -418,6 +418,8 @@ export class RiderModel {
     this.backpack.visible=profile.pockets.backpack;
     if(!this.trousers)this.finishCharacter();
     this.assembly.build(profile.scooter);
+    // Built only once a board is owned or shown, so scooter-only players pay nothing.
+    if (profile.activeRideable === "longboard" || this.boardAssembly) this.setLongboard(profile.longboard);
     this.deckPivot = this.assembly.deckPivot;
     this.barPivot = this.assembly.barPivot;
     this.wheels = this.assembly.wheels;this.hands.forEach((h,i)=>h.userData.gripRadius=this.assembly.gripSockets[i]?.userData.gripRadius??.024);
@@ -491,7 +493,7 @@ export class RiderModel {
     const onBoard = s.rideable === "longboard";
     this.scooter.visible = !onBoard;
     this.board.visible = onBoard;
-    if (onBoard) this.setLongboard(this.boardAssembly ? JSON.parse(this.boardKey) : undefined);
+    if (onBoard && !this.boardAssembly) this.setLongboard();
     if(s.state==='Bail'&&s.crash){this.crashPose(s);if(onBoard){this.board.position.copy(this.scooter.position);this.board.quaternion.copy(this.scooter.quaternion);}return;}
     const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
     this.root.position.copy(s.previousPosition).lerp(s.position, alpha);

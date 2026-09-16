@@ -296,6 +296,7 @@ async function boot() {
       interactions.openOptions=(title,options)=>social.openOptions(title,options);
     }
     sim.reset(0, true);
+    sim.rideable = profile.activeRideable;
     social.warehouse=id==='warehouse';
     rider.applyProfile(profile);
     fidelity.apply(scene,profile.settings.fidelity);
@@ -420,7 +421,10 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
-    if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;}
+    if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
+      // Switching rideable takes effect on the ground, never mid-air or mid-grind,
+      // and not while the current one sits in a rack.
+      if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
     daylight.update(dt,profile.settings.daylight,sim.position);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
@@ -474,7 +478,7 @@ async function boot() {
       if (!stillHeld) startHopBlocked = false;
     }
     shopPrompt.hidden=true;
-    if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
+    if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){if(nearest.category==='longboard')menu.openBoardShop(shop.id);else menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
     if(builder.placement)frame=builder.update(sim,frame,dt);
     else {
       frame = social.update(sim, frame, dt);

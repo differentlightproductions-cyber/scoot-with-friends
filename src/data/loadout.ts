@@ -3,6 +3,8 @@ import {BODY_BUILDS,type BodyBuild} from '../scooter/body-fit';
 import {emptyPockets,validPockets,type Pockets} from './items';
 ﻿import { RIDERS } from "./riders";
 import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
+import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longboardParts";
+import { ownsBoard, type RideableKind } from "./catalog";
 import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
 export interface LocalProfile {
   version: 1 | 2 | 3;
@@ -15,6 +17,10 @@ export interface LocalProfile {
   pockets:Pockets;
   outfitId: string;
   scooter: ScooterLoadout;
+  /** The saved Sometimes Summer build; kept whether or not it is being ridden. */
+  longboard: LongboardLoadout;
+  /** What the rider takes out: switching never deletes the other build. */
+  activeRideable: RideableKind;
   settings: {
     controlStyle: "pro" | "arcade";
     sound: boolean;
@@ -38,6 +44,8 @@ export function loadProfile(): LocalProfile {
     pockets:emptyPockets(),
     outfitId: RIDERS[0].outfitId,
     scooter: defaultScooter(),
+    longboard: defaultLongboard(),
+    activeRideable: "scooter",
     settings: {
       controlStyle: "pro",
       sound: true,
@@ -78,6 +86,10 @@ export function loadProfile(): LocalProfile {
       if (part?.variants.some((v) => v.id === s?.variantId))
         profile.scooter[slot] = { partId: s.partId, variantId: s.variantId };
     }
+    profile.longboard = validLongboard(saved.longboard);
+    // A board that is not fully owned (a stale or edited save) cannot be ridden.
+    if (saved.activeRideable === "longboard" && ownsBoard(profile.wallet, profile.longboard))
+      profile.activeRideable = "longboard";
     if (saved.settings?.controlStyle === "arcade")
       profile.settings.controlStyle = "arcade";
     if (saved.settings?.stance === "goofy") profile.settings.stance = "goofy";

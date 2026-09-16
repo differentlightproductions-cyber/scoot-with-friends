@@ -6,6 +6,8 @@ import {buildObject} from '../editor/assets';
 import {PARTS,defaultScooter,type Category,type PartSelection} from '../data/scooterParts';
 import {ScooterAssembly} from '../scooter/assembly';
 import {refineShop} from './shop-detail';
+import {LongboardAssembly} from '../longboard/assembly';
+import {defaultLongboard} from '../data/longboardParts';
 export const SHOP_DISPLAYS=SHOPS.find(s=>s.id==='techno_gravity')!.displays;
 export const shopLayout=blankLayout();shopLayout.title='Techno Gravity DIY alley';
 for(const [type,x,z,w,h,l]of [['Mini Ramp',-7,24,8,1.8,16],['Bank',7,18,3,1,3],['Grind Box',7,26,1.2,.55,4],['Flat Rail',1,23,.1,.65,5]] as const){const o=makeObject(type,x,z);Object.assign(o,{id:'tg-'+type.replaceAll(' ','-'),width:w,height:h,length:l,radius:3.5,deck:1,coping:true,material:'wood'});shopLayout.objects.push(o);}
@@ -70,7 +72,21 @@ function buildShop(park:Park){
  };
  const place=(partId:string,variantId:string,x:number,y:number,z:number,scale=1,yaw=Math.PI/2)=>{const group=product({partId,variantId}).clone();group.position.set(x,y,z);group.scale.setScalar(scale);group.rotation.y=yaw;scene.add(group);};
  for(const x of [-5.8,5.8])for(const z of [0,3,6]){box(x,.25,z,1.0,.5,2.65,0x222a2b);const collider=box(x,.75,z,1,1,2.65,0xb9d4ce);(collider.material as THREE.Material).dispose();(collider as THREE.Mesh).material=glassMat;for(const y of [.53,.86,1.2]){const shelf=box(x,y,z,.92,.012,2.6,0x394442,false);if(y>1)shelf.visible=false;}for(const sx of [-.49,.49]){for(const y of [.51,1.23])box(x+sx,y,z,.025,.025,2.65,0x657373,false);for(const dz of [-1.31,1.31])box(x+sx,.87,z+dz,.025,.73,.025,0x657373,false);}}
- for(const display of SHOP_DISPLAYS){const parts=shopStock('techno_gravity',display.category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')),x=display.x<0?-5.8:display.x>0?5.8:0;let n=0;
+ for(const display of SHOP_DISPLAYS){if(display.category==='longboard'){
+  // Sometimes Summer wall: one complete board per authored graphic, standing
+  // nose-up in wall hooks with the underside artwork facing the shop floor.
+  const graphics=['classic','horizon','palms','ridgeline'],wheels=['blue','purple','lime','red'],trucks=['matte-black','gunmetal','silver','olive'];
+  graphics.forEach((graphic,i)=>{
+   const root=new THREE.Group(),loadout=defaultLongboard();
+   loadout.deck.variantId=graphic;loadout.wheels.variantId=wheels[i];loadout.trucks.variantId=trucks[i];
+   new LongboardAssembly(root,loadout);
+   root.rotation.set(0,Math.PI/2,0,'YXZ');root.rotateX(-Math.PI/2+.1);
+   root.position.set(-7.62,.52,display.z-1.4+i*.62);scene.add(root);
+   box(-7.74,1.03,display.z-1.4+i*.62,.06,.05,.1,0x2c3436,false);
+  });
+  sign('SOMETIMES SUMMER',-7.7,1.72,display.z-.47,2.2,.3,'#f1e4c6','#2b3a3f',Math.PI/2);
+  continue;}
+  const parts=shopStock('techno_gravity',display.category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')),x=display.x<0?-5.8:display.x>0?5.8:0;let n=0;
   for(const p of parts)for(const variant of p.variants){if(n>=12)break;const row=Math.floor(n/4),col=n%4;place(p.id,variant.id,x+(row-1)*.22,.65+row*.18,display.z-.85+col*.48,p.category==='bars'?.85:p.category==='deck'?1:1.25,p.category==='bars'?0:Math.PI/2);n++;}
   sign(display.label.toUpperCase(),x,1.35,display.z,1.4,.25,'#efe3c4','#2a3637',x<0?Math.PI/2:x>0?-Math.PI/2:Math.PI);
  }

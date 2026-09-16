@@ -11,11 +11,15 @@ import {saveProfile} from '../data/loadout';
 import {ITEM_KINDS,receiveItem,consumeItem,itemLabel,type ItemKind} from '../data/items';
 import {tube} from '../scooter/surfaces';
 import type { ScooterLoadout } from '../data/scooterParts';
+import { LongboardAssembly } from '../longboard/assembly';
+import type { LongboardLoadout } from '../data/longboardParts';
+import type { RideableKind } from '../data/catalog';
 export interface Interactable {
  id:string; interactionType:'rack'|'vending'|'fountain'|'bench'; position:THREE.Vector3;
  radius:number; prompt:(s:Simulation)=>string; action:(s:Simulation)=>void;
 }
-interface StoredRide {ownerId:string; rackId:string; slot:number; loadout:ScooterLoadout; mesh:THREE.Group}
+interface StoredRide {ownerId:string; rackId:string; slot:number; rideable:RideableKind; loadout:ScooterLoadout|LongboardLoadout; mesh:THREE.Group}
+const rideName=(kind:RideableKind)=>kind==='longboard'?'Longboard':'Scooter';
 export class WorldInteractions {
  readonly items:Interactable[]=[];
  online=false;
@@ -56,7 +60,7 @@ export class WorldInteractions {
    }
    park.box(new THREE.Vector3(x,y+.035,z),new THREE.Vector3(2.3,.07,.8),0x556567,true);
    const rackId=`rack-${index}`;
-   this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab Scooter':s.hasScooter?'Store Scooter':'Scooter stored at another rack',action:s=>this.rack(s,rackId,base)});
+   this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab '+rideName(this.stored.rideable):s.hasScooter?'Store '+rideName(s.rideable):rideName(this.stored?.rideable??s.rideable)+' stored at another rack',action:s=>this.rack(s,rackId,base)});
    if(cluster.vending){
    const machine=at(base,spread,0,0);
    const shell=park.box(at(machine,0,.95,0),new THREE.Vector3(1.05,1.9,.7),0x335e62,true);
@@ -90,15 +94,18 @@ export class WorldInteractions {
    if(this.stored.rackId!==id)return;
    const stored=this.stored;
    this.active={type:'grab',time:0,duration:.65,start:stored.mesh.position.clone(),end:s.position.clone().add(new THREE.Vector3(.48,-.22,0)),from:stored.mesh.quaternion.clone(),to:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),mesh:stored.mesh,finish:()=>{
-    s.hasScooter=true;stored.mesh.removeFromParent();stored.mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});this.stored=null;
+    s.hasScooter=true;s.rideable=stored.rideable;stored.mesh.removeFromParent();stored.mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});this.stored=null;
    }};
   }else if(s.hasScooter){
-   const mesh=new THREE.Group();new ScooterAssembly(mesh).build(this.profile.scooter);this.park.scene.add(mesh);
-   const loadout=structuredClone(this.profile.scooter);s.hasScooter=false;
+   const board=s.rideable==='longboard',mesh=new THREE.Group();
+   if(board)new LongboardAssembly(mesh,this.profile.longboard);else new ScooterAssembly(mesh).build(this.profile.scooter);this.park.scene.add(mesh);
+   const loadout=structuredClone(board?this.profile.longboard:this.profile.scooter);s.hasScooter=false;
    const start=s.position.clone().add(new THREE.Vector3(Math.cos(s.yaw)*.48,-.22,-Math.sin(s.yaw)*.48));
    mesh.position.copy(start);
-   this.stored={ownerId:'local-player',rackId:id,slot:1,loadout,mesh};
-   this.active={type:'store',time:0,duration:.65,start,end:base.clone().add(new THREE.Vector3(.25,.07,0)),from:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),to:new THREE.Quaternion(),mesh};
+   this.stored={ownerId:'local-player',rackId:id,slot:1,rideable:s.rideable,loadout,mesh};
+   // A board stands nose-up in the slot rather than borrowing the scooter's pose.
+   const to=board?new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI/2+.12,0,0)):new THREE.Quaternion();
+   this.active={type:'store',time:0,duration:.65,start,end:base.clone().add(new THREE.Vector3(.25,board?.5:.07,board?.06:0)),from:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),to,mesh};
   }
   s.emote={id:'place',time:0,duration:.65};
  }
@@ -153,12 +160,16 @@ export class WorldInteractions {
   const near=this.items.filter(i=>i.position.distanceTo(s.position)<i.radius).sort((a,b)=>a.position.distanceToSquared(s.position)-b.position.distanceToSquared(s.position))[0];
   if(near){this.prompt.hidden=false;this.prompt.textContent=`B / keyboard B · ${near.prompt(s)}`;
    if(input.pressed.brakeBars&&near.interactionType!=='bench'){near.action(s);return {...input,pressed:{...input.pressed,brakeBars:false}};}
-  }else if(!s.hasScooter){this.prompt.hidden=false;this.prompt.textContent='Scooter stored · Return to its rack to grab it';}
+  }else if(!s.hasScooter){this.prompt.hidden=false;this.prompt.textContent=rideName(this.stored?.rideable??s.rideable)+' stored · Return to its rack to grab it';}
   return input;
  }
  render(rider:RiderModel){
-  if(this.stored&&JSON.stringify(this.stored.loadout)!==JSON.stringify(this.profile.scooter)){new ScooterAssembly(this.stored.mesh).build(this.profile.scooter);this.stored.loadout=structuredClone(this.profile.scooter);}
-  rider.scooter.visible=!this.stored || this.active?.type==='grab'&&this.active.time>=this.active.duration;
+  if(this.stored){
+   const board=this.stored.rideable==='longboard',current=board?this.profile.longboard:this.profile.scooter;
+   if(JSON.stringify(this.stored.loadout)!==JSON.stringify(current)){this.stored.mesh.clear();if(board)new LongboardAssembly(this.stored.mesh,this.profile.longboard);else new ScooterAssembly(this.stored.mesh).build(this.profile.scooter);this.stored.loadout=structuredClone(current);}
+  }
+  // The rider model chooses which rideable to show; a stored one is hidden from the rider until grabbed.
+  if(this.stored&&!(this.active?.type==='grab'&&this.active.time>=this.active.duration)){rider.scooter.visible=false;rider.board.visible=false;}
   this.refreshProp();this.prop.visible=!!this.profile.pockets.held&&!!this.current?.walking&&this.current?.state!=='Bail';
   if(this.prop.visible){rider.root.updateMatrixWorld(true);rider.hands[0].getWorldQuaternion(this.prop.quaternion);this.prop.position.copy(rider.hands[0].localToWorld(new THREE.Vector3(0,-.035,.075)));this.prop.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-Math.PI/2));}
  }

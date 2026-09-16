@@ -30,7 +30,8 @@ import { AirWeightControl } from "../player/air-weight";
 import { BodyFlipControl, type TakeoffOrigin } from '../player/body-flip';
 import {CrashMotion} from '../player/crash';
 import { LongboardMotion } from '../longboard/motion';
-export type RideableKind = "scooter" | "longboard";
+import type { RideableKind } from "../data/catalog";
+export type { RideableKind };
 export type RideState =
   | "Grounded"
   | "Preloading"
