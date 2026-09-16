@@ -9,6 +9,7 @@ import { InputFrame } from "../input/input";
 import { ridingButtons, StickPreload } from "../input/riding";
 import {
   Park,
+  type Rail,
   SPAWNS,
   terrainHeight,
   terrainNormal,
@@ -87,9 +88,25 @@ export class Simulation {
   bodyFlip = new BodyFlipControl();
   crash:CrashMotion|null=null;
   private flipTakeoffIntent=false;
+  /** The rail a grind hop left, which it may land straight back on. */
+  private hopRail: Rail | null = null;
+  /**
+   * Dropping back in off coping: first the rider turns on the coping to face
+   * the ramp, then releases onto the transition facing down it.
+   */
+  private copingDrop: {
+    toward: THREE.Vector3;
+    yaw: number;
+    time: number;
+    released: boolean;
+  } | null = null;
+  private copingDropHeld = 0;
   /** Where the wheels were on the riding surface last tick, while grounded. */
-  private surfaceMemory: { point: THREE.Vector3; normal: THREE.Vector3 } | null =
-    null;
+  private surfaceMemory: {
+    point: THREE.Vector3;
+    normal: THREE.Vector3;
+    centre: number;
+  } | null = null;
   private airQuarter:ReturnType<typeof outdoorLip>=null;
   private departureLip:ReturnType<typeof outdoorLip>=null;
   /**
@@ -274,6 +291,9 @@ export class Simulation {
     this.jumpOnLanded = 0;
     this.footJumped = false;
     this.surfaceMemory = null;
+    this.hopRail = null;
+    this.copingDrop = null;
+    this.copingDropHeld = 0;
     this.preload.reset();
     this.spineLaunchVelocity.set(0, 0, 0);
     this.spineLaunchAngle = 0;
@@ -362,16 +382,23 @@ export class Simulation {
   rideHeight(normal: THREE.Vector3) {
     return TUNE.radius / Math.max(TUNE.steepRideNormal, normal.y);
   }
-  private support(): { height: number; normal: THREE.Vector3 } {
+  /** Roll that lays the scooter flat on a surface sloping across its heading. */
+  private sideSlope(normal: THREE.Vector3) {
+    return Math.atan2(
+      -(normal.x * Math.cos(this.yaw) - normal.z * Math.sin(this.yaw)),
+      normal.y,
+    );
+  }
+  private support(): { height: number; normal: THREE.Vector3; centre: number } {
     const p = this.position;
     // Two wheel footprints define the longitudinal riding plane. The center query
     // is retained as a chassis clearance check across a sharp crest or stair tread.
     // The wheelbase lies along the surface, so on a steep transition its
     // horizontal reach shrinks with the slope. Measuring it flat reached two
     // metres up a near-vertical wall and read the deck above as the support.
-    const centre = terrainNormal(p.x, p.z),
+    const below = terrainNormal(p.x, p.z),
       heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)),
-      along = heading.clone().projectOnPlane(centre),
+      along = heading.clone().projectOnPlane(below),
       reach = along.lengthSq() > 1e-6 ? 0.32 * Math.hypot(along.normalize().x, along.z) : 0.32;
     const dx = Math.sin(this.yaw) * reach,
       dz = Math.cos(this.yaw) * reach;
@@ -397,14 +424,36 @@ export class Simulation {
       this.body,
       (c) => !this.park.railHandles.has(c.handle),
     );
+    // Where the rider's centre rests: the lowest height at which a ball of the
+    // ride radius clears the terrain around it. On a plane that is the familiar
+    // radius / normal.y, but over a convex edge - a coping lip, a spine crest,
+    // the end of a deck - the ball rests on the edge itself, where the plane
+    // formula overshoots and lifted the rider in a visible hop as they rolled
+    // over it. Probing uphill and along the heading finds the touching point.
+    const r = TUNE.radius;
+    let centre = terrainHeight(p.x, p.z) + r;
+    const probe = (x: number, z: number) => {
+      for (const f of [0.25, 0.5, 0.7, 0.85, 0.95, 1]) {
+        const d = r * f,
+          y = terrainHeight(p.x + x * d, p.z + z * d) + Math.sqrt(r * r - d * d);
+        if (y > centre) centre = y;
+      }
+    };
+    const slopeX = terrainHeight(p.x + 0.15, p.z) - terrainHeight(p.x - 0.15, p.z),
+      slopeZ = terrainHeight(p.x, p.z + 0.15) - terrainHeight(p.x, p.z - 0.15),
+      slope = Math.hypot(slopeX, slopeZ);
+    if (slope > 1e-4) probe(slopeX / slope, slopeZ / slope);
+    probe(heading.x, heading.z);
+    probe(-heading.x, -heading.z);
     if (hit && hit.normal.y > 0.4) {
       const y = p.y + 0.28 - hit.timeOfImpact;
       if (y > height + 0.02 && y < p.y + 0.08) {
         height = y;
         normal.set(hit.normal.x, hit.normal.y, hit.normal.z);
+        centre = Math.max(centre, y + this.rideHeight(normal));
       }
     }
-    return { height, normal };
+    return { height, normal, centre };
   }
   private redirectSpine(
     direction: number,
@@ -420,6 +469,7 @@ export class Simulation {
     );
     this.velocity.addScaledVector(forward, speed * ratio - across);
     this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
+    this.guideLaunch(forward);
     this.spineLaunchVelocity.copy(this.velocity);
     this.spineLaunchAngle =
       (Math.atan2(this.velocity.y, Math.abs(this.velocity.z)) * 180) / Math.PI;
@@ -446,6 +496,93 @@ export class Simulation {
       speed * forwardRatio - across,
     );
     this.velocity.y = Math.max(this.velocity.y, vertical);
+    this.guideLaunch(forward);
+  }
+  /**
+   * Where a launch off a box or spine should come down: past the crest and the
+   * far lip, on the part of the landing whose slope best matches the angle the
+   * rider left at, so the wheels meet it rather than slam into it. Returns the
+   * distance along `forward` and the rider's centre height on touchdown.
+   */
+  private landingTarget(forward: THREE.Vector3, launchAngle: number) {
+    const step = 0.1,
+      heights: number[] = [];
+    for (let s = 0; s <= TUNE.launchGuideReach; s += step)
+      heights.push(
+        terrainHeight(
+          this.position.x + forward.x * s,
+          this.position.z + forward.z * s,
+        ),
+      );
+    let crest = 0;
+    for (let i = 1; i < heights.length; i++) {
+      if (heights[i] >= heights[crest] - 0.005) crest = i;
+      else if (heights[crest] - heights[i] > 0.3) break;
+    }
+    let best = -1,
+      bestError = Infinity;
+    for (
+      let i = crest + Math.round(TUNE.launchGuideLipClear / step);
+      i < heights.length - 1;
+      i++
+    ) {
+      if (heights[i] < 0.03) break;
+      const down = (heights[i - 1] - heights[i + 1]) / (2 * step);
+      if (down <= 0.02) continue;
+      const error = Math.abs(Math.atan(down) - launchAngle);
+      if (error < bestError - 1e-4) {
+        bestError = error;
+        best = i;
+      }
+    }
+    if (best < 0) return null;
+    const distance = best * step;
+    return {
+      distance,
+      height:
+        heights[best] +
+        this.rideHeight(
+          terrainNormal(
+            this.position.x + forward.x * distance,
+            this.position.z + forward.z * distance,
+          ),
+        ),
+    };
+  }
+  /**
+   * Guides a box or spine launch onto its landing. Speed is kept; only the
+   * takeoff angle eases toward one that comes down on the landing, and only
+   * when that is a small correction. A rider well under or over the speed the
+   * obstacle is built for would need a large change, gets none, and falls short
+   * or overshoots exactly as they arrived.
+   */
+  private guideLaunch(forward: THREE.Vector3) {
+    const along = Math.max(0, this.velocity.dot(forward)),
+      up = this.velocity.y,
+      speed = Math.hypot(along, up);
+    if (speed < 2 || up <= 0) return;
+    const natural = Math.atan2(up, along);
+    const target = this.landingTarget(forward, natural);
+    if (!target) return;
+    const g = TUNE.gravity,
+      dx = target.distance,
+      dy = target.height - this.position.y,
+      v2 = speed * speed,
+      disc = v2 * v2 - g * (g * dx * dx + 2 * dy * v2);
+    if (disc < 0) return;
+    const high = Math.atan((v2 + Math.sqrt(disc)) / (g * dx)),
+      low = Math.atan((v2 - Math.sqrt(disc)) / (g * dx)),
+      aim = Math.abs(high - natural) <= Math.abs(low - natural) ? high : low;
+    const weight = clamp(
+      (TUNE.launchGuideMax - Math.abs(aim - natural)) /
+        (TUNE.launchGuideMax - TUNE.launchGuideFull),
+      0,
+      1,
+    );
+    if (weight === 0) return;
+    const angle = natural + (aim - natural) * weight;
+    this.velocity.addScaledVector(forward, speed * Math.cos(angle) - along);
+    this.velocity.y = speed * Math.sin(angle);
   }
   // Leaving a quarter lip without a deliberate pop. The transition turns the
   // momentum the rider already has; it never assigns jump energy. Plane speed is
@@ -628,6 +765,7 @@ export class Simulation {
     this.body.setGravityScale(0, true);this.body.setLinvel({x:0,y:0,z:0},true);
     this.body.collider(0).setSensor(true);this.railGuard.setSensor(true);
     this.groundIntent=null;this.dropIn.reset();this.stall=null;
+    this.hopRail=null;this.copingDrop=null;
     this.events.emit({ type: "bail", reason });
   }
   private startStall(forward: THREE.Vector3) {
@@ -789,6 +927,75 @@ export class Simulation {
       this.body.setGravityScale(1, true);
     }
   }
+  /**
+   * A light RS flick on a rail hops in place over it. The rider keeps their
+   * speed along the rail, rises a hand's width, and may land straight back on
+   * the same rail; LS weight during the hop sets the stance they land in, which
+   * is how Feeble and Smith are swapped mid-grind. A full load still pops off.
+   */
+  private grindHop() {
+    const g = this.grind!;
+    const along = g.direction.clone().multiplyScalar(g.speed);
+    this.finishGrind();
+    this.hopRail = g.rail;
+    this.grindCooldown = TUNE.grindHopWindow;
+    this.velocity.copy(along);
+    this.velocity.y = Math.max(0, along.y) + TUNE.grindHopSpeed;
+    this.body.setLinvel(this.velocity, true);
+    this.grounded = false;
+    this.state = "Airborne";
+    this.airTime = 0;
+    this.popTimer = 0;
+    this.hopBuffer = 0;
+    this.spin = 0;
+    this.preload.reset();
+    this.tricks.startAir(true);
+    this.bodyFlip.begin("manual_hop", this.pitch);
+    this.airWeight.reset(this.pitch, this.yaw);
+    this.airSpin.reset();
+    this.events.emit({ type: "pop", charge: 0 });
+  }
+  /**
+   * Which way steering drops the rider off coping and back into a ramp: +1 or
+   * -1 along the rail's side axis, or 0 when the steered side is not a
+   * transition (the deck behind a quarter, or open ground).
+   */
+  private copingDropSide(g: GrindContact, side: THREE.Vector3, steer: number) {
+    if (!g.rail.coping || Math.abs(steer) < TUNE.copingDropSteer) return 0;
+    // Stick right moves the rider to their right, which is -side.
+    const toward = -Math.sign(steer);
+    const rail = g.rail.a.clone().lerp(g.rail.b, clamp(g.t, 0, 1));
+    const beyond = terrainHeight(
+      rail.x + side.x * toward * 0.6,
+      rail.z + side.z * toward * 0.6,
+    );
+    return terrainHeight(rail.x, rail.z) - beyond > 0.3 ? toward : 0;
+  }
+  private releaseCopingDrop() {
+    const g = this.grind,
+      drop = this.copingDrop;
+    if (!g || !drop) return;
+    const along = g.direction.clone().multiplyScalar(g.speed).setY(0);
+    this.finishGrind();
+    this.velocity
+      .copy(drop.toward)
+      .multiplyScalar(TUNE.copingDropPush)
+      .addScaledVector(along, TUNE.copingDropCarry);
+    this.velocity.y = -0.3;
+    this.body.setLinvel(this.velocity, true);
+    drop.released = true;
+    drop.time = 0;
+    this.grounded = false;
+    this.state = "Airborne";
+    this.airTime = 0;
+    this.popTimer = 0;
+    this.spin = 0;
+    this.lipClearTimer = TUNE.copingDropClearTime;
+    this.tricks.startAir(true);
+    this.bodyFlip.begin("natural_ramp_air", this.pitch);
+    this.airWeight.reset(this.pitch, this.yaw);
+    this.airSpin.reset();
+  }
   private hasGrindOverride(input: InputFrame) {
     const buttons = ridingButtons(this.tricks.stance, this.tricks.controlStyle);
     return (
@@ -828,10 +1035,13 @@ export class Simulation {
       this.grindCandidate = "—";
       return;
     }
+    // A grind hop comes back down onto its rail; catching it at the apex made
+    // the hop too short to see or to change stance in.
+    if (this.hopRail && this.velocity.y > 0) return;
     const contact = this.position.clone().add(new THREE.Vector3(0, -0.12, 0));
     // Sweep a single fixed physics step ahead so a valid deck contact engages
     // before the rigid-body rail collision can bounce it away.
-    const rails=this.park.rails.filter(r=>this.grindCooldown<=0||r.colliderHandle!==this.releasingRail);
+    const rails=this.park.rails.filter(r=>this.grindCooldown<=0||r.colliderHandle!==this.releasingRail||r===this.hopRail);
     const candidate = findGrind(
       rails,
       contact,
@@ -851,6 +1061,8 @@ export class Simulation {
       this.tricks.finish("clean");
       this.grind = candidate;
       this.grindDuration = 0;
+      this.hopRail = null;
+      this.copingDrop = null;
       this.velocity.y = candidate.direction.y * candidate.speed;
       this.body.setGravityScale(0, true);
       this.body.collider(0).setSensor(false);
@@ -1139,7 +1351,11 @@ export class Simulation {
    * so a wall is met as an obstacle: a hard hit bails, anything softer stops the
    * travel into it and leaves the rider sliding along it on their own surface.
    */
-  private meetWall(support: { height: number; normal: THREE.Vector3 }) {
+  private meetWall(support: {
+    height: number;
+    normal: THREE.Vector3;
+    centre: number;
+  }) {
     const memory = this.surfaceMemory;
     this.surfaceMemory = null;
     if (!memory || !this.grounded || this.grind || this.walking) return null;
@@ -1183,7 +1399,7 @@ export class Simulation {
     const impact = Math.max(0, this.velocity.dot(into));
     this.position.set(
       memory.point.x,
-      memory.point.y + this.rideHeight(memory.normal),
+      memory.centre,
       memory.point.z,
     );
     this.body.setTranslation(this.position, true);
@@ -1195,9 +1411,17 @@ export class Simulation {
     this.body.setLinvel(this.velocity, true);
     if (impact > TUNE.wallWobbleSpeed)
       this.recovery = Math.max(this.recovery, 0.45);
-    return { height: memory.point.y, normal: memory.normal.clone() };
+    return {
+      height: memory.point.y,
+      normal: memory.normal.clone(),
+      centre: memory.centre,
+    };
   }
-  private land(support: { height: number; normal: THREE.Vector3 }) {
+  private land(support: {
+    height: number;
+    normal: THREE.Vector3;
+    centre: number;
+  }) {
     const impact = Math.max(0, -this.velocity.dot(support.normal));
     const slopePitch = -Math.atan2(
       support.normal
@@ -1240,6 +1464,8 @@ export class Simulation {
     const quarter=this.airQuarter?.module;
     this.tricks.flairContext=!!quarter&&'x0' in quarter&&quality!=='failed'&&support.normal.y<.96&&this.position.x>=quarter.x0&&this.position.x<=quarter.x1&&this.position.z>=quarter.z0&&this.position.z<=quarter.z1;
     this.tricks.finish(quality);this.airQuarter=null;
+    this.hopRail = null;
+    this.copingDrop = null;
     if (quality === "failed") {
       this.bail("Unaligned landing");
       return;
@@ -1263,7 +1489,7 @@ export class Simulation {
       this.velocity.multiplyScalar(TUNE.goodSpeedKeep);
     this.spin *= 0.12;
     this.position.y =
-      support.height + this.rideHeight(support.normal);
+      support.centre;
     this.body.setTranslation(this.position, true);
   }
   step(dt: number, input: InputFrame) {
@@ -1510,7 +1736,7 @@ export class Simulation {
     }
     const verticalGap =
       this.position.y -
-      (support.height + this.rideHeight(support.normal));
+      support.centre;
     // Contact thresholds are distances along the surface normal, so "touching"
     // means the same thing on the top of a quarter as it does on flat ground.
     const gap =
@@ -1722,8 +1948,10 @@ export class Simulation {
       (this.grounded ||
         this.grind ||
         this.elapsed - this.lastGround < TUNE.coyoteTime)
-    )
-      this.pop(this.bufferCharge, input.lean,'manual_hop');
+    ) {
+      if (this.grind && this.bufferCharge < TUNE.grindHopCharge) this.grindHop();
+      else this.pop(this.bufferCharge, input.lean,'manual_hop');
+    }
     const forward = new THREE.Vector3(
       Math.sin(this.yaw),
       0,
@@ -1770,7 +1998,8 @@ export class Simulation {
         -g.direction.x,
       ).normalize();
       const lateral = this.position.clone().sub(point).dot(side);
-      g.contactOffset=clamp(g.contactOffset+input.steer*.085*dt,-.16,.16);
+      // Stick right moves the rider toward their right along the rail.
+      g.contactOffset=clamp(g.contactOffset-input.steer*.085*dt,-.16,.16);
       const settling = this.grindDuration < TUNE.grindSettleTime;
       const spring = this.grindAssist
         ? settling
@@ -1789,7 +2018,32 @@ export class Simulation {
         clamp((point.y + 0.14 - this.position.y) * 18, -2, 2);
       this.pitch = damp(this.pitch, g.entryPitch + input.lean * 0.13, 8, dt);
       this.roll = damp(this.roll, -input.steer * 0.14, 8, dt);
-      if (
+      // Holding the stick toward the ramp while on coping turns the rider to
+      // face it, then drops them back in.
+      const dropSide = this.copingDrop
+        ? 0
+        : this.copingDropSide(g, side, input.steer);
+      this.copingDropHeld = dropSide ? this.copingDropHeld + dt : 0;
+      if (dropSide && this.copingDropHeld >= TUNE.copingDropHold) {
+        const toward = side.clone().multiplyScalar(dropSide);
+        this.copingDrop = {
+          toward,
+          yaw: Math.atan2(toward.x, toward.z),
+          time: 0,
+          released: false,
+        };
+      }
+      if (this.copingDrop && !this.copingDrop.released) {
+        const drop = this.copingDrop;
+        drop.time += dt;
+        const turn = wrap(drop.yaw - this.yaw);
+        this.yaw += turn * (1 - Math.exp(-TUNE.copingDropTurnRate * dt));
+        this.pitch = damp(this.pitch, 0.35, 8, dt);
+        g.speed *= Math.exp(-4 * dt);
+        if (Math.abs(turn) < 0.2 || drop.time > TUNE.copingDropTurnTime) {
+          this.releaseCopingDrop();
+        }
+      } else if (
         g.t < 0 ||
         g.t > 1 ||
         (!settling && Math.abs(lateral - g.contactOffset) > 0.55) ||
@@ -1831,9 +2085,11 @@ export class Simulation {
         this.yaw += Math.sin(this.elapsed * 24) * 0.35 * this.recovery * dt;
         this.roll = Math.sin(this.elapsed * 25) * 0.1 * this.recovery;
       } else
+        // Lean with the side slope as well as the carve, so riding across a
+        // bank or along a wall the scooter lies on the surface.
         this.roll = damp(
           this.roll,
-          this.steer * Math.min(speed * 0.022, 0.22),
+          this.sideSlope(this.normal) + this.steer * Math.min(speed * 0.022, 0.22),
           8,
           dt,
         );
@@ -2036,7 +2292,7 @@ export class Simulation {
       // Follow a smooth support surface. The Rapier body remains dynamic for wall/ledge impacts.
       if (gap < 0.16 && gap > -0.5) {
         this.position.y =
-          support.height + this.rideHeight(support.normal);
+          support.centre;
         this.body.setTranslation(this.position, true);
       }
       // Following the surface removes the into-surface component; restoring the
@@ -2060,6 +2316,7 @@ export class Simulation {
           this.position.z,
         ),
         normal: support.normal.clone(),
+        centre: support.centre,
       };
     } else {
       this.state = "Airborne";
@@ -2097,6 +2354,16 @@ export class Simulation {
       const rotation = this.spin * dt;
       this.yaw += rotation;
       this.tricks.yaw += rotation;
+      // Dropping in off coping keeps turning the rider to face their travel.
+      const dropping = this.copingDrop?.released ? this.copingDrop : null;
+      if (dropping) {
+        dropping.time += dt;
+        const heading = new THREE.Vector3(this.velocity.x, 0, this.velocity.z);
+        if (heading.lengthSq() > 0.04)
+          this.yaw += wrap(Math.atan2(heading.x, heading.z) - this.yaw) *
+            (1 - Math.exp(-TUNE.copingDropTurnRate * dt));
+        if (dropping.time > 1) this.copingDrop = null;
+      }
       if(!this.bodyFlip.active)this.airWeight.step(dt, input.lean, this.yaw, this.velocity);
       this.airYawInput = input.steer;
       // The scooter meets the surface it is about to land on. Over a quarter the
@@ -2105,10 +2372,21 @@ export class Simulation {
       // alignment eases in over the last moments before contact. Weight on LS
       // still biases it, which is what the landing grade judges.
       const basePitch = this.airWeight.basePitch(this.yaw, this.airTime);
-      const alignment = this.airQuarter
+      const alignment = this.airQuarter || dropping
         ? 1
         : clamp(1 - contact / TUNE.airLandingAlignTime, 0, 1);
-      if(!this.bodyFlip.active)this.pitch = damp(
+      if (this.hopRail)
+        // Mid grind hop, LS sets the stance to land back in: forward for Smith,
+        // back for Feeble, and neutral keeps the current one.
+        this.pitch = damp(
+          this.pitch,
+          Math.abs(input.lean) > 0.25
+            ? -input.lean * TUNE.grindHopStancePitch
+            : this.pitch,
+          18,
+          dt,
+        );
+      else if(!this.bodyFlip.active)this.pitch = damp(
         this.pitch,
         clamp(
           basePitch + (receiving - basePitch) * alignment + this.airWeight.pitchBias,
@@ -2118,7 +2396,12 @@ export class Simulation {
         12,
         dt,
       );
-      this.roll = damp(this.roll, input.steer * 0.07, 4, dt);
+      this.roll = damp(
+        this.roll,
+        this.sideSlope(support.normal) * alignment + input.steer * 0.07,
+        alignment > 0 ? 10 : 4,
+        dt,
+      );
       this.tricks.flip=this.bodyFlip.angle;
       this.tricks.quarterAir=!!this.airQuarter;
       this.tricks.input(dt, input, flipChord);

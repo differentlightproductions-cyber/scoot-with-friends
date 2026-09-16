@@ -476,10 +476,15 @@ export class RiderModel {
         (s.bodyFlip?.active ? s.bodyFlip.angle : 0) -
         (s.manual.active ? s.manual.pitch : 0)
       : 0;
-    const heading = s.previousYaw + (s.yaw - s.previousYaw) * alpha;
-    this.root.position.x -= Math.sin(heading) * Math.sin(lean) * 0.22;
-    this.root.position.y -= Math.cos(lean) * 0.22;
-    this.root.position.z -= Math.cos(heading) * Math.sin(lean) * 0.22;
+    const heading = s.previousYaw + (s.yaw - s.previousYaw) * alpha,
+      tilt = riding ? s.roll : 0;
+    // The scooter's up axis after its pitch and roll (Euler XYZ) and the yaw.
+    const upX = Math.cos(tilt) * Math.sin(lean),
+      upY = Math.cos(tilt) * Math.cos(lean),
+      sideX = -Math.sin(tilt);
+    this.root.position.x -= (sideX * Math.cos(heading) + upX * Math.sin(heading)) * 0.22;
+    this.root.position.y -= upY * 0.22;
+    this.root.position.z -= (-sideX * Math.sin(heading) + upX * Math.cos(heading)) * 0.22;
     this.root.rotation.order='YXZ';
     this.root.rotation.set(
       flip,

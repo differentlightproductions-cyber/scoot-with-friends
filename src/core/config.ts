@@ -47,6 +47,13 @@ export const TUNE = {
   // over this long before contact.
   airLandingAlignTime: 0.35,
   airPitchLimit: 1.45,
+  // Box and spine launches are guided onto their landing by easing the takeoff
+  // angle, never the speed. Corrections up to launchGuideFull apply in full,
+  // fade out by launchGuideMax, and anything larger is left alone.
+  launchGuideFull: 0.14, // about 8 degrees
+  launchGuideMax: 0.26, // about 15 degrees
+  launchGuideReach: 14,
+  launchGuideLipClear: 0.35,
   touchdownGap: 0.02,
   transitionRailClearTime: 0.18,
   quarterOverDeckSpeed: 12,
@@ -223,6 +230,22 @@ export const TUNE = {
   // are one grindable run.
   grindJoinDistance: 0.05,
   grindJoinAlignment: 0.7,
+  // A light RS flick while grinding hops in place over the same rail; a longer
+  // load pops off it. LS weight during the hop picks the stance the rider lands
+  // back in, so Feeble and Smith can be swapped mid-grind.
+  grindHopCharge: 0.4,
+  grindHopSpeed: 2.6,
+  grindHopWindow: 0.7,
+  grindHopStancePitch: 0.3,
+  // Holding the stick toward the ramp while grinding coping turns the rider to
+  // face the transition, then drops them back in.
+  copingDropSteer: 0.55,
+  copingDropHold: 0.1,
+  copingDropTurnRate: 14,
+  copingDropTurnTime: 0.24,
+  copingDropPush: 1.4,
+  copingDropCarry: 0.3,
+  copingDropClearTime: 0.35,
   manualSensitivity: 2.8, // stick authority over balance acceleration
   manualStability: 1.7, // inverted-pendulum gain: how hard an existing lean runs away
   // The stick also gets a little direct rate authority. Without it the player
