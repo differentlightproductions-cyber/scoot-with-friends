@@ -127,9 +127,12 @@ export class AudioEngine {
       g = 0.055;
     }
     if (e.type === "landing") {
-      f = e.quality === "clean" ? 120 : 68;
+      // GOOD is a successful landing and must not get the rough-landing cue;
+      // only SKETCHY sounds like one.
+      const rough = e.quality === "sketchy";
+      f = rough ? 68 : e.quality === "clean" ? 120 : 104;
       g = 0.16;
-      d = e.quality === "clean" ? 0.12 : 0.22;
+      d = rough ? 0.22 : e.quality === "clean" ? 0.12 : 0.15;
     }
     if (e.type === "bail") {
       f = 48;

@@ -2,6 +2,7 @@ import { ridingButtons } from "../input/riding";
 import { Simulation } from "../physics/simulation";
 import { Input, InputFrame } from "../input/input";
 import { Events } from "../core/events";
+import { TUNE } from "../core/config";
 import { OUTDOOR, SPAWNS } from "../park/park";
 import type { TrickRecord } from "../tricks/resolver";
 export class HUD {
@@ -25,7 +26,7 @@ export class HUD {
       <div id="start" class="overlay"><div class="start-copy"><div class="eyebrow">AN INDOOR FREESTYLE SESH</div><h1>FIND<br>YOUR<br><i>FLOW.</i></h1><p>One scooter. An empty park.<br>Make your next line a little better.</p><button id="ride" class="primary">A <span>RIDE</span> ↗</button><div id="connection">Connect a controller · or press Enter</div><small>SCOOT WITH FRIENDS</small></div></div>
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
       <div id="feedback"></div>
-      <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
+      <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><u id="balance-command"></u><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
       <footer><div id="hint">X PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
       <aside id="help" hidden></aside>
       <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="assist">Grind Assist: <b id="assist">ON</b></button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Maps</button><button data-action="shops">Shops</button><button data-action="customization">Customization</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
@@ -38,11 +39,15 @@ export class HUD {
     events.on((e) => {
       if (e.type === "landing")
         this.feedback(
+          // One grade per landing, in the existing integrated readout. CLEAN was
+          // the old name for the top grade and now reads PERFECT.
           e.quality === "clean"
-            ? "CLEAN"
-            : e.quality === "sketchy"
-              ? "SKETCHY / STAY WITH IT"
-              : "BAIL",
+            ? "PERFECT"
+            : e.quality === "good"
+              ? "GOOD"
+              : e.quality === "sketchy"
+                ? "SKETCHY / STAY WITH IT"
+                : "BAIL",
           e.quality === "sketchy" ? "warn" : "",
         );
       if (e.type === "bail") {
@@ -243,8 +248,18 @@ export class HUD {
     document.querySelector("#balance-title")!.textContent = s.manual.nose
       ? "NOSE MANUAL"
       : "MANUAL";
-    (document.querySelector("#balance-dot") as HTMLElement).style.bottom =
-      `${Math.max(0, Math.min(100, ((s.manual.balance + 0.55) / 1.4) * 100))}%`;
+    // The main indicator is the simulated balance and nothing else. The small
+    // notch shows where the stick is driving it, so the player can read their
+    // own correction without the indicator faking a response the rider has not
+    // made yet. Both come from the same simulation state on the same frame.
+    const span = TUNE.manualLoopLimit - TUNE.manualDropLimit;
+    const track = (v: number) =>
+      `${Math.max(0, Math.min(100, ((v - TUNE.manualDropLimit) / span) * 100))}%`;
+    (document.querySelector("#balance-dot") as HTMLElement).style.bottom = track(
+      s.manual.balance,
+    );
+    (document.querySelector("#balance-command") as HTMLElement).style.bottom =
+      track(s.manual.balance + s.manual.command * 0.25);
     const hints: Record<string, string> = {
       Walking: s.running
         ? "A JUMP / CLIMB / LS CLICK WALK / Y MOUNT"

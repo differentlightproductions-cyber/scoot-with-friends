@@ -1,5 +1,8 @@
 import type { TrickRecord } from "../tricks/resolver";
-export type LandingQuality = "clean" | "sketchy" | "failed";
+// Four outcomes, one coherent set. "clean" is the original internal name for the
+// top grade and is displayed as PERFECT; "good" is a normal solid landing and a
+// genuine success, not a disguised penalty; "failed" is displayed as BAIL.
+export type LandingQuality = "clean" | "good" | "sketchy" | "failed";
 export type GameEvent =
   | {type:"banked";eventId:string;points:number}
   | { type:'worldInteraction'; interaction:string; item:string }

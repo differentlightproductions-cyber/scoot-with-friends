@@ -233,8 +233,8 @@ async function boot() {
     if (e.type === "pop") input.rumble(TUNE.rumble.pop, 45);
     if (e.type === "landing")
       input.rumble(
-        e.quality === "clean" ? TUNE.rumble.clean : TUNE.rumble.sketchy,
-        e.quality === "clean" ? 75 : 135,
+        e.quality === "sketchy" ? TUNE.rumble.sketchy : TUNE.rumble.clean,
+        e.quality === "sketchy" ? 135 : 75,
       );
     if (e.type === "bail") input.rumble(TUNE.rumble.bail, 180);
     if (e.type === "railImpact" && !e.bail)

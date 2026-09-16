@@ -70,8 +70,24 @@ export class Simulation {
   private flipTakeoffIntent=false;
   private airQuarter:ReturnType<typeof outdoorLip>=null;
   private departureLip:ReturnType<typeof outdoorLip>=null;
+  /**
+   * The lip under the rider at this instant. Deliberately not cached per tick:
+   * position and velocity both change within a step (a pop rewrites velocity,
+   * the solver moves position), so each caller needs the value as it stands
+   * when it asks.
+   */
+  private currentLip() {
+    return this.rampWorld
+      ? outdoorLip(
+          this.position.x,
+          this.position.z,
+          this.velocity.z,
+          this.velocity.x,
+        )
+      : null;
+  }
   private launchLip(){
-    const current=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
+    const current=this.currentLip();
     return current ?? (this.velocity.y>0&&this.elapsed-this.lastGround<TUNE.coyoteTime?this.departureLip:null);
   }
   fastplant: {time:number;foot:THREE.Vector3;entry:THREE.Vector3;launched:boolean}|null=null;
@@ -121,6 +137,16 @@ export class Simulation {
   } | null = null;
   manualEntryLock = 0;
   manualIntentTime = 0;
+  // Sign of the held gentle intent: +1 down (manual), -1 up (nose manual).
+  manualIntentSign = 0;
+  // Gentle RS held this recently still reads as catch intent, so the held stick
+  // survives the AIR -> SUPPORTED transition instead of being cleared by it.
+  manualCatchTimer = 0;
+  private manualCatchReady = false;
+  manualCommand = 0;
+  // When the last direct Bri/Inward takeoff left the ground, so a stale support
+  // contact just after a valid upward launch cannot be read as a landing.
+  briTakeoff = -99;
   elapsed = 0;
   distance = 0;
   lastLanding = "";
@@ -362,6 +388,29 @@ export class Simulation {
     );
     this.velocity.y = Math.max(this.velocity.y, vertical);
   }
+  // Leaving a quarter lip without a deliberate pop. The transition turns the
+  // momentum the rider already has; it never assigns jump energy. Plane speed is
+  // conserved and only the split between outward and upward changes, which is
+  // why bounding the ratio shortens the throw away from the coping WITHOUT
+  // touching launch height, gravity or horizontal speed generally. Both natural
+  // rollout paths share this one calculation so they cannot drift apart.
+  private quarterRollout(
+    forward: THREE.Vector3,
+    lean: number,
+  ) {
+    const planeSpeed = Math.hypot(this.velocity.dot(forward), this.velocity.y);
+    const ratio = clamp(
+      (planeSpeed - TUNE.quarterOverDeckSpeed) * TUNE.quarterRolloutSpeedGain -
+        clamp(lean, 0, 1) * TUNE.quarterLeanRatio,
+      TUNE.quarterRolloutRatioMin,
+      TUNE.quarterRolloutRatioMax,
+    );
+    this.velocity.addScaledVector(
+      forward,
+      planeSpeed * ratio - this.velocity.dot(forward),
+    );
+    this.velocity.y = planeSpeed * Math.sqrt(Math.max(0, 1 - ratio * ratio));
+  }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
     this.bodyFlip.begin(origin,this.pitch);
     this.body.setGravityScale(1,true);
@@ -459,7 +508,7 @@ export class Simulation {
     foot.y=ground;
     let drop=0;
     for(const distance of [.6,1,1.6]){const h=supportAt(this.position.clone().addScaledVector(forward,distance));if(h!==null)drop=Math.max(drop,ground-h);}
-    const lip=this.rampWorld?outdoorLip(this.position.x,this.position.z,this.velocity.z,this.velocity.x):null;
+    const lip=this.currentLip();
     const ramp=!!lip&&lip.distance>-.1&&lip.distance<.85&&this.normal.y<.85&&this.velocity.y>1;
     if(!ramp&&drop<.75)return null;
     const vy=Math.max(0,this.velocity.y)+(ramp?2.4:4.8);
@@ -710,14 +759,7 @@ export class Simulation {
     )
       return;
     // Tricks, a transition exit, and a drop-in all have a higher priority than a rail.
-    const lip = this.rampWorld
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const lip = this.currentLip();
     const transitionExit =
       !!lip &&
       lip.distance > -0.35 &&
@@ -948,7 +990,15 @@ export class Simulation {
     )
       quality = "failed";
     else if (this.tricks.poseBlend > 0.15 && quality === "clean")
-      quality = "sketchy";
+      quality = "good";
+    // A landing the player rides away from with the gentle stick already held is
+    // a manual catch. Validity is judged on the pose actually reachable from the
+    // receiving surface, so a wildly misaligned arrival cannot be rescued into
+    // balance just because RS happens to be in the manual position.
+    this.manualCatchReady =
+      quality !== "failed" &&
+      this.manualCatchTimer > 0 &&
+      Math.abs(wrap(this.pitch - slopePitch)) < TUNE.manualCatchPitchError;
     this.lastLanding = quality;
     this.events.emit({ type: "landing", quality, impact });
     const quarter=this.airQuarter?.module;
@@ -968,7 +1018,13 @@ export class Simulation {
       support.normal,
       -this.velocity.dot(support.normal),
     );
-    if (quality === "sketchy") this.velocity.multiplyScalar(0.73);
+    // Contact losses only. A well-aligned landing keeps its energy and carries
+    // into the next line; a rough one loses more. Nothing here adds speed, and
+    // no grade is rewarded with speed it did not arrive with.
+    if (quality === "sketchy")
+      this.velocity.multiplyScalar(TUNE.sketchySpeedKeep);
+    else if (quality === "good")
+      this.velocity.multiplyScalar(TUNE.goodSpeedKeep);
     this.spin *= 0.12;
     this.position.y =
       support.height + TUNE.radius / Math.max(0.55, support.normal.y);
@@ -993,6 +1049,8 @@ export class Simulation {
     this.recovery = Math.max(0, this.recovery - dt);
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.manualEntryLock = Math.max(0, this.manualEntryLock - dt);
+    this.manualCatchTimer = Math.max(0, this.manualCatchTimer - dt);
+    if (this.manualCatchTimer === 0) this.manualCatchReady = false;
     this.grindCooldown = Math.max(0, this.grindCooldown - dt);
     this.pumpFlash = Math.max(0, this.pumpFlash - dt);
     this.hopBuffer = Math.max(0, this.hopBuffer - dt);
@@ -1187,14 +1245,7 @@ export class Simulation {
     const support = this.support();
     if (this.rampWorld)
       support.normal = terrainNormal(this.position.x, this.position.z);
-    const copingLip = this.rampWorld
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const copingLip = this.currentLip();
     const brakingForSpine =
       this.grounded &&
       input.held.brake > 0.35 &&
@@ -1225,14 +1276,19 @@ export class Simulation {
     // On a descending, already-aligned transition return, absorb only small
     // normal errors. This preserves player yaw and allows deliberate fakie
     // re-entry while making a near-clean rear-wheel catch feel connected.
+    // The envelope is transition-relative, not a world-space sphere around the
+    // ramp: it needs a real curved support surface under the wheels (which only
+    // exists inside/below the coping), the rider descending into that surface,
+    // and a compatible orientation. A rider travelling away from the transition
+    // has clearly overshot and is never pulled back.
     if (
       !this.grounded &&
       this.state === "Airborne" &&
       this.velocity.y < 0 &&
       support.normal.y < 0.94 &&
-      gap > -0.18 &&
-      gap < 0.46 &&
-      this.velocity.dot(support.normal) < -1
+      gap > TUNE.reentryMinGap &&
+      gap < TUNE.reentryMaxGap &&
+      this.velocity.dot(support.normal) < -TUNE.reentryOvershootSpeed
     ) {
       const velocityYaw = Math.atan2(this.velocity.x, this.velocity.z);
       const yawError = Math.min(
@@ -1246,18 +1302,36 @@ export class Simulation {
           .dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))),
         support.normal.y,
       );
-      if (yawError < 0.78 && Math.abs(wrap(this.pitch - slopePitch)) < 0.95) {
+      if (
+        yawError < TUNE.reentryYawTolerance &&
+        Math.abs(wrap(this.pitch - slopePitch)) < TUNE.reentryPitchTolerance
+      ) {
+        // A small helpful catch into the transition, never a magnet: the
+        // correction only ever softens travel into the surface, is hard-capped,
+        // leaves tangential speed untouched, and any steer/lean input resists it.
         const intoSurface = -this.velocity.dot(support.normal);
-        this.velocity.addScaledVector(
-          support.normal,
-          intoSurface * TUNE.reentryCaptureStrength * Math.max(0,1-Math.hypot(input.steer,input.lean)),
+        const correction = Math.min(
+          intoSurface *
+            TUNE.reentryCaptureStrength *
+            Math.max(0, 1 - Math.hypot(input.steer, input.lean)),
+          TUNE.reentryMaxCorrection,
         );
+        this.velocity.addScaledVector(support.normal, correction);
         if(!this.bodyFlip.active)this.pitch = damp(this.pitch, slopePitch, 4, dt);
       }
     }
+    // Immediately after a valid upward takeoff the rider can still be inside the
+    // surface's contact band while genuinely rising — most visibly when climbing
+    // a transition. Treating that as a touchdown ends the attempt and snaps the
+    // scooter back under the feet mid-trick, so require real approach speed into
+    // the surface during the grace window rather than mere proximity.
+    const staleTakeoffContact =
+      this.elapsed - this.briTakeoff < TUNE.briTakeoffGrace &&
+      this.velocity.dot(support.normal) > -0.5;
     if (
       !this.grind &&
       this.popTimer === 0 &&
+      !staleTakeoffContact &&
       gap < 0.1 &&
       gap > -0.5 &&
       this.velocity.dot(support.normal) < 2.0
@@ -1275,14 +1349,7 @@ export class Simulation {
     if (this.rampWorld && this.grounded) this.normal.copy(support.normal);
     else this.normal.lerp(support.normal, 1 - Math.exp(-18 * dt)).normalize();
     if (wasGrounded && !this.grounded && !this.grind) {
-      const leavingLip = this.rampWorld
-        ? outdoorLip(
-            this.position.x,
-            this.position.z,
-            this.velocity.z,
-            this.velocity.x,
-          )
-        : null;
+      const leavingLip = this.currentLip();
       if (leavingLip && leavingLip.distance < 0.55 && this.velocity.y > 0.3) {
         this.departureLip=leavingLip;this.airQuarter=leavingLip.module.kind==="quarter"?leavingLip:null;
         this.lipClearTimer = TUNE.transitionRailClearTime;
@@ -1295,24 +1362,8 @@ export class Simulation {
           );
         if (leavingLip.module.kind === "box")
           this.redirectBox(leavingLip.forward, this.preload.amount, 0.65);
-        if (leavingLip.module.kind === "quarter") {
-          const planeSpeed = Math.hypot(
-            this.velocity.dot(leavingLip.forward),
-            this.velocity.y,
-          );
-          const ratio =
-            clamp(
-              (planeSpeed - TUNE.quarterOverDeckSpeed) * 0.04,
-              -0.035,
-              0.35,
-            ) -
-            clamp(input.lean, 0, 1) * 0.06;
-          this.velocity.addScaledVector(
-            leavingLip.forward,
-            planeSpeed * ratio - this.velocity.dot(leavingLip.forward),
-          );
-          this.velocity.y = planeSpeed * Math.sqrt(1 - ratio * ratio);
-        }
+        if (leavingLip.module.kind === "quarter")
+          this.quarterRollout(leavingLip.forward, input.lean);
         this.events.emit({ type: "pop", charge: 0 });
       }
       this.transitionAir = this.normal.y < 0.85 && this.rampLean > 0.1;
@@ -1337,9 +1388,12 @@ export class Simulation {
     const chargedSide=supportedForTrick&&this.preload.amount>.08&&Math.abs(input.rx)>.85&&Math.abs(input.ry)<.35;
     if(input.held.body>.5&&(gesture||chargedSide)){this.pop(Math.max(.15,this.preload.amount),input.lean);this.preload.reset();}
     else if (gesture?.kind === "bri"||chargedSide)
+      // Capture the charge the player actually built at the moment the takeoff
+      // intent is accepted. Tracing the scoop necessarily moves RS out of the
+      // down position, so reading the live amount here would launch uncharged.
       this.groundIntent = {
         direction: gesture?.kind==='bri'?gesture.direction*(gesture.short?this.tricks.naturalDirection:1):-Math.sign(input.rx)*this.tricks.naturalDirection,
-        charge: this.preload.amount,
+        charge: this.preload.briCharge,
         age: 0,
       };
     const whip = ridingButtons(
@@ -1366,14 +1420,7 @@ export class Simulation {
     if (this.groundIntent) {
       const intent = this.groundIntent;
       intent.age += dt;
-      const lip = this.rampWorld
-        ? outdoorLip(
-            this.position.x,
-            this.position.z,
-            this.velocity.z,
-            this.velocity.x,
-          )
-        : null;
+      const lip = this.currentLip();
       const waitForLip =
         this.grounded &&
         this.velocity.y > 1 &&
@@ -1382,29 +1429,60 @@ export class Simulation {
         lip.distance < 0.9 &&
         intent.age < 0.16;
       if (!waitForLip) {
+        // The launch contribution is applied exactly once, here. Bri/Inward
+        // initiation must never stack a second impulse after takeoff.
         if (supportedForTrick)
-          this.pop(Math.max(0.15, intent.charge), input.lean);
+          this.pop(Math.max(TUNE.briMinCharge, intent.charge), input.lean);
         this.tricks.bri.kick(intent.direction);
+        this.briTakeoff = this.elapsed;
         this.groundIntent = null;
         this.preload.reset();
       }
     }
     // Preload survives the lip briefly and can buffer a release just before contact.
-    const preloadLip = this.rampWorld && supportedForTrick && !this.manual.active
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const preloadLip =
+      supportedForTrick && !this.manual.active ? this.currentLip() : null;
     const transitionRelease =
       !!preloadLip &&
       preloadLip.distance > -0.1 &&
       preloadLip.distance < 0.9 &&
       this.normal.y < 0.97;
-    const gentleRS = Math.abs(input.ry)>=TUNE.manualMin && Math.abs(input.ry)<=TUNE.manualMax && Math.abs(input.rx)<.25 && input.held.leftModifier<.3 && input.held.rightModifier<.3;
-    this.manualIntentTime=gentleRS?this.manualIntentTime+dt:0;
+    // One RS movement has one owner. Entry uses the narrow gentle band; once
+    // intent exists the wider hold band keeps it, so ordinary drift near a
+    // boundary cannot cancel a manual. The span between the gentle band and the
+    // preload threshold is a transition owned by neither: passing through it
+    // neither charges a hop nor discards a held manual intent.
+    const established = this.manual.active || this.manualIntentTime > 0;
+    const gentleLow = established ? TUNE.manualHoldMin : TUNE.manualMin;
+    const gentleHigh = established ? TUNE.manualHoldMax : TUNE.manualMax;
+    const gentleLateral = established
+      ? TUNE.manualHoldLateral
+      : TUNE.manualLateral;
+    const rsDepth = Math.abs(input.ry);
+    const gentleRS =
+      rsDepth >= gentleLow &&
+      rsDepth <= gentleHigh &&
+      Math.abs(input.rx) < gentleLateral &&
+      input.held.leftModifier < 0.3 &&
+      input.held.rightModifier < 0.3;
+    if (gentleRS) {
+      // Crossing neutral is a different request, not a continuation.
+      if (this.manualIntentSign && Math.sign(input.ry) !== this.manualIntentSign)
+        this.manualIntentTime = 0;
+      this.manualIntentTime += dt;
+      this.manualIntentSign = Math.sign(input.ry);
+      this.manualCatchTimer = TUNE.manualCatchWindow;
+    } else if (rsDepth > gentleHigh && rsDepth < TUNE.preloadThreshold) {
+      // Transition region: hold what we have rather than discarding it.
+    } else {
+      this.manualIntentTime = 0;
+      this.manualIntentSign = 0;
+    }
+    // A sustained gentle manual position is not a trick gesture. Keep it out of
+    // the recognizer so holding a manual cannot accumulate a false scoop; a
+    // deliberate deeper movement leaves the band and owns the stick again.
+    if (gentleRS && this.manualIntentTime >= TUNE.manualDwell)
+      this.tricks.gesture.reset();
     const rsPop = this.preload.step(
       dt,
       input,
@@ -1425,6 +1503,11 @@ export class Simulation {
       this.hopBuffer = TUNE.hopBuffer;
       this.charge = 0;
     }
+    // An accepted Bri/Inward takeoff owns the whole stroke that produced it. The
+    // upward half of a scoop also looks like a hop release, and letting that hop
+    // fire first would launch the rider, restart the air attempt and throw the
+    // trick timeline away before the gesture ever resolved.
+    if (this.groundIntent) this.hopBuffer = 0;
     if (
       this.hopBuffer > 0 &&
       (this.grounded ||
@@ -1659,24 +1742,41 @@ export class Simulation {
       }
       this.lastSlope = slope;
       this.lastPump = pump;
+      // Catching a completed trick into a manual uses the stick the player is
+      // already holding: no fresh movement, no neutral reset, no second button.
+      const catching = this.manualCatchReady && this.manualCatchTimer > 0;
       if (
         !this.manual.active &&
-        this.manualIntentTime >= TUNE.manualDwell &&
-        speed > 0.7 &&
-        this.manualEntryLock === 0
+        (this.manualIntentTime >= TUNE.manualDwell || catching) &&
+        speed > TUNE.manualMinSpeed &&
+        (this.manualEntryLock === 0 || catching)
       ) {
-        this.manual.enter(input.ry < 0);
+        const nose = (this.manualIntentSign || Math.sign(input.ry)) < 0;
+        this.manual.enter(nose);
         this.manualEntryLock = 0.35;
         this.manualRecorded = false;
+        this.manualCatchReady = false;
       }
       if (this.manual.active) {
         this.score.holdContact(dt, this.manual.duration, false, 1, this.manual.nose ? "Nose Manual" : "Manual");
-        // Ignore the entry flick for a fraction of a second, then give the stick full balance control.
+        // The stick keeps balance control every frame. Loading a pop out of the
+        // manual, or easing through the transition region on the way to one,
+        // commands the neutral hold rather than a hard correction: the manual is
+        // held steady while that deeper movement is resolved by its own owner.
+        const neutral = this.manual.nose
+          ? -TUNE.manualNeutralHold
+          : TUNE.manualNeutralHold;
+        const balanceInput =
+          this.preload.amount > 0 ||
+          (Math.abs(input.ry) > gentleHigh && !gentleRS)
+            ? neutral
+            : input.ry;
         const result = this.manual.step(
           dt,
-          this.preload.amount > 0 ? (this.manual.nose ? -.32 : .32) : input.ry,
+          balanceInput,
           (speed - this.lastSpeed) / dt,
         );
+        this.manualCommand = this.manual.command;
 
         if (result === "loop") {
           this.bail(this.manual.nose ? "Over the bars" : "Looped manual");
@@ -1760,14 +1860,7 @@ export class Simulation {
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }
     if (this.velocity.length() > 28) this.velocity.setLength(28);
-    const lip = this.rampWorld
-      ? outdoorLip(
-          this.position.x,
-          this.position.z,
-          this.velocity.z,
-          this.velocity.x,
-        )
-      : null;
+    const lip = this.currentLip();
     const onTransition =
       !!lip &&
       !brakingForSpine &&
@@ -1787,23 +1880,8 @@ export class Simulation {
         this.redirectSpine(lip.direction, input.lean, lip.forward);
       if (lip.module.kind === "box")
         this.redirectBox(lip.forward, this.preload.amount, 0.7);
-      if (lip.module.kind === "quarter") {
-        const planeSpeed = Math.hypot(
-          this.velocity.dot(lip.forward),
-          this.velocity.y,
-        );
-        // The transition turns existing momentum; it never assigns jump energy.
-        // Only surplus speed produces a meaningful outward component over the deck.
-        const outwardRatio =
-          clamp((planeSpeed - TUNE.quarterOverDeckSpeed) * 0.04, -0.035, 0.35) -
-          clamp(input.lean, 0, 1) * 0.06;
-        this.velocity.addScaledVector(
-          lip.forward,
-          planeSpeed * outwardRatio - this.velocity.dot(lip.forward),
-        );
-        this.velocity.y =
-          planeSpeed * Math.sqrt(Math.max(0, 1 - outwardRatio * outwardRatio));
-      }
+      if (lip.module.kind === "quarter")
+        this.quarterRollout(lip.forward, input.lean);
       this.finishManual();
       this.grounded = false;
       this.state = "Airborne";
@@ -2035,6 +2113,27 @@ export class Simulation {
       lastTrickRecord: this.tricks.history.at(-1) ?? null,
       lastLanding: this.lastLanding,
       elapsed: this.elapsed,
+      // Diagnostics for this repair pass. F3 only; disabled in normal play.
+      rs: { x: this.lastRS.x, y: this.lastRS.y },
+      rsOwner: this.manual.active
+        ? "manual"
+        : this.groundIntent
+          ? "trick-takeoff"
+          : this.charge > 0
+            ? "preload"
+            : this.manualIntentTime > 0
+              ? "manual-intent"
+              : "none",
+      manualIntent: this.manualIntentTime,
+      manualCatch: this.manualCatchTimer,
+      manualCommand: this.manualCommand,
+      manualActive: this.manual.active,
+      preloadCharge: this.preload.availableCharge,
+      briCharge: this.preload.briCharge,
+      briPhase: this.tricks.bri.progress,
+      briAngle: this.tricks.bri.angle,
+      briMismatch: this.tricks.bri.mismatch,
+      airQuarter: !!this.airQuarter,
     };
   }
 }

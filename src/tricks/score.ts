@@ -36,7 +36,9 @@ export class ScoreSystem {
    if(this.seen.has(id))return;this.seen.add(id);
    const signature=trickSignature(e.record?.raw,e.name), repeated=this.recent.includes(signature);
    const extra=this.segment?.name===e.name?this.segment.points:0;
-   const quality=e.record?.landing==='sketchy'?.8:1;
+   // GOOD keeps the combo alive and pays a substantial normal reward through the
+   // existing configuration; only a genuinely rough ride-away is discounted.
+   const quality=e.record?.landing==='sketchy'?.8:e.record?.landing==='good'?.95:1;
    const value=this.preview(e.record?.raw,e.name,quality,extra),factor=this.multiplier;
    this.total+=value;this.line+=value;this.lastAward=value;events.emit({type:"banked",eventId:this.rewardRun+":"+id,points:value});
    this.display={id,name:e.name,points:value,multiplier:factor,status:'landed',age:0};

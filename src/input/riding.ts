@@ -34,6 +34,33 @@ export class StickPreload {
   dwell = 0;
   private upwardWindow = 0;
   popped = false;
+  // The scoop gesture has to leave the down position to be traced at all, so the
+  // live amount is gone by the time the resolver accepts the trick. Latch what
+  // was actually loaded and keep it briefly, so one continuous load -> gesture ->
+  // takeoff sequence launches with the charge the player really built.
+  private heldCharge = 0;
+  private heldDwell = 0;
+  private heldAge = 99;
+  /** Charge available to a takeoff accepted right now, live or just-released. */
+  get availableCharge() {
+    return this.heldAge <= TUNE.briChargeHold
+      ? Math.max(this.amount, this.heldCharge)
+      : this.amount;
+  }
+  /** How long RS was actually held down for the charge above. */
+  get availableDwell() {
+    return this.heldAge <= TUNE.briChargeHold
+      ? Math.max(this.dwell, this.heldDwell)
+      : this.dwell;
+  }
+  /** Charge for a direct Bri/Inward takeoff, on its own slower charge curve. */
+  get briCharge() {
+    return clamp(
+      this.availableDwell / TUNE.briFullChargeTime,
+      TUNE.briMinCharge,
+      1,
+    );
+  }
   step(
     dt: number,
     input: InputFrame,
@@ -42,11 +69,17 @@ export class StickPreload {
     transitionRelease = false,
   ) {
     this.popped = false;
-    // LB owns manual entry/balance. A deliberate unmodified down hold loads a hop.
+    // A deliberate unmodified deep down hold loads a hop. The gentle band above
+    // the deadzone belongs to the manual and must never reach this branch, so
+    // the entry threshold stays deep; once loading, a lower release threshold
+    // holds the charge rather than dropping it at the exact boundary.
+    const threshold =
+      this.amount > 0 ? TUNE.preloadRelease : TUNE.preloadThreshold;
     const down =
-      input.ry > TUNE.preloadThreshold &&
+      input.ry > threshold &&
       Math.abs(input.rx) < 0.5 &&
       input.held.leftModifier < 0.5;
+    this.heldAge += dt;
     if (down && supported) {
       this.upwardWindow = 0;
       this.dwell += dt;
@@ -55,6 +88,9 @@ export class StickPreload {
         0,
         1,
       );
+      this.heldCharge = this.amount;
+      this.heldDwell = this.dwell;
+      this.heldAge = 0;
     } else if (sweeping && supported) {
       // A circular RS gesture owns the stick until it has finished. Do not
       // mistake its first sideways movement for a hop release.
@@ -68,8 +104,10 @@ export class StickPreload {
       // The same completed stroke is required on ramps and flat ground.
       this.popped = supported;
       const charge = this.amount;
-      this.amount = this.dwell = 0;
-      this.upwardWindow = 0;
+      // A completed hop release consumes its own stroke. Clearing the latch too
+      // stops that same movement being reused as a later trick command.
+      this.reset();
+      this.popped = supported;
       return this.popped ? charge : null;
     } else if (!supported) this.reset();
     else if (this.amount > 0) {
@@ -77,7 +115,12 @@ export class StickPreload {
       // Preserve the charge for that short gesture window; Simulation clears
       // its visual crouch immediately when the stick is no longer held down.
       this.upwardWindow += dt;
-      if (this.upwardWindow > 0.24) this.reset();
+      // Drop the live crouch, but leave the latched charge to expire on its own
+      // timer: a scoop being traced right now still owns that preload.
+      if (this.upwardWindow > 0.24) {
+        this.amount = this.dwell = 0;
+        this.upwardWindow = 0;
+      }
     } else this.dwell = 0;
     return null;
   }
@@ -85,5 +128,7 @@ export class StickPreload {
     this.amount = this.dwell = 0;
     this.upwardWindow = 0;
     this.popped = false;
+    this.heldCharge = this.heldDwell = 0;
+    this.heldAge = 99;
   }
 }
