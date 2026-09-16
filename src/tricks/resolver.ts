@@ -198,13 +198,20 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
   }
   if (raw.out && name) name += " Out";
   if(flipName)name=`${flipName}${degrees?' '+degrees:''}${parts.length?' + '+parts.join(' + '):''}${raw.out?' Out':''}`;
-  const flair=raw.flairContext&&raw.flipPitch<0&&flips===1&&degrees===180;
-  const briAir=raw.flairContext&&degrees===180&&briTurns===1&&!flair;
+  // A flair is named for the movement the rider actually completed, not for the
+  // obstacle they left. flairContext is still carried as metadata, but it no
+  // longer gates the label: a backflip with a half turn is a Flair wherever it
+  // happened, and the frontflip equivalent is a Front Flair.
+  const halfTurnFlip = flips === 1 && degrees === 180;
+  const flair = halfTurnFlip && raw.flipPitch < 0;
+  const frontFlair = halfTurnFlip && raw.flipPitch > 0;
+  const briAir=raw.flairContext&&degrees===180&&briTurns===1&&!flair&&!frontFlair;
   if(briAir)name=[flipName,...parts.map(p=>p==='Bri'?'Bri Air':p==='Inward'?'Inward Air':p)].filter(Boolean).join(' + ');
   if(flair)name=['Flair',...parts].filter(Boolean).join(' + ');
+  if(frontFlair)name=['Front Flair',...parts].filter(Boolean).join(' + ');
   return {
     name,
-    recognized: flair?"flair":briAir?"bri-air":rule?.id ?? (downside ? "downside-whip" : null),
+    recognized: flair?"flair":frontFlair?"front-flair":briAir?"bri-air":rule?.id ?? (downside ? "downside-whip" : null),
     components,
     raw: { ...raw, states: [...raw.states], direction: { ...raw.direction } },
   };

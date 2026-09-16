@@ -6,6 +6,17 @@ export const TUNE = {
   flipReleaseDamping: 1.8,
   flipYawRateScale: 0.8,
   flipNameTolerance: 20,
+  // --- Flip-completion assist ----------------------------------------------
+  // A forgiving finish for a nearly completed flip, not a rescue. It only acts
+  // once a landing is imminent and only while the player has eased off: strong
+  // input in the direction of travel means they intend to keep rotating, and
+  // opposing input is deliberate braking. It picks whichever whole revolution is
+  // genuinely reachable in the time left, so it never invents a missing half
+  // flip and never insists on stopping at the first revolution.
+  flipAssistWindow: 0.55, // only inside this long before predicted contact
+  flipAssistRate: 2.4, // ceiling on the angular rate it may request, rad/s
+  flipAssistBudget: 0.9, // total rate adjustment one attempt may draw, rad/s
+  flipAssistInput: 0.35, // above this the player is still driving the rotation
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,

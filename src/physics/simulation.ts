@@ -1421,9 +1421,17 @@ export class Simulation {
     // exists inside/below the coping), the rider descending into that surface,
     // and a compatible orientation. A rider travelling away from the transition
     // has clearly overshot and is never pulled back.
+    // Quarter-return behaviour belongs to quarter transitions only. A box clear
+    // and a spine transfer are their own manoeuvres and are left alone: the
+    // receiving surface has to belong to a quarter, either the one the rider
+    // left or one they are dropping into.
+    const receivingQuarter =
+      this.airQuarter?.module.kind === "quarter" ||
+      this.currentLip()?.module.kind === "quarter";
     if (
       !this.grounded &&
       this.state === "Airborne" &&
+      receivingQuarter &&
       this.velocity.y < 0 &&
       support.normal.y < 0.94 &&
       gap > TUNE.reentryMinGap &&
@@ -1979,7 +1987,23 @@ export class Simulation {
       this.rampLean = damp(this.rampLean, 0, 4, dt);
       this.fakie.step(dt, this.yaw, this.velocity.x, this.velocity.z, 0, false);
       const flipChord=input.held.brake>.5&&input.held.pumpGrind>.5&&(this.bodyFlip.active||Math.abs(input.lean)>.25);
-      this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch);
+      // Estimated time until the wheels reach the surface below, and the pitch
+      // of that surface, so the assist aims at a landing that is actually
+      // reachable rather than at world level.
+      const closing = -this.velocity.y;
+      const contact =
+        closing > 0.2 && gap > 0 ? Math.max(0, gap) / closing : 99;
+      const receiving = -Math.atan2(
+        support.normal
+          .clone()
+          .negate()
+          .dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))),
+        support.normal.y,
+      );
+      this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch,{
+        timeToContact:contact,
+        surfacePitch:receiving,
+      });
       this.spin = this.airSpin.step(
         dt,
         this.spin,
@@ -2298,6 +2322,11 @@ export class Simulation {
       briAngle: this.tricks.bri.angle,
       briMismatch: this.tricks.bri.mismatch,
       airQuarter: !!this.airQuarter,
+      flipAngle: this.bodyFlip.angle,
+      flipRate: this.bodyFlip.velocity,
+      flipAssisting: this.bodyFlip.assisting,
+      flipAssistUsed: this.bodyFlip.assistUsed,
+      jumpOnArmed: !!this.jumpOn,
     };
   }
 }
