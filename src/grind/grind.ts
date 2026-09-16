@@ -10,6 +10,8 @@ export interface GrindContact {
   name: string;
   contactOffset: number;
   entryPitch: number;
+  /** Smith (+) / Feeble (-) tilt held relative to the rail's own slope. */
+  stancePitch: number;
   lateralSpeed: number;
   intent: number;
 }
@@ -22,8 +24,7 @@ export function findGrind(
   assist: boolean,
   intentional = false,
 ): GrindContact | null {
-  // A rising rider is airing out or clearing an obstacle, never looking to lock in.
-  if (velocity.length() < TUNE.grindMinSpeed || velocity.y > 0.85) return null;
+  if (velocity.length() < TUNE.grindMinSpeed) return null;
   let best: GrindContact | null = null,
     bestDist = Infinity;
   for (const rail of rails) {
@@ -32,6 +33,10 @@ export function findGrind(
     const direction = delta.clone().normalize();
     const t = clamp(position.clone().sub(rail.a).dot(direction) / len, 0, 1);
     if (t < 0.001 || t > 0.999) continue;
+    // A rider rising away from the rail is airing out or clearing an obstacle,
+    // never looking to lock in. Travel up a sloped rail is not rising away.
+    const rising = velocity.y - direction.y * velocity.dot(direction);
+    if (rising > 0.85) continue;
     const point = rail.a.clone().addScaledVector(delta, t);
     const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
     const signedOffset = position.clone().sub(point).dot(side);
@@ -84,7 +89,7 @@ export function findGrind(
       1,
     );
     const heightScore = 1 - Math.abs(height - 0.12) / maxHeight;
-    const descentScore = velocity.y <= 0 ? 1 : clamp(1 - velocity.y / 0.85, 0, 1);
+    const descentScore = rising <= 0 ? 1 : clamp(1 - rising / 0.85, 0, 1);
     const intentScore = clamp(
       distanceScore * 0.32 +
         alignmentScore * 0.25 +
@@ -122,6 +127,7 @@ export function findGrind(
         name,
         contactOffset: clamp(signedOffset, -reach, reach),
         entryPitch: pitch,
+        stancePitch: 0,
         lateralSpeed: velocity.dot(side) * 0.7,
         intent: intentScore,
       };

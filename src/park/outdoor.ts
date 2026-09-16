@@ -293,7 +293,9 @@ export function smallBoxLedge() {
   const lip = rampLips(box3)[0],
     deckStart = lip - box3.deck,
     top = 0.42,
-    x = box3.x1 - 0.3;
+    // Far enough in from the box's right edge that a rider grinding the right
+    // side (seat plus half the bar width) clears the spine rising beside it at x1.
+    x = box3.x1 - 0.7;
   return {
     line: [
       new THREE.Vector3(x, profile(box3, box3.z0 + 1) + top, box3.z0 + 1),
@@ -395,13 +397,16 @@ export function buildOutdoor(park: Park) {
       0x606b6b,
     );
     if (m.kind === "spine")
-      for (const lip of rampLips(m))
+      rampLips(m).forEach((lip, i) =>
         park.rail(
           "Spine coping",
           new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
           new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip),
           "ledge",
-        );
+          true,
+          new THREE.Vector3(0, 0, i === 0 ? 1 : -1),
+        ),
+      );
     if (m.kind === "box") {
       const lip = rampLips(m)[0];
       box(
@@ -415,15 +420,16 @@ export function buildOutdoor(park: Park) {
       );
       // The steel lip is real coping: grindable along its length, and cleared
       // like quarter coping when rolling or launching over it.
-      // The small box carries its ledge along the right-hand edge, so its
-      // coping stops short of the ledge instead of running through its legs.
-      const end = m.id === "small-box" ? m.x1 - 0.72 : m.x1 - 0.1;
+      // The small box carries its ledge near the right-hand edge, so its coping
+      // stops short of the ledge and of a rider grinding the ledge's left side.
+      const end = m.id === "small-box" ? m.x1 - 1.4 : m.x1 - 0.1;
       park.rail(
         "Box coping " + m.id,
         new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
         new THREE.Vector3(end, m.h + 0.025, lip),
         "ledge",
         true,
+        new THREE.Vector3(0, 0, -1),
       );
     }
     if (m.kind === "quarter") {
@@ -433,6 +439,8 @@ export function buildOutdoor(park: Park) {
         new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
         new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip),
         "ledge",
+        true,
+        new THREE.Vector3(0, 0, m.reverse ? -1 : 1),
       );
       const back = m.reverse ? m.z0 : m.z1;
       // Side access stairs to the top platform. They sit beyond the back edge
@@ -572,6 +580,8 @@ export function buildOutdoor(park: Park) {
           line[i].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
           line[i + 1].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
           "ledge",
+          false,
+          new THREE.Vector3(-side, 0, 0),
         );
   }
   park.rail(

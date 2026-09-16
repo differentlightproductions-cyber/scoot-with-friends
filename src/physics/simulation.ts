@@ -1103,6 +1103,56 @@ export class Simulation {
       Math.abs(input.ry) > 0.58
     );
   }
+  /**
+   * Where the rider sits on a rail: the band of lateral offsets along `side`
+   * and the centre height above the rail line. See TUNE.grindPipeRadius.
+   * `lateral` is the rider's current offset along `side`: until the wheels are
+   * outboard of the pipe they ride over its surface rather than through it.
+   */
+  /**
+   * How far along a rail the rider is, 0..1, measured in plan view. The rider
+   * sits above a sloped rail, so projecting in 3D would read a rider over a
+   * downhill segment as behind its start.
+   */
+  private railProgress(rail: Rail) {
+    const run = rail.b.clone().sub(rail.a).setY(0);
+    return this.position.clone().sub(rail.a).setY(0).dot(run) / Math.max(1e-6, run.lengthSq());
+  }
+  /** The pitch of a scooter lying along a rail direction, facing the rider's heading. */
+  private railPitch(direction: THREE.Vector3) {
+    const heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    const along = direction.clone().multiplyScalar(Math.sign(direction.dot(heading)) || 1);
+    return -Math.asin(clamp(along.y, -1, 1));
+  }
+  private grindSeat(rail: Rail, direction: THREE.Vector3, side: THREE.Vector3, lateral = Infinity) {
+    if (!rail.solid)
+      return { low: -TUNE.grindMaxOffset, high: TUNE.grindMaxOffset, height: TUNE.grindCentreHeight, seating: false };
+    const outboard = rail.solid.dot(side) > 0 ? -1 : 1;
+    const r = TUNE.grindPipeRadius,
+      offset = lateral * outboard,
+      dip = TUNE.grindDeckHalfLength * Math.abs(Math.sin(wrap(this.pitch - this.railPitch(direction))));
+    // Lowest rider centre at which no part of the underside envelope is inside
+    // the pipe, given where the scooter actually is across it.
+    let base = -Infinity;
+    for (const [halfWidth, lowest] of TUNE.grindUnderside) {
+      const nearest = clamp(0, offset - halfWidth, offset + halfWidth);
+      if (Math.abs(nearest) < r)
+        base = Math.max(base, Math.sqrt(r * r - nearest * nearest) - lowest + dip);
+    }
+    const seatBase = (() => {
+      const [halfWidth, lowest] = TUNE.grindUnderside[TUNE.grindUnderside.length - 1];
+      const nearest = Math.min(Math.max(TUNE.grindSeatOffset - halfWidth, 0), r * 0.999);
+      return Math.sqrt(r * r - nearest * nearest) - lowest + dip;
+    })();
+    return {
+      low: outboard > 0 ? TUNE.grindSeatOffset : -TUNE.grindEdgeMaxOffset,
+      high: outboard > 0 ? TUNE.grindEdgeMaxOffset : -TUNE.grindSeatOffset,
+      // The envelope is measured square to the rail; a sloped rail needs more rise.
+      height: (TUNE.radius + TUNE.grindSeatClearance + Math.max(base, seatBase)) /
+        Math.sqrt(Math.max(0.2, 1 - direction.y * direction.y)),
+      seating: offset < TUNE.grindSeatOffset - 0.005,
+    };
+  }
   private captureGrind(input: InputFrame) {
     if (
       this.rideable === "longboard" ||
@@ -1129,16 +1179,23 @@ export class Simulation {
     // Sweep a single fixed physics step ahead so a valid deck contact engages
     // before the rigid-body rail collision can bounce it away.
     const rails=this.park.rails.filter(r=>this.grindCooldown<=0||r.colliderHandle!==this.releasingRail||r===this.hopRail);
-    const candidate = findGrind(
-      rails,
-      contact,
-      this.velocity,
-      this.yaw,
-      this.pitch,
-      this.grindAssist,
-      input.held.pumpGrind > 0.3,
-    ) ?? findGrind(rails, contact.clone().addScaledVector(this.velocity, TUNE.step),
-      this.velocity, this.yaw, this.pitch, this.grindAssist, input.held.pumpGrind > 0.3);
+    const intentional = input.held.pumpGrind > 0.3;
+    const probe = (point: THREE.Vector3) =>
+      findGrind(rails, point, this.velocity, this.yaw, this.pitch, this.grindAssist, intentional) ??
+      findGrind(rails, point.clone().addScaledVector(this.velocity, TUNE.step),
+        this.velocity, this.yaw, this.pitch, this.grindAssist, intentional);
+    // A held grind also locks in when a wheel end reaches the rail first. The
+    // centre probe alone let a nose-down wheel sink into a rising ledge pipe
+    // before the centre came within reach.
+    const wheelProbe = (end: number) => {
+      const reach = end * TUNE.grindWheelReach;
+      return contact.clone().add(new THREE.Vector3(
+        Math.sin(this.yaw) * Math.cos(this.pitch) * reach,
+        -Math.sin(this.pitch) * reach,
+        Math.cos(this.yaw) * Math.cos(this.pitch) * reach,
+      ));
+    };
+    const candidate = probe(contact) ?? (intentional ? probe(wheelProbe(1)) ?? probe(wheelProbe(-1)) : null);
     this.grindCandidate = candidate?.rail.id ?? "—";
     if (
       candidate && Math.abs(wrap(this.pitch))<.55 &&
@@ -1147,6 +1204,21 @@ export class Simulation {
     ) {
       this.tricks.finish("clean");
       this.grind = candidate;
+      {
+        const side = new THREE.Vector3(candidate.direction.z, 0, -candidate.direction.x).normalize();
+        const seat = this.grindSeat(candidate.rail, candidate.direction, side);
+        candidate.contactOffset = clamp(candidate.contactOffset, seat.low, seat.high);
+        // The deck lies along the rail. Only the Smith/Feeble tilt chosen during a
+        // grind hop carries over; an air pitch still easing toward the ground below
+        // is not a stance.
+        candidate.stancePitch = this.hopRail
+          ? clamp(
+              wrap(candidate.entryPitch - this.railPitch(candidate.direction)),
+              -TUNE.grindStancePitch,
+              TUNE.grindStancePitch,
+            )
+          : 0;
+      }
       this.grindDuration = 0;
       this.hopRail = null;
       this.copingDrop = null;
@@ -1549,6 +1621,7 @@ export class Simulation {
       Math.abs(wrap(this.pitch - slopePitch)) < TUNE.manualCatchPitchError;
     this.lastLanding = quality;
     this.events.emit({ type: "landing", quality, impact });
+    if (this.airQuarter) this.lipClearTimer = Math.max(this.lipClearTimer, TUNE.quarterReentryClearTime);
     const quarter=this.airQuarter?.module;
     this.tricks.flairContext=!!quarter&&'x0' in quarter&&quality!=='failed'&&support.normal.y<.96&&this.position.x>=quarter.x0&&this.position.x<=quarter.x1&&this.position.z>=quarter.z0&&this.position.z<=quarter.z1;
     this.tricks.finish(quality);this.airQuarter=null;
@@ -2070,19 +2143,13 @@ export class Simulation {
       const g = this.grind;
       g.speed +=
         (-TUNE.gravity * g.direction.y - Math.sign(g.speed) * 0.34) * dt;
-      let railLength = g.rail.a.distanceTo(g.rail.b);
-      g.t = this.position.clone().sub(g.rail.a).dot(g.direction) / railLength;
+      g.t = this.railProgress(g.rail);
       if (
         ((g.t > 1 && g.speed > 0) || (g.t < 0 && g.speed < 0)) &&
         continueGrind(this.park.rails, g)
       ) {
-        railLength = g.rail.a.distanceTo(g.rail.b);
         // At a bend the rider can sit a hair behind the new segment's start.
-        g.t = clamp(
-          this.position.clone().sub(g.rail.a).dot(g.direction) / railLength,
-          0,
-          1,
-        );
+        g.t = clamp(this.railProgress(g.rail), 0, 1);
       }
       const point = g.rail.a.clone().lerp(g.rail.b, g.t);
       const side = new THREE.Vector3(
@@ -2091,25 +2158,31 @@ export class Simulation {
         -g.direction.x,
       ).normalize();
       const lateral = this.position.clone().sub(point).dot(side);
+      const seat = this.grindSeat(g.rail, g.direction, side, lateral);
       // Stick right moves the rider toward their right along the rail.
-      g.contactOffset=clamp(g.contactOffset-input.steer*.085*dt,-.16,.16);
+      g.contactOffset=clamp(g.contactOffset-input.steer*.085*dt,seat.low,seat.high);
       const settling = this.grindDuration < TUNE.grindSettleTime;
-      const spring = this.grindAssist
-        ? settling
-          ? TUNE.grindLateralSpring
-          : 12
-        : 10;
-      g.lateralSpeed +=
-        (-(lateral - g.contactOffset) * spring -
-          g.lateralSpeed * (settling ? TUNE.grindLateralDamping : 5)) *
-        dt;
+      const spring = seat.seating
+        ? TUNE.grindSeatSpring
+        : this.grindAssist
+          ? settling
+            ? TUNE.grindLateralSpring
+            : 12
+          : 10;
+      const damping = seat.seating ? TUNE.grindSeatDamping : settling ? TUNE.grindLateralDamping : 5;
+      // Semi-implicit so the stiff seating spring stays stable at the fixed step.
+      g.lateralSpeed =
+        (g.lateralSpeed - (lateral - g.contactOffset) * spring * dt) /
+        (1 + damping * dt + spring * dt * dt);
       this.velocity
         .copy(g.direction)
         .multiplyScalar(g.speed)
         .addScaledVector(side, g.lateralSpeed);
       this.velocity.y +=
-        clamp((point.y + 0.14 - this.position.y) * 18, -2, 2);
-      this.pitch = damp(this.pitch, g.entryPitch + input.lean * 0.13, 8, dt);
+        (point.y + seat.height > this.position.y + 0.005
+          ? Math.min((point.y + seat.height - this.position.y) * TUNE.grindSeatResolve, 4)
+          : clamp((point.y + seat.height - this.position.y) * 18, -2, 2));
+      this.pitch = damp(this.pitch, this.railPitch(g.direction) + g.stancePitch + input.lean * 0.13, 8, dt);
       this.roll = damp(this.roll, -input.steer * 0.14, 8, dt);
       // Holding the stick toward the ramp while on coping turns the rider to
       // face it, then drops them back in.
@@ -2141,7 +2214,8 @@ export class Simulation {
         g.t > 1 ||
         (!settling && Math.abs(lateral - g.contactOffset) > 0.55) ||
         Math.abs(g.speed) < 0.8 ||
-        (Math.abs(g.contactOffset) >= .16 && Math.abs(input.steer)>.9)
+        ((g.contactOffset >= seat.high - 1e-6 || g.contactOffset <= seat.low + 1e-6) && Math.abs(input.steer) > .9 &&
+          Math.sign(-input.steer) === Math.sign(g.contactOffset - (seat.low + seat.high) / 2))
       ) {
         this.finishGrind();
         this.state = "Airborne";

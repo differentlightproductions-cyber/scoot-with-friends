@@ -56,6 +56,9 @@ export const TUNE = {
   launchGuideLipClear: 0.35,
   touchdownGap: 0.02,
   transitionRailClearTime: 0.18,
+  // After a quarter-air re-entry the rear wheel sits just under the coping and
+  // the coarse upper rail guard still overlaps it while the rider rolls away.
+  quarterReentryClearTime: 0.25,
   quarterOverDeckSpeed: 12,
   // Outward travel off a quarter lip, as a fraction of the plane speed applied
   // along the lip's own forward direction. Negative leans back over the deck.
@@ -198,6 +201,28 @@ export const TUNE = {
   rampLeanCenterOfMassDrop: 0.12,
   // Assist settles a committed grind, it never pulls a rider across a rail.
   grindSettleTime: 0.28,
+  // Grind seat. A free-standing rail keeps the rider centre this far above the
+  // rail line. On an edge pipe (Rail.solid) the scooter seats outboard of the
+  // pipe with its deck edge on the pipe shoulder and the wheels and axle
+  // hardware hanging clear, and rides over the pipe's round profile while it
+  // settles there.
+  grindCentreHeight: 0.14,
+  grindPipeRadius: 0.045, // Park.rail pipe collider and mesh
+  // Underside envelope of the manufactured scooter, measured from its meshes in
+  // the scooter frame (ground = 0): [half width, lowest point]. Wheels, then
+  // axle ends, dropouts and fork, then the deck plate.
+  grindUnderside: [[0.0135, 0], [0.048, 0.033], [0.072, 0.0725]] as readonly (readonly [number, number])[],
+  grindSeatOffset: 0.095, // pipe axis to scooter centreline: hardware half width + pipe radius
+  grindEdgeMaxOffset: 0.11, // beyond this the deck edge leaves the pipe shoulder
+  grindSeatClearance: 0.004,
+  grindWheelReach: 0.34, // centre to wheel contact along the deck
+  grindSeatResolve: 60, // 1/s: rise rate back out of a pipe, a contact resolution rather than a hop
+  grindStancePitch: 0.2, // largest Smith/Feeble tilt kept from the entry, relative to the rail
+  // Sliding off the pipe top onto the seat: critically damped, about 0.25 s.
+  grindSeatSpring: 400,
+  grindSeatDamping: 40,
+  grindDeckHalfLength: 0.33, // pitch relative to the rail dips the deck ends by this lever
+  grindMaxOffset: 0.16,
   grindLateralSpring: 28,
   grindLateralDamping: 9,
   grindSteering: 1.1,

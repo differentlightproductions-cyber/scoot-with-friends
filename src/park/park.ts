@@ -19,6 +19,12 @@ export interface Rail {
   kind: "rail" | "ledge";
   coping?: boolean;
   colliderHandle?: number;
+  /**
+   * For a pipe capping an edge (ledge, box, quarter or spine coping): the
+   * horizontal direction from the pipe toward the solid it caps. The scooter
+   * seats with its deck on the pipe and its wheels hanging on the other side.
+   */
+  solid?: THREE.Vector3;
 }
 const smooth = (t: number) => {
   t = clamp(t, 0, 1);
@@ -487,8 +493,8 @@ export class Park {
     ).castShadow = false;
     for (const z of [-18, -12]) this.bench("Warehouse bench " + z, -29, 0, z);
   }
-  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id)) {
-    this.rails.push({ id, a, b, kind, coping });
+  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id), solid?: THREE.Vector3) {
+    this.rails.push({ id, a, b, kind, coping, solid: solid?.clone().setY(0).normalize() });
     const direction = b.clone().sub(a);
     const length = direction.length();
     const mid = a.clone().add(b).multiplyScalar(0.5);

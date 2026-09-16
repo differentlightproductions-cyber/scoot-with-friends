@@ -280,9 +280,10 @@ export function buildMemorialGrounds(park: Park) {
     a: THREE.Vector3,
     b: THREE.Vector3,
     kind: "rail" | "ledge" = "rail",
+    solid?: THREE.Vector3,
   ) => {
     const before = scene.children.length;
-    park.rail(name, a, b, kind);
+    park.rail(name, a, b, kind, undefined, solid);
     for (const m of scene.children.slice(before))
       if (m instanceof THREE.Mesh)
         (m.material as THREE.MeshStandardMaterial).color.set(0x899396);
@@ -294,6 +295,7 @@ export function buildMemorialGrounds(park: Park) {
       v(lip, m.h + 0.025, m.z0 + 0.1),
       v(lip, m.h + 0.025, m.z1 - 0.1),
       "ledge",
+      v(m.reverse ? -1 : 1, 0, 0),
     );
     const back = m.reverse ? m.x0 + 0.15 : m.x1 - 0.15;
     for (let z = m.z0; z <= m.z1; z += 2)
@@ -322,6 +324,7 @@ export function buildMemorialGrounds(park: Park) {
       v(mx(51 + side * 0.86), 0.73, mz(-12)),
       v(mx(51 + side * 0.86), 0.73, mz(-2)),
       "ledge",
+      v(mx(51) - mx(51 + side * 0.86), 0, 0),
     );
   metalRail("Metal flat rail", v(mx(80), 0.6, mz(0)), v(mx(80), 0.6, mz(7)));
   for (const x of [44, 86])

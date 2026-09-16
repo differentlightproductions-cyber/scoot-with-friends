@@ -468,9 +468,12 @@ try {
         if (run.reverse) dir.negate();
         const start = run.rail.a.clone().lerp(run.rail.b, run.at);
         s.reset(0, true); g.advance(0.3, {}, false);
-        s.position.copy(start).add(new V(0, 0.3, 0)); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
-        s.velocity.copy(dir).multiplyScalar(run.speed); s.velocity.y = Math.min(s.velocity.y, 0) - 1; s.body.setLinvel(s.velocity, true);
-        s.yaw = s.previousYaw = Math.atan2(dir.x, dir.z); s.grounded = false; s.state = 'Airborne'; s.airTime = 0.2; s.tricks.startAir(false);
+        // Approach as a rider jumping onto the ledge does: lined up with it, clear
+        // above it (0.35 m square to the rail), settling onto it.
+        const slope = Math.asin(dir.y), normal = new V(0, Math.cos(slope), 0).addScaledVector(dir.clone().setY(0).normalize(), -Math.sin(slope));
+        s.position.copy(start).addScaledVector(normal, 0.35); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
+        s.velocity.copy(dir).multiplyScalar(run.speed).addScaledVector(normal, -1); s.body.setLinvel(s.velocity, true);
+        s.yaw = s.previousYaw = Math.atan2(dir.x, dir.z); s.pitch = -slope; s.grounded = false; s.state = 'Airborne'; s.airTime = 0.2; s.tricks.startAir(false);
         let grindTicks = 0, sustained = 0, worst = -Infinity, worstPart = '', worstSurface = '', segments = new Set(), deepTicks = 0;
         for (let i = 0; i < 480; i++) {
           g.advance(dt, { held: { pumpGrind: 1 } }, false);
