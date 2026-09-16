@@ -251,11 +251,35 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
   }
   return null;
 }
+// Quarter-pipe side access. The on-foot walker is pinned to the terrain height
+// and only mantles onto terrain, so a flight built purely from solid boxes can
+// never be climbed. The stairs are therefore part of the terrain as a steady
+// ramp beneath the stepped visuals, which keeps the climb reliable and the
+// collision in agreement with what the player sees.
+export const STAIR_WIDTH = 0.85,
+  STAIR_STEPS = 20,
+  STAIR_RUN = 0.42;
+export function stairHeight(x: number, z: number) {
+  let height = 0;
+  for (const m of modules) {
+    if (m.kind !== "quarter") continue;
+    const lip = rampLips(m)[0],
+      back = m.reverse ? m.z0 : m.z1,
+      away = Math.sign(back - lip),
+      stairX = m.x0 - 1.2,
+      span = STAIR_STEPS * STAIR_RUN;
+    if (Math.abs(x - stairX) > STAIR_WIDTH) continue;
+    const along = (z - back) * away;
+    if (along < 0 || along > span) continue;
+    height = Math.max(height, m.h * (1 - along / span));
+  }
+  return height;
+}
 export function outdoorHeight(x: number, z: number) {
   let height = extensionHeight(x, z);
   for (const m of modules)
     if (x >= m.x0 && x <= m.x1) height = Math.max(height, profile(m, z));
-  return height;
+  return Math.max(height, stairHeight(x, z));
 }
 export function buildOutdoor(park: Park) {
   const { scene } = park;
@@ -375,14 +399,44 @@ export function buildOutdoor(park: Park) {
         "ledge",
       );
       const back = m.reverse ? m.z0 : m.z1;
-      for (let x = m.x0; x <= m.x1; x += 2.5)
+      // Side access stairs to the top platform. They sit beyond the back edge
+      // and outside the ramp's own x range, so they never cross the riding
+      // transition, the coping takeoff or the landing. Rise 0.3 over run 0.46
+      // is about 33 degrees, which the existing on-foot step-up handles.
+      const away = Math.sign(back - lip);
+      const stairX = m.x0 - 1.2,
+        steps = STAIR_STEPS,
+        run = STAIR_RUN,
+        span = steps * run;
+      // Treads are visual only: stairHeight() supplies the walkable surface, so
+      // adding solid boxes here would fight it. Each tread sits on the ramp.
+      for (let i = 0; i < steps; i++) {
+        const along = span - i * run,
+          z = back + away * along,
+          y = m.h * (1 - along / span);
+        box(stairX, y + 0.03, z, 1.7, 0.09, run + 0.14, 0xb08a5f, false);
+        box(stairX, y - 0.09, z + away * run * 0.5, 1.6, 0.2, 0.06, 0x8d6c46, false);
+      }
+      box(stairX + 0.62, m.h - 0.05, back + away * 0.55, 2.9, 0.1, 1.3, 0xb08a5f, false);
+      for (let i = 0; i <= steps; i += 5) {
+        const along = span - i * run,
+          z = back + away * along,
+          y = m.h * (1 - along / span);
+        box(stairX - 0.82, y + 0.55, z, 0.12, 1.1, 0.12, 0x9f764c, true);
+      }
+      box(stairX - 0.82, m.h * 0.6 + 0.2, back + away * span * 0.5, 0.1, 0.1, span, 0xae8754, true);
+      // The guardrail opens where the stairs arrive, so the top step is not
+      // walled off. A post on each side of the gap finishes the opening.
+      const gate = m.x0 + 2.6;
+      for (let x = gate; x <= m.x1; x += 2.5)
         box(x, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
+      box(m.x0, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
       for (const h of [0.45, 1.1])
         box(
-          (m.x0 + m.x1) / 2,
+          (gate + m.x1) / 2,
           m.h + h,
           back,
-          m.x1 - m.x0,
+          m.x1 - gate,
           0.11,
           0.12,
           0xae8754,
@@ -390,7 +444,44 @@ export function buildOutdoor(park: Park) {
         );
     }
   }
-  park.bench("Small box bench", 0.55, 1.4, 1.85, 0.6, 1.35);
+  // Grind ledge running the FULL right-hand edge of the small box. The old
+  // bench covered only the flat deck, so the edge simply stopped partway. The
+  // structure follows the box profile (rising ramp, flat deck, short descent)
+  // instead of floating level above the slope, and its top is registered as one
+  // continuous chain of grind segments that share endpoints exactly, so there is
+  // no gap or lip where two pieces meet.
+  {
+    const box3 = modules.find((m) => m.id === "small-box")!;
+    const edge = box3.x1 - 0.3,
+      start = box3.z0 + 1,
+      end = 4.6,
+      seats: THREE.Vector3[] = [];
+    const segments = 22;
+    for (let i = 0; i <= segments; i++) {
+      const z = start + ((end - start) * i) / segments;
+      seats.push(new THREE.Vector3(edge, profile(box3, z) + 0.42, z));
+    }
+    for (let i = 0; i < segments; i++) {
+      const a = seats[i],
+        b = seats[i + 1],
+        mid = a.clone().add(b).multiplyScalar(0.5),
+        length = b.z - a.z;
+      // Seat slab, tilted to sit flush on the local slope.
+      const slab = box(mid.x, mid.y, mid.z, 0.62, 0.14, length + 0.01, 0xb08a5f, true);
+      slab.rotation.x = -Math.atan2(b.y - a.y, length);
+      const leg = box(mid.x, mid.y * 0.5, mid.z, 0.46, mid.y, 0.16, 0x3b4a3f, false);
+      leg.visible = i % 3 === 0;
+    }
+    // One grind path per exposed side, chained end to end along the whole run.
+    for (const side of [-1, 1])
+      for (let i = 0; i < segments; i++)
+        park.rail(
+          `Small box ledge ${side} ${i}`,
+          seats[i].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
+          seats[i + 1].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
+          "ledge",
+        );
+  }
   park.rail(
     "Wood park flat rail",
     new THREE.Vector3(15, 0.62, -3),

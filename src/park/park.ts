@@ -473,10 +473,13 @@ export class Park {
     const mid = a.clone().add(b).multiplyScalar(0.5);
     const mesh = new THREE.Mesh(
       lathe([[0,-length/2],[.04,-length/2],[.045,-length/2+.005],[.045,length/2-.005],[.04,length/2],[0,length/2]],32),
+      // Muted oxide red-brown: worn satin painted steel, not scarlet. Defined
+      // only here, inside rail(), so no scooter part, garment or sign shares it.
+      // Colour only - collider size, friction and grind behaviour are untouched.
       new THREE.MeshStandardMaterial({
-        color: 0xe35c39,
-        metalness: 0.6,
-        roughness: 0.38,
+        color: 0x8c4a33,
+        metalness: 0.45,
+        roughness: 0.58,
       }),
     );
     mesh.position.copy(mid);

@@ -12,8 +12,13 @@ export class Daylight {
  constructor(private park:Park){
   park.scene.traverse(o=>{if(o instanceof THREE.DirectionalLight)this.sun=o;if(o instanceof THREE.HemisphereLight)this.ambient=o;});
   if(!OUTDOOR)return;
-  for(const [x,z] of [[21,-34],[-20,32],[-42,-20],[50,-28],[-75,30],[20,-73]]){
+  // [21,-34] removed: it stood in the sidewalk entrance beside the rack. The
+  // remaining lamps keep that approach lit from the surrounding poles.
+  // [20,-73] moved to [24,-84]: it intersected the parking wheel stop at x=19.8
+  // and now stands inside the landscaped island on its own base.
+  for(const [x,z] of [[-20,32],[-42,-20],[50,-28],[-75,30],[24,-84]]){
    const y=terrainHeight(x,z);
+   park.box(new THREE.Vector3(x,y+.09,z),new THREE.Vector3(.52,.18,.52),0x6a7472,true);
    park.box(new THREE.Vector3(x,y+3,z),new THREE.Vector3(.12,6,.12),0x485757,true);
    park.box(new THREE.Vector3(x+.5,y+5.9,z),new THREE.Vector3(1.1,.08,.08),0x485757,false);
    const lamp=park.box(new THREE.Vector3(x+1,y+5.87,z),new THREE.Vector3(.65,.12,.36),0xffe2aa,false);

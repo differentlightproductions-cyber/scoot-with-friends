@@ -31,8 +31,18 @@ export class WorldInteractions {
  constructor(public park:Park,profile:LocalProfile){
   this.profile=profile;this.prompt.className='world-prompt';this.prompt.hidden=true;document.body.append(this.prompt);
   const scene=park.scene;
-  const locations=OUTDOOR?[[22,-34],[-42,-20],[52,-28]]:ACTIVE_MAP==="techno_gravity"?[[6,-8]]:[[24,-31]];
-  for(const [index,[x,z]] of locations.entries()){
+  // Service clusters. `vending:false` keeps the rack and fountain at a location
+  // while leaving no machine, collider, prompt or interaction behind.
+  // [22,-34] is the main sidewalk entrance: its machine and the lamp beside it
+  // are removed, and the rack and fountain step back off the walking line into
+  // the paved margin so the entrance keeps a clear continuous width.
+  // [55,-28] used to sit square in front of the BMX sign and gate, so the whole
+  // cluster shifts clear of the opening and faces the approach instead.
+  const clusters:{x:number;z:number;vending:boolean;spread:number}[]=OUTDOOR
+   ?[{x:22,z:-31.4,vending:false,spread:2.2},{x:-42,z:-20,vending:true,spread:3},{x:48,z:-25.5,vending:true,spread:3}]
+   :ACTIVE_MAP==="techno_gravity"?[{x:6,z:-8,vending:true,spread:3}]:[{x:24,z:-31,vending:true,spread:3}];
+  for(const [index,cluster] of clusters.entries()){
+   const {x,z,spread}=cluster;
    const y=terrainHeight(x,z),base=new THREE.Vector3(x,y,z);
    for(const dx of [-.85,0,.85]){
     park.box(new THREE.Vector3(x+dx,y+.26,z),new THREE.Vector3(.045,.52,.55),0x43585c,true);
@@ -40,15 +50,23 @@ export class WorldInteractions {
    park.box(new THREE.Vector3(x,y+.035,z),new THREE.Vector3(2.3,.07,.8),0x556567,true);
    const rackId=`rack-${index}`;
    this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab Scooter':s.hasScooter?'Store Scooter':'Scooter stored at another rack',action:s=>this.rack(s,rackId,base)});
-   const machine=base.clone().add(new THREE.Vector3(3,0,0));
+   if(cluster.vending){
+   const machine=base.clone().add(new THREE.Vector3(spread,0,0));
    const shell=park.box(machine.clone().add(new THREE.Vector3(0,.95,0)),new THREE.Vector3(1.05,1.9,.7),0x335e62,true);
    shell.name='Refresh vending machine';
+   // Cabinet depth and side/back treatment, so the machine is not a plain slab
+   // with the same face repeated on every side.
+   park.box(machine.clone().add(new THREE.Vector3(0,1.93,0)),new THREE.Vector3(1.11,.09,.76),0x2a4d50,false);
+   park.box(machine.clone().add(new THREE.Vector3(0,.06,0)),new THREE.Vector3(1.09,.12,.74),0x24393c,true);
+   for(const s of [-1,1])park.box(machine.clone().add(new THREE.Vector3(s*.53,.95,0)),new THREE.Vector3(.02,1.76,.66),0x2b5054,false);
+   park.box(machine.clone().add(new THREE.Vector3(0,.95,-.36)),new THREE.Vector3(.99,1.76,.02),0x2b5054,false);
    park.box(machine.clone().add(new THREE.Vector3(-.14,1.15,.365)),new THREE.Vector3(.61,.95,.03),0x1f3039,false);
    for(let row=0;row<3;row++)for(let col=0;col<3;col++)park.box(machine.clone().add(new THREE.Vector3(-.35+col*.21,.8+row*.3,.395)),new THREE.Vector3(.105,.19,.025),[0x9ccfd4,0xea884b,0x84a762][row],false);
    for(let row=0;row<4;row++)park.box(machine.clone().add(new THREE.Vector3(.36,.85+row*.15,.37)),new THREE.Vector3(.13,.07,.02),0xded4ac,false);
    park.box(machine.clone().add(new THREE.Vector3(0,.36,.365)),new THREE.Vector3(.55,.17,.03),0x17272e,false);
    this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING / CONFIRM FREE ITEM',ITEM_KINDS.map(kind=>({label:kind+' / Free',action:()=>this.vend(s,kind,machine)})).concat([{label:'Cancel',action:()=>{}}]))});
-   const fountain=base.clone().add(new THREE.Vector3(-3,0,0));
+   }
+   const fountain=base.clone().add(new THREE.Vector3(-spread,0,0));
    park.box(fountain.clone().add(new THREE.Vector3(0,.44,0)),new THREE.Vector3(.28,.88,.36),0x748e86,true);
    park.box(fountain.clone().add(new THREE.Vector3(0,.9,0)),new THREE.Vector3(.55,.1,.48),0xaec1b7,true);
    park.box(fountain.clone().add(new THREE.Vector3(.17,.99,.08)),new THREE.Vector3(.06,.12,.07),0xd4ded2,false);

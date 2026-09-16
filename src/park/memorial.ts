@@ -422,7 +422,14 @@ export function buildMemorialGrounds(park: Park) {
     ],
     4,
   );
-  // Parking apron, clear ride-through aisles and two planted islands.
+  // Planted parking islands, centred on whole stalls in the rear row so the
+  // striping, curb and trees all agree. Trees are rooted from these positions.
+  const PARKING_ISLANDS: [number, number][] = [
+    [-22, -77],
+    [24, -77],
+    [66, -77],
+  ];
+  // Parking apron, clear ride-through aisles and planted islands.
   box(27, -0.005, -68, 130, 0.015, 44, 0x62696c);
   path(
     [
@@ -438,13 +445,35 @@ export function buildMemorialGrounds(park: Park) {
     ],
     4,
   );
+  // Landscaped islands occupy whole stalls in the rear row. Stall striping and
+  // wheel stops stop at their curb instead of being drawn across soil and tree
+  // trunks, and the island height, soil and collision agree so a tree is never
+  // left standing on an invisible plane.
+  const ISLAND_HX = 2.1,
+    ISLAND_HZ = 4.5;
   for (const z of [-50, -72])
     for (let x = -30; x <= 85; x += 4) {
-      box(x, 0.011, z - 5, 0.1, 0.008, 9, 0xeee6d3);
-      // Wheel stops stay out of aisle / path crossings.
-      if (Math.abs(x) > 4 && Math.abs(x - 65) > 5)
-        box(x + 1.8, 0.095, z - 1, 2.8, 0.19, 0.3, 0xaeb2af, true);
+      const island = PARKING_ISLANDS.find(
+        (i) => i[1] === z - 5 && Math.abs(x - i[0]) < ISLAND_HX + 0.35,
+      );
+      // A stripe meeting an island is trimmed back to the curb rather than
+      // continuing through it; one fully inside the island is dropped.
+      if (!island) box(x, 0.011, z - 5, 0.1, 0.008, 9, 0xeee6d3);
+      // Wheel stops stay out of aisle / path crossings and out of the islands.
+      const stopX = x + 1.8;
+      const blocked = PARKING_ISLANDS.some(
+        (i) => i[1] === z - 5 && Math.abs(stopX - i[0]) < ISLAND_HX + 1.4,
+      );
+      if (Math.abs(x) > 4 && Math.abs(x - 65) > 5 && !blocked)
+        box(stopX, 0.095, z - 1, 2.8, 0.19, 0.3, 0xaeb2af, true);
     }
+  for (const [ix, iz] of PARKING_ISLANDS) {
+    for (const s of [-1, 1]) {
+      box(ix, 0.08, iz + s * ISLAND_HZ, ISLAND_HX * 2 + 0.34, 0.16, 0.34, 0xccd0c9, true);
+      box(ix + s * ISLAND_HX, 0.08, iz, 0.34, 0.16, ISLAND_HZ * 2 + 0.34, 0xccd0c9, true);
+    }
+    box(ix, 0.045, iz, ISLAND_HX * 2 - 0.3, 0.09, ISLAND_HZ * 2 - 0.3, 0x8d7048);
+  }
   for (const x of [-3, 5, 57, 65]) {
     box(x, 0.012, -54, 3.3, 0.01, 7, 0x376888);
     box(x, 0.019, -54, 0.18, 0.008, 3.5, 0xf0efe7);
@@ -619,9 +648,10 @@ export function buildMemorialGrounds(park: Park) {
     if (!excluded&&clearPlant(x,z,2.7)) trees.push([x, z, 3.7 + (i % 4) * 0.7]);
   }
   trees.push(
-    [-22, -80, 4],
-    [24, -80, 4],
-    [66, -80, 4],
+    // Rooted inside the landscaped islands rather than on bare stall paint.
+    [PARKING_ISLANDS[0][0], PARKING_ISLANDS[0][1], 4],
+    [PARKING_ISLANDS[1][0], PARKING_ISLANDS[1][1], 4],
+    [PARKING_ISLANDS[2][0], PARKING_ISLANDS[2][1], 4],
     [35, 12, 5],
     [34, -16, 4],
     [33, 28, 5],
@@ -753,6 +783,20 @@ export function buildMemorialGrounds(park: Park) {
   );
   sign.position.set(28, 2, -43.94);sign.name='Veterans Memorial Park sign / front';
   scene.add(sign);
-  box(28,2,-44,14.2,2.48,.10,0x47564b,true);const back=sign.clone();back.position.z=-44.06;back.rotation.y=Math.PI;back.name='Veterans Memorial Park sign / back';scene.add(back);
-  for (const x of [22, 34]) box(x, 1.3, -44, 0.16, 2.6, 0.16, 0x4a5746, true);
+  box(28,2,-44,14.2,2.48,.10,0x47564b,true);
+  // The back face is the same artwork turned to face the other way, so its
+  // texture has to be flipped horizontally or the lettering reads mirrored.
+  const back=sign.clone();
+  const backTexture=new THREE.CanvasTexture(canvas);
+  backTexture.wrapS=THREE.RepeatWrapping;backTexture.repeat.x=-1;backTexture.offset.x=1;
+  back.material=new THREE.MeshBasicMaterial({map:backTexture,side:THREE.FrontSide});
+  back.position.z=-44.06;back.rotation.y=Math.PI;back.name='Veterans Memorial Park sign / back';scene.add(back);
+  // Posts carry the sign from behind its frame. They used to sit at the board's
+  // own z with enough depth to poke through both printed faces, which is why a
+  // dark bar ran down the lettering from either approach.
+  for (const x of [22, 34]) {
+    box(x, 1.3, -44.28, 0.18, 2.6, 0.18, 0x4a5746, true);
+    box(x, 0.06, -44.28, 0.42, 0.12, 0.42, 0x6d7a6c, true);
+    box(x, 2.0, -44.17, 0.14, 1.9, 0.14, 0x47564b, false);
+  }
 }
