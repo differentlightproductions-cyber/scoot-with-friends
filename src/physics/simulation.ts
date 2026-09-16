@@ -56,6 +56,24 @@ export class Simulation {
   railImpactCooldown = 0;
   dropIn = new DropIn();
   footJumpTimer = 0;
+  /**
+   * The scooter released ahead of the rider by a jump-on attempt. This is the
+   * carried instance placed into a rolling position, never a second scooter:
+   * `hasScooter` stays true throughout and the rider simply catches it again.
+   */
+  jumpOn: {
+    deck: THREE.Vector3;
+    travel: THREE.Vector3;
+    yaw: number;
+    time: number;
+    running: boolean;
+    approach: number;
+    id: number;
+  } | null = null;
+  private jumpOnRearm = 0;
+  private jumpOnId = 0;
+  /** Set for one landing when a jump-on succeeded, for the HUD and the rider pose. */
+  jumpOnLanded = 0;
   mantle: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null =
     null;
   walking = false;
@@ -233,6 +251,10 @@ export class Simulation {
     this.releasingRail = undefined;
     this.groundIntent = null;
     this.waterBail = false;
+    // A released deck and its rearm timer must not survive a respawn.
+    this.jumpOn = null;
+    this.jumpOnRearm = 0;
+    this.jumpOnLanded = 0;
     this.preload.reset();
     this.spineLaunchVelocity.set(0, 0, 0);
     this.spineLaunchAngle = 0;
@@ -829,6 +851,7 @@ export class Simulation {
       return;
     }
     this.footJumpTimer = Math.max(0, this.footJumpTimer - dt);
+    this.updateJumpOn(dt);
     this.body.collider(0).setCollisionGroups(GROUPS.chassis);
     this.railGuard.setSensor(false);
     if (input.pressed.sprint) this.running = !this.running;
@@ -886,6 +909,31 @@ export class Simulation {
         this.velocity.y = 6;
         this.grounded = false;
         this.footJumpTimer = 0.18;
+        // Jumping while carrying the scooter sets it rolling ahead of the rider
+        // so it can be landed on. It is the same instance, released rather than
+        // duplicated, and it expires if the rider never catches it.
+        if (this.hasScooter && this.jumpOnRearm === 0 && !this.sitting) {
+          const travel = new THREE.Vector3(this.velocity.x, 0, this.velocity.z);
+          const heading =
+            travel.lengthSq() > 0.04
+              ? travel.clone().normalize()
+              : forward.clone();
+          const deck = this.position
+            .clone()
+            .addScaledVector(heading, TUNE.jumpOnLead);
+          deck.y = terrainHeight(deck.x, deck.z);
+          this.jumpOn = {
+            deck,
+            travel: heading
+              .clone()
+              .multiplyScalar(travel.length() * TUNE.jumpOnRoll),
+            yaw: Math.atan2(heading.x, heading.z),
+            time: 0,
+            running: this.running,
+            approach: travel.length(),
+            id: ++this.jumpOnId,
+          };
+        }
       }
     }
     if (this.grounded) {
@@ -960,6 +1008,98 @@ export class Simulation {
       this.pendingPushTap = false;
     }
     this.tricks.tick(dt, false);
+  }
+  /**
+   * Advances a released deck and decides whether the rider has landed on it.
+   * Proximity alone is never enough: the rider must be descending, inside the
+   * capture envelope, travelling broadly the way the deck points, and the deck
+   * must be unobstructed. Anything short of that simply misses, and the rider
+   * lands on their feet as normal.
+   */
+  private updateJumpOn(dt: number) {
+    this.jumpOnLanded = Math.max(0, this.jumpOnLanded - dt);
+    this.jumpOnRearm = Math.max(0, this.jumpOnRearm - dt);
+    const attempt = this.jumpOn;
+    if (!attempt) return;
+    attempt.time += dt;
+    attempt.deck.addScaledVector(attempt.travel, dt);
+    attempt.deck.y = terrainHeight(attempt.deck.x, attempt.deck.z);
+    if (
+      attempt.time > TUNE.jumpOnWindow ||
+      (this.state as RideState) === "Bail" ||
+      !this.walking
+    ) {
+      this.jumpOn = null;
+      return;
+    }
+    // Never at the apex: the rider has to actually come down onto the deck.
+    if (this.velocity.y >= 0) return;
+    const rise = this.position.y - TUNE.radius - attempt.deck.y;
+    const reach = Math.hypot(
+      this.position.x - attempt.deck.x,
+      this.position.z - attempt.deck.z,
+    );
+    if (
+      reach > TUNE.jumpOnCaptureRadius ||
+      rise > TUNE.jumpOnCaptureHeight ||
+      rise < -0.3
+    )
+      return;
+    const travel = new THREE.Vector3(this.velocity.x, 0, this.velocity.z);
+    const heading = new THREE.Vector3(
+      Math.sin(attempt.yaw),
+      0,
+      Math.cos(attempt.yaw),
+    );
+    if (
+      travel.lengthSq() > 0.25 &&
+      travel.clone().normalize().dot(heading) < TUNE.jumpOnAlignment
+    )
+      return;
+    if (
+      this.world.intersectionWithShape(
+        new THREE.Vector3(attempt.deck.x, attempt.deck.y + 0.35, attempt.deck.z),
+        { x: 0, y: 0, z: 0, w: 1 },
+        new RAPIER.Ball(0.22),
+        undefined,
+        GROUPS.chassis,
+        undefined,
+        this.body,
+      )
+    )
+      return;
+    // Only horizontal approach feeds the bonus: falling faster must never turn
+    // into forward speed. A committed running approach earns it; a standing hop
+    // mounts cleanly but earns nothing, and the rearm timer stops a mount and
+    // dismount loop from farming it.
+    const committed =
+      attempt.running && attempt.approach >= TUNE.jumpOnRunSpeed;
+    const speed = Math.min(
+      TUNE.pushMaxSpeed,
+      Math.max(travel.length(), attempt.approach) +
+        (committed ? TUNE.jumpOnBoost : 0),
+    );
+    this.walking = false;
+    this.running = false;
+    this.yaw = this.previousYaw = attempt.yaw;
+    this.position.set(
+      attempt.deck.x,
+      attempt.deck.y + TUNE.radius,
+      attempt.deck.z,
+    );
+    this.previousPosition.copy(this.position);
+    this.body.setTranslation(this.position, true);
+    this.velocity.copy(heading.multiplyScalar(speed));
+    this.body.setLinvel(this.velocity, true);
+    this.grounded = true;
+    this.state = "Landing";
+    this.landTimer = 0.3;
+    this.landingCompression = 0.9;
+    this.jumpOn = null;
+    this.jumpOnRearm = TUNE.jumpOnRearm;
+    this.jumpOnLanded = 0.55;
+    this.finishManual();
+    this.events.emit({ type: "dismount", walking: false });
   }
   private land(support: { height: number; normal: THREE.Vector3 }) {
     const impact = Math.max(0, -this.velocity.dot(support.normal));
@@ -1205,7 +1345,7 @@ export class Simulation {
         direction.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       direction.normalize();
       const mountSpeed = Math.min(
-        TUNE.maxSpeed * 0.72,
+        TUNE.mountSpeedCap,
         Math.max(2.6, this.speed + TUNE.runMountBoost),
       );
       this.walking = false;
@@ -1716,7 +1856,10 @@ export class Simulation {
       ) {
         this.velocity.addScaledVector(
           tangent,
-          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.maxSpeed, 0, 1),
+          // Diminishing toward the pushing ceiling: the contribution reaches
+          // zero at pushMaxSpeed, so pushing cannot exceed it while a downhill
+          // run remains free to carry the rider past it.
+          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.pushMaxSpeed, 0, 1),
         );
         this.pushTimer = TUNE.pushCadence;
         this.events.emit({ type: "push" });
@@ -1815,12 +1958,18 @@ export class Simulation {
           support.height + TUNE.radius / Math.max(0.55, support.normal.y);
         this.body.setTranslation(this.position, true);
       }
+      // Following the surface removes the into-surface component; restoring the
+      // magnitude carries that momentum along the surface instead of dropping
+      // it. This used to be gated on rampWorld, so the same slope bled speed in
+      // the warehouse and preserved it outdoors - the single largest source of
+      // "speed feels inconsistent". It now behaves identically on every map.
+      // On flat ground the projection removes nothing, so this is a no-op there.
       const surfaceSpeed = this.velocity.length();
       this.velocity.addScaledVector(
         this.normal,
         -this.velocity.dot(this.normal),
       );
-      if (this.rampWorld && this.velocity.lengthSq() > 0.00001)
+      if (this.velocity.lengthSq() > 0.00001)
         this.velocity.setLength(surfaceSpeed);
       this.lastSpeed = speed;
     } else {
@@ -1859,7 +2008,22 @@ export class Simulation {
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }
-    if (this.velocity.length() > 28) this.velocity.setLength(28);
+    // Protective ceiling on runaway travel. Applied to the horizontal component
+    // only and eased rather than hard-clamped: scaling the whole vector (as this
+    // did at 28) shortened jumps and bent airborne trajectories, because it
+    // pulled vertical speed down with it. Measured before the fix, an airborne
+    // (0, 12, 26) became (0, 11.61, 25.42) - a third of a metre per second of
+    // climb removed in a single step, mid-flight.
+    const travel = Math.hypot(this.velocity.x, this.velocity.z);
+    if (travel > TUNE.extremeSpeed) {
+      const eased =
+        Math.max(
+          TUNE.extremeSpeed,
+          travel - (travel - TUNE.extremeSpeed) * TUNE.extremeSpeedResponse * dt,
+        ) / travel;
+      this.velocity.x *= eased;
+      this.velocity.z *= eased;
+    }
     const lip = this.currentLip();
     const onTransition =
       !!lip &&

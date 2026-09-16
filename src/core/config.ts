@@ -71,7 +71,43 @@ export const TUNE = {
   push: 2.5,
   pushCadence: 0.46,
   pushHoldDelay: 0.17,
-  maxSpeed: 12,
+  // --- Scooter speed: one documented source of truth ------------------------
+  // All values are metres per second in simulation units; only the HUD converts.
+  // Measured on the flat lakeside trail BEFORE this change, pushing repeatedly
+  // at the push cadence: 2.45 / 4.39 / 5.93 / 7.14 / 8.10 rising to an asymptote
+  // of 11.31 after 40 pushes, exactly repeatable across runs. Coasting lost
+  // 0.1 m/s per second (rolling drag is a constant deceleration, not
+  // proportional). The ceiling is set by the push contribution falling to zero
+  // at pushMaxSpeed, so that constant IS the usable pushing maximum.
+  //
+  // Three separate limits, as they are three different things:
+  //   pushMaxSpeed    - what pushing alone can reach on the flat
+  //   extremeSpeed    - a protective ceiling on runaway horizontal travel
+  //   (descent)       - gravity-earned speed is deliberately NOT capped by a
+  //                     third constant; it is limited by drag against slope, so
+  //                     a legitimate downhill run is never abruptly erased.
+  pushMaxSpeed: 14.6, // +22% over the previous 12; see CHECKPOINT-1.md
+  extremeSpeed: 30,
+  extremeSpeedResponse: 2.4, // how quickly travel eases back under the ceiling
+  mountSpeedCap: 8.6, // unchanged in effect: was maxSpeed(12) * 0.72
+  // --- Jump-on mounting -----------------------------------------------------
+  // Jumping while carrying the scooter releases that same instance ahead of the
+  // rider as a rolling deck; landing on it completes the mount. A jump near the
+  // scooter is not a mount on its own: the rider must be descending onto the
+  // deck, roughly aligned with its travel, and inside a forgiving but plausible
+  // capture envelope.
+  jumpOnLead: 0.55, // how far ahead of the rider the deck is released
+  // The released deck rolls a little slower than the rider who let go of it, so
+  // the gap closes during the jump and the rider comes down onto it. Matching
+  // the rider's speed exactly would hold the deck permanently out of reach.
+  jumpOnRoll: 0.8,
+  jumpOnWindow: 1.6, // seconds the released deck stays catchable
+  jumpOnCaptureRadius: 0.8, // horizontal envelope around the deck
+  jumpOnCaptureHeight: 0.55, // vertical reach from the feet to the deck
+  jumpOnAlignment: 0.55, // travel must broadly agree with the deck's direction
+  jumpOnRunSpeed: 3.4, // committed running approach, above a standing hop
+  jumpOnBoost: 2.3, // bounded extra carried into riding, applied once
+  jumpOnRearm: 0.45, // a fresh on-foot approach and jump is required each time
   rollingDrag: 0.1,
   crouchFastDragMultiplier: 0.72,
   crouchDownhillGain: 0.5,
