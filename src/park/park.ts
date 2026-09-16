@@ -85,12 +85,33 @@ export function legacyWarehouseHeight(x:number,z:number){
   }
   return h;
 }
+/**
+ * Slope along one axis, robust at a step. A central difference taken across the
+ * side of a box or ramp blends the two levels into a steep slope that does not
+ * exist; riding onto that false slope turned horizontal speed into vertical and
+ * launched the rider. Where one side is nearly flat and the other rises sharply,
+ * the point belongs to the flat side. Over 10 cm a smooth transition changes
+ * slope by a few hundredths near flat, and the steepest authored bank meets flat
+ * ground at 0.4, so anything sharper than 0.45 is an edge, not a curve.
+ */
+const STEP_SLOPE_JUMP = 0.45;
+function axisSlope(minus: number, centre: number, plus: number, d: number) {
+  const back = (centre - minus) / d,
+    ahead = (plus - centre) / d;
+  if (
+    Math.abs(back - ahead) > STEP_SLOPE_JUMP &&
+    Math.min(Math.abs(back), Math.abs(ahead)) < 0.35
+  )
+    return Math.abs(back) < Math.abs(ahead) ? back : ahead;
+  return (back + ahead) / 2;
+}
 export function terrainNormal(x: number, z: number): THREE.Vector3 {
-  const d = 0.1;
+  const d = 0.1,
+    centre = terrainHeight(x, z);
   return new THREE.Vector3(
-    (terrainHeight(x - d, z) - terrainHeight(x + d, z)) / (2 * d),
+    -axisSlope(terrainHeight(x - d, z), centre, terrainHeight(x + d, z), d),
     1,
-    (terrainHeight(x, z - d) - terrainHeight(x, z + d)) / (2 * d),
+    -axisSlope(terrainHeight(x, z - d), centre, terrainHeight(x, z + d), d),
   ).normalize();
 }
 const warehouseSpawns = [

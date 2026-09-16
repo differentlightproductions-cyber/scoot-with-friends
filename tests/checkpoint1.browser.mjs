@@ -84,21 +84,35 @@ try {
       s.velocity.z < beforeZ && s.velocity.z > TUNE.extremeSpeed, { z: s.velocity.z });
 
     // ---- Jump-on mounting ---------------------------------------------------
-    const approachJump = ({ running, lean = 1, after = {} }) => {
+    // A jumps; Y in the air places the scooter. `placeAfter` is seconds after the
+    // jump, or null to never press Y.
+    const approachJump = ({ running, lean = 1, placeAfter = 0.12 }) => {
       s.reset(12, true); a(0.4);
       s.walking = true; s.running = running; s.hasScooter = true; s.walkCameraYaw = 0;
       a(1.4, { lean });
       const approach = s.speed;
       a(1 / 120, { lean, pressed: { hop: true } });
-      const armed = !!s.jumpOn;
-      let mounted = false;
-      for (let i = 0; i < 220 && !mounted; i++) { a(1 / 120, { lean, ...after }); mounted = !s.walking; }
-      return { approach, armed, mounted, rideSpeed: s.speed };
+      const armedByJump = !!s.jumpOn;
+      let mounted = false, placed = false, landedOnFoot = false;
+      for (let i = 0; i < 220 && !mounted; i++) {
+        const press = placeAfter !== null && i === Math.round(placeAfter * 120);
+        a(1 / 120, { lean, pressed: { body: press } });
+        placed ||= !!s.jumpOn;
+        mounted = !s.walking;
+        if (s.walking && s.grounded && i > 30) { landedOnFoot = true; break; }
+      }
+      return { approach, armedByJump, placed, mounted, landedOnFoot, rideSpeed: s.speed, jumpOnLanded: s.jumpOnLanded };
     };
+    const jumpOnly = approachJump({ running: true, placeAfter: null });
+    data.push({ jumpWithoutY: jumpOnly });
+    check('Jumping alone never releases the scooter or mounts',
+      !jumpOnly.armedByJump && !jumpOnly.placed && !jumpOnly.mounted && jumpOnly.landedOnFoot, jumpOnly);
     const running = approachJump({ running: true });
     data.push({ runningJumpOn: { approach: +running.approach.toFixed(2), rideSpeed: +running.rideSpeed.toFixed(2) } });
-    check('A running jump lands on the scooter and rides away',
-      running.armed && running.mounted && running.rideSpeed > 0, running);
+    check('A running jump with Y in the air lands on the scooter and rides away',
+      running.placed && running.mounted && running.rideSpeed > 0 && running.jumpOnLanded > 0, running);
+    const late = approachJump({ running: true, placeAfter: 0.4 });
+    check('Y placed late in the jump still mounts on touchdown', late.mounted, late);
 
     // Ordinary running mount, for comparison.
     s.reset(12, true); a(0.4);
@@ -112,19 +126,31 @@ try {
     check('The jump-on bonus stays inside the pushing ceiling',
       running.rideSpeed <= TUNE.pushMaxSpeed + 0.01, { rideSpeed: running.rideSpeed });
 
-    // A standing hop mounts, but earns no boost.
+    // A standing hop with Y mounts, but earns no boost.
     s.reset(12, true); a(0.4);
     s.walking = true; s.running = false; s.hasScooter = true; s.walkCameraYaw = 0;
     a(1 / 120, { pressed: { hop: true } });
+    a(0.1);
+    a(1 / 120, { pressed: { body: true } });
     let hopped = false;
     for (let i = 0; i < 220 && !hopped; i++) { a(1 / 120); hopped = !s.walking; }
     data.push({ standingHop: { mounted: hopped, rideSpeed: +s.speed.toFixed(2) } });
-    check('A standing hop mounts without earning the running bonus',
+    check('A standing hop with Y mounts without earning the running bonus',
       hopped && s.speed < TUNE.jumpOnRunSpeed, { speed: s.speed });
 
-    // Jumping away from the deck misses, and the rider stays on foot.
-    const away = approachJump({ running: true, after: { steer: 1, lean: -1 } });
-    check('Leaving the deck behind is a miss, not a free mount', !away.mounted, away);
+    // Y on the ground is the ordinary mount, not a jump-on.
+    s.reset(12, true); a(0.4);
+    s.walking = true; s.running = false; s.hasScooter = true;
+    a(0.2);
+    a(1 / 120, { pressed: { body: true } });
+    check('Y on the ground stays the ordinary mount', !s.walking && s.jumpOnLanded === 0 && !s.jumpOn);
+
+    // Walking off an edge and pressing Y is not a jump-on: A must start it.
+    s.reset(12, true); a(0.4);
+    s.walking = true; s.hasScooter = true;
+    s.grounded = false; s.position.y += 1.2; s.body.setTranslation(s.position, true);
+    a(1 / 120, { pressed: { body: true } });
+    check('Y without an A jump does not place the scooter', !s.jumpOn);
 
     // One scooter throughout: a released deck is the carried instance.
     check('No duplicate scooter is created by an attempt', s.hasScooter === true);

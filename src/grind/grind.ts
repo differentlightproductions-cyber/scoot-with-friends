@@ -130,3 +130,34 @@ export function findGrind(
   }
   return best;
 }
+/**
+ * A grind that runs off the end of one segment carries onto the next when the
+ * two share an endpoint and continue broadly the same way. Long ledges that
+ * follow a slope are authored as chains of short straight pieces, and without
+ * this the grind simply ended at the first joint.
+ */
+export function continueGrind(rails: Rail[], contact: GrindContact) {
+  const forward = contact.speed >= 0;
+  const exit = forward ? contact.rail.b : contact.rail.a;
+  const travel = contact.direction.clone().multiplyScalar(forward ? 1 : -1);
+  let best: { rail: Rail; fromA: boolean; agreement: number } | null = null;
+  for (const rail of rails) {
+    if (rail === contact.rail) continue;
+    for (const fromA of [true, false]) {
+      const end = fromA ? rail.a : rail.b;
+      if (end.distanceToSquared(exit) > TUNE.grindJoinDistance ** 2) continue;
+      const along = rail.b.clone().sub(rail.a).normalize();
+      if (!fromA) along.negate();
+      const agreement = along.dot(travel);
+      if (agreement > TUNE.grindJoinAlignment && (!best || agreement > best.agreement))
+        best = { rail, fromA, agreement };
+    }
+  }
+  if (!best) return false;
+  const delta = best.rail.b.clone().sub(best.rail.a);
+  contact.rail = best.rail;
+  contact.direction = delta.clone().normalize();
+  contact.speed = (best.fromA ? 1 : -1) * Math.abs(contact.speed);
+  contact.t = best.fromA ? 0 : 1;
+  return true;
+}

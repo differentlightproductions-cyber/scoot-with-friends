@@ -252,10 +252,13 @@ try {
       a(1.0);
       check(`Land ${name}`, g.sim.tricks.last === name, g.snapshot());
     }
+    // Durations are how long steer is held. At the capped spin rate a 0.75 s
+    // hold from this hop measures 517 degrees, which the 20 degree naming
+    // tolerance correctly calls a 450; 0.8 s genuinely reaches the 540.
     for (const [duration, name] of [
       [0.17, "180°"],
       [0.38, "360°"],
-      [0.75, "540°"],
+      [0.8, "540°"],
     ]) {
       reset();
       push();
@@ -320,6 +323,11 @@ try {
       );
       const crashPosition = s.position.clone();
       a(2.0);
+      // Getting up after a bail is the player's call: A once the crash settles.
+      if (quality === "failed") {
+        a(1 / 120, { pressed: { hop: true } });
+        a(0.2);
+      }
       check(
         quality === "failed"
           ? "Bail gets up near the crash with no spawn reset"

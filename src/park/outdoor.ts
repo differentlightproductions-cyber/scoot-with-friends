@@ -3,6 +3,8 @@ import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
 import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
+import RAPIER from "@dimforge/rapier3d-compat";
+import { GROUPS } from "../physics/groups";
 import {
   buildMemorialGrounds,
   extensionHeight,
@@ -389,6 +391,18 @@ export function buildOutdoor(park: Park) {
         0.12,
         0x606b6b,
       );
+      // The steel lip is real coping: grindable along its length, and cleared
+      // like quarter coping when rolling or launching over it.
+      // The small box carries its ledge along the right-hand edge, so its
+      // coping stops short of the ledge instead of running through its legs.
+      const end = m.id === "small-box" ? m.x1 - 0.72 : m.x1 - 0.1;
+      park.rail(
+        "Box coping " + m.id,
+        new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
+        new THREE.Vector3(end, m.h + 0.025, lip),
+        "ledge",
+        true,
+      );
     }
     if (m.kind === "quarter") {
       const lip = rampLips(m)[0];
@@ -444,41 +458,107 @@ export function buildOutdoor(park: Park) {
         );
     }
   }
-  // Grind ledge running the FULL right-hand edge of the small box. The old
-  // bench covered only the flat deck, so the edge simply stopped partway. The
-  // structure follows the box profile (rising ramp, flat deck, short descent)
-  // instead of floating level above the slope, and its top is registered as one
-  // continuous chain of grind segments that share endpoints exactly, so there is
-  // no gap or lip where two pieces meet.
+  // The small box hub ledge (a hubba): an up-ledge along the bank, a level run
+  // across the deck and a straight down-ledge over the lip transition. It used
+  // to be 22 short slabs traced along the box profile, which stepped visibly
+  // and bent 48 degrees over the lip - a kink no grind can follow, so every
+  // grind dropped off there. Three long straight pieces read as one built ledge,
+  // and their edges join end to end so a grind carries along the whole run.
   {
     const box3 = modules.find((m) => m.id === "small-box")!;
-    const edge = box3.x1 - 0.3,
-      start = box3.z0 + 1,
-      end = 4.6,
-      seats: THREE.Vector3[] = [];
-    const segments = 22;
-    for (let i = 0; i <= segments; i++) {
-      const z = start + ((end - start) * i) / segments;
-      seats.push(new THREE.Vector3(edge, profile(box3, z) + 0.42, z));
-    }
-    for (let i = 0; i < segments; i++) {
-      const a = seats[i],
-        b = seats[i + 1],
+    const lip = rampLips(box3)[0],
+      deckStart = lip - box3.deck,
+      top = 0.42,
+      width = 0.62,
+      thick = 0.14,
+      x = box3.x1 - 0.3;
+    const line = [
+      new THREE.Vector3(x, profile(box3, box3.z0 + 1) + top, box3.z0 + 1),
+      new THREE.Vector3(x, box3.h + top, deckStart),
+      new THREE.Vector3(x, box3.h + top, lip),
+      new THREE.Vector3(x, top, box3.z1 + 0.7),
+    ];
+    const ground = (z: number) => (z > box3.z1 ? 0 : profile(box3, z));
+    const skirtMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8f918a,
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    });
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i],
+        b = line[i + 1],
         mid = a.clone().add(b).multiplyScalar(0.5),
-        length = b.z - a.z;
-      // Seat slab, tilted to sit flush on the local slope.
-      const slab = box(mid.x, mid.y, mid.z, 0.62, 0.14, length + 0.01, 0xb08a5f, true);
-      slab.rotation.x = -Math.atan2(b.y - a.y, length);
-      const leg = box(mid.x, mid.y * 0.5, mid.z, 0.46, mid.y, 0.16, 0x3b4a3f, false);
-      leg.visible = i % 3 === 0;
+        run = b.clone().sub(a),
+        length = run.length(),
+        tilt = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(1, 0, 0),
+          -Math.atan2(run.y, run.z),
+        );
+      const slab = box(mid.x, mid.y, mid.z, width, thick, length + 0.02, 0xb08a5f);
+      slab.quaternion.copy(tilt);
+      // The collider reaches well below the slab so a rider rolling into the
+      // side meets the ledge, not a gap beneath a floating top.
+      const depth = 0.95;
+      const centre = mid
+        .clone()
+        .add(new THREE.Vector3(0, thick / 2 - depth / 2, 0).applyQuaternion(tilt));
+      park.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(width / 2, depth / 2, length / 2 + 0.01)
+          .setTranslation(centre.x, centre.y, centre.z)
+          .setRotation(tilt)
+          .setFriction(0.1)
+          .setCollisionGroups(GROUPS.surface),
+      );
+      park.solids.push(slab);
+      // A solid skirt from the slab down to whatever it stands on, following
+      // the ramp surface underneath instead of leaving the top on stilts.
+      const vertices: number[] = [],
+        indices: number[] = [],
+        samples = 24;
+      for (const side of [-1, 1]) {
+        const base = vertices.length / 3;
+        for (let s = 0; s <= samples; s++) {
+          const t = s / samples,
+            z = a.z + run.z * t,
+            y = a.y + run.y * t - thick / 2;
+          vertices.push(x + side * (width / 2 - 0.05), y, z);
+          vertices.push(x + side * (width / 2 - 0.05), ground(z) - 0.02, z);
+          if (s < samples) {
+            const p = base + s * 2;
+            indices.push(p, p + 1, p + 2, p + 1, p + 3, p + 2);
+          }
+        }
+      }
+      // End caps where a piece meets open ground.
+      for (const [end, z] of [
+        [a, a.z],
+        [b, b.z],
+      ] as const) {
+        if (end !== line[0] && end !== line[line.length - 1]) continue;
+        const base = vertices.length / 3,
+          y = end.y - thick / 2;
+        for (const side of [-1, 1]) {
+          vertices.push(x + side * (width / 2 - 0.05), y, z);
+          vertices.push(x + side * (width / 2 - 0.05), ground(z) - 0.02, z);
+        }
+        indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+      }
+      const skirt = new THREE.BufferGeometry();
+      skirt.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      skirt.setIndex(indices);
+      skirt.computeVertexNormals();
+      const skirtMesh = new THREE.Mesh(skirt, skirtMaterial);
+      skirtMesh.castShadow = skirtMesh.receiveShadow = true;
+      skirtMesh.name = "Small box ledge skirt";
+      scene.add(skirtMesh);
     }
-    // One grind path per exposed side, chained end to end along the whole run.
+    // One grind edge per side, chained end to end along the whole run.
     for (const side of [-1, 1])
-      for (let i = 0; i < segments; i++)
+      for (let i = 0; i < line.length - 1; i++)
         park.rail(
           `Small box ledge ${side} ${i}`,
-          seats[i].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
-          seats[i + 1].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
+          line[i].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
+          line[i + 1].clone().add(new THREE.Vector3(side * 0.28, 0.078, 0)),
           "ledge",
         );
   }

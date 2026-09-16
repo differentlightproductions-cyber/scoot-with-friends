@@ -12,11 +12,16 @@ export class Daylight {
  constructor(private park:Park){
   park.scene.traverse(o=>{if(o instanceof THREE.DirectionalLight)this.sun=o;if(o instanceof THREE.HemisphereLight)this.ambient=o;});
   if(!OUTDOOR)return;
-  // [21,-34] removed: it stood in the sidewalk entrance beside the rack. The
-  // remaining lamps keep that approach lit from the surrounding poles.
-  // [20,-73] moved to [24,-84]: it intersected the parking wheel stop at x=19.8
-  // and now stands inside the landscaped island on its own base.
-  for(const [x,z] of [[-20,32],[-42,-20],[50,-28],[-75,30],[24,-84]]){
+  // Checked from screenshots, not just coordinates:
+  // [21,-34] removed: it stood in the sidewalk entrance beside the rack.
+  // [-42,-20] stood inside the scooter rack slab; it now closes the same service
+  // row beyond the fountain, in line with the furniture.
+  // [-20,32] stood a metre onto the wood park riding apron; it now sits on the
+  // lawn just past the apron edge.
+  // The parking lamp (first [20,-73], then [24,-84]) never had a good spot in
+  // the lot: a wheel stop, then the drive aisle beside a floodlight. It now
+  // lights the south footpath from the verge between the floodlight poles.
+  for(const [x,z] of [[-20,34.3],[-47.3,-20],[50,-28],[-75,30],[46,-94.4]]){
    const y=terrainHeight(x,z);
    park.box(new THREE.Vector3(x,y+.09,z),new THREE.Vector3(.52,.18,.52),0x6a7472,true);
    park.box(new THREE.Vector3(x,y+3,z),new THREE.Vector3(.12,6,.12),0x485757,true);

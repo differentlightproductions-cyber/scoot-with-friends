@@ -111,6 +111,8 @@ export class RiderModel {
   crouch = 0;
   wheelAngle = 0;
   carry = 0;
+  /** 0 in the rider's hands, 1 once a jump-on has put the deck under their feet. */
+  placed = 0;
   private backpack=new THREE.Group();
   pushFoot = v(0.055, 0.2, -0.19);
   private garmentSkins:GarmentSkin[]=[];
@@ -464,7 +466,20 @@ export class RiderModel {
     if(s.state==='Bail'&&s.crash){this.crashPose(s);return;}
     const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
     this.root.position.copy(s.previousPosition).lerp(s.position, alpha);
-    this.root.position.y -= 0.22;
+    // The wheels sit one radius from the centre along the scooter's own up axis.
+    // A fixed 22 cm straight down only holds on flat ground; on a steep
+    // transition it floated the scooter off the wall or buried it, and the
+    // correction arrived as a snap the moment the rider landed or levelled out.
+    const riding = !s.walking && !s.sitting;
+    const lean = riding
+      ? s.pitch -
+        (s.bodyFlip?.active ? s.bodyFlip.angle : 0) -
+        (s.manual.active ? s.manual.pitch : 0)
+      : 0;
+    const heading = s.previousYaw + (s.yaw - s.previousYaw) * alpha;
+    this.root.position.x -= Math.sin(heading) * Math.sin(lean) * 0.22;
+    this.root.position.y -= Math.cos(lean) * 0.22;
+    this.root.position.z -= Math.cos(heading) * Math.sin(lean) * 0.22;
     this.root.rotation.order='YXZ';
     this.root.rotation.set(
       flip,
@@ -474,7 +489,11 @@ export class RiderModel {
     // Rotate the complete rider and scooter around the body, not the front axle.
     if(flip){const offset=v(0,.75,0).sub(v(0,.75,0).applyAxisAngle(v(1,0,0),flip)).applyAxisAngle(v(0,1,0),this.root.rotation.y);this.root.position.add(offset);}
     const usingItem=!!s.emote&&['drink','eat','drink-fountain','vend'].includes(s.emote.id);
-    this.carry = damp(this.carry, s.walking && s.running && !s.heldItem && !usingItem ? 1 : 0, 8, dt);
+    const placing = !!s.jumpOn;
+    this.placed = placing
+      ? Math.min(1, this.placed + dt / TUNE.jumpOnDropTime)
+      : 0;
+    this.carry = damp(this.carry, s.walking && s.running && !s.heldItem && !usingItem && !placing ? 1 : 0, placing ? 30 : 8, dt);
     this.scooter.rotation.set(
       posturePitch * (1 - this.carry),
       0,
@@ -482,8 +501,8 @@ export class RiderModel {
     );
     this.walkOffset = damp(
       this.walkOffset,
-      s.sitting?.id ? 0.78 : s.walking ? 0.48 : 0,
-      14,
+      s.sitting?.id ? 0.78 : s.walking && !placing ? 0.48 : 0,
+      placing ? 40 : 14,
       dt,
     );
     this.scooter.position.x = this.walkOffset;
@@ -497,7 +516,11 @@ export class RiderModel {
       ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
       : s.sitting
         ? -0.55
-        : this.carry * 1.02;
+        : placing
+          ? this.carry * 1.02 +
+            this.placed *
+              Math.max(-2, s.jumpOn!.deck.y + TUNE.radius - s.position.y)
+          : this.carry * 1.02;
     const bri = s.tricks.bri.angle,
       kickless = s.tricks.kickless.angle;
     const briActive =

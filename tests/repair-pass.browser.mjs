@@ -164,9 +164,13 @@ try {
       });
       check('Quarter takeoff stays mostly upward at ' + speed,
         measured <= TUNE.quarterRolloutRatioMax + 0.02, { measured, plane });
-      // Signed: less outward (or unchanged). Negative leans back over the deck.
-      check('Quarter outward throw is reduced or equal at ' + speed,
-        now <= before + 1e-9, { now, before, plane });
+      // Straight up at normal speed, so the rider comes back down onto the wall
+      // under the coping; outward throw toward the deck only beyond that band,
+      // and never more than the earlier formula allowed.
+      check('Quarter takeoff is straight up within normal speed at ' + speed,
+        plane > TUNE.quarterOverDeckSpeed || measured <= 0.02, { measured, plane });
+      check('Quarter outward throw never exceeds the earlier formula at ' + speed,
+        now <= Math.max(before, 0) + 1e-9, { now, before, plane });
       check('Quarter vertical share is not reduced at ' + speed,
         upNow >= upBefore - 1e-9, { upNow, upBefore });
       check('Quarter still produces real height at ' + speed, takeoff.vy > plane * 0.9,

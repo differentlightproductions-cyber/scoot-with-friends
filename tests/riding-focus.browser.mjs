@@ -30,7 +30,8 @@ try{
    data.push({stallSpeed:speed,state:s.state,pos:s.position.toArray()});check('LT intentional spine stall '+speed,!!s.stall);
   }
   for(const x of [-8,-2])for(const kind of ['whip','bars','bri','inward','hop']){
-   const z=(x===-8?4:2.75)+.5;const rider=place(x,z,9);
+   // Inside the lip release distance, so the rider leaves the lip this tick.
+   const z=(x===-8?4:2.75)+.2;const rider=place(x,z,9);
    if(kind==='bri'||kind==='inward'){
     for(let i=0;i<=24;i++){const r=(kind==='bri'?1:-1)*i*Math.PI*2/24;a(.014,{rx:Math.cos(r),ry:Math.sin(r)});}
    }else if(kind==='hop'){a(.1,{ry:1});a(1/120,{ry:-1});}

@@ -512,9 +512,7 @@ export function buildMemorialGrounds(park: Park) {
     [72, 92],
   ])
     box((a + b) / 2, 0.08, -47, b - a, 0.16, 0.22, 0xcac8bb, true);
-  for (const x of [-20, 22, 65]) {
-    box(x, 0.02, -80, 14, 0.035, 3, 0xb49a73);
-  }
+
   // Lake and surrounding trail, set outside the usable skatepark lines.
   const lake = new THREE.Mesh(
     new THREE.CircleGeometry(1, 72),
@@ -746,15 +744,17 @@ export function buildMemorialGrounds(park: Park) {
   }
   rocks.name = "rocks";
   scene.add(rocks);
+  // The three parking floodlights used to stand a metre inside the lot, in the
+  // rear drive aisle. They now line its southern verge beyond the footpath.
   for (const [x, z] of [
     [35, -28],
     [43, 25],
     [88, 25],
     [88, -22],
     [-35, -45],
-    [-28, -88],
-    [22, -88],
-    [85, -88],
+    [-24, -94.4],
+    [22, -94.4],
+    [85, -94.4],
     [-86, -35],
     [-86, 36],
   ]) {

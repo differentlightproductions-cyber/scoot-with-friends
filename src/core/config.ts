@@ -34,16 +34,30 @@ export const TUNE = {
   briCatchProgress: 0.82,
   briTakeoffGrace: 0.12, // ignore stale support contacts this long after a valid upward takeoff
   boxTrickForwardRatio: 0.48,
-  // Begin clearing coping before the rider reaches its collision capsule.
-  // A wider handoff keeps a smooth transition at real riding speeds.
-  transitionLipReleaseDistance: 0.65,
+  // A transition releases the rider at its lip. The rider's centre rides one
+  // radius off the wall, about 0.22 m inside the lip line at the top, so this is
+  // where the wheels reach the coping. It was 0.65, which on the steep top of a
+  // quarter launched every air more than a metre below the coping.
+  transitionLipReleaseDistance: 0.26,
+  // During a quarter air the coping stays clear of the rail guard while the
+  // rider is within this far inside the lip, or this far out over the deck.
+  quarterAirClearInside: 1.2,
+  quarterAirClearOutside: 0.6,
+  // Outside a quarter, the scooter eases onto the receiving surface's angle
+  // over this long before contact.
+  airLandingAlignTime: 0.35,
+  airPitchLimit: 1.45,
+  touchdownGap: 0.02,
   transitionRailClearTime: 0.18,
   quarterOverDeckSpeed: 12,
   // Outward travel off a quarter lip, as a fraction of the plane speed applied
   // along the lip's own forward direction. Negative leans back over the deck.
   // These bound the takeoff RATIO, which is why a correction here shortens the
   // outward throw without touching launch height or gravity.
-  quarterRolloutRatioMin: -0.035, // unchanged: slow rollouts already left the lip correctly
+  // At normal speed a quarter air goes straight up and comes straight back down
+  // onto the wall just under the coping. Only speed beyond the normal band
+  // throws the rider outward toward the deck.
+  quarterRolloutRatioMin: 0,
   quarterRolloutRatioMax: 0.14,
   quarterRolloutSpeedGain: 0.022,
   quarterLeanRatio: 0.06,
@@ -51,19 +65,7 @@ export const TUNE = {
   // `forward` from the module's authored lip rotation rather than sampling the
   // terrain further down the transition, so the takeoff direction was correct
   // and only the outward/upward split above was wrong.
-  reentryCaptureStrength: 0.24,
-  // --- Bounded upper-transition re-entry assist -----------------------------
-  // Transition-relative, not a world-space sphere: the rider must be descending
-  // toward the receiving surface, close to it, and roughly aligned with it.
-  reentryMaxGap: 0.46, // predicted wheel contact must be within this of the surface
-  reentryMinGap: -0.18,
-  reentryYawTolerance: 0.78,
-  reentryPitchTolerance: 0.95,
-  // "Below the coping" needs no separate depth: the assist requires a real
-  // curved transition surface under the wheels within the gap band, and that
-  // surface only exists inside/below the coping in the first place.
-  reentryMaxCorrection: 2.4, // hard ceiling on the normal-direction correction (m/s)
-  reentryOvershootSpeed: 1.2, // clearly travelling away from the surface: no assist
+
   caseHardImpact: 8.2,
   step: 1 / 120,
   markerHoldDuration: 0.75,
@@ -102,23 +104,27 @@ export const TUNE = {
   extremeSpeedResponse: 2.4, // how quickly travel eases back under the ceiling
   mountSpeedCap: 8.6, // unchanged in effect: was maxSpeed(12) * 0.72
   // --- Jump-on mounting -----------------------------------------------------
-  // Jumping while carrying the scooter releases that same instance ahead of the
-  // rider as a rolling deck; landing on it completes the mount. A jump near the
-  // scooter is not a mount on its own: the rider must be descending onto the
-  // deck, roughly aligned with its travel, and inside a forgiving but plausible
-  // capture envelope.
-  jumpOnLead: 0.55, // how far ahead of the rider the deck is released
-  // The released deck rolls a little slower than the rider who let go of it, so
-  // the gap closes during the jump and the rider comes down onto it. Matching
-  // the rider's speed exactly would hold the deck permanently out of reach.
-  jumpOnRoll: 0.8,
-  jumpOnWindow: 1.6, // seconds the released deck stays catchable
-  jumpOnCaptureRadius: 0.8, // horizontal envelope around the deck
-  jumpOnCaptureHeight: 0.55, // vertical reach from the feet to the deck
-  jumpOnAlignment: 0.55, // travel must broadly agree with the deck's direction
+  // Deliberate and two-step: A jumps on foot, then Y places the carried scooter
+  // under the rider's feet while they are still in the air. Jumping alone never
+  // releases the scooter. The deck follows the rider down and the mount
+  // completes on touchdown, unless the landing spot is obstructed.
+  jumpOnWindow: 1.6, // seconds a placed deck waits for the rider to land
+  jumpOnCaptureHeight: 0.16, // feet-to-deck gap at which touchdown counts
+  jumpOnDropTime: 0.14, // seconds for the scooter to travel from hands to ground
   jumpOnRunSpeed: 3.4, // committed running approach, above a standing hop
   jumpOnBoost: 2.3, // bounded extra carried into riding, applied once
   jumpOnRearm: 0.45, // a fresh on-foot approach and jump is required each time
+  // --- Steps and walls ------------------------------------------------------
+  // A rise sharper than a curb, measured perpendicular to the surface the rider
+  // was on, is a wall rather than a transition. Real transitions curve away from
+  // their tangent by millimetres per tick; the side of a box does so by its full
+  // height. A wall stops the rider, and a hard hit bails them.
+  stepUpHeight: 0.16,
+  // Ride height stays geometric up to this surface steepness (about 81 degrees,
+  // the top of the tallest quarter).
+  steepRideNormal: 0.15,
+  wallBailSpeed: 5.5,
+  wallWobbleSpeed: 1.5,
   rollingDrag: 0.1,
   crouchFastDragMultiplier: 0.72,
   crouchDownhillGain: 0.5,
@@ -213,6 +219,10 @@ export const TUNE = {
   grindHeldIntentScore: 0.6,
   grindStrength: 48,
   grindMinSpeed: 1.5,
+  // Segments meeting within this distance, and continuing within ~45 degrees,
+  // are one grindable run.
+  grindJoinDistance: 0.05,
+  grindJoinAlignment: 0.7,
   manualSensitivity: 2.8, // stick authority over balance acceleration
   manualStability: 1.7, // inverted-pendulum gain: how hard an existing lean runs away
   // The stick also gets a little direct rate authority. Without it the player
