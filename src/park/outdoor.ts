@@ -283,6 +283,28 @@ export function outdoorHeight(x: number, z: number) {
     if (x >= m.x0 && x <= m.x1) height = Math.max(height, profile(m, z));
   return Math.max(height, stairHeight(x, z));
 }
+/**
+ * The small box hub ledge: the slab centre line (three straight pieces), the
+ * slab width and thickness. Shared by the build and by clearance checks, so a
+ * test measures against the ledge that is actually in the park.
+ */
+export function smallBoxLedge() {
+  const box3 = modules.find((m) => m.id === "small-box")!;
+  const lip = rampLips(box3)[0],
+    deckStart = lip - box3.deck,
+    top = 0.42,
+    x = box3.x1 - 0.3;
+  return {
+    line: [
+      new THREE.Vector3(x, profile(box3, box3.z0 + 1) + top, box3.z0 + 1),
+      new THREE.Vector3(x, box3.h + top, deckStart),
+      new THREE.Vector3(x, box3.h + top, lip),
+      new THREE.Vector3(x, top, box3.z1 + 0.7),
+    ],
+    width: 0.62,
+    thick: 0.14,
+  };
+}
 export function buildOutdoor(park: Park) {
   const { scene } = park;
   scene.background = new THREE.Color(0x9dc6e6);
@@ -466,18 +488,8 @@ export function buildOutdoor(park: Park) {
   // and their edges join end to end so a grind carries along the whole run.
   {
     const box3 = modules.find((m) => m.id === "small-box")!;
-    const lip = rampLips(box3)[0],
-      deckStart = lip - box3.deck,
-      top = 0.42,
-      width = 0.62,
-      thick = 0.14,
-      x = box3.x1 - 0.3;
-    const line = [
-      new THREE.Vector3(x, profile(box3, box3.z0 + 1) + top, box3.z0 + 1),
-      new THREE.Vector3(x, box3.h + top, deckStart),
-      new THREE.Vector3(x, box3.h + top, lip),
-      new THREE.Vector3(x, top, box3.z1 + 0.7),
-    ];
+    const { line, width, thick } = smallBoxLedge(),
+      x = line[0].x;
     const ground = (z: number) => (z > box3.z1 ? 0 : profile(box3, z));
     const skirtMaterial = new THREE.MeshStandardMaterial({
       color: 0x8f918a,

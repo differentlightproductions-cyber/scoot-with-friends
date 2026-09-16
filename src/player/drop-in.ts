@@ -114,7 +114,7 @@ export class DropIn {
   step(s: Simulation, dt: number, input: InputFrame) {
     if (!this.phase) return false;
     s.body.collider(0).setCollisionGroups(GROUPS.chassisSurfaceOnly);
-    s.railGuard.setSensor(true);
+    s.guardClear = true;
     if (this.phase === "ready") {
       if (input.pressed.brakeBars) {
         s.position.copy(this.origin);

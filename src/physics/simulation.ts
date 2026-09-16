@@ -57,6 +57,29 @@ export class Simulation {
   fakie = new FakieControl();
   airSpin = new AirSpinControl();
   railGuard: RAPIER.Collider;
+  /**
+   * Contact suppression for the rider's own colliders, applied in the contact
+   * filter hook rather than by flipping sensor flags. Rapier keeps sensor and
+   * contact pairs in separate graphs; toggling a collider to a sensor while it
+   * touched the coping left a stale contact pair that later collided as solid
+   * even though the collider reported itself as a sensor.
+   */
+  guardClear = false;
+  riderIntangible = false;
+  private chassisHandle = -1;
+  private guardHandle = -1;
+  /**
+   * The one launch of the current air. A natural lip departure records the
+   * velocity and normal it left the surface with, before any redirect. A pop
+   * inside the departure grace replaces that departure from the recorded state
+   * instead of stacking a second impulse on top of it; any later launch writer
+   * in the same air is rejected. Cleared whenever the rider is supported again.
+   */
+  launch: { id: number; kind: "natural" | "pop"; at: number; velocity: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+  private launchCount = 0;
+  private recordLaunch(kind: "natural" | "pop", id = ++this.launchCount) {
+    this.launch = { id, kind, at: this.elapsed, velocity: this.velocity.clone(), normal: this.normal.clone() };
+  }
   railImpactCooldown = 0;
   dropIn = new DropIn();
   footJumpTimer = 0;
@@ -231,8 +254,15 @@ export class Simulation {
   private releasingRail: number | undefined;
   contactEvents = new RAPIER.EventQueue(true);
   private contactHooks: RAPIER.PhysicsHooks = {
-    filterContactPair: (a,b) => this.grindCooldown > 0 && this.releasingRail !== undefined &&
-      (a===this.releasingRail || b===this.releasingRail) ? null : RAPIER.SolverFlags.COMPUTE_IMPULSE,
+    // Runs inside world.step: only plain numbers may be read here. Touching a
+    // Rapier object (body.collider(), collider.handle) re-borrows the world.
+    filterContactPair: (a,b) => {
+      const chassis = this.chassisHandle, guard = this.guardHandle;
+      if (this.riderIntangible && (a === chassis || b === chassis || a === guard || b === guard)) return null;
+      if (this.guardClear && (a === guard || b === guard)) return null;
+      return this.grindCooldown > 0 && this.releasingRail !== undefined &&
+        (a===this.releasingRail || b===this.releasingRail) ? null : RAPIER.SolverFlags.COMPUTE_IMPULSE;
+    },
     filterIntersectionPair: () => true,
   };
   constructor(
@@ -266,6 +296,8 @@ export class Simulation {
         .setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS),
       this.body,
     );
+    this.chassisHandle = this.body.collider(0).handle;
+    this.guardHandle = this.railGuard.handle;
     this.tricks = new Tricks(events);
     this.score = new ScoreSystem(events);
     this.reset();
@@ -301,6 +333,7 @@ export class Simulation {
     this.jumpOnLanded = 0;
     this.footJumped = false;
     this.surfaceMemory = null;
+    this.launch = null;
     this.board.reset();
     this.hopRail = null;
     this.copingDrop = null;
@@ -316,9 +349,9 @@ export class Simulation {
     this.velocity.set(0, 0, 0);
     this.yaw = s.yaw;
     this.previousYaw = this.yaw;
-    this.body.collider(0).setSensor(false);
+    this.riderIntangible = false;
     this.body.collider(0).setCollisionGroups(GROUPS.chassis);
-    this.railGuard.setSensor(false);
+    this.guardClear = false;
     this.fakie.reset();
     this.airSpin.reset();
     this.railImpactCooldown = 0;
@@ -637,9 +670,10 @@ export class Simulation {
     const planeSpeed = Math.hypot(this.velocity.dot(forward), this.velocity.y);
     const ratio = clamp(
       (planeSpeed - TUNE.quarterOverDeckSpeed) * TUNE.quarterRolloutSpeedGain -
-        clamp(lean, 0, 1) * TUNE.quarterLeanRatio,
+        clamp(lean, 0, 1) * TUNE.quarterLeanRatio +
+        clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio,
       TUNE.quarterRolloutRatioMin,
-      TUNE.quarterRolloutRatioMax,
+      Math.max(TUNE.quarterRolloutRatioMax, clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio),
     );
     this.velocity.addScaledVector(
       forward,
@@ -648,6 +682,14 @@ export class Simulation {
     this.velocity.y = planeSpeed * Math.sqrt(Math.max(0, 1 - ratio * ratio));
   }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
+    const replacing = !this.grounded && !this.grind && this.launch;
+    if (replacing) {
+      if (replacing.kind === "pop" || this.elapsed - replacing.at > TUNE.coyoteTime + 1e-6) return;
+      // Undo the departure's redirect; gravity since the departure still applies.
+      this.velocity.copy(replacing.velocity);
+      this.velocity.y -= TUNE.gravity * (this.elapsed - replacing.at);
+      this.normal.copy(replacing.normal);
+    }
     this.bodyFlip.begin(origin,this.pitch);
     this.body.setGravityScale(1,true);
     const linked = this.manual.active || !!this.grind;
@@ -711,10 +753,12 @@ export class Simulation {
         this.velocity.y += timing * (0.12 + charge * 0.22);
       }
     }
-    this.body.setTranslation(
-      this.position.clone().add(new THREE.Vector3(0, 0.06, 0)),
-      true,
-    );
+    if (!replacing)
+      this.body.setTranslation(
+        this.position.clone().add(new THREE.Vector3(0, 0.06, 0)),
+        true,
+      );
+    this.recordLaunch("pop", replacing ? replacing.id : undefined);
     this.grounded = false;
     this.state = "Airborne";
     this.popTimer = 0.15;
@@ -727,7 +771,7 @@ export class Simulation {
     this.departureLip=null;
     this.airWeight.reset(this.pitch, this.yaw);
     this.airSpin.reset();
-    this.events.emit({ type: "pop", charge });
+    if (!replacing) this.events.emit({ type: "pop", charge });
   }
   fastplantOpportunity() {
     if(!this.grounded||this.walking||this.grind||this.stall||this.dropIn.phase||this.state==='Bail'||this.speed<3||this.tricks.airborne)return null;
@@ -794,8 +838,8 @@ export class Simulation {
     this.lastBailGetUpPress = -Infinity;
     this.manual.reset();
     this.grind = null;
-    this.body.collider(0).setSensor(false);
-    this.railGuard.setSensor(false);
+    this.riderIntangible = false;
+    this.guardClear = false;
     this.fakie.reset();
     this.tricks.finish("failed");
     this.tricks.reset();
@@ -803,7 +847,7 @@ export class Simulation {
     this.hopBuffer = 0;
     this.spin = 0;
     this.body.setGravityScale(0, true);this.body.setLinvel({x:0,y:0,z:0},true);
-    this.body.collider(0).setSensor(true);this.railGuard.setSensor(true);
+    this.riderIntangible = true;this.guardClear = true;
     this.groundIntent=null;this.dropIn.reset();this.stall=null;
     this.hopRail=null;this.copingDrop=null;
     this.events.emit({ type: "bail", reason });
@@ -821,7 +865,7 @@ export class Simulation {
     this.preload.reset();
     this.tricks.finish("clean");
     this.body.collider(0).setCollisionGroups(GROUPS.chassisSurfaceOnly);
-    this.railGuard.setSensor(true);
+    this.guardClear = true;
     this.body.setTranslation(this.position, true);
     this.body.setLinvel(this.velocity, true);
     this.events.emit({
@@ -925,8 +969,8 @@ export class Simulation {
     this.velocity.set(0, 0, 0);
     this.body.setLinvel(this.velocity, true);
     this.body.setGravityScale(1, true);
-    this.body.collider(0).setSensor(false);
-    this.railGuard.setSensor(false);
+    this.riderIntangible = false;
+    this.guardClear = false;
     this.walking = true;
     this.running = false;
     this.sitting = null;
@@ -958,12 +1002,13 @@ export class Simulation {
   }
   private finishGrind() {
     if (this.grind) {
+      this.launch = null;
       this.releasingRail = this.grind.rail.colliderHandle;
       if (this.grindDuration > 0.08) this.tricks.add(this.grind.name);
       this.grind = null;
       this.grindCooldown = 0.22;
-      this.body.collider(0).setSensor(false);
-      this.railGuard.setSensor(false);
+      this.riderIntangible = false;
+      this.guardClear = false;
       this.body.setGravityScale(1, true);
     }
   }
@@ -981,6 +1026,7 @@ export class Simulation {
     this.grindCooldown = TUNE.grindHopWindow;
     this.velocity.copy(along);
     this.velocity.y = Math.max(0, along.y) + TUNE.grindHopSpeed;
+    this.recordLaunch("pop");
     this.body.setLinvel(this.velocity, true);
     this.grounded = false;
     this.state = "Airborne";
@@ -1106,9 +1152,10 @@ export class Simulation {
       this.copingDrop = null;
       this.velocity.y = candidate.direction.y * candidate.speed;
       this.body.setGravityScale(0, true);
-      this.body.collider(0).setSensor(false);
+      this.riderIntangible = false;
       this.body.collider(0).setCollisionGroups(GROUPS.chassisSurfaceOnly);
-      this.railGuard.setSensor(true);
+      this.guardClear = true;
+      this.launch = null;
       this.state = "Grinding";
       // Preserve the rider's approach on entry. The lower spring below blends
       // into the rail over a moment instead of snapping to a fixed track.
@@ -1143,7 +1190,7 @@ export class Simulation {
     this.footJumpTimer = Math.max(0, this.footJumpTimer - dt);
     this.updateJumpOn(dt);
     this.body.collider(0).setCollisionGroups(GROUPS.chassis);
-    this.railGuard.setSensor(false);
+    this.guardClear = false;
     if (input.pressed.sprint) this.running = !this.running;
     this.tricks.endFakie();
     this.rampLean = damp(this.rampLean, 0, 9, dt);
@@ -1597,8 +1644,8 @@ export class Simulation {
     ) {
       this.bail("Water — returning to shore");
       this.waterBail = true;
-      this.body.collider(0).setSensor(true);
-      this.railGuard.setSensor(true);
+      this.riderIntangible = true;
+      this.guardClear = true;
       this.events.emit({
         type: "splash",
         x: this.position.x,
@@ -1827,6 +1874,7 @@ export class Simulation {
     else this.normal.lerp(support.normal, 1 - Math.exp(-18 * dt)).normalize();
     if (wasGrounded && !this.grounded && !this.grind) {
       const leavingLip = this.currentLip();
+      this.recordLaunch("natural");
       if (leavingLip && leavingLip.distance < 0.55 && this.velocity.y > 0.3) {
         this.departureLip=leavingLip;this.airQuarter=leavingLip.module.kind==="quarter"?leavingLip:null;
         this.lipClearTimer = TUNE.transitionRailClearTime;
@@ -1852,6 +1900,7 @@ export class Simulation {
       this.airWeight.reset(this.pitch, this.yaw);
       this.airSpin.reset();
     }
+    if (this.grounded || this.grind) this.launch = null;
     if (this.grounded) this.lastGround = this.elapsed;
     const edgeGrace =
       this.elapsed - this.lastGround < TUNE.coyoteTime &&
@@ -2496,6 +2545,7 @@ export class Simulation {
       this.velocity.y > 0.3 &&
       this.popTimer === 0
     ) {
+      this.recordLaunch("natural");
       this.departureLip=lip;this.airQuarter=lip.module.kind==="quarter"?lip:null;
       if (lip.module.kind === "spine")
         this.redirectSpine(lip.direction, input.lean, lip.forward);
@@ -2537,7 +2587,7 @@ export class Simulation {
       .setCollisionGroups(
         this.grind ? GROUPS.chassisSurfaceOnly : crossing ? GROUPS.chassisClearCoping : GROUPS.chassis,
       );
-    this.railGuard.setSensor(!!this.grind || crossing);
+    this.guardClear = !!this.grind || crossing;
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(
       new THREE.Quaternion().setFromAxisAngle(

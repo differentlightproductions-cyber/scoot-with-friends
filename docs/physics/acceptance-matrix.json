@@ -1,0 +1,1496 @@
+{
+  "schema_version": "1.1",
+  "project": "Scoot With Friends",
+  "prepared_date": "2026-09-16",
+  "purpose": "Refined acceptance specifications: the 47 unchanged supplied scenarios plus six explicitly labeled product-regression supplements.",
+  "execution_status": "NOT_RUN — specifications reviewed and packaged only; no current game source/runtime inspected or executed.",
+  "scenario_count": 53,
+  "binding_requirements": [
+    "Actual map and obstacle IDs",
+    "Initial pose and velocity",
+    "Equipped part IDs and geometry dimensions",
+    "Timestamped semantic input and relevant raw input",
+    "Control profile and stance",
+    "Assistance settings and simulation tick",
+    "Dependency versions and build hash",
+    "Deterministic seed where applicable",
+    "Independent expected-outcome oracle"
+  ],
+  "test_dimensions": {
+    "stance": [
+      "regular",
+      "goofy"
+    ],
+    "control_profile": [
+      "existing Arcade",
+      "existing Pro"
+    ],
+    "render_fps": [
+      30,
+      60,
+      120,
+      144
+    ],
+    "approach_speed": [
+      "low/infeasible control",
+      "nominal feasible",
+      "high feasible"
+    ],
+    "assist_mode": [
+      "off baseline",
+      "proposed normal setting",
+      "player override"
+    ],
+    "part_geometry": [
+      "baseline",
+      "supported wider deck",
+      "supported alternate wheel size"
+    ],
+    "coverage_policy": "Core deterministic cases first; documented pairwise coverage next. Do not claim a full Cartesian product unless executed."
+  },
+  "release_timing_sweep": {
+    "basis": "actual last meaningful support/lip event",
+    "suggested_offsets_in_simulation_ticks": [
+      -6,
+      -3,
+      -1,
+      0,
+      1,
+      3
+    ],
+    "status": "PROPOSED — calibrate to the installed fixed tick and input semantics.",
+    "oracle": "Feasible inputs succeed without state artifacts; impossible inputs fail for an actual, logged reason."
+  },
+  "provisional_tolerances": {
+    "status": "PROPOSED — review after verifying units and solver scale; never silently loosen to hide failure.",
+    "quaternion_norm_abs_error": 1e-05,
+    "penetration_alert_rule": "max(0.002 metres, 0.03 * equipped wheel radius); per-proxy review required",
+    "render_comparison_position_m": 0.02,
+    "render_comparison_orientation_degrees": 2.0,
+    "confirmation_window_seconds": [
+      0.08,
+      0.15
+    ],
+    "trick_buffer_trial_seconds": 0.1,
+    "assistance_limits": "Begin with no translational assistance; publish justified angular and linear budgets before enabling."
+  },
+  "required_negative_controls": [
+    "Real side/coping collision",
+    "Wrong-side grind capture",
+    "Unreachable landing",
+    "Low-airtime unfinished trick",
+    "Plain air does not count as flip",
+    "Double flip not stopped at one",
+    "Cosmetic change does not change handling"
+  ],
+  "scenarios": [
+    {
+      "id": "Q01",
+      "scenario": "Plain same-wall air above coping.",
+      "expected_outcome": "Clean release, appropriate turn, transition re-entry below coping, ride away.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q02",
+      "scenario": "Opposite wall and opposite stance.",
+      "expected_outcome": "Equivalent behavior with correct signs and no side-specific patch.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q03",
+      "scenario": "Angled and low-amplitude quarter airs.",
+      "expected_outcome": "Valid local support and return; no forced platform landing.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q04",
+      "scenario": "Deliberate platform exit.",
+      "expected_outcome": "Quarter-return assistance does not override the intention.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q05",
+      "scenario": "Spine/hip/box transfer.",
+      "expected_outcome": "Reachable destination retained; no pull back to the launch wall.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q06",
+      "scenario": "Passive halfpipe cycles.",
+      "expected_outcome": "No unexplained energy gain; configured losses have the correct effect.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q07",
+      "scenario": "Active pumping cycles.",
+      "expected_outcome": "Height gain is bounded and traceable to actuation.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "Q08",
+      "scenario": "Near-vertical and shallower transitions.",
+      "expected_outcome": "Correct normals/support, without a pedestrian slope cutoff.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Real support/release/contact features match the intended surfaces.",
+        "No duplicated launch impulse or invented energy.",
+        "Normal airs are not falsely classified as body flips."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B01",
+      "scenario": "Charged box pass without a trick.",
+      "expected_outcome": "Charge alone never produces the reported automatic failure.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B02",
+      "scenario": "Charged barspin over the big box.",
+      "expected_outcome": "One pop, valid clearance/catch, and one confirmed result.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B03",
+      "scenario": "Charged tailwhip over the big box.",
+      "expected_outcome": "Correct deck motion and catch, not merely a label.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B04",
+      "scenario": "Release-time sweep around the lip.",
+      "expected_outcome": "Feasible releases work; invalid ones fail for specific reasons.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B05",
+      "scenario": "Low speed or inadequate clearance.",
+      "expected_outcome": "Honest rejection, incomplete trick, case, or collision; no ghost passage.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B06",
+      "scenario": "Charge/gesture across input profiles.",
+      "expected_outcome": "Existing Arcade and Pro behavior preserved without double launches.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Report the exact takeoff/trick/state event sequence.",
+        "No automatic pre-lip bail solely because charge or a trick was requested.",
+        "Real insufficient-clearance collisions remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R01",
+      "scenario": "Backflip and frontflip.",
+      "expected_outcome": "Continuous root rotation, plausible pivot, genuine maneuver completion.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R02",
+      "scenario": "Flip with left/right 180 and 360.",
+      "expected_outcome": "Coherent coupled path; no inversion sign reversal or axis jump.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R03",
+      "scenario": "Quarter Flair.",
+      "expected_outcome": "Backward somersault/180 descriptor plus valid same-wall re-entry.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R04",
+      "scenario": "Quarter Front Flair.",
+      "expected_outcome": "Forward counterpart recognized correctly, not mislabeled as Flair.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R05",
+      "scenario": "Held double flip with enough air.",
+      "expected_outcome": "No forced single-flip stop or shortest-path unwinding.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R06",
+      "scenario": "Input release and deliberate overrotation.",
+      "expected_outcome": "Bounded completion behavior; real control and failures remain.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R07",
+      "scenario": "Flair plus barspin or tailwhip.",
+      "expected_outcome": "Body and equipment phases coexist and catches are valid.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R08",
+      "scenario": "Fingerwhip/grab during body motion.",
+      "expected_outcome": "Targets follow the correct local frames without stretching or clipping.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R09",
+      "scenario": "Ordinary 180 quarter air.",
+      "expected_outcome": "No false backflip, frontflip, or flair credit.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "R10",
+      "scenario": "360/720 orientation-history unit tests.",
+      "expected_outcome": "Turn history retained even when final orientation is equivalent.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Record actual quaternion/angular history and equipment motion.",
+        "Recognition is not validated solely from the requested trick label.",
+        "Multi-turn intent and player override are preserved."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L01",
+      "scenario": "Steep re-entry versus flat landing.",
+      "expected_outcome": "Severity uses contact-relative normal velocity and pose.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L02",
+      "scenario": "Front-wheel-first and rear-wheel-first.",
+      "expected_outcome": "Compatible sequential contacts can recover without instant false bail.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L03",
+      "scenario": "Fakie re-entry.",
+      "expected_outcome": "Backward rolling is allowed where the current design supports it.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L04",
+      "scenario": "Actual coping/deck side strike.",
+      "expected_outcome": "Real contact is resolved and classified; no grace-period invulnerability.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L05",
+      "scenario": "Nearby but unreachable landing target.",
+      "expected_outcome": "Assistance refuses to teleport or add unbounded airtime.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "L06",
+      "scenario": "Player override toward transfer/double.",
+      "expected_outcome": "Guidance withdraws smoothly and preserves the intended action.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use pre-impact contact-relative velocity and local surface normal.",
+        "Earliest intervening physical collision is not bypassed.",
+        "First-wheel contact is distinguished from stable final recovery."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "G01",
+      "scenario": "Entire small-box grind from either side.",
+      "expected_outcome": "Valid anchor and no sustained wheel/deck penetration into wood.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Validate capture sweep and whole-assembly clearance.",
+        "Intended grind anchor touches a feasible exterior contact.",
+        "Wood and non-grind environmental contacts remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "G02",
+      "scenario": "Wrong-side/underneath capture.",
+      "expected_outcome": "Rejected or physically blocked, never snapped through the box.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Validate capture sweep and whole-assembly clearance.",
+        "Intended grind anchor touches a feasible exterior contact.",
+        "Wood and non-grind environmental contacts remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "G03",
+      "scenario": "Ledge ends, corners, and changed speed.",
+      "expected_outcome": "Safe release or real contact; no invisible trapping.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Validate capture sweep and whole-assembly clearance.",
+        "Intended grind anchor touches a feasible exterior contact.",
+        "Wood and non-grind environmental contacts remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "G04",
+      "scenario": "Wider deck/different compatible wheels.",
+      "expected_outcome": "Anchor and clearance use actual equipped geometry.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Validate capture sweep and whole-assembly clearance.",
+        "Intended grind anchor touches a feasible exterior contact.",
+        "Wood and non-grind environmental contacts remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "G05",
+      "scenario": "Capture with rotating equipment.",
+      "expected_outcome": "Swept path checked, not only the final pose.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Validate capture sweep and whole-assembly clearance.",
+        "Intended grind anchor touches a feasible exterior contact.",
+        "Wood and non-grind environmental contacts remain active."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "T01",
+      "scenario": "Scooter griptape selection.",
+      "expected_outcome": "Fitted top surface, proper holes/masking, consistent views.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use the existing catalog, compatibility and save pipeline.",
+        "Check all supported visual representations.",
+        "Physically equivalent cosmetic choices preserve motion."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "T02",
+      "scenario": "Longboard griptape selection.",
+      "expected_outcome": "Correct deck outline/concavity and vehicle-specific fit.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use the existing catalog, compatibility and save pipeline.",
+        "Check all supported visual representations.",
+        "Physically equivalent cosmetic choices preserve motion."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "T03",
+      "scenario": "Reload, map switch, old save, invalid ID.",
+      "expected_outcome": "Valid persistence and default fallback without lost ownership.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use the existing catalog, compatibility and save pipeline.",
+        "Check all supported visual representations.",
+        "Physically equivalent cosmetic choices preserve motion."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "T04",
+      "scenario": "Cosmetic A/B physics replay.",
+      "expected_outcome": "Identical handling for physically equivalent graphic variants.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use the existing catalog, compatibility and save pipeline.",
+        "Check all supported visual representations.",
+        "Physically equivalent cosmetic choices preserve motion."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "T05",
+      "scenario": "Longboard lean and family switching.",
+      "expected_outcome": "No wheelbite introduced; no stale scooter anchors.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Use the existing catalog, compatibility and save pipeline.",
+        "Check all supported visual representations.",
+        "Physically equivalent cosmetic choices preserve motion."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X01",
+      "scenario": "30/60/120/144 render rates.",
+      "expected_outcome": "Stable fixed-step outcomes, no extra charge/pop per render frame.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X02",
+      "scenario": "Frame hitch and background/resume.",
+      "expected_outcome": "Bounded catch-up and no fabricated input/launch burst.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X03",
+      "scenario": "Existing tricks, manuals, grinds, stalls.",
+      "expected_outcome": "No accidental control or eligibility regression.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X04",
+      "scenario": "HUD, combos, confirmed score/Credit.",
+      "expected_outcome": "One existing display and exactly-once reward behavior.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X05",
+      "scenario": "Maps, builder, shop, saved parts.",
+      "expected_outcome": "Existing identities, ownership, and geometry remain usable.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X06",
+      "scenario": "Desktop/mobile controller checks.",
+      "expected_outcome": "Actual tested devices/settings reported; untested devices labeled.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "X07",
+      "scenario": "On-foot jump-to-mount interaction.",
+      "expected_outcome": "Existing/requested mounting direction preserved; no grip-triggered teleport.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "assertions_to_implement": [
+        "Preserve established project behaviors and shared ownership.",
+        "Report actual tested build, platform and settings.",
+        "No unsupported claim of coverage on other devices."
+      ],
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Bind to actual game assets and harness; this entry is a specification, not executable proof."
+    },
+    {
+      "id": "B07",
+      "scenario": "Direct RS Bri from the reported big-box lip: preload, scoop, full return, and catch.",
+      "expected_outcome": "A feasible direct Bri preserves charge and uses one takeoff; the complete scooter motion returns continuously. An accepted low-airtime attempt may fail on actual contact, never snap under the feet or fail solely because its input was requested.",
+      "origin": "Integration supplement: retained owner requirement and prior repair prompt, not a new research finding.",
+      "research_sections": [
+        "09",
+        "10",
+        "14"
+      ],
+      "milestone_bindings": [
+        "M0: record the failure",
+        "M1: verify launch/input ownership",
+        "M3: verify full equipment motion and catch"
+      ],
+      "assertions_to_implement": [
+        "Record the measured RS preload at gesture acceptance and at the single launch transaction; an RS scoop must not erase the accepted charge.",
+        "Pro-profile direct takeoff requires no separate manual hop; preserve the established Arcade mapping rather than forcing one universal button.",
+        "Check accepted motion samples, part clearance, and catch-state transition independently of the requested Bri label.",
+        "No early grounded/idle/foot-IK writer resets the scooter into its riding pose while the actual Bri is incomplete.",
+        "An uncharged attempt with sufficient ramp-derived airtime may succeed; genuine insufficient-clearance/unfinished impacts remain physical."
+      ],
+      "fixture_variants_to_bind": [
+        "Same approach: no charge, partial charge, full useful charge; measure actual airtime.",
+        "Feasible lip release plus source release-time sweep with fixed recorded inputs.",
+        "A genuinely too-low accepted attempt and a genuinely blocked launch; distinguish the reason for each."
+      ],
+      "independent_oracle_requirement": "Freeze initial state, real obstacle geometry, contact proxies and expected motion/catch milestones before tuning. Use recorded transforms/contact events, not a Bri request or timer alone, to establish completion.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    },
+    {
+      "id": "B08",
+      "scenario": "Direct RS Inward from the reported big-box lip: preload, scoop, full return, and catch.",
+      "expected_outcome": "A feasible direct Inward uses the same launch authority without a separate hop or half-animation reset, while retaining the corrected distinction from Bri.",
+      "origin": "Integration supplement: retained owner requirement and prior repair prompt, not a new research finding.",
+      "research_sections": [
+        "09",
+        "10",
+        "14"
+      ],
+      "milestone_bindings": [
+        "M0: record the failure",
+        "M1: verify launch/input ownership",
+        "M3: verify full equipment motion and catch"
+      ],
+      "assertions_to_implement": [
+        "Latch accepted preload through the RS scoop and record one takeoff/air-session ID.",
+        "Do not relabel Bri as Inward or reverse previously corrected animation direction as an incidental fix.",
+        "Check the actual equipment sweep, rider reach, part clearance, and return-to-catch continuously.",
+        "Early contact does not manufacture a completed catch; it is resolved physically and classified with a specific reason.",
+        "Render-rate changes do not restart the gesture, add charge twice, or skip the return phase."
+      ],
+      "fixture_variants_to_bind": [
+        "No/partial/full useful charge from an identical approach.",
+        "A valid upper-transition launch and a deliberately insufficient-clearance control.",
+        "Both supported stances with the installed control profiles, using a declared pairwise coverage plan."
+      ],
+      "independent_oracle_requirement": "Measure motion and catch geometry from production state. Compare to the established Inward path without treating a matching HUD label as proof.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    },
+    {
+      "id": "R11",
+      "scenario": "Begin Inward, then initiate a Frontflip during its airborne main sweep.",
+      "expected_outcome": "Body rotation starts promptly from the established airborne state while the same Inward timeline continues; no second linear launch or forced equipment reset occurs.",
+      "origin": "Integration supplement: explicit earlier owner combo/control requirement, not a biomechanical claim of passive midair propulsion.",
+      "research_sections": [
+        "04",
+        "11",
+        "12",
+        "14",
+        "16"
+      ],
+      "milestone_bindings": [
+        "M3",
+        "M4: compare assistance off, normal and player override"
+      ],
+      "assertions_to_implement": [
+        "Hold LT+RT and apply deliberate forward LS only after the Inward is already active; preserve the exact timestamped semantic input.",
+        "The equipment attempt ID and progress are not restarted when the body maneuver becomes active.",
+        "The body command changes only its approved bounded angular authority; it adds no linear jump/lift impulse.",
+        "Record coupled orientation history and pose/IK outputs without double application of root rotation.",
+        "A feasible combined catch/landing succeeds; a deliberately too-late request cannot gain invisible airtime or an instant completed flip."
+      ],
+      "fixture_variants_to_bind": [
+        "Mid-sweep activation with adequate air.",
+        "Very late activation negative control.",
+        "One supported diagonal spin direction followed by the mirrored case in the declared coverage plan."
+      ],
+      "independent_oracle_requirement": "Compare takeoff IDs, impulse sources, observed root rotation and continuing equipment transforms before/after the body command. Validate final contacts independently of the requested combo name.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    },
+    {
+      "id": "R12",
+      "scenario": "Begin Bri, then initiate a Backflip during its airborne main sweep.",
+      "expected_outcome": "The established Bri and new backward body motion compose continuously, with controllable continuation and no default stop at one revolution.",
+      "origin": "Integration supplement: explicit earlier owner combo/control requirement, not an independently verified athlete-timing result.",
+      "research_sections": [
+        "04",
+        "11",
+        "12",
+        "14",
+        "16"
+      ],
+      "milestone_bindings": [
+        "M3",
+        "M4: assistance/override regression"
+      ],
+      "assertions_to_implement": [
+        "LT+RT plus backward/diagonal LS is accepted during the active airborne Bri without a new bunny-hop gate.",
+        "No phase reset, direction inversion, false Euler yaw jump, or teleport-to-feet catch occurs.",
+        "Strong continued input retains a reachable double-flip choice when the fixture supplies sufficient airtime.",
+        "Relaxed/opposite input produces bounded continuation/braking rather than runaway acceleration or an upright snap.",
+        "No extra linear energy is added on midair body-maneuver initiation."
+      ],
+      "fixture_variants_to_bind": [
+        "Mid-sweep backward flip with adequate air.",
+        "Continued rotation and deliberate insufficient-airtime cases.",
+        "Both spin signs with matched feasible launch context."
+      ],
+      "independent_oracle_requirement": "Use observed root/part transforms, angular history, assist logs and collision/catch evidence; do not infer multi-turn completion from identical start/end quaternions.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    },
+    {
+      "id": "L07",
+      "scenario": "Complete a hop/equipment trick into Manual or Nose Manual using the held gentle RS position.",
+      "expected_outcome": "Current manual intent survives touchdown; a compatible single-wheel catch starts the existing manual without requiring both wheels first, without skipping an incomplete trick, and without double banking the combo.",
+      "origin": "Integration supplement: retained owner manual/input requirement; the research supplies contact principles but does not prescribe a manual sweet spot.",
+      "research_sections": [
+        "14",
+        "15",
+        "21",
+        "26"
+      ],
+      "milestone_bindings": [
+        "M2: contact regression",
+        "M3: equipment-catch regression",
+        "M5: integrated controls"
+      ],
+      "assertions_to_implement": [
+        "Gentle held RS down/up survives the airborne-to-supported transition without a fresh input edge.",
+        "Deep preload and eligible contextual flicks remain distinct from sustained manual input; no hidden remapping.",
+        "Finite valid rear/front wheel support and an actually completed/catchable equipment pose determine eligibility.",
+        "Landing assistance does not overwrite a valid intended single-wheel pose with an unconditional two-wheel upright snap.",
+        "An unfinished Bri/Inward cannot be rescued solely by manual intent, and score/result ownership follows the existing combo policy once."
+      ],
+      "fixture_variants_to_bind": [
+        "Bunny hop into Manual and Nose Manual.",
+        "Completed Tailwhip or other already-working equipment trick into Manual.",
+        "Incomplete trick/invalid contact negative control."
+      ],
+      "independent_oracle_requirement": "Observe wheel contacts, deck pose, held input and catch state separately from the manual label. Check exactly-once result handling under the established combo-banking rule.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    },
+    {
+      "id": "G06",
+      "scenario": "Lean during the small-box grind, then RS pop/trick exit and optional capture on another valid rail.",
+      "expected_outcome": "Small legal balance changes remain outside solid wood; a deliberate RS exit releases the support once, preserves useful along-edge velocity, and avoids same-rail recapture without blocking a different legitimate rail.",
+      "origin": "Integration supplement: retained owner grind-control/exit requirement plus the research contact-clearance contract.",
+      "research_sections": [
+        "17",
+        "18",
+        "21",
+        "26"
+      ],
+      "milestone_bindings": [
+        "M2",
+        "M3: equipment-trick exit regression",
+        "M5: integrated controls"
+      ],
+      "assertions_to_implement": [
+        "Recompute/check the real equipped anchor and full-assembly clearance through lateral and fore/aft lean.",
+        "Limit or reject infeasible pose changes without increasing penetration or hiding wheels.",
+        "RS pop or accepted trick gesture releases the grind once through the shared takeoff authority.",
+        "Use a bounded same-feature separation/rearm rule rather than disabling all environmental collision.",
+        "A separate reachable rail remains eligible when its own sweep/anchor/contact tests pass; a clear miss is not captured."
+      ],
+      "fixture_variants_to_bind": [
+        "Both feasible grind directions on the reported production ledge.",
+        "Small lean and deliberately excessive lean.",
+        "Pop out, trick out, and another-rail capture only where a real fixture supplies valid geometry."
+      ],
+      "independent_oracle_requirement": "Record actual anchor error, minimum signed clearance, active constraint owner, takeoff count and subsequent contact feature. Repeated successful score ticks inside wood are a failure.",
+      "status": "NOT_RUN",
+      "fixture_binding": null,
+      "automated_status": "NOT_RUN",
+      "visual_review_status": "NOT_RUN",
+      "evidence": {
+        "build_hash": null,
+        "commands": [],
+        "test_output": null,
+        "replay": null,
+        "debug_clip": null,
+        "clean_view_clip": null,
+        "contact_log": null
+      },
+      "notes": "Additional scenario specification only. No current game source/runtime was executed to create this refinement."
+    }
+  ],
+  "revision_provenance": {
+    "revision": "Integration v2; not a new edition of the supplied research",
+    "original_schema_version": "1.0",
+    "original_file": "04_Supplied_Research/03_Acceptance_Test_Matrix.json",
+    "original_sha256": "d1fedb69e64096811f6a9f5fc55b980ac78e3afe4312ec6774714bcd002afb41",
+    "original_scenarios_preserved": 47,
+    "additional_scenarios": 6,
+    "additional_ids": [
+      "B07",
+      "B08",
+      "R11",
+      "R12",
+      "L07",
+      "G06"
+    ],
+    "classification": "Six added scenario specifications are assistant engineering/product refinements, not published research findings.",
+    "game_tests_executed": 0
+  }
+}

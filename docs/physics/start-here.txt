@@ -1,0 +1,121 @@
+SCOOT WITH FRIENDS — REFINED PHYSICS HANDOFF / INTEGRATION V2
+Quarter/halfpipe airs first; one movement/contact contract.
+
+Continue the CURRENT private repository. Implement targeted repairs, not another game.
+
+READING ORDER
+1. This kickoff.
+2. 04_Supplied_Research/01_Scooter_Physics_Research_and_Implementation.md.
+3. 01_Integration_Refinements.md.
+4. 02_Acceptance_Test_Matrix_Refined.json and 03_Milestone_Run_Plan.md.
+5. The five contact sheets in 05_Motion_References/01_motion_sequences; inspect
+   individual frames/source footage where useful, without treating edited playback
+   as calibrated real-world motion capture.
+
+The supplied Markdown is the primary research/engineering blueprint. PDF and Word
+are unchanged optional reading copies, not additional implementations. The original
+kickoff/matrix are preserved in 04_Supplied_Research for provenance. Use THIS kickoff
+and the refined matrix as the active handoff; do not execute both kickoff versions
+as separate tasks.
+
+The integration note explicitly labels retained product decisions and additions.
+It does not silently rewrite the research. Existing unrelated product features stay
+in place. If a genuine conflict remains, identify it narrowly rather than inventing
+new controls or changing physical laws to satisfy a label.
+
+EVIDENCE LIMIT
+The research summarizes biomechanics, mechanics, collision documentation and proposed
+contracts. It does not identify the actual repository's bug. The matrix has 47
+unchanged source scenarios plus 6 named product-regression supplements: 53 scenarios,
+all NOT_RUN. It is not an executable test suite until bound to the game. No game
+tests or fresh web verification were performed while preparing this integration.
+The research mentions reference_math_checks.py, but that script was not supplied.
+Its reported ten mathematical checks are not proof of game correctness.
+
+HIGHEST PRIORITY / FIRST DELIVERY
+Quarter-pipe and half-pipe airing out is the main playable target. Follow the source
+M0-M5 order. M1 must prove both a plain quarter return and a feasible charged box
+launch, using the shared production controller. Do not tune a Flair-only booster
+while a normal air is broken. Reproduce the penetrating grind in M0; fix its full
+contact path in M2 before calling the repair complete.
+
+M0 — Inspect actual engine/version, units, fixed tick, controller type, collider
+geometry, rig pivots, every root/state writer, current assistance, input and result
+flow. Name real files. Record reproducible baseline failures and the first bad event.
+Do not assume Rapier/Three.js or copy current documentation into an incompatible
+installed version.
+
+M1 — Establish valid passive transition flow, a plain same-wall quarter air, and
+charged big-box takeoff/tricks with negative controls. Use canonical fixtures AND
+the actual failing production ramp/box. Keep real coping/side collisions active.
+Retain current stable tick rate unless measured evidence warrants changing it.
+
+M2 — Correct wheel-aware sequential re-entry and the small-box grind. An anchor at a
+valid edge does not permit wheels/deck inside wood. Check swept entry, final pose,
+and every sliding/leaning update. Support clear RS exits without recapture trapping.
+
+M3 — One coherent body angular state plus scooter-relative articulation. Preserve
+continuous multi-turn history, genuine catches, Flair/Front Flair, doubles, and
+midair body flips added during an already active Bri/Inward.
+
+M4 — Only now tune small measured assistance. Start baseline tests with translational
+assistance off. State the final angular/linear limits, combined intervention, and
+player override. Do not hijack deliberate transfers, platform exits, fakie or doubles.
+
+M5 — Integrate GRIPTAPE for scooters and Sometimes Summer longboards; verify catalog,
+fit, saves, every view and physically equivalent cosmetics. Run integrated regressions.
+Isolated griptape asset/catalog work can proceed in parallel once interfaces are agreed.
+
+RETAIN THESE EXPLICIT PRODUCT REQUIREMENTS
+Mounted RS is tricks/preload/manuals, even while stationary. On-foot RS is camera
+unless UI owns it. Keep Arcade/Pro, Regular/Goofy and current D-pad functions.
+
+A recognized Pro RS Bri/Inward gesture can use the shared direct-takeoff transaction;
+it must not require a separate manual bunny hop. Preserve accepted charge through
+the scoop. Do not truncate a low attempt into an under-foot catch. Physically blocked
+or expired input can be rejected with a reason; an eligible accepted attempt is not
+silently refused merely to guarantee a landing. Uncharged is not automatically failure
+when the ramp already supplies adequate air.
+
+LT+RT with LS up/down/diagonals can begin bounded body-flip/spin control after takeoff,
+including during Inward/Bri. That is deliberate gameplay angular authority, not a
+second linear jump and not a claim of passive biomechanical accuracy.
+
+Preserve gentle-RS manual catches and grind lean/RS exits. A current single-wheel
+landing intent must not be overwritten by a universal two-wheel assist. Preserve the
+existing combo-banking policy and exactly-once outcomes.
+
+NON-NEGOTIABLES
+One motion authority. One launch transaction. One confirmed result event.
+Charge, locomotion, body action and equipment phase can coexist.
+A 180 body turn does not reverse translational velocity.
+Ordinary ramp-following rotation is not a scored flip.
+Endpoint quaternions alone cannot distinguish zero/one/two complete revolutions.
+Read impact velocity BEFORE resolution, at the actual moving contact point.
+A safe endpoint does not make an obstructed capture/re-entry path safe.
+Linear fixed-orientation shape queries are not automatically rotational sweeps.
+No collision immunity, invisible landing planes, teleport-to-catch, hidden airtime,
+forced single-flip stop, or per-obstacle secret boost.
+
+EXECUTION AND REPORTING
+Bind real fixtures and independent outcome checks to scenario IDs. Keep tests NOT_RUN
+until executed. Retain failures and before/after logs; do not weaken tolerances to
+manufacture passes. Core cases first, then documented pairwise coverage—not an
+unreported full Cartesian test claim. Use automatic assertions AND human-visible
+motion review; request labels cannot be their own success oracle.
+
+Start with a focused M0 and playable M1, then continue only through passed gates.
+Do not spend the run producing documentation without a patch. Do not defer every
+baseline repair until all 53 cases have full infrastructure. Mark partial coverage
+honestly and never present it as whole-stage completion.
+
+Use one integration owner for root/contact contracts. Parallel workers use isolated
+worktrees and agreed interfaces; do not require additional agents if unavailable.
+Preserve graphics, maps, longboards, cameras, saves, accounts, wallet validation,
+networking and current onboarding. No payments, DNS changes, public deployment or
+paid infrastructure as a side effect.
+
+For each completed gate: actual cause, file/config diff, executed commands/output,
+replay/fixture IDs, debug and clean-view evidence, chosen limits, and remaining issues.
+The first convincing result is a repeatable quarter air and ride-away plus a feasible
+charged box trick—not a claim that the physics is now perfect.

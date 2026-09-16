@@ -68,6 +68,10 @@ export const TUNE = {
   quarterRolloutRatioMax: 0.14,
   quarterRolloutSpeedGain: 0.022,
   quarterLeanRatio: 0.06,
+  // Forward lean (LS up) at a quarter lip carries the rider out onto the deck: a
+  // deliberate platform exit. Its own cap, since the plain-air cap is sized to
+  // keep an unleaned rider returning to the wall.
+  quarterDeckLeanRatio: 0.26,
   // No tangent-sampling correction is needed here: outdoorLip already derives
   // `forward` from the module's authored lip rotation rather than sampling the
   // terrain further down the transition, so the takeoff direction was correct
