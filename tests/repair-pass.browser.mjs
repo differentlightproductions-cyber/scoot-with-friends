@@ -223,12 +223,12 @@ try {
       const s = flat(7);
       scoop(s, direction, .95);
       const target = s.tricks.bri.target;
-      // Only inspect the timeline while it is actually airborne: landing legally
-      // ends the attempt and resets the channel.
+      // Only inspect the timeline while it is actually airborne: landing, or a
+      // failed landing (bail), ends the attempt and resets the channel.
       let regressed = false, previous = Math.abs(s.tricks.bri.angle), reset = false, peak = previous;
       for (let i = 0; i < 300; i++) {
         a(1 / 120);
-        if (s.grounded) break;
+        if (s.grounded || s.state === 'Bail') break;
         const now = Math.abs(s.tricks.bri.angle);
         // Tolerate the channel settling onto its target (a few degrees of
         // overshoot). A real half-trick reset reverses by radians, not degrees.

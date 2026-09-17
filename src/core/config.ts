@@ -31,8 +31,11 @@ export const TUNE = {
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,
-  rampTrickPopMin: 2.1,
-  rampTrickPopCharge: 2.6,
+  // A pop on a ramp adds a leg extension's worth of HEIGHT to the air the ramp
+  // already gives, not a fixed speed: the same 4.7 m/s on top of a fast lip
+  // launch roughly doubled the air and sent riders several metres up.
+  rampTrickPopHeight: 0.25, // m, uncharged
+  rampTrickPopChargeHeight: 0.5, // m more at full charge
   // --- Bri / Inward direct RS takeoff --------------------------------------
   // Charge accumulates while RS is held deep and is CAPTURED when the scoop
   // gesture is accepted, so tracing the gesture cannot throw the preload away.
