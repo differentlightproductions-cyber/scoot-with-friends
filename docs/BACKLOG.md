@@ -5,7 +5,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 
 ## A0. Urgent regressions
 - DONE (box pop) Big box no longer launches high enough for tricks after the bounded ramp pop (ec38321).
-- PARTIAL (flip tuck) Flips combined with scooter tricks (tailwhip, barspin, grabs, Superman, rotating flips), worst on quarter airs: rider body clips through the scooter. Legs only wrap the bars in a tuck no-hander. Tuck no longer lifts the deck into the legs during whips/barspins/Bri/grabs/Superman; Superman scooter sits further ahead. Remaining: Superman inside a backflip still brushes the stem near the head late in the rotation.
+- DONE (flip tuck, superman in flip) Flips combined with scooter tricks (tailwhip, barspin, grabs, Superman, rotating flips), worst on quarter airs: rider body clips through the scooter. Legs only wrap the bars in a tuck no-hander. Tuck no longer lifts the deck into the legs during whips/barspins/Bri/grabs/Superman; Superman scooter sits further ahead. Inside a flip, Superman holds the scooter further out and lower so the stem stays clear of the head (hands may sit slightly off the grips late in the rotation).
 
 ## A. Riding feel (latest messages, 2026-09-17)
 - DONE (ef9036a) Crooked/angled landings: ride away (absorb the angle) instead of sliding out.

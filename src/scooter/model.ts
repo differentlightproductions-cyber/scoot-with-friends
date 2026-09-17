@@ -685,11 +685,15 @@ export class RiderModel {
       // Body stretched out flat toward the bars with the legs kicked back; the
       // scooter rises a little and stays ahead, so the deck never sweeps through
       // the torso on the way in.
-      this.torso.rotation.x += blend * 1.2;
+      // Inside a flip the body stretches less and the scooter is held further out
+      // in front and lower, so the stem cannot come back past the head as the
+      // rotation carries the rider round it.
+      const inFlip = s.bodyFlip.active ? 1 : 0;
+      this.torso.rotation.x += blend * (1.2 - inFlip * 0.45);
       this.torso.position.z -= blend * .1;
       this.torso.position.y -= blend * .06;
-      this.scooter.position.lerp(v(.03,.3,.56),blend);
-      this.scooter.rotation.x+=blend*.12;
+      this.scooter.position.lerp(inFlip ? v(.03,.12,.74) : v(.03,.3,.56),blend);
+      this.scooter.rotation.x+=blend*(.12 + inFlip * .25);
     }
     if (pose === "Tuck No-hander") {
       this.torso.position.y -= blend * 0.2;
