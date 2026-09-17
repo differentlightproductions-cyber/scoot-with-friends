@@ -21,7 +21,13 @@ export const TUNE = {
   flipGuideMinRate: 2.4, // rad/s: a relaxed flip keeps at least this pace until done
   flipGuideAcceleration: 20, // rad/s^2 fastest guided speed-up
   flipOpenAcceleration: 10, // rad/s^2 fastest opening-up slow-down
-  flipCatchOvershoot: 0.45, // rad: carried past an upright by less than this, stop there
+  flipCatchOvershoot: 0.45,
+  // Released spin stick: carry the spin to the next half turn from takeoff
+  // (180, 360, ...) just before contact, or stop if only slightly past one.
+  spinGuideMinRate: 3, // rad/s
+  spinGuideAcceleration: 18, // rad/s^2
+  spinGuideOvershoot: 0.35, // rad
+  spinFinishLead: 0.1, // s // rad: carried past an upright by less than this, stop there
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,

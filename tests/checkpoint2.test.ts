@@ -47,7 +47,7 @@ test("Flair is recognised as its own result rather than a generic rule", () => {
 // A flip in flight with a ballistic contact estimate that counts down, driven by
 // a scripted stick: `hold` seconds of full LS with the chord, then relaxed
 // (`release`: triggers let go, otherwise chord held with LS neutral).
-function fly(options: { hold: number; air: number; release?: boolean; surfacePitch?: number; lean?: number }) {
+function fly(options: { hold: number; air: number; release?: boolean; level?: number; lean?: number }) {
   const flip = new BodyFlipControl();
   flip.begin("trick_initiated_pop", 0);
   const dt = 1 / 120;
@@ -55,7 +55,7 @@ function fly(options: { hold: number; air: number; release?: boolean; surfacePit
   for (let t = 0; t < options.air; t += dt) {
     const holding = t < options.hold;
     const chord = holding || !options.release;
-    flip.step(dt, chord, holding ? (options.lean ?? -1) : 0, 0, { timeToContact: options.air - t, surfacePitch: options.surfacePitch ?? 0 });
+    flip.step(dt, chord, holding ? (options.lean ?? -1) : 0, 0, { timeToContact: options.air - t, level: options.level ?? 0 });
     peakRate = Math.max(peakRate, Math.abs(flip.velocity));
   }
   turnsAtContact = Math.abs(flip.angle) / TAU;
@@ -92,14 +92,14 @@ test("guidance cannot outrun the maximum rate, so too little air still lands sho
 test("opposite input brakes a flip to a stop and guidance does not restart it", () => {
   const flip = new BodyFlipControl();
   flip.begin("trick_initiated_pop", 0);
-  for (let i = 0; i < 40; i++) flip.step(1 / 120, true, -1, 0, { timeToContact: 2, surfacePitch: 0 });
-  for (let i = 0; i < 120; i++) flip.step(1 / 120, true, 1, 0, { timeToContact: 1.5, surfacePitch: 0 });
+  for (let i = 0; i < 40; i++) flip.step(1 / 120, true, -1, 0, { timeToContact: 2, level: 0 });
+  for (let i = 0; i < 120; i++) flip.step(1 / 120, true, 1, 0, { timeToContact: 1.5, level: 0 });
   assert.equal(flip.velocity, 0);
 });
 
 test("a banked receiving surface counts as level for the finish", () => {
-  const level = fly({ hold: 0.2, air: 1.6, surfacePitch: 0 });
-  const banked = fly({ hold: 0.2, air: 1.6, surfacePitch: 0.5 });
+  const level = fly({ hold: 0.2, air: 1.6, level: 0 });
+  const banked = fly({ hold: 0.2, air: 1.6, level: 0.5 });
   // Relative to the landing surface both finish upright: the banked run stops 0.5 rad further round.
   assert(Math.abs(Math.abs(banked.flip.angle) - Math.abs(level.flip.angle) - 0.5) < 0.12,
     `level ${level.flip.angle.toFixed(2)} banked ${banked.flip.angle.toFixed(2)}`);

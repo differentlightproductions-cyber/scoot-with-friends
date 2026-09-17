@@ -1,4 +1,4 @@
-import {TUNE,clamp,wrap} from '../core/config';
+import {TUNE,clamp} from '../core/config';
 export type TakeoffOrigin='manual_hop'|'natural_ramp_air'|'trick_initiated_pop'|'fastplant';
 /** Signed integrated pitch about the rider's yaw-local right axis. Yaw is
  * integrated separately about world-up, so inversion never invents a spin.
@@ -32,7 +32,7 @@ export class BodyFlipControl {
  private brakeLatch=false;
  begin(origin:TakeoffOrigin,pitch=0){this.reset();this.origin=origin;this.basePitch=pitch;}
  reset(){this.origin='natural_ramp_air';this.active=false;this.angle=this.velocity=this.basePitch=0;this.intendedTurns=1;this.assistUsed=0;this.assisting=false;this.prepared=0;this.brakeLatch=false;this.lastContact=99;}
- step(dt:number,chord:boolean,lean:number,currentPitch:number,assist?:{timeToContact:number;surfacePitch:number}){
+ step(dt:number,chord:boolean,lean:number,currentPitch:number,assist?:{timeToContact:number;level:number}){
   if(!this.active&&chord&&Math.abs(lean)>.25){this.active=true;this.basePitch=currentPitch;}
   if(!this.active)return currentPitch;
   this.assisting=false;
@@ -56,7 +56,7 @@ export class BodyFlipControl {
    this.velocity+=clamp(target-this.velocity,-TUNE.flipAcceleration*dt,TUNE.flipAcceleration*dt);
    // Still pushing hard past this revolution's upright (measured against the
    // landing surface, like the finish): go for another.
-   const level=assist?wrap(assist.surfacePitch-this.basePitch):0;
+   const level=assist?assist.level:0;
    if((this.angle-level)*requested>=(this.intendedTurns-1+TUNE.flipDoubleCommit)*TAU)this.intendedTurns++;
   }else if(turning!==0)this.guide(dt,assist);
   this.velocity=clamp(this.velocity,-TUNE.flipMaxRate,TUNE.flipMaxRate);
@@ -67,11 +67,11 @@ export class BodyFlipControl {
   * Carries a relaxed rotation to the intended upright relative to the surface
   * being landed on, finishing a little before contact, then holds it there.
   */
- private guide(dt:number,assist?:{timeToContact:number;surfacePitch:number}){
+ private guide(dt:number,assist?:{timeToContact:number;level:number}){
   const TAU=Math.PI*2,direction=Math.sign(this.velocity);
-  // The surface below changes during the air (wall, then deck), so its pitch is
-  // only a within-half-turn offset; it must never add or remove a revolution.
-  const level=assist?wrap(assist.surfacePitch-this.basePitch):0;
+  // Where the body's up meets the landing surface, within half a turn: the surface
+  // below changes during the air (wall, then deck) and must never add a revolution.
+  const level=assist?assist.level:0;
   const target=direction*this.intendedTurns*TAU+level;
   // Carried past the intended upright: open out and stop, never go round again.
   const remaining=(target-this.angle)*direction;

@@ -75,6 +75,66 @@ export class Simulation {
    * instead of stacking a second impulse on top of it; any later launch writer
    * in the same air is rejected. Cleared whenever the rider is supported again.
    */
+  /** Heading and roll when the body flip began; with bodyFlip.basePitch they fix
+   * the flip's frame. The flip turns about that frame's side axis and air spin
+   * twists about the body's own long axis, so a rider leaving a steep wall
+   * rotates as one body instead of corkscrewing around world vertical. */
+  flipYaw0 = 0;
+  flipRoll0 = 0;
+  flipFrame(yaw0 = this.flipYaw0, pitch0 = this.bodyFlip.basePitch, roll0 = this.flipRoll0) {
+    return new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch0, yaw0, roll0, "YXZ"));
+  }
+  /** The flip angle at which the body's up meets a surface normal, measured about
+   * the frame's side axis, within half a turn. */
+  private flipLevel(normal: THREE.Vector3, frame: THREE.Quaternion) {
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(frame);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(frame);
+    const n = normal.clone().addScaledVector(side, -normal.dot(side));
+    if (n.lengthSq() < 1e-6) return 0;
+    n.normalize();
+    return Math.atan2(side.dot(up.clone().cross(n)), up.dot(n));
+  }
+  /** Rider orientation during a body flip: frame, then flip, then twist. */
+  flipOrientation(yaw = this.yaw) {
+    return this.flipFrame()
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.bodyFlip.angle))
+      .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw - this.flipYaw0));
+  }
+  /** A released spin finishes on a half turn counted from takeoff (fakie counts). */
+  private guideSpin(dt: number, timeToContact: number) {
+    const direction = Math.sign(this.spin), turned = this.tricks.yaw * direction;
+    let goal = Math.ceil(turned / Math.PI - 1e-6) * Math.PI;
+    if (turned - (goal - Math.PI) < TUNE.spinGuideOvershoot) goal -= Math.PI;
+    const remaining = goal - turned, current = Math.abs(this.spin);
+    let desired = 0;
+    if (remaining > 0) {
+      const finish = Math.max(0.1, timeToContact - TUNE.spinFinishLead);
+      desired = Math.min(
+        Math.max(TUNE.spinGuideMinRate, remaining / finish),
+        TUNE.airMaxSpin,
+        Math.sqrt(2 * TUNE.spinGuideAcceleration * remaining),
+      );
+    }
+    const next = desired < current
+      ? Math.max(desired, current - TUNE.spinGuideAcceleration * dt)
+      : Math.min(desired, current + TUNE.spinGuideAcceleration * dt);
+    return direction * next;
+  }
+  /** Rewrites yaw, pitch and roll from the flip orientation for landing checks. */
+  private settleFlipOrientation() {
+    if (!this.bodyFlip.active) return;
+    const q = this.flipOrientation();
+    const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    let yaw = this.yaw;
+    if (Math.hypot(forward.x, forward.z) > 0.2) yaw = this.yaw + wrap(Math.atan2(forward.x, forward.z) - this.yaw);
+    const shift = yaw - this.yaw;
+    this.yaw = yaw;
+    this.previousYaw += shift;
+    const heading = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    this.pitch = -Math.atan2(-up.dot(heading), up.y);
+    this.roll = Math.asin(clamp(-(up.x * Math.cos(yaw) - up.z * Math.sin(yaw)), -1, 1));
+  }
   launch: { id: number; kind: "natural" | "pop"; at: number; velocity: THREE.Vector3; normal: THREE.Vector3 } | null = null;
   private launchCount = 0;
   private grindBlocked = 0;
@@ -1596,6 +1656,7 @@ export class Simulation {
     normal: THREE.Vector3;
     centre: number;
   }) {
+    this.settleFlipOrientation();
     const impact = Math.max(0, -this.velocity.dot(support.normal));
     const slopePitch = -Math.atan2(
       support.normal
@@ -2555,10 +2616,17 @@ export class Simulation {
       // Ballistic time until the rider's centre reaches the surface below, valid
       // while still rising, for the flip's landing preparation.
       const fall = (this.velocity.y + Math.sqrt(Math.max(0, this.velocity.y * this.velocity.y + 2 * TUNE.gravity * Math.max(0, verticalGap)))) / TUNE.gravity;
+      const flipStarting = !this.bodyFlip.active;
+      const frame = flipStarting ? this.flipFrame(this.yaw, this.pitch, this.roll) : this.flipFrame();
+      const level = this.flipLevel(support.normal, frame);
       this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch,{
         timeToContact:fall,
-        surfacePitch:receiving,
+        level,
       });
+      if (flipStarting && this.bodyFlip.active) {
+        this.flipYaw0 = this.yaw;
+        this.flipRoll0 = this.roll;
+      }
       this.spin = this.airSpin.step(
         dt,
         this.spin,
@@ -2568,6 +2636,8 @@ export class Simulation {
         this.airTime,
         this.bodyFlip.active?TUNE.flipYawRateScale:1,
       );
+      if (Math.abs(input.steer) < TUNE.spinStickDeadzone && !this.copingDrop && !this.hopRail && Math.abs(this.spin) > 0.05)
+        this.spin = this.guideSpin(dt, fall);
       const rotation = this.spin * dt;
       this.yaw += rotation;
       this.tricks.yaw += rotation;
@@ -2613,15 +2683,17 @@ export class Simulation {
         12,
         dt,
       );
-      this.roll = damp(
-        this.roll,
-        this.sideSlope(support.normal) * alignment + input.steer * 0.07,
-        alignment > 0 ? 10 : 4,
-        dt,
-      );
+      this.roll = this.bodyFlip.active
+        ? this.flipRoll0
+        : damp(
+            this.roll,
+            this.sideSlope(support.normal) * alignment + input.steer * 0.07,
+            alignment > 0 ? 10 : 4,
+            dt,
+          );
       // Named against the surface being landed on: a frontflip back onto a steep
       // quarter wall is a whole flip at less than 360 raw degrees, a backflip at more.
-      this.tricks.flip=this.bodyFlip.active?this.bodyFlip.angle-wrap(receiving-this.bodyFlip.basePitch):0;
+      this.tricks.flip=this.bodyFlip.active?this.bodyFlip.angle-level:0;
       this.tricks.quarterAir=!!this.airQuarter;
       if (this.rideable === "scooter") this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);

@@ -495,7 +495,10 @@ export class RiderModel {
     this.board.visible = onBoard;
     if (onBoard && !this.boardAssembly) this.setLongboard();
     if(s.state==='Bail'&&s.crash){this.crashPose(s);if(onBoard){this.board.position.copy(this.scooter.position);this.board.quaternion.copy(this.scooter.quaternion);}return;}
-    const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,posturePitch=s.pitch-flip;
+    const flip=s.bodyFlip?.active?s.bodyFlip.angle:0,framed=!!s.bodyFlip?.active;
+    // In a flip the root carries the takeoff pitch and roll (see below).
+    const posturePitch=framed?0:s.pitch-flip,postureRoll=framed?0:s.roll;
+    const riderPitch=framed?s.bodyFlip.basePitch*(.65-1):posturePitch*.65,riderRoll=framed?-.1*s.flipRoll0:s.roll*.9;
     this.root.position.copy(s.previousPosition).lerp(s.position, alpha);
     // The wheels sit one radius from the centre along the scooter's own up axis.
     // A fixed 22 cm straight down only holds on flat ground; on a steep
@@ -523,7 +526,18 @@ export class RiderModel {
       0,
     );
     // Rotate the complete rider and scooter around the body, not the front axle.
-    if(flip){const offset=v(0,.75,0).sub(v(0,.75,0).applyAxisAngle(v(1,0,0),flip)).applyAxisAngle(v(0,1,0),this.root.rotation.y);this.root.position.add(offset);}
+    if(s.bodyFlip?.active){
+      // One body orientation (Simulation.flipOrientation): the takeoff frame,
+      // the flip about its side axis, then air spin as a twist about the body's
+      // own long axis. The frame already holds the takeoff pitch and roll, so the
+      // children below do not apply them again.
+      const frame=s.flipFrame(),q=s.flipOrientation(heading),pivot=v(0,.75,0);
+      this.root.position.copy(s.previousPosition).lerp(s.position,alpha)
+        .sub(v(0,.22,0).applyQuaternion(frame))
+        .add(pivot.clone().applyQuaternion(frame))
+        .sub(pivot.clone().applyQuaternion(q));
+      this.root.quaternion.copy(q);
+    }
     // Riding, walking and carrying on the longboard have their own pose;
     // sitting, emotes and getting up share the scooter's.
     if (onBoard && !s.sitting && !s.emote && s.getUpTimer <= 0) {
@@ -539,7 +553,7 @@ export class RiderModel {
     this.scooter.rotation.set(
       posturePitch * (1 - this.carry),
       0,
-      s.roll * (1 - this.carry) + (this.carry * Math.PI) / 2,
+      postureRoll * (1 - this.carry) + (this.carry * Math.PI) / 2,
     );
     this.walkOffset = damp(
       this.walkOffset,
@@ -550,9 +564,9 @@ export class RiderModel {
     this.scooter.position.x = this.walkOffset;
     this.scooter.position.z = this.carry * 0.12;
     this.rider.rotation.set(
-      posturePitch * 0.65 - s.rampLean * TUNE.rampLeanAngle,
+      riderPitch - s.rampLean * TUNE.rampLeanAngle,
       0,
-      s.roll * 0.9,
+      riderRoll,
     );
     this.scooter.position.y = s.manual.active
       ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
