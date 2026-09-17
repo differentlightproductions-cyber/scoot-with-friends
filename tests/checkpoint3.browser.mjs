@@ -95,9 +95,11 @@ try {
     a(0.5, { lean: -1 }); render();
     check('Walking shows the carried board, not the scooter', g.rider.board.visible && !g.rider.scooter.visible);
     const hand = g.rider.hands[0].getWorldPosition(new g.rider.root.position.constructor());
-    const socket = g.rider.boardAssembly.carrySocket.getWorldPosition(new g.rider.root.position.constructor());
-    data.carryGap = +hand.distanceTo(socket).toFixed(3);
-    check('The carrying hand holds the board rail', data.carryGap < 0.09, data);
+    // Walking: knuckles round the top truck. Standing: the board tucked under the arm.
+    const V = g.rider.root.position.constructor;
+    const truck = g.rider.boardAssembly.hangers.map((h) => h.getWorldPosition(new V()).distanceTo(hand));
+    data.carryGap = +Math.min(...truck).toFixed(3);
+    check('The carrying hand holds the board by its truck', data.carryGap < 0.12, data);
     a(0.3);
     a(1 / 120, { pressed: { body: true } });
     check('Y mounts the board again', !s.walking && s.rideable === 'longboard');

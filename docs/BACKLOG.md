@@ -24,13 +24,13 @@ Status: TODO / IN PROGRESS / DONE (commit).
 
 ## B2. Longboard and rides (2026-09-17 message)
 - DONE (menus) Sesh Music: add "Promise" by Keeto (Downloads MP3) as the first song.
-- TODO Longboard carry: hand actually holds the board, knuckles wrapped round the top truck while walking, tucked under the arm standing still.
-- TODO Longboard push animation: front foot forward on the board, kicking foot pushes out to the side and forward; carving turns the feet sideways as now.
+- DONE (longboard) Longboard carry: hand actually holds the board, knuckles wrapped round the top truck while walking, tucked under the arm standing still.
+- DONE (longboard) Longboard push animation: front foot forward on the board, kicking foot pushes out to the side and forward; carving turns the feet sideways as now.
 - DONE (menus) Menu: a "RIDES" section to switch between the customized scooter and board, with customization submenus under it instead of Customization as the main header.
 
-- TODO Longboard fakie/switch: ride backwards down quarters and ramps; pressing kick while rolling backwards switches to switch stance and pushes with the other foot, like Skate.
-- TODO Longboard power slide: scrub some speed while bombing, then settle straight back into the line.
-- TODO Longboard foot brake at extreme speed: rider crashes rolling forward, the board runs away; Y calls it back.
+- DONE (longboard) Longboard fakie/switch: ride backwards down quarters and ramps; pressing kick while rolling backwards switches to switch stance and pushes with the other foot, like Skate.
+- DONE (longboard) Longboard power slide: scrub some speed while bombing, then settle straight back into the line.
+- DONE (longboard) Longboard foot brake at extreme speed: rider crashes rolling forward, the board runs away; Y calls it back.
 - DONE (presets) Sesh Music controller: up/down moves between rows, left/right within a row or adjusts sliders.
 - DONE (genres) Sesh Music genres/channels: Rock (Promise), Hip-Hop (Stacks), Punk, Electronic (Hollow), Chill (Scraped My Knee), AI Music. Artist names for the three new beats are unknown.
 

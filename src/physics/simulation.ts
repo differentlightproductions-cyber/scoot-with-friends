@@ -963,9 +963,10 @@ export class Simulation {
     if(this.plantLatched)return {...input,held:{...input.held,hop:0},pressed:{...input.pressed,hop:false}};
     return input;
   }
-  bail(reason: string) {
+  private footBrakeHeld = 0;
+  bail(reason: string, runaway = false) {
     if (this.state === "Bail") return;
-    this.crash?.dispose();this.crash=new CrashMotion(this.world,this.position,this.velocity,this.yaw,this.pitch);
+    this.crash?.dispose();this.crash=new CrashMotion(this.world,this.position,this.velocity,this.yaw,this.pitch,runaway);
     this.state = "Bail";
     this.getUpTimer = 0;
     this.bodyFlip.reset();this.airQuarter=null;
@@ -1929,6 +1930,7 @@ export class Simulation {
           return;
         }
       }
+      if(this.crash?.runaway&&input.pressed.body){this.crash.callBack();this.events.emit({type:"marker",message:"BOARD CALLED BACK",progress:1});}
       this.world.step(this.contactEvents, this.contactHooks);
       if(this.crash){this.crash.update(dt);this.position.copy(this.crash.rider.translation());this.position.y-=.4;this.velocity.copy(this.crash.rider.linvel());
         const scooter=this.crash.scooter.translation();
@@ -2453,6 +2455,10 @@ export class Simulation {
       );
       this.yaw = ride.yaw;
       this.steer = this.board.lean;
+      // A hard foot brake at bombing speed cannot hold: the rider is thrown forward
+      // and the board rolls on until Y calls it back.
+      this.footBrakeHeld = input.held.brake > 0.6 && this.speed > TUNE.boardFootBrakeCrashSpeed ? this.footBrakeHeld + dt : 0;
+      if (this.footBrakeHeld > TUNE.boardFootBrakeCrashHold) { this.footBrakeHeld = 0; this.bail("Foot brake at speed / Y calls the board back", true); return; }
       this.roll = this.recovery > 0
         ? Math.sin(this.elapsed * 25) * 0.1 * this.recovery + ride.roll
         : damp(this.roll, ride.roll, 10, dt);

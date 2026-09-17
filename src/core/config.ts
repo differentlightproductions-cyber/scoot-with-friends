@@ -173,6 +173,9 @@ export const TUNE = {
   boardAero: 0.0055, // standing: on a 6% grade air alone settles near 13 m/s
   boardTuckAero: 0.0036,
   boardFootBrake: 3.4,
+  // Stamping the foot down above this speed throws the rider forward and the board runs on.
+  boardFootBrakeCrashSpeed: 14,
+  boardFootBrakeCrashHold: 0.2,
   boardSlideMinSpeed: 3.5,
   boardSlideSteer: 0.45,
   boardSlideAngle: 1.15, // about 66 degrees across the direction of travel

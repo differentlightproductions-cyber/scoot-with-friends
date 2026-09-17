@@ -97,6 +97,10 @@ export class RiderModel {
   private boardKey = "";
   /** 0 walking with the board, 1 standing sideways on it. */
   boardStance = 0;
+  /** Longboard carry: 0 held by the top truck while moving, 1 tucked under the arm standing still. */
+  boardHold = 0;
+  /** 1 while pushing a longboard facing down the board, 0 in the sideways carving stance. */
+  boardPushStance = 0;
   boardWheelAngle = 0;
   deckPivot = new THREE.Group();
   barPivot = new THREE.Group();

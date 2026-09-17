@@ -36,6 +36,8 @@ export class LongboardMotion {
   pushTimer = 0;
   private pushHold = 0;
   travel: 1 | -1 = 1;
+  /** Riding tail first after pushing while rolling backwards: the other foot leads and kicks. */
+  switchStance = false;
   /** Roll that lays the board on the surface, separate from the carve lean. */
   surfaceRoll = 0;
 
@@ -43,6 +45,7 @@ export class LongboardMotion {
     this.lean = this.slide = this.slideSide = this.tuck = this.brake = 0;
     this.pushTimer = this.pushHold = this.surfaceRoll = 0;
     this.travel = 1;
+    this.switchStance = false;
   }
 
   /**
@@ -95,11 +98,14 @@ export class LongboardMotion {
       yawRate += -this.lean * TUNE.boardPivotRate * (1 - speed / TUNE.boardPivotSpeed);
     let newYaw = yaw + yawRate * dt;
     if (this.slide > 0.01 && speed > 0.5) {
-      // Swing the board across the direction of travel.
+      // Power slide: swing the board across the direction of travel, further
+      // the harder the rider leans. Released, it swings back onto the line so
+      // the rider settles straight back into the bomb.
       const travelYaw =
         Math.atan2(velocity.x, velocity.z) + (this.travel < 0 ? Math.PI : 0);
-      const target = travelYaw - (this.slideSide || Math.sign(this.lean)) * TUNE.boardSlideAngle;
-      newYaw += wrap(target - newYaw) * (1 - Math.exp(-TUNE.boardSlideSwing * dt)) * this.slide;
+      const depth = this.slideSide ? THREE.MathUtils.lerp(0.55, 1, clamp((Math.abs(input.steer) - TUNE.boardSlideSteer) / (1 - TUNE.boardSlideSteer), 0, 1)) : 0;
+      const target = travelYaw - this.slideSide * TUNE.boardSlideAngle * depth;
+      newYaw += wrap(target - newYaw) * (1 - Math.exp(-TUNE.boardSlideSwing * dt)) * (this.slideSide ? this.slide : 1);
     }
 
     // Gravity along the surface.
@@ -114,7 +120,7 @@ export class LongboardMotion {
     const lengthwise = velocity.dot(newTangent);
     const across = velocity.clone().addScaledVector(newTangent, -lengthwise).projectOnPlane(normal);
     const before = velocity.length(),
-      bite = Math.min(1, TUNE.boardGrip * dt * (1 - 0.92 * this.slide));
+      bite = Math.min(1, TUNE.boardGrip * dt * (1 - this.slide) ** 2);
     velocity.addScaledVector(across, -bite);
     // A carve turns the board's momentum rather than deleting it: keep the
     // speed, less a little tyre scrub for the sideways slip taken out. In a
@@ -129,7 +135,7 @@ export class LongboardMotion {
       (TUNE.boardRollingDrag +
         aero * speed * speed +
         this.brake * TUNE.boardFootBrake +
-        this.slide * TUNE.boardSlideScrub) *
+        this.slide * TUNE.boardSlideScrub * (0.6 + 0.4 * Math.min(1, speed / 12))) *
       dt;
     if (speed > 0) velocity.multiplyScalar(Math.max(0, speed - loss) / speed);
 
@@ -154,6 +160,8 @@ export class LongboardMotion {
         this.travel * TUNE.boardPush * clamp(1 - current / TUNE.boardPushMaxSpeed, 0, 1),
       );
       this.pushTimer = TUNE.boardPushCadence;
+      // Kicking while rolling tail first rides switch; a push rolling nose first rides normal again.
+      this.switchStance = this.travel < 0;
       pushed = true;
     }
 
