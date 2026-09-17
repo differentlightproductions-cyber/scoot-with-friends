@@ -1,4 +1,5 @@
 import {loadingStage,finishLoading,loadingFailed} from './ui/loading';
+import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide} from './network/client';
 import {CreditEconomy} from './data/credit';
@@ -86,7 +87,8 @@ async function boot() {
   ]);
   social.warehouse=ACTIVE_MAP==='warehouse';
   camera.mountFlourish=profile.settings.mountFlourish;
-  const applyCamera=()=>{camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;};applyCamera();
+  const camcorder=new CamcorderFilter();
+  const applyCamera=()=>{camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
   rider.applyProfile(profile);
   sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
@@ -120,7 +122,7 @@ async function boot() {
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
-  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;applyCamera();};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;applyCamera();};
   menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
@@ -444,7 +446,7 @@ async function boot() {
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
-    if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);renderer.render(scene, camera.camera);}
+    if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);camcorder.render(renderer,scene, camera.camera);}
     if(!hud.started||menu.shopOpen||menu.seshOpen)menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
@@ -566,7 +568,7 @@ async function boot() {
       get park() {
         return park;
       },
-      camera,
+      camera, camcorder,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},
       music, musicPlayer,

@@ -38,6 +38,10 @@ export interface LocalProfile {
     /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
     firstPersonFov: number;
     cameraMotion: 'reduced'|'full';
+    /** Presentation only; the 3D image, never the HUD or part previews. */
+    cameraFilter: 'off'|'camcorder';
+    /** 0..100, kept while the filter is off. */
+    filterStrength: number;
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
@@ -66,6 +70,8 @@ export function loadProfile(): LocalProfile {
       cameraView:'third',
       firstPersonFov:90,
       cameraMotion:'reduced',
+      cameraFilter:'off',
+      filterStrength:65,
       fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
     },
   };
@@ -83,6 +89,8 @@ export function loadProfile(): LocalProfile {
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(110,Math.max(70,Math.round(saved.settings.firstPersonFov)));
     if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
+    if(['off','camcorder'].includes(saved.settings?.cameraFilter))profile.settings.cameraFilter=saved.settings.cameraFilter;
+    if(Number.isFinite(saved.settings?.filterStrength))profile.settings.filterStrength=Math.min(100,Math.max(0,Math.round(saved.settings.filterStrength)));
     const rider = RIDERS.find((r) => r.id === saved.riderId);
     for(const r of RIDERS){const entry=saved.riderOutfits?.[r.id];if(entry&&OUTFIT_SLOTS.every(s=>CLOTHING.some(c=>c.id===entry[s]&&c.category===s)))profile.riderOutfits[r.id]={...entry};}
     if (rider) {

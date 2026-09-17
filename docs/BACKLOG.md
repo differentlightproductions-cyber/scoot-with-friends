@@ -54,7 +54,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - TODO Checkpoint 4 screenshots (longboard wall, rack storage, preview) and Checkpoint 4 tests.
 - TODO Checkpoint 5: B Hill downhill map (always named "B Hill").
 - TODO Checkpoint 6: cross-system regression pass.
-- TODO '90s Camcorder filter (Settings -> Graphics), works with first person.
+- DONE (camcorder; shots in artifacts/claude/camcorder) '90s Camcorder filter (Settings -> Graphics), works with first person.
 - TODO Physics acceptance: remaining 35 NOT_RUN scenarios.
 - KNOWN Pre-existing failing suites: browser, advanced, addendum, memorial, polish.
 

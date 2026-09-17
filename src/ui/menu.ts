@@ -397,6 +397,8 @@ export class GameMenu {
         add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
         add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=110?70:c.firstPersonFov+5;}),'Horizontal field of view, 70° to 110°. Default 90°.');
         add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
+        add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
+        if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');
         add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
         add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{
           const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();
