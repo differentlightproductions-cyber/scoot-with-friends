@@ -38,7 +38,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
 - TODO Same-wall re-entry targets the transition below coping with logged small budgets.
 - DONE (menus) Always-on grind assist: remove the player toggle, migrate stale Off saves, developer-only off baseline.
-- TODO Angled deck-slide capture on rails, benches, ledges, small-box hub; hysteresis; same-feature recapture inhibit.
+- DONE (angled capture; artifacts/claude/angled-grind.mjs) Angled deck-slide capture on rails, benches, ledges, small-box hub; hysteresis; same-feature recapture inhibit.
 
 ## D. Controls (Coping/Mobile prompt 10-15)
 - DONE (presets) Presets: Normal (default) A push / X tailwhip / B barspin; Goofy X push / A tailwhip / B barspin; versioned migration; Arcade exception kept; hints/animations agree.

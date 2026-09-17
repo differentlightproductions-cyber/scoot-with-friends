@@ -38,15 +38,20 @@ export function findGrind(
     const rising = velocity.y - direction.y * velocity.dot(direction);
     if (rising > 0.85) continue;
     const point = rail.a.clone().addScaledVector(delta, t);
+    // How far the deck is turned across this rail. A deck slide presents the
+    // deck's underside, a footprint far wider than a wheel or peg, so an angled
+    // approach that meets it with that footprint is a real contact.
+    const sideways = Math.abs(Math.sin(wrap(yaw - Math.atan2(direction.x, direction.z))));
+    const slide = assist ? clamp((sideways - 0.3) / 0.45, 0, 1) : 0;
     const side = new THREE.Vector3(direction.z, 0, -direction.x).normalize();
     const signedOffset = position.clone().sub(point).dot(side);
     const lateral = Math.abs(signedOffset);
     const height = position.y - point.y;
-    const maxDistance = assist
+    const maxDistance = (assist
       ? intentional
         ? TUNE.grindIntentDistance
         : TUNE.grindDistance
-      : TUNE.grindExactDistance;
+      : TUNE.grindExactDistance) + slide * TUNE.grindSlideReach;
     const maxHeight = assist && intentional ? TUNE.grindCaptureHeight : 0.28;
     if (
       lateral > maxDistance ||
@@ -63,11 +68,11 @@ export function findGrind(
         .normalize()
         .dot(direction.clone().setY(0).normalize()),
     );
-    const minApproach = assist
+    const minApproach = THREE.MathUtils.lerp(assist
       ? intentional
         ? TUNE.grindIntentAlignment
         : TUNE.grindApproachAlignment
-      : 0.9;
+      : 0.9, TUNE.grindSlideAlignment, slide * (intentional ? 1 : 0.6));
     if (approach < minApproach) continue;
     // Entry must be converging on the rail unless the rider is already almost
     // exactly over it. This makes crossing a rail feel deliberate rather than magnetic.
@@ -103,10 +108,6 @@ export function findGrind(
       ? TUNE.grindHeldIntentScore
       : TUNE.grindNaturalIntentScore;
     if (intentScore < requiredScore) continue;
-    const yawDifference = Math.abs(
-      wrap(yaw - Math.atan2(direction.x, direction.z)),
-    );
-    const sideways = Math.abs(Math.sin(yawDifference));
     // Contact offsets/pitch distinguish wheel/deck combinations; buttons never name grinds.
     const name =
       sideways > 0.7

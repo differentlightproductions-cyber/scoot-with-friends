@@ -313,6 +313,10 @@ export const TUNE = {
   grindCaptureHeight: 0.22,
   grindApproachAlignment: 0.86,
   grindIntentAlignment: 0.72,
+  // Angled deck slides: with the deck turned across the rail the travel may meet
+  // it at up to about 53 degrees (cos 0.6), within a little more lateral reach.
+  grindSlideAlignment: 0.6,
+  grindSlideReach: 0.08,
   grindExactDistance: 0.055,
   grindNaturalIntentScore: 0.63,
   grindHeldIntentScore: 0.6,
