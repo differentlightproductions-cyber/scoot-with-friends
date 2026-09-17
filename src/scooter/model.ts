@@ -492,9 +492,18 @@ export class RiderModel {
     this.backpack.position.copy(this.torso.position);this.backpack.quaternion.copy(this.torso.quaternion);
   }
   private tuck = 0;
+  /**
+   * 0..1 while the scooter is busy doing its own trick inside a flip. The tuck
+   * pulls the deck up to the seat so the knees can fold, which is only right
+   * when nothing else moves the scooter: with a whip, barspin, Bri, fingerwhip,
+   * grab or Superman it put the spinning deck and bars between the legs and
+   * through the torso. Only a tuck no-hander keeps the full ball-up.
+   */
+  private trickClear = 0;
   /** 0..1 flip tuck from the rotation rate, smoothed so it opens out gradually. */
   private flipTuck(s: Simulation) {
-    return s.bodyFlip.active ? THREE.MathUtils.smoothstep(Math.abs(s.bodyFlip.velocity), 1.5, 6) : 0;
+    const rate = s.bodyFlip.active ? THREE.MathUtils.smoothstep(Math.abs(s.bodyFlip.velocity), 1.5, 6) : 0;
+    return s.tricks.visualPose === "Tuck No-hander" ? rate : rate * (1 - this.trickClear);
   }
   update(s: Simulation, dt: number, alpha: number) {
     const onBoard = s.rideable === "longboard";
@@ -618,6 +627,9 @@ export class RiderModel {
     this.root.userData.briDebug={phase:bp.stage,progress:bp.phase,direction:side,angle:bri,relativePosition:this.scooter.position.toArray(),bodyRotation:flip,catching:bp.stage==='catch'};
     this.wheelAngle += (s.speed * dt) / 0.055;
     for (const w of this.wheels) w.rotation.x = this.wheelAngle;
+    const scooterBusy = Math.abs(s.tricks.deck.velocity) > 1 || Math.abs(s.tricks.bars.velocity) > 1 || kicklessActive || briActive || s.tricks.fingerTime > 0 ||
+      (!!s.tricks.visualPose && s.tricks.visualPose !== "Tuck No-hander");
+    this.trickClear = damp(this.trickClear, scooterBusy ? 1 : 0, scooterBusy ? 14 : 4, dt);
     const crouchTarget =
       (s.sitting?.id ? 0.8 : s.emote?.id === "sit" ? .65 : 0) +
         s.getUpTimer * 0.8 +
@@ -670,7 +682,7 @@ export class RiderModel {
       this.torso.rotation.x += blend * 1.2;
       this.torso.position.z -= blend * .1;
       this.torso.position.y -= blend * .06;
-      this.scooter.position.lerp(v(.03,.42,.34),blend);
+      this.scooter.position.lerp(v(.03,.3,.56),blend);
       this.scooter.rotation.x+=blend*.12;
     }
     if (pose === "Tuck No-hander") {

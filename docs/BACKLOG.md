@@ -5,7 +5,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 
 ## A0. Urgent regressions
 - DONE (box pop) Big box no longer launches high enough for tricks after the bounded ramp pop (ec38321).
-- TODO Flips combined with scooter tricks (tailwhip, barspin, grabs, Superman, rotating flips), worst on quarter airs: rider body clips through the scooter. Legs only wrap the bars in a tuck no-hander.
+- PARTIAL (flip tuck) Flips combined with scooter tricks (tailwhip, barspin, grabs, Superman, rotating flips), worst on quarter airs: rider body clips through the scooter. Legs only wrap the bars in a tuck no-hander. Tuck no longer lifts the deck into the legs during whips/barspins/Bri/grabs/Superman; Superman scooter sits further ahead. Remaining: Superman inside a backflip still brushes the stem near the head late in the rotation.
 
 ## A. Riding feel (latest messages, 2026-09-17)
 - DONE (ef9036a) Crooked/angled landings: ride away (absorb the angle) instead of sliding out.
@@ -32,6 +32,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - TODO Longboard power slide: scrub some speed while bombing, then settle straight back into the line.
 - TODO Longboard foot brake at extreme speed: rider crashes rolling forward, the board runs away; Y calls it back.
 - DONE (presets) Sesh Music controller: up/down moves between rows, left/right within a row or adjusts sliders.
+- TODO Sesh Music genres/channels: Rock (Promise), Hip-Hop, Punk, Electronic, and an AI Music channel.
 
 ## C. Coping stability, re-entry, grinds (Coping/Mobile prompt 1-7, 16)
 - TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
