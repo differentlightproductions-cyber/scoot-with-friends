@@ -1161,6 +1161,7 @@ try {
       return { failures, observations };
     });
 
+    results.__guard = g.sim.diagnostics.incidents.map((i) => ({ t: i.t, reason: i.reason }));
     s.reset(0, true);
     return results;
   }, only);
@@ -1175,6 +1176,8 @@ const report = {
   platform: `${process.platform} / headless Chrome swiftshader / fixed tick 1/120 via test hook`,
   note: 'Automated replays against production fixtures. Not a human controller test; render-rate and device coverage are separate scenarios.',
   pageErrors: errors,
+  // The extreme-state guard is a last resort: any activation during these replays is a failure.
+  guardActivations: results.__guard ?? [],
   scenarios: matrix.scenarios.map((sc) => ({ id: sc.id, scenario: sc.scenario, ...(results[sc.id] ?? { status: 'NOT_RUN' }) })),
 };
 const file = `artifacts/physics/acceptance-${build}.json`;
@@ -1186,4 +1189,5 @@ for (const sc of bound) {
 }
 console.log(`\n${bound.filter((s) => s.status === 'PASS').length} PASS, ${bound.filter((s) => s.status !== 'PASS').length} FAIL/ERROR, ${report.scenarios.length - bound.length} NOT_RUN  ->  ${file}`);
 if (errors.length) console.log('Page errors: ' + errors.join(' | '));
-process.exitCode = bound.some((s) => s.status !== 'PASS') ? 1 : 0;
+if (report.guardActivations.length) console.log('Riding guard activated: ' + JSON.stringify(report.guardActivations));
+process.exitCode = bound.some((s) => s.status !== 'PASS') || report.guardActivations.length ? 1 : 0;

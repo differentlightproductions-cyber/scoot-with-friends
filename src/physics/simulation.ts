@@ -7,6 +7,7 @@ import { TUNE, clamp, damp, wrap } from "../core/config";
 import { Events } from "../core/events";
 import { InputFrame } from "../input/input";
 import { ridingButtons, StickPreload } from "../input/riding";
+import { RidingDiagnostics } from "./diagnostics";
 import {
   Park,
   type Rail,
@@ -780,6 +781,7 @@ export class Simulation {
     );
     if (weight === 0) return;
     const angle = natural + (aim - natural) * weight;
+    this.diagnostics.assist(this.elapsed, "launch guide", { angleChange_rad: +(angle - natural).toFixed(3), weight: +weight.toFixed(2), speed: +speed.toFixed(2) });
     this.velocity.addScaledVector(forward, speed * Math.cos(angle) - along);
     this.velocity.y = speed * Math.sin(angle);
   }
@@ -801,11 +803,13 @@ export class Simulation {
       TUNE.quarterRolloutRatioMin,
       Math.max(TUNE.quarterRolloutRatioMax, clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio),
     );
+    const outwardBefore = this.velocity.dot(forward);
     this.velocity.addScaledVector(
       forward,
       planeSpeed * ratio - this.velocity.dot(forward),
     );
     this.velocity.y = planeSpeed * Math.sqrt(Math.max(0, 1 - ratio * ratio));
+    this.diagnostics.assist(this.elapsed, "quarter rollout", { outwardRatio: +ratio.toFixed(3), outwardChange_mps: +(planeSpeed * ratio - outwardBefore).toFixed(2), planeSpeed: +planeSpeed.toFixed(2) });
   }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
     const replacing = !this.grounded && !this.grind && this.launch;
@@ -1839,7 +1843,31 @@ export class Simulation {
       support.centre;
     this.body.setTranslation(this.position, true);
   }
+  /** Replay buffer, assist log and extreme-state guard (see physics/diagnostics.ts). */
+  readonly diagnostics = new RidingDiagnostics();
   step(dt: number, input: InputFrame) {
+    const before = this.velocity.clone(), wasBail = this.state === "Bail";
+    this.stepCore(dt, input);
+    const bailing = wasBail || this.state === "Bail" || !!this.crash;
+    if (this.diagnostics.check(this.elapsed, before, this.velocity, this.position, bailing)) {
+      // Last resort: keep the rider on the previous velocity rather than let a
+      // broken contact throw them across the map. The incident is recorded.
+      this.velocity.copy(Number.isFinite(before.lengthSq()) ? before : new THREE.Vector3());
+      if (!Number.isFinite(this.position.lengthSq())) this.position.copy(this.lastSafeGround);
+      this.body.setTranslation(this.position, true);
+      this.body.setLinvel(this.velocity, true);
+    }
+    const held: string[] = [], pressed: string[] = [];
+    for (const key in input.held) if ((input.held as Record<string, number>)[key] > 0.5) held.push(key);
+    for (const key in input.pressed) if ((input.pressed as Record<string, boolean>)[key]) pressed.push(key);
+    this.diagnostics.record({
+      t: +this.elapsed.toFixed(4), state: this.state, grounded: this.grounded, grind: this.grind?.rail.id ?? null,
+      position: [this.position.x, this.position.y, this.position.z], velocity: [this.velocity.x, this.velocity.y, this.velocity.z],
+      normalY: this.normal.y, launch: this.launch ? this.launch.kind + "#" + this.launch.id : null,
+      input: { steer: input.steer, lean: input.lean, rx: input.rx, ry: input.ry, held, pressed },
+    });
+  }
+  private stepCore(dt: number, input: InputFrame) {
     this.flipTakeoffIntent=input.held.brake>.5&&input.held.pumpGrind>.5&&Math.abs(input.lean)>.25;
 
     if (!this.grounded || this.walking || this.grind || this.manual.active || input.held.brake > 0.35) {

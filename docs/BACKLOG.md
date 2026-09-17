@@ -35,8 +35,8 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE (genres) Sesh Music genres/channels: Rock (Promise), Hip-Hop (Stacks), Punk, Electronic (Hollow), Chill (Scraped My Knee), AI Music. Artist names for the three new beats are unknown.
 
 ## C. Coping stability, re-entry, grinds (Coping/Mobile prompt 1-7, 16)
-- TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
-- TODO Same-wall re-entry targets the transition below coping with logged small budgets.
+- DONE (diagnostics; guard never fired across 53 scenarios and the coping launch scan) Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
+- DONE (diagnostics) Same-wall re-entry targets the transition below coping with logged small budgets: quarter rollout ratio and launch-guide angle are logged per launch; Q01-Q08, R03/R04 and L03 verify returns onto the transition.
 - DONE (menus) Always-on grind assist: remove the player toggle, migrate stale Off saves, developer-only off baseline.
 - DONE (angled capture; artifacts/claude/angled-grind.mjs) Angled deck-slide capture on rails, benches, ledges, small-box hub; hysteresis; same-feature recapture inhibit.
 
