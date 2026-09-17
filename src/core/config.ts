@@ -215,6 +215,11 @@ export const TUNE = {
   grindSeatOffset: 0.095, // pipe axis to scooter centreline: hardware half width + pipe radius
   grindEdgeMaxOffset: 0.11, // beyond this the deck edge leaves the pipe shoulder
   grindSeatClearance: 0.004,
+  // A grind whose body is held back by something solid (moving along the rail at
+  // under this fraction of the grind speed) releases after grindBlockedTime
+  // instead of trapping the rider while the grind speed keeps building.
+  grindBlockedRatio: 0.25,
+  grindBlockedTime: 0.1,
   grindWheelReach: 0.34, // centre to wheel contact along the deck
   grindSeatResolve: 60, // 1/s: rise rate back out of a pipe, a contact resolution rather than a hop
   grindStancePitch: 0.2, // largest Smith/Feeble tilt kept from the entry, relative to the rail

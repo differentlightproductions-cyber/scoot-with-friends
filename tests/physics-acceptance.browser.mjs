@@ -502,6 +502,97 @@ try {
       return { failures, observations, tolerances: { penetrationAlert_m: Math.max(0.002, 0.03 * 0.055), pipeRadius_m: PIPE, verticesPerMesh: '<= 80' } };
     });
 
+    // ---- Ledge grind helpers shared by G03/G06 -----------------------------------
+    const ledgeGrind = ({ side, seg, at, reverse, speed }) => {
+      const V = s.position.constructor;
+      const rail = g.park.rails.find((r) => r.id === `Small box ledge ${side} ${seg}`);
+      const dir = rail.b.clone().sub(rail.a).normalize(); if (reverse) dir.negate();
+      const start = rail.a.clone().lerp(rail.b, at);
+      s.reset(0, true); g.advance(0.3, {}, false);
+      const slope = Math.asin(dir.y), normal = new V(0, Math.cos(slope), 0).addScaledVector(dir.clone().setY(0).normalize(), -Math.sin(slope));
+      s.position.copy(start).addScaledVector(normal, 0.35); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
+      s.velocity.copy(dir).multiplyScalar(speed).addScaledVector(normal, -1); s.body.setLinvel(s.velocity, true);
+      s.yaw = s.previousYaw = Math.atan2(dir.x, dir.z); s.pitch = -slope; s.grounded = false; s.state = 'Airborne'; s.airTime = 0.2; s.tricks.startAir(false);
+      return dir;
+    };
+    // Deepest scooter vertex inside a ledge pipe or the slab (positive = inside).
+    const edgeDepth = (() => {
+      const ledge = smallBoxLedge(), rails = g.park.rails.filter((r) => r.id.startsWith('Small box ledge ')), V = s.position.constructor;
+      const pts = [];
+      g.rider.scooter.traverse((o) => { if (!o.isMesh) return; const p = o.geometry.attributes.position, st = Math.max(1, Math.floor(p.count / 60)); for (let i = 0; i < p.count; i += st) pts.push([o, new V().fromBufferAttribute(p, i)]); });
+      return () => {
+        g.rider.update(s, dt, 1); g.rider.root.updateMatrixWorld(true);
+        let worst = -Infinity;
+        for (const [o, q] of pts) {
+          const p = q.clone().applyMatrix4(o.matrixWorld);
+          for (const r of rails) { const ab = r.b.clone().sub(r.a), k = Math.max(0, Math.min(1, p.clone().sub(r.a).dot(ab) / ab.lengthSq())); worst = Math.max(worst, 0.045 - p.distanceTo(r.a.clone().addScaledVector(ab, k))); }
+          for (let k = 0; k < ledge.line.length - 1; k++) {
+            const a = ledge.line[k], b = ledge.line[k + 1], dirL = b.clone().sub(a), len = dirL.length(); dirL.normalize();
+            const along = p.clone().sub(a).dot(dirL); if (along < 0 || along > len) continue;
+            const up = new V(0, 1, 0).addScaledVector(dirL, -dirL.y).normalize(), rel = p.clone().sub(a), h = rel.dot(up);
+            if (h > -0.95) worst = Math.max(worst, Math.min(ledge.width / 2 - Math.abs(rel.x), ledge.thick / 2 - h));
+          }
+        }
+        return worst;
+      };
+    })();
+    scenario('G03', () => {
+      const failures = [], observations = {};
+      const cases = [
+        ['off the down-ledge end', { side: -1, seg: 2, at: 0.3, reverse: false, speed: 5 }],
+        ['slow up the up-ledge', { side: 1, seg: 0, at: 0.3, reverse: false, speed: 3 }],
+        ['slow up the down-ledge backwards', { side: -1, seg: 2, at: 0.8, reverse: true, speed: 3.5 }],
+      ];
+      for (const [name, fixture] of cases) {
+        ledgeGrind(fixture);
+        const bails = [], off = g.events.on((e) => e.type === 'bail' && bails.push(e.reason));
+        let grindTicks = 0, stuck = 0, worstStuck = 0, released = -1, captured = false;
+        for (let i = 0; i < 600; i++) {
+          g.advance(dt, { held: { pumpGrind: 1 } }, false);
+          if (s.grind) { captured = true; grindTicks++; stuck = s.velocity.length() < 0.3 ? stuck + 1 : 0; worstStuck = Math.max(worstStuck, stuck); }
+          else if (captured && released < 0) released = i;
+          if (released >= 0 && i > released + 180) break;
+        }
+        off();
+        observations[name] = { captured, grindSeconds: +(grindTicks * dt).toFixed(2), longestStationaryGrind_s: +(worstStuck * dt).toFixed(2), bails, endState: s.state };
+        expect(failures, captured, name + ': no grind');
+        expect(failures, released >= 0, name + ': grind never released (trapped)');
+        expect(failures, worstStuck * dt <= 0.3, `${name}: stationary on the rail for ${(worstStuck * dt).toFixed(2)} s`);
+        expect(failures, !bails.length, name + ': bailed ' + bails.join(','));
+      }
+      return { failures, observations, tolerances: { stationaryGrind_s: 0.3, stationarySpeed_mps: 0.3 } };
+    });
+    scenario('G06', () => {
+      const failures = [], observations = {};
+      for (const side of [-1, 1]) {
+        const dir = ledgeGrind({ side, seg: 0, at: 0.35, reverse: false, speed: 6.5 });
+        const pops = [], off = g.events.on((e) => { if (e.type === 'pop') pops.push(e); });
+        let worst = -Infinity;
+        // Settle, then legal balance changes: Smith lean, Feeble lean, small steer both ways.
+        const script = [[12, {}], [18, { lean: -1 }], [18, { lean: 1 }], [10, { steer: 0.5 }], [10, { steer: -0.5 }]];
+        for (const [ticks, extra] of script) for (let k = 0; k < ticks; k++) { g.advance(dt, { held: { pumpGrind: 1 }, ...extra }, false); if (s.grind) worst = Math.max(worst, edgeDepth()); }
+        const grinding = !!s.grind, poppedRail = s.grind?.rail.id, alongBefore = s.velocity.dot(dir);
+        // RS pop: load, then flick up, with grind released as a rider popping off does.
+        for (let k = 0; k < 45; k++) g.advance(dt, { ry: 1 }, false);
+        g.advance(dt, { ry: -1 }, false);
+        for (let k = 0; k < 3; k++) g.advance(dt, {}, false);
+        const alongAfter = s.velocity.dot(dir), leftRail = !s.grind;
+        let recaptured = null;
+        for (let k = 0; k < 150 && !s.grounded; k++) { g.advance(dt, {}, false); if (s.grind) { recaptured = s.grind.rail.id; break; } }
+        off();
+        const key = 'side ' + side;
+        observations[key] = { grindingBeforePop: grinding, rail: poppedRail, maxDepthDuringBalance_m: +worst.toFixed(3), pops: pops.length, leftRail, alongBefore: +alongBefore.toFixed(2), alongAfter: +alongAfter.toFixed(2), recaptured };
+        expect(failures, grinding, key + ': grind did not survive legal balance changes');
+        expect(failures, worst <= Math.max(0.002, 0.03 * 0.055), `${key}: ${worst.toFixed(3)} m inside wood/pipe during balance changes`);
+        expect(failures, pops.length === 1, `${key}: ${pops.length} pop events`);
+        expect(failures, leftRail, key + ': RS pop did not release the rail');
+        expect(failures, alongAfter >= alongBefore * 0.7, `${key}: along-edge speed ${alongBefore.toFixed(2)} -> ${alongAfter.toFixed(2)}`);
+        expect(failures, !recaptured || !recaptured.startsWith(`Small box ledge ${side} `), `${key}: recaptured the same edge (${recaptured})`);
+      }
+      observations.notCovered = 'Capture of a different legitimate rail after the pop is not exercised yet.';
+      return { failures, observations, tolerances: { alongSpeedKept: 0.7 } };
+    });
+
     s.reset(0, true);
     return results;
   }, only);

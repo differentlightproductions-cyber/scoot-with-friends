@@ -77,6 +77,9 @@ export class Simulation {
    */
   launch: { id: number; kind: "natural" | "pop"; at: number; velocity: THREE.Vector3; normal: THREE.Vector3 } | null = null;
   private launchCount = 0;
+  private grindBlocked = 0;
+  /** The edge a pop left, with its joined segments; not recaptured this air unless grind is held. */
+  private poppedEdge: Rail[] = [];
   private recordLaunch(kind: "natural" | "pop", id = ++this.launchCount) {
     this.launch = { id, kind, at: this.elapsed, velocity: this.velocity.clone(), normal: this.normal.clone() };
   }
@@ -334,6 +337,7 @@ export class Simulation {
     this.footJumped = false;
     this.surfaceMemory = null;
     this.launch = null;
+    this.poppedEdge = [];
     this.board.reset();
     this.hopRail = null;
     this.copingDrop = null;
@@ -693,6 +697,16 @@ export class Simulation {
     this.bodyFlip.begin(origin,this.pitch);
     this.body.setGravityScale(1,true);
     const linked = this.manual.active || !!this.grind;
+    if (this.grind) {
+      const rail = this.grind.rail, near = (a: THREE.Vector3, b: THREE.Vector3) => a.distanceTo(b) < TUNE.grindJoinDistance;
+      const edge = [rail];
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const r of this.park.rails)
+          if (!edge.includes(r) && edge.some((e) => near(e.a, r.a) || near(e.a, r.b) || near(e.b, r.a) || near(e.b, r.b))) { edge.push(r); grew = true; }
+      }
+      this.poppedEdge = edge;
+    }
     this.finishManual();
     this.finishGrind();
     const rampPop = this.normal.y < 0.85 && this.velocity.y > 1;
@@ -1178,7 +1192,7 @@ export class Simulation {
     const contact = this.position.clone().add(new THREE.Vector3(0, -0.12, 0));
     // Sweep a single fixed physics step ahead so a valid deck contact engages
     // before the rigid-body rail collision can bounce it away.
-    const rails=this.park.rails.filter(r=>this.grindCooldown<=0||r.colliderHandle!==this.releasingRail||r===this.hopRail);
+    const rails=this.park.rails.filter(r=>(this.grindCooldown<=0||r.colliderHandle!==this.releasingRail||r===this.hopRail)&&(input.held.pumpGrind>0.3||!this.poppedEdge.includes(r)));
     const intentional = input.held.pumpGrind > 0.3;
     const probe = (point: THREE.Vector3) =>
       findGrind(rails, point, this.velocity, this.yaw, this.pitch, this.grindAssist, intentional) ??
@@ -1973,7 +1987,7 @@ export class Simulation {
       this.airWeight.reset(this.pitch, this.yaw);
       this.airSpin.reset();
     }
-    if (this.grounded || this.grind) this.launch = null;
+    if (this.grounded || this.grind) { this.launch = null; this.poppedEdge = []; }
     if (this.grounded) this.lastGround = this.elapsed;
     const edgeGrace =
       this.elapsed - this.lastGround < TUNE.coyoteTime &&
@@ -2132,6 +2146,26 @@ export class Simulation {
         chargedSide
       ) {
         this.pop(Math.max(.15,this.preload.amount),input.lean,'trick_initiated_pop');
+      }
+    }
+    if (this.grind) {
+      // this.velocity is the body's velocity after the last contact solve.
+      const g = this.grind;
+      const along = this.velocity.dot(g.direction) * Math.sign(g.speed);
+      this.grindBlocked =
+        this.grindDuration > 0.05 && Math.abs(g.speed) > 1.5 &&
+        along < Math.abs(g.speed) * TUNE.grindBlockedRatio
+          ? this.grindBlocked + dt
+          : 0;
+      if (this.grindBlocked > TUNE.grindBlockedTime) {
+        this.grindBlocked = 0;
+        this.events.emit({ type: "railImpact", speed: Math.abs(g.speed), bail: false });
+        this.finishGrind();
+        this.state = "Airborne";
+        this.tricks.startAir(true);
+        this.bodyFlip.begin("natural_ramp_air", this.pitch);
+        this.popTimer = 0.12;
+        this.airTime = 0;
       }
     }
     if (this.grind) {
