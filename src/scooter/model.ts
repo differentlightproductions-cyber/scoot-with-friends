@@ -73,6 +73,8 @@ function rod(
   poseRod(m, a, b);
   return m;
 }
+/** Flip tuck shape at full rotation rate (rider-local metres / radians). */
+const TUCK = { crouch: 0.1, deckLift: 0.42, deckBack: 0.02, deckTilt: 0, round: 0.2, hipsBack: 0, torsoBack: 0 };
 export function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   m.position.copy(a).add(b).multiplyScalar(0.5);
   m.scale.y = a.distanceTo(b);
@@ -620,7 +622,7 @@ export class RiderModel {
       (s.sitting?.id ? 0.8 : s.emote?.id === "sit" ? .65 : 0) +
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
-        this.flipTuck(s) * 0.5 +
+        this.flipTuck(s) * TUCK.crouch +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * (0.4 + s.landingCompression) : 0) +
         (s.popTimer > 0 ? 0.1 : 0);
@@ -631,10 +633,14 @@ export class RiderModel {
       crouchTarget < this.crouch ? 5.5 : 16,
       dt,
     );
-    // Tucked flips pull the knees (and so the deck) up toward the chest, then
-    // open out as guidance slows the rotation for the landing.
-    this.scooter.position.y+=this.flipTuck(s)*.24;
-    this.scooter.position.z-=this.flipTuck(s)*.04;
+    // Tucked flips ball up like a real rider: the hips stay where they are, the
+    // deck comes up behind toward the seat so the knees fold forward to the
+    // chest, and the torso rounds over them. Dropping the whole body instead
+    // crushed the legs through the torso. Opens out as the rotation slows.
+    const tuck=this.flipTuck(s);
+    this.scooter.position.y+=tuck*TUCK.deckLift;
+    this.scooter.position.z+=tuck*TUCK.deckBack;
+    this.scooter.rotation.x+=tuck*TUCK.deckTilt;
     const fingerReach=s.tricks.fingerTime>0?Math.sin((1-s.tricks.fingerTime/.35)*Math.PI):0;
     this.scooter.position.y+=fingerReach*.28;
     const grabBlend=s.tricks.visualPose==='Deck Grab'?s.tricks.poseBlend:0;
@@ -647,7 +653,8 @@ export class RiderModel {
       1.13 - c - s.rampLean * 0.05,
       -0.045 + c * 0.12 - s.rampLean * 0.12,
     );
-    this.torso.rotation.x = 0.10 + c * 0.85;
+    this.torso.rotation.x = 0.10 + c * 0.85 + this.flipTuck(s) * TUCK.round;
+    this.torso.position.z -= this.flipTuck(s) * TUCK.torsoBack;
     this.torso.rotation.y=briActive?bp.torsoYaw:0;
     this.torso.position.x-=briActive?side*bp.clearance*.055:0;
     this.torso.rotation.x+=fountainBlend*.39;
@@ -683,6 +690,8 @@ export class RiderModel {
       )
       .add(v(0, -0.055, 0));
     this.hips.rotation.copy(this.torso.rotation);
+    // Tuck: seat back so the thighs fold forward rather than into the chest.
+    this.hips.position.z -= this.flipTuck(s) * TUCK.hipsBack;
     this.head.position.copy(v(0,.36,.01).applyEuler(this.torso.rotation).add(this.torso.position));
     this.helmet.position.set(0, (this.human?1.55:1.57) - c, -0.025 + c * 0.3);
     this.head.position.z += weight * TUNE.airWeightShiftStrength*.2;
