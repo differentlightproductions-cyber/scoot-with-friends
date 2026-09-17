@@ -1,4 +1,7 @@
 import {loadingStage,finishLoading,loadingFailed} from './ui/loading';
+import { version } from "../package.json";
+import * as riding from "./input/riding";
+import { TouchPad } from "./input/touchpad";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide} from './network/client';
@@ -88,7 +91,8 @@ async function boot() {
   social.warehouse=ACTIVE_MAP==='warehouse';
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
-  const applyCamera=()=>{camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
+  const touchPad=new TouchPad();input.touch=touchPad;
+  const applyCamera=()=>{touchPad.mode=profile.settings.touchControls;touchPad.size=profile.settings.touchSize/100;touchPad.opacity=profile.settings.touchOpacity/100;camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
   rider.applyProfile(profile);
   sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
@@ -122,7 +126,20 @@ async function boot() {
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
-  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;applyCamera();};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;applyCamera();};
+  menu.touchPreview=(on)=>{menu.touchPreviewOn=on;touchPad.preview=on;};
+  menu.controllerReport=()=>{
+    const pad=input.pad,names=['A','B','X','Y','LB','RB','LT','RT','View','Menu','L3','R3','Up','Down','Left','Right','Home'];
+    const buttons=riding.ridingButtons(profile.settings.stance,profile.settings.controlStyle);
+    const held=Object.entries(frame.held).filter(([,v])=>v>.5).map(([k])=>k);
+    const resolved=held.map(a=>a===buttons.push?'push':a===buttons.whip?'tailwhip':a==='brakeBars'?(profile.settings.controlStyle==='arcade'?'brake':'barspin / back'):a==='hop'?'confirm / jump on foot':a).join(', ');
+    return {build:'alpha '+version,source:input.source,controller:pad?.id??'none',mapping:pad?.mapping||'(nonstandard)',index:pad?.index??-1,
+      physicalButtons:pad?Array.from(pad.buttons).map((b,i)=>b.pressed?names[i]??('#'+i):'').filter(Boolean).join(' ')||'-':'-',
+      sticks:pad?Array.from(pad.axes).slice(0,4).map(v=>v.toFixed(2)).join(' '):'-',
+      preset:profile.settings.controlStyle==='arcade'?'Arcade':riding.presetName(profile.settings.stance),mappingRevision:profile.settings.controlsVersion,
+      context:menu.root.hidden?(sim.walking?'on foot':'riding'):'menu',logicalHeld:held.join(' ')||'-',resolvedAction:resolved||'-',
+      touchControls:profile.settings.touchControls+(touchPad.device?'':' (not a touch device)')};
+  };
   menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
@@ -446,6 +463,9 @@ async function boot() {
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
+    // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
+    // (and releases everything) while they own input, except in the controller test view.
+    touchPad.suspended=(overlayOpen||musicPlayer.open||!social.wheel.hidden||!social.chat.hidden)&&!touchPad.preview;
     if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);camcorder.render(renderer,scene, camera.camera);}
     if(!hud.started||menu.shopOpen||menu.seshOpen)menu.preview(renderer);
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
@@ -458,6 +478,7 @@ async function boot() {
     last = now;
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
+    touchPad.suspended=(!menu.root.hidden||hud.paused||musicPlayer.open||!social.wheel.hidden||!social.chat.hidden)&&!touchPad.preview;
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();
@@ -568,7 +589,7 @@ async function boot() {
       get park() {
         return park;
       },
-      camera, camcorder,
+      camera, camcorder, touchPad,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},
       music, musicPlayer,

@@ -1,4 +1,5 @@
 import { clamp } from "../core/config";
+import type { TouchPad } from "./touchpad";
 export const MAP = {
   hop: { button: 0, key: "Space" },
   pushDeck: { button: 2, key: "KeyX" },
@@ -44,6 +45,12 @@ export class Input {
   keys = new Set<string>();
   previous = emptyInput();
   pad: Gamepad | null = null;
+  /** Optional mobile virtual pad; resolved here once like any standard pad. */
+  touch: TouchPad | null = null;
+  /** Where this frame's controller input came from, for Controls -> Test Controller. */
+  source: "none" | "physical" | "touch" = "none";
+  /** Connected standard-mapped physical controllers this frame. */
+  physicalPads = 0;
   unsupported=false;
   private blocked=new Set<Action>();private axesBlocked=false;private padIndex=-1;private activePads=new Set<number>();
   debug = false;
@@ -90,6 +97,16 @@ export class Input {
     const usable=pads.filter(p=>p.mapping==='standard');
     const pressed=usable.filter(p=>p.buttons.some(b=>b.pressed));
     this.pad=pressed.find(p=>!this.activePads.has(p.index)&&p.index!==this.padIndex)??usable.find(p=>p.index===this.padIndex)??usable[0]??null;this.activePads=new Set(pressed.map(p=>p.index));
+    this.source=this.pad?"physical":"none";this.physicalPads=usable.length;
+    if(this.touch){
+      // Active-source policy: a physical pad that is actually used takes over (Auto
+      // hides the overlay); touching the overlay hands input back. Drift alone never switches.
+      const physicalUse=usable.some(p=>p.buttons.some(b=>b.pressed)||p.axes.slice(0,4).some(a=>Math.abs(a)>.45));
+      if(this.touch.anyInput)this.touch.physicalActive=false;else if(physicalUse)this.touch.physicalActive=true;else if(!usable.length)this.touch.physicalActive=false;
+      this.touch.update();
+      const virtual=this.touch.state();
+      if(virtual&&(this.touch.anyInput||!this.pad||!this.touch.physicalActive)){this.pad=virtual as unknown as Gamepad;this.source="touch";}
+    }
     if((this.pad?.index??-1)!==this.padIndex){this.clear();this.padIndex=this.pad?.index??-1;for(const [a,m]of Object.entries(MAP))if((this.pad?.buttons[m.button]?.value??0)>.15)this.blocked.add(a as Action);}
     const f = emptyInput();
     if(this.axesBlocked&&(!this.pad||this.pad.axes.slice(0,4).every(v=>Math.abs(v)<.2)))this.axesBlocked=false;

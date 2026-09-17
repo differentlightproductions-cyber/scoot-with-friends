@@ -1097,3 +1097,38 @@ body.ui-open #help,body.ui-open #emote-wheel,body.ui-open #social-chat,body.ui-o
 .music-genres{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
 .music-genres .music-genre{font-size:12px;padding:5px 9px;border-radius:14px}
 .music-genres .music-genre.on{background:#d95c3b;color:#fff}
+
+/* ---- Mobile virtual controller ------------------------------------------------
+   Only the controls take pointer events and suppress browser touch gestures; the
+   empty overlay passes taps through. Size scales from each corner; opacity changes
+   appearance only, never hit areas. */
+#touch-pad{position:fixed;inset:0;z-index:30;pointer-events:none;--tp-scale:1;--tp-opacity:.5;--tp-l:max(14px,env(safe-area-inset-left));--tp-r:max(14px,env(safe-area-inset-right));--tp-b:max(12px,env(safe-area-inset-bottom))}
+#touch-pad[hidden]{display:none}
+#touch-pad button,#touch-pad .tp-stick{pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;position:absolute;border:2px solid rgba(255,255,255,.75);background:rgba(20,34,40,calc(var(--tp-opacity)*.9));color:rgba(255,255,255,calc(.55 + var(--tp-opacity)*.5));font:700 16px/1 system-ui,sans-serif;border-radius:50%;padding:0;opacity:calc(.35 + var(--tp-opacity))}
+#touch-pad button.down,#touch-pad .tp-stick.down{background:rgba(217,92,59,.8);border-color:#fff}
+#touch-pad .tp-stick{width:112px;height:112px;bottom:var(--tp-b)}
+#touch-pad .tp-stick i{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.55);pointer-events:none}
+#touch-pad .tp-ls{left:var(--tp-l);transform:scale(var(--tp-scale));transform-origin:left bottom}
+#touch-pad .tp-rs{right:var(--tp-r);transform:scale(var(--tp-scale));transform-origin:right bottom}
+#touch-pad .tp-click{width:40px;height:40px;font-size:12px;bottom:calc(var(--tp-b) + 118px * var(--tp-scale))}
+#touch-pad .tp-l3{left:calc(var(--tp-l) + 110px * var(--tp-scale))}
+#touch-pad .tp-r3{right:calc(var(--tp-r) + 110px * var(--tp-scale))}
+#touch-pad .tp-dpad{position:absolute;left:var(--tp-l);bottom:calc(var(--tp-b) + 130px * var(--tp-scale));width:120px;height:120px;transform:scale(var(--tp-scale));transform-origin:left bottom}
+#touch-pad .tp-dpad button{width:44px;height:44px;border-radius:9px;font-size:14px}
+#touch-pad .tp-up{left:38px;top:0}#touch-pad .tp-down{left:38px;bottom:0}#touch-pad .tp-left{left:0;top:38px}#touch-pad .tp-right{right:0;top:38px}
+#touch-pad .tp-face{position:absolute;right:calc(var(--tp-r) + 124px * var(--tp-scale));bottom:var(--tp-b);width:160px;height:160px;transform:scale(var(--tp-scale));transform-origin:right bottom}
+#touch-pad .tp-face button{width:54px;height:54px;font-size:20px}
+#touch-pad .tp-y{left:53px;top:0;color:#f2cf4b}#touch-pad .tp-a{left:53px;bottom:0;color:#6cd07a}#touch-pad .tp-x{left:0;top:53px;color:#6aa8ff}#touch-pad .tp-b{right:0;top:53px;color:#ff7a6a}
+#touch-pad .tp-shoulder{position:absolute;top:max(18%,env(safe-area-inset-top));display:flex;flex-direction:column;gap:10px;transform:scale(var(--tp-scale))}
+#touch-pad .tp-left-shoulder{left:var(--tp-l);transform-origin:left top}
+#touch-pad .tp-right-shoulder{right:var(--tp-r);transform-origin:right top}
+#touch-pad .tp-shoulder button{position:relative;width:62px;height:44px;border-radius:12px;font-size:14px}
+#touch-pad .tp-menu{left:50%;margin-left:-22px;top:max(8px,env(safe-area-inset-top));width:44px;height:36px;border-radius:10px;font-size:18px}
+@media(max-height:420px){#touch-pad .tp-shoulder{top:max(10px,env(safe-area-inset-top));flex-direction:row}}
+#controller-test{white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;background:#e6e9e1;border-radius:8px;padding:10px;margin:8px 0;max-height:34dvh;overflow:auto}
+/* While the touch pad shows, the trick line and manual meter move to the clear
+   centre band so no control sits over them. */
+body.touch-controls #trick-line{left:50%;right:auto;bottom:auto;top:max(58px,calc(env(safe-area-inset-top) + 48px));transform:translateX(-50%);text-align:center;max-width:46vw}
+body.touch-controls #balance{left:calc(50% - 150px);top:22%;height:auto}
+body.touch-controls #balance .balance-track{height:clamp(110px,26vh,180px)}
+body.touch-controls footer #hint{display:none}

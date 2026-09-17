@@ -101,6 +101,10 @@ export class GameMenu {
   onChange = () => {};
   onEditor = () => {};
   onCameraChange = (_settings: LocalProfile['settings']) => {};
+  /** Live controller information for the Test Controller view (set by main). */
+  controllerReport = (): Record<string, unknown> => ({});
+  touchPreviewOn = false;
+  touchPreview = (_on: boolean) => {};
   networkChoices=():{label:string;detail?:string;action:()=>void}[]=>[];
   private choices: {
     label: string;
@@ -376,6 +380,11 @@ export class GameMenu {
         add(this.buying?'SAVING...':'BUY / '+p.creditPrice+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id}).then(result=>{this.buying=false;this.notice=result==='ok'?'Purchased. Saved on this device.':result;this.profile.wallet=loadProfile().wallet;this.show(result==='ok'||result==='Already owned'?'purchased':'brand-items');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
         add('CANCEL',()=>this.show('brand-items'),'No charge');break;}
       case 'purchased':{title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{void this.equip(this.product,this.pendingVariant);this.show('brand-items');});add('KEEP IN INVENTORY',()=>this.show('brand-items'));break;}
+      case 'test-controller':{
+        title='TEST CONTROLLER';subtitle='PRESS BUTTONS AND MOVE THE STICKS';
+        add('COPY DIAGNOSTICS',()=>{const text=JSON.stringify(this.controllerReport(),null,2);void navigator.clipboard?.writeText(text).then(()=>{this.notice='Diagnostics copied (no account or personal data).';this.render();},()=>{this.notice='Clipboard unavailable.';this.render();});},'Controller id, mapping, source, preset and live buttons. No personal data.');
+        add('SHOW TOUCH CONTROLS HERE',()=>{this.touchPreview(!this.touchPreviewOn);this.render();},'Preview and test the on-screen controller.');
+        break;}
       case 'leave-sesh':{title='UNSAVED CHANGES';subtitle='APPLY THEM OR LEAVE THEM BEHIND';
         add('APPLY & CLOSE',()=>{this.applySesh();if(!this.dirty())this.closeSesh();},'Saves this setup on this device.');
         add('DISCARD CHANGES',()=>this.closeSesh(),'Keeps the setup you had when you paused.');
@@ -399,6 +408,11 @@ export class GameMenu {
         add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
         add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
         if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');
+        add('TOUCH CONTROLS '+this.profile.settings.touchControls.toUpperCase(),()=>camera(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),'Phones and tablets only. Auto shows them when no controller is in use.');
+        add('TOUCH CONTROL SIZE '+this.profile.settings.touchSize+'%',()=>camera(c=>{c.touchSize=c.touchSize>=130?80:c.touchSize+10;}),'80% to 130%. Layout only: stick response and gestures are unchanged.');
+        add('TOUCH CONTROL OPACITY '+this.profile.settings.touchOpacity+'%',()=>camera(c=>{c.touchOpacity=c.touchOpacity>=85?20:Math.min(85,c.touchOpacity+15);}),'20% to 85%. Appearance only; hit areas stay the same.');
+        add('RESET TOUCH LAYOUT',()=>camera(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;}),'Auto, 100% size, 50% opacity.');
+        add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
         add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
         add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{
           const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();
@@ -592,6 +606,8 @@ export class GameMenu {
     this.highlight();
   }
   update(input: InputFrame, dt: number) {
+    if(this.screen==='test-controller'){let pre=this.root.querySelector<HTMLElement>('#controller-test');if(!pre){pre=document.createElement('pre');pre.id='controller-test';this.root.querySelector('nav')?.after(pre);}pre.textContent=JSON.stringify(this.controllerReport(),null,1).replace(/[{}"]/g,'');}
+    else if(this.touchPreviewOn)this.touchPreview(false);
     if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
     this.cooldown = Math.max(0, this.cooldown - dt);
     const vertical=input.held.marker>.5?-1:input.held.menuDown>.5?1:Math.abs(input.lean)>.5?Math.sign(input.lean):0;

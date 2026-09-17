@@ -42,9 +42,9 @@ Status: TODO / IN PROGRESS / DONE (commit).
 
 ## D. Controls (Coping/Mobile prompt 10-15)
 - DONE (presets) Presets: Normal (default) A push / X tailwhip / B barspin; Goofy X push / A tailwhip / B barspin; versioned migration; Arcade exception kept; hints/animations agree.
-- TODO Controls -> Test Controller view; mobile controller mapping investigation (unconfirmed report).
+- DONE (touch; emulated only, no real phone tested) Controls -> Test Controller view; mobile controller mapping investigation (unconfirmed report).
 - DONE (presets) Controller focus scrolls mobile menus (time-based repeat).
-- TODO Mobile-only Xbox-style touch controls (Auto/On/Off, size, opacity, preview) through the same input pipeline.
+- DONE (touch; emulated only, no real phone tested) Mobile-only Xbox-style touch controls (Auto/On/Off, size, opacity, preview) through the same input pipeline.
 
 ## E. First-person mode (First-person prompt)
 - DONE (first person; screenshots in artifacts/claude/first-person) Settings -> Camera: Third/First Person, FOV, Camera Motion Reduced/Full; local head hiding; camera follows body not scooter; crash camera policy; on-foot look; persistence; screenshots ZIP. Known limits: in a tucked backflip the open collar edge can show at the bottom of the view; no held-item-specific first-person animation beyond the shared rig; not tested on a phone.
