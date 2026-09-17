@@ -70,3 +70,31 @@ test("griptape is cosmetic: physics never reads it", () => {
   for (const file of ["src/physics/simulation.ts", "src/longboard/motion.ts", "src/grind/grind.ts", "src/core/config.ts"])
     assert(!/griptape|\.grip\b/i.test(readFileSync(file, "utf8")), `${file} must not depend on grip tape`);
 });
+
+test("appearance tells other players which rideable and board to show", async () => {
+  const { pose } = await import("../src/network/protocol.ts");
+  const riders = readFileSync("src/data/riders.ts", "utf8");
+  const profile = { ...loadProfile() } as Record<string, any>;
+  profile.riderId ??= /id:\s*["']([^"']+)["']/.exec(riders)?.[1];
+  const board = defaultLongboard();
+  board.deck = { partId: board.deck.partId, variantId: "palms" };
+  const shared = appearance({ ...profile, activeRideable: "longboard", longboard: board })!;
+  assert.equal(shared.rideable, "longboard");
+  assert.deepEqual(shared.longboard.deck, board.deck);
+  // An older client sends neither: others see the scooter and a default board.
+  const legacy = appearance({ ...profile, activeRideable: undefined, longboard: undefined })!;
+  assert.equal(legacy.rideable, "scooter");
+  assert.deepEqual(legacy.longboard, defaultLongboard());
+  // A pose carries the rideable and the board's lean/slide state through the server filter.
+  const channel = { angle: 0, velocity: 0, mismatch: 0 };
+  const full = {
+    position: [0, 0, 0], state: "Grounded", yaw: 0, pitch: 0, roll: 0, speed: 0, elapsed: 0, charge: 0, compression: 0, getUpTimer: 0, landTimer: 0,
+    landingCompression: 0, popTimer: 0, pushTimer: 0, rampLean: 0, steer: 0, bodyFlip: { angle: 0, velocity: 0 }, airWeight: { shift: 0 },
+    manual: { pitch: 0 }, dropIn: {}, tricks: { stance: "regular", naturalDirection: 1, poseBlend: 0, poseSide: 1, fingerTime: 0, fingerHand: 1, deck: channel, bars: channel, bri: channel, kickless: channel },
+  };
+  assert.equal(pose({ ...full, rideable: "hoverboard" }), null, "only real rideables pass");
+  const filtered = pose({ ...full, rideable: "longboard", board: { lean: 0.4, slide: 0.2, surfaceRoll: 0.1, travel: 1 }, wallet: 99 })!;
+  assert.equal(filtered.rideable, "longboard");
+  assert.equal(filtered.board.lean, 0.4);
+  assert.equal((filtered as Record<string, unknown>).wallet, undefined);
+});
