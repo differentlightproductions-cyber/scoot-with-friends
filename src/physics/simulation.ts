@@ -103,9 +103,15 @@ export class Simulation {
   /** A released spin finishes on a half turn counted from takeoff (fakie counts). */
   private guideSpin(dt: number, timeToContact: number) {
     const direction = Math.sign(this.spin), turned = this.tricks.yaw * direction;
-    let goal = Math.ceil(turned / Math.PI - 1e-6) * Math.PI;
-    if (turned - (goal - Math.PI) < TUNE.spinGuideOvershoot) goal -= Math.PI;
-    const remaining = goal - turned, current = Math.abs(this.spin);
+    const current = Math.abs(this.spin);
+    // Settle on the half turn this spin's own momentum is heading for, never one
+    // it would not reach: a light tap settles straight instead of becoming a 180
+    // (or a 360 on a drop-in), a real flick still finishes its 180/360.
+    const reach = turned + current * Math.min(Math.max(0, timeToContact), 1.2) * 0.7;
+    // A half turn is only claimed once momentum carries well past its midpoint.
+    let goal = Math.floor(reach / Math.PI + 0.25) * Math.PI;
+    if (goal < turned - TUNE.spinGuideOvershoot) goal = turned;
+    const remaining = goal - turned;
     let desired = 0;
     if (remaining > 0) {
       const finish = Math.max(0.1, timeToContact - TUNE.spinFinishLead);
@@ -119,6 +125,58 @@ export class Simulation {
       ? Math.max(desired, current - TUNE.spinGuideAcceleration * dt)
       : Math.min(desired, current + TUNE.spinGuideAcceleration * dt);
     return direction * next;
+  }
+  /**
+   * The wheels take the line on a crooked landing: travel turns onto the scooter's
+   * axis (forward or fakie) and the rider pivots slightly into their travel, so
+   * they ride away rather than sliding out sideways. Speed is kept in proportion
+   * to how straight the landing was.
+   */
+  private absorbCrookedLanding(normal: THREE.Vector3) {
+    const heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).projectOnPlane(normal).normalize();
+    const speed = this.velocity.length();
+    if (speed < 0.5 || heading.lengthSq() < 0.5) return;
+    const along = this.velocity.dot(heading);
+    const axis = heading.clone().multiplyScalar(Math.sign(along) || 1);
+    const angle = Math.acos(clamp(Math.abs(along) / speed, -1, 1));
+    if (angle < 0.05) return;
+    const keep = 1 - (1 - TUNE.crookedKeepAtFail) * clamp(angle / TUNE.failAngle, 0, 1) ** 2;
+    const travelYaw = Math.atan2(this.velocity.x, this.velocity.z);
+    const axisYaw = Math.atan2(axis.x, axis.z);
+    this.yaw += wrap(travelYaw - axisYaw) * TUNE.crookedPivot;
+    this.velocity.copy(axis).multiplyScalar(speed * keep);
+    const vertical = this.velocity.dot(normal);
+    this.velocity.addScaledVector(normal, -vertical);
+  }
+  /** Fakie at speed wobbles; LS must hold it steady or the rider goes down. */
+  fakieWobble = { balance: 0, rate: 0, armed: false };
+  /** Only a fakie landing on flat ground at speed arms the wobble; rolling out of a quarter fakie does not. */
+  private armFakieWobble(normal: THREE.Vector3) {
+    const speed = Math.hypot(this.velocity.x, this.velocity.z);
+    const along = (Math.sin(this.yaw) * this.velocity.x + Math.cos(this.yaw) * this.velocity.z) / Math.max(speed, 1e-6);
+    this.fakieWobble.armed = normal.y > 0.94 && along < -0.3 && speed > TUNE.pushMaxSpeed * TUNE.fakieWobbleSpeedRatio * 0.72;
+  }
+  private stepFakieWobble(dt: number, steer: number, fakie: boolean) {
+    const threshold = TUNE.pushMaxSpeed * TUNE.fakieWobbleSpeedRatio;
+    const w = this.fakieWobble;
+    if (!fakie || this.speed < threshold * 0.72) w.armed = false;
+    if (!w.armed) {
+      w.balance = damp(w.balance, 0, 4, dt);
+      w.rate = damp(w.rate, 0, 4, dt);
+      return;
+    }
+    const excess = clamp((this.speed - threshold * 0.72) / (TUNE.pushMaxSpeed - threshold * 0.72), 0, 1.5);
+    // Deterministic disturbance from the road, stronger with speed.
+    const kick = (Math.sin(this.elapsed * 7.3) + 0.6 * Math.sin(this.elapsed * 13.1 + 1.7)) * TUNE.fakieWobbleKick * excess;
+    const accel = w.balance * TUNE.fakieWobbleGrowth * excess + kick - steer * TUNE.fakieWobbleControl - w.rate * 1.2;
+    w.rate += accel * dt;
+    w.balance += w.rate * dt;
+    this.roll += w.balance * 0.25;
+    this.yaw += w.rate * 0.02 * dt;
+    if (Math.abs(w.balance) > 1) {
+      w.balance = w.rate = 0;
+      this.bail("Fakie speed wobble");
+    }
   }
   /** Rewrites yaw, pitch and roll from the flip orientation for landing checks. */
   private settleFlipOrientation() {
@@ -1770,6 +1828,8 @@ export class Simulation {
       this.velocity.multiplyScalar(TUNE.sketchySpeedKeep);
     else if (quality === "good")
       this.velocity.multiplyScalar(TUNE.goodSpeedKeep);
+    this.absorbCrookedLanding(support.normal);
+    this.armFakieWobble(support.normal);
     this.spin *= 0.12;
     this.position.y =
       support.centre;
@@ -2433,6 +2493,8 @@ export class Simulation {
         !this.manual.active,
       );
       this.yaw = revert.reverting ? revert.yaw : this.yaw + yawRate * dt;
+      // Rolling back down a transition fakie is ordinary; the wobble builds on the flat.
+      this.stepFakieWobble(dt, input.steer, this.fakie.mode === "Fakie" && !revert.reverting && !this.manual.active && this.normal.y > 0.94);
       if (this.recovery > 0) {
         this.yaw += Math.sin(this.elapsed * 24) * 0.35 * this.recovery * dt;
         this.roll = Math.sin(this.elapsed * 25) * 0.1 * this.recovery;

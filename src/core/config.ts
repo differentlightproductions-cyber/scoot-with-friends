@@ -27,7 +27,17 @@ export const TUNE = {
   spinGuideMinRate: 3, // rad/s
   spinGuideAcceleration: 18, // rad/s^2
   spinGuideOvershoot: 0.35, // rad
-  spinFinishLead: 0.1, // s // rad: carried past an upright by less than this, stop there
+  spinFinishLead: 0.1, // s
+  // Crooked landing: the wheels take the line. Velocity turns onto the scooter's
+  // axis; at the fail angle this keeps crookedKeepAtFail of the speed.
+  crookedKeepAtFail: 0.62,
+  crookedPivot: 0.25, // fraction of the angle the rider pivots into their travel
+  // Fakie at speed: above this fraction of pushMaxSpeed a fakie ride wobbles and
+  // must be held steady with LS.
+  fakieWobbleSpeedRatio: 0.8,
+  fakieWobbleGrowth: 20, // 1/s^2 instability of the wobble
+  fakieWobbleKick: 6, // disturbance strength at pushMaxSpeed
+  fakieWobbleControl: 7, // LS correction strength
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,
@@ -187,12 +197,13 @@ export const TUNE = {
   steering: 2.7,
   carveGrip: 8,
   steeringResponse: 8,
-  airAcceleration: 24,
-  airMaxSpin: 12,
+  airAcceleration: 23,
+  airMaxSpin: 11.4,
   airDamping: 0.48,
   fakieMinSpeed: 0.8,
-  fakieRevertThreshold: 0.68,
-  fakieRevertHold: 0.12,
+  // A revert needs a firm, held LS push; ordinary fakie steering never triggers it.
+  fakieRevertThreshold: 0.9,
+  fakieRevertHold: 0.3,
   fakieRevertSpeed: 4.8,
   fakieRevertAcceleration: 18,
   lowAirSpinMultiplier: 0.82,
