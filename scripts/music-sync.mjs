@@ -75,6 +75,7 @@ files.forEach((full, index) => {
     file: url(full),
     ...(cover ? { cover } : {}),
     ...(text(meta.credit, 400) ? { credit: text(meta.credit, 400) } : {}),
+    ...(text(meta.genre, 40) ? { genre: text(meta.genre, 40) } : {}),
     order: Number.isFinite(meta.order) ? meta.order : 1000 + index,
     bytes: statSync(full).size,
   };

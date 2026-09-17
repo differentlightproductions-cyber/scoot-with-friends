@@ -3,7 +3,7 @@
 // input: D-pad/LS navigate, A choose, B back/close, LB/RB previous/next track,
 // X play/pause, left/right adjust a focused slider. Closing never destroys the
 // playing audio; the service keeps playing while riding.
-import { music, type MusicTrack } from "../audio/music";
+import { music, MUSIC_GENRES, type MusicGenre, type MusicTrack } from "../audio/music";
 import { type InputFrame } from "../input/input";
 
 type Page = "now" | "tracks" | "settings";
@@ -201,6 +201,7 @@ export class MusicPlayer {
     else if (kind === "shuffle") music.setSetting("shuffle", !music.settings.shuffle);
     else if (kind === "repeat") music.cycleRepeat();
     else if (kind === "track" && target.dataset.id) music.select(target.dataset.id);
+    else if (kind === "genre" && target.dataset.genre) music.setGenre(target.dataset.genre as MusicGenre);
     else if (kind === "setting" && target.dataset.key) {
       const key = target.dataset.key as "enabled" | "resumeOnEnter" | "pauseWhenHidden" | "notifications";
       music.setSetting(key, !music.settings[key]);
@@ -269,7 +270,8 @@ export class MusicPlayer {
     const statusText =
       status === "loading" ? "Loading…" : status === "playing" ? "Playing" : status === "paused" ? "Paused"
         : status === "blocked" ? "Audio is blocked by the browser" : status === "error" ? music.errorMessage || "Track unavailable" : "Ready";
-    body.append(cover, el("strong", "music-title", track?.title ?? ""), el("span", "music-artist", track?.artist ?? ""));
+    body.append(cover, el("strong", "music-title", track?.title ?? ""), el("span", "music-artist", [track?.artist, track?.genre].filter(Boolean).join(" · ")));
+    if (music.settings.genre !== "All") body.append(el("span", "music-credit", music.settings.genre + " channel"));
     if (track?.credit) body.append(el("span", "music-credit", track.credit));
     body.append(el("span", `music-status ${status}`, statusText));
     if (status === "blocked") body.append(this.control("enable", "Enable audio", "Click / tap to enable audio"));
@@ -315,8 +317,20 @@ export class MusicPlayer {
     return row;
   }
   private tracksPage(body: HTMLElement) {
+    const genres = el("div", "music-genres");
+    for (const genre of MUSIC_GENRES) {
+      const count = music.channelTracks(genre).length;
+      const chip = this.control("genre", genre + " channel", genre === "All" ? "All" : genre + (count ? "" : " ·"), "genre:" + genre);
+      chip.dataset.genre = genre;
+      chip.classList.add("music-genre");
+      chip.classList.toggle("on", music.settings.genre === genre);
+      genres.append(chip);
+    }
+    body.append(genres);
+    const channel = music.channelTracks();
+    if (!channel.length) body.append(el("p", "music-empty", "No " + music.settings.genre + " tracks yet."));
     const list = el("ol", "music-list");
-    for (const track of music.tracks) {
+    for (const track of channel) {
       const item = el("li");
       const row = el("button", "music-row");
       row.dataset.music = "track";

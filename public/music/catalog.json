@@ -6,8 +6,36 @@
       "title": "Promise",
       "artist": "Keeto",
       "file": "/music/tracks/Keeto%20-%20Promise.mp3",
+      "genre": "Rock",
       "order": 0,
       "bytes": 1778351
+    },
+    {
+      "id": "stacks",
+      "title": "Stacks",
+      "artist": "Unknown artist",
+      "file": "/music/tracks/Stacks.mp3",
+      "genre": "Hip-Hop",
+      "order": 1,
+      "bytes": 2784677
+    },
+    {
+      "id": "hollow",
+      "title": "Hollow",
+      "artist": "Unknown artist",
+      "file": "/music/tracks/Hollow.mp3",
+      "genre": "Electronic",
+      "order": 2,
+      "bytes": 5969221
+    },
+    {
+      "id": "scraped-my-knee",
+      "title": "Scraped My Knee",
+      "artist": "Unknown artist",
+      "file": "/music/tracks/Scraped%20My%20Knee.mp3",
+      "genre": "Chill",
+      "order": 3,
+      "bytes": 2158908
     }
   ]
 }

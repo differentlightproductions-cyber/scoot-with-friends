@@ -13,7 +13,11 @@ export interface MusicTrack {
   file: string;
   cover?: string;
   credit?: string;
+  genre?: string;
 }
+/** Sesh Music channels. "All" plays every track; a genre with no tracks yet shows empty. */
+export const MUSIC_GENRES = ["All", "Rock", "Hip-Hop", "Punk", "Electronic", "Chill", "AI Music"] as const;
+export type MusicGenre = (typeof MUSIC_GENRES)[number];
 export type MusicStatus = "empty" | "idle" | "loading" | "playing" | "paused" | "blocked" | "error";
 export type RepeatMode = "off" | "all" | "one";
 export interface MusicSettings {
@@ -25,6 +29,7 @@ export interface MusicSettings {
   resumeOnEnter: boolean;
   pauseWhenHidden: boolean;
   notifications: boolean;
+  genre: MusicGenre;
 }
 interface SavedMusic extends MusicSettings {
   trackId: string | null;
@@ -41,6 +46,7 @@ const DEFAULTS: SavedMusic = {
   resumeOnEnter: false,
   pauseWhenHidden: true,
   notifications: true,
+  genre: "All",
   trackId: null,
   position: 0,
 };
@@ -64,6 +70,7 @@ function loadSaved(): SavedMusic {
       resumeOnEnter: bool("resumeOnEnter"),
       pauseWhenHidden: bool("pauseWhenHidden"),
       notifications: bool("notifications"),
+      genre: MUSIC_GENRES.includes(raw.genre) ? raw.genre : DEFAULTS.genre,
       trackId: typeof raw.trackId === "string" ? raw.trackId : null,
       position: Number.isFinite(raw.position) && raw.position > 0 ? raw.position : 0,
     };
@@ -136,6 +143,7 @@ export class MusicService {
           file: t.file,
           ...(typeof t.cover === "string" && t.cover.startsWith("/music/covers/") ? { cover: t.cover } : {}),
           ...(typeof t.credit === "string" ? { credit: t.credit } : {}),
+          ...(typeof t.genre === "string" ? { genre: t.genre } : {}),
         }));
       this.catalogError = "";
     } catch {
@@ -311,8 +319,24 @@ export class MusicService {
   private playable() {
     return this.tracks.filter((t) => !this.unavailable.has(t.id));
   }
+  /** Tracks on the chosen channel, in catalog order. */
+  channelTracks(genre: MusicGenre = this.settings.genre) {
+    return genre === "All" ? this.tracks : this.tracks.filter((t) => t.genre === genre);
+  }
+  /** Switches channel; the queue follows it and, if the current song is not on it, the channel's first song takes over. */
+  setGenre(genre: MusicGenre) {
+    this.settings.genre = genre;
+    this.rebuildQueue();
+    const list = this.channelTracks();
+    if (list.length && !list.some((t) => t.id === this.current?.id)) {
+      if (this.wantsPlay) this.select(list[0].id);
+      else { this.current = list[0]; this.savedPosition = 0; this.audio.removeAttribute("src"); }
+    }
+    this.persist(true);
+    this.emit();
+  }
   private rebuildQueue() {
-    const ids = this.tracks.map((t) => t.id);
+    const ids = this.channelTracks().map((t) => t.id);
     if (this.settings.shuffle) {
       for (let i = ids.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));

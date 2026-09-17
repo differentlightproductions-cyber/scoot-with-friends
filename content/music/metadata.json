@@ -1,5 +1,8 @@
 {
   "tracks": {
-    "Keeto - Promise.mp3": { "artist": "Keeto", "title": "Promise", "order": 0 }
+    "Keeto - Promise.mp3": { "artist": "Keeto", "title": "Promise", "genre": "Rock", "order": 0 },
+    "Stacks.mp3": { "title": "Stacks", "genre": "Hip-Hop", "order": 1 },
+    "Hollow.mp3": { "title": "Hollow", "genre": "Electronic", "order": 2 },
+    "Scraped My Knee.mp3": { "title": "Scraped My Knee", "genre": "Chill", "order": 3 }
   }
 }

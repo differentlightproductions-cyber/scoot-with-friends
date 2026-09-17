@@ -1094,3 +1094,6 @@ body.ui-open #help,body.ui-open #emote-wheel,body.ui-open #social-chat,body.ui-o
 .game-menu nav button.menu-page+button.menu-page{margin-right:0}
 .game-menu nav button.menu-page small{display:none}
 #start .game-menu .menu-grid button.menu-cell{min-height:56px;padding:9px 10px;margin:0}
+.music-genres{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px}
+.music-genres .music-genre{font-size:12px;padding:5px 9px;border-radius:14px}
+.music-genres .music-genre.on{background:#d95c3b;color:#fff}

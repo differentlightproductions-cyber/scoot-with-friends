@@ -32,7 +32,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - TODO Longboard power slide: scrub some speed while bombing, then settle straight back into the line.
 - TODO Longboard foot brake at extreme speed: rider crashes rolling forward, the board runs away; Y calls it back.
 - DONE (presets) Sesh Music controller: up/down moves between rows, left/right within a row or adjusts sliders.
-- TODO Sesh Music genres/channels: Rock (Promise), Hip-Hop, Punk, Electronic, and an AI Music channel.
+- DONE (genres) Sesh Music genres/channels: Rock (Promise), Hip-Hop (Stacks), Punk, Electronic (Hollow), Chill (Scraped My Knee), AI Music. Artist names for the three new beats are unknown.
 
 ## C. Coping stability, re-entry, grinds (Coping/Mobile prompt 1-7, 16)
 - TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
