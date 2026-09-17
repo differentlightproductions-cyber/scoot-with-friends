@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build --outDir dist/client && node scripts/build-server.mjs",
+    "dev": "node scripts/music-sync.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/music-sync.mjs && tsc --noEmit && vite build --outDir dist/client && node scripts/build-server.mjs",
     "preview": "vite preview --host 127.0.0.1 --outDir dist/client",
     "test": "tsx --test tests/*.test.ts",
     "test:browser": "node tests/browser.mjs",
@@ -21,7 +21,8 @@
     "package:windows": "powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
     "rooms": "tsx server/start-rooms.ts",
     "build:rooms": "tsc --noEmit -p tsconfig.rooms.json && node scripts/build-rooms.mjs",
-    "start:rooms": "node dist/rooms/start.mjs"
+    "start:rooms": "node dist/rooms/start.mjs",
+    "music:sync": "node scripts/music-sync.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

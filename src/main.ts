@@ -35,6 +35,8 @@ import { Daylight } from './park/daylight';
 import { ACTIVE_MAP } from './park/park';
 import {loadHuman} from './scooter/human';
 import {MobileGate} from './ui/mobile';
+import { music } from './audio/music';
+import { MusicPlayer } from './ui/music-player';
 async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
@@ -74,7 +76,7 @@ async function boot() {
   const social = new SocialControls(events);
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park);
   const interact = () => { const f=emptyInput();f.pressed.brakeBars=true;interactions.update(sim,f,0); };
-  social.onInteract=interact;social.onScooter=interact;
+  social.onInteract=interact;social.onScooter=interact;social.onMusic=()=>musicPlayer.show();
   social.onItems=()=>interactions.openItems(sim);interactions.openOptions=(title,options)=>social.openOptions(title,options);
   social.onBuild=()=>social.openOptions('BUILD / RS SELECT',[
     ...builder.options(sim),...builder.editOptions(sim),
@@ -89,6 +91,12 @@ async function boot() {
   sim.tricks.stance = profile.settings.stance;
   sim.tricks.controlStyle = profile.settings.controlStyle;
   audio.enabled = profile.settings.sound;
+  // Sesh Music: one app-level player; the panel only observes it.
+  music.setSoundEnabled(audio.enabled);
+  void music.loadCatalog();
+  const musicPlayer = new MusicPlayer();
+  // Held buttons that closed the panel must not become a hop, push or trick.
+  musicPlayer.onClose = () => { input.clear(); pending = emptyInput(); };
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
@@ -116,6 +124,7 @@ async function boot() {
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
+    music.setSoundEnabled(audio.enabled);
     camera.mountFlourish=profile.settings.mountFlourish;
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
@@ -248,9 +257,11 @@ async function boot() {
       camera.reset();
   });
   let startHopBlocked = false;
+  let musicEntered = false;
   hud.onStart = () => {
     startHopBlocked = input.previous.held.hop > 0.5;
     void audio.start();
+    if (!musicEntered) { musicEntered = true; music.enterGame(); }
     input.clear();
   };
   // Some browsers do not treat Gamepad polling as an audio-unlock gesture.
@@ -387,8 +398,13 @@ async function boot() {
             (document.querySelector("#pause") as HTMLElement).hidden=true;
             input.clear();pending=emptyInput();accumulator=0;
             break;
+          case "music":
+            musicPlayer.show();
+            input.clear();pending=emptyInput();
+            break;
           case "sound":
             audio.enabled = !audio.enabled;
+            music.setSoundEnabled(audio.enabled);
             profile.settings.sound = audio.enabled;
             saveProfile(profile);
             document.querySelector("#sound")!.textContent = audio.enabled
@@ -430,7 +446,7 @@ async function boot() {
     waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
     interactions.online=!!network.id;interactions.render(rider);
-    const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
+    const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);renderer.render(scene, camera.camera);}
@@ -458,6 +474,12 @@ async function boot() {
       menu.update(frame, dt);
       render(dt);
       return;
+    }
+    // The music panel owns controller input while open; gameplay and the pause
+    // menu receive nothing, and the simulation keeps running (no multiplayer freeze).
+    if (musicPlayer.open) {
+      musicPlayer.update(frame);
+      frame = emptyInput();
     }
     if (frame.pressed.pause) {
       hud.setPaused(!hud.paused);
@@ -552,6 +574,7 @@ async function boot() {
       camera,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},
+      music, musicPlayer,
       renderer,
       fidelity,
       snapshot: () => sim.snapshot(),
