@@ -40,7 +40,7 @@ try {
 
     // ---- Riding on existing ground ----------------------------------------
     board(12, 0);
-    for (let i = 0; i < 12; i++) { a(1 / 120, { pressed: { pushDeck: true } }); a(0.69); }
+    for (let i = 0; i < 12; i++) { a(1 / 120, { pressed: { hop: true } }); a(0.69); } // Normal preset: A pushes
     data.pushed = +s.speed.toFixed(2);
     check('Pushing reaches a cruising pace', s.speed > 5 && s.speed <= TUNE.boardPushMaxSpeed, data);
     a(3, { held: { brake: 1 } });

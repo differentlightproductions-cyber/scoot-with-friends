@@ -1,4 +1,4 @@
-import { ridingButtons } from "../input/riding";
+import { presetName, ridingButtons } from "../input/riding";
 import { Simulation } from "../physics/simulation";
 import { Input, InputFrame } from "../input/input";
 import { Events } from "../core/events";
@@ -27,7 +27,7 @@ export class HUD {
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
       <div id="feedback"></div>
       <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><u id="balance-command"></u><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
-      <footer><div id="hint">X PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
+      <footer><div id="hint">A PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
       <aside id="help" hidden></aside>
       <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="map">Maps</button><button data-action="shops">Shops</button><button data-action="rides">Rides</button><button data-action="rider">Rider</button><button data-action="music">Music</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
@@ -201,7 +201,7 @@ export class HUD {
         '<div class="eyebrow">' +
         s.tricks.controlStyle.toUpperCase() +
         " / " +
-        s.tricks.stance.toUpperCase() +
+        presetName(s.tricks.stance).toUpperCase() +
         " CONTROLS</div><h2>RIDE / REPEAT</h2><dl>" +
         "<dt>" +
         mapping.pushLabel +

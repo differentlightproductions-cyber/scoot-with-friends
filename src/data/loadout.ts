@@ -6,6 +6,7 @@ import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longboardParts";
 import { ownsBoard, type RideableKind } from "./catalog";
 import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
+import { CONTROLS_VERSION } from "../input/riding";
 export interface LocalProfile {
   version: 1 | 2 | 3;
   equipmentRevision?:number;
@@ -25,7 +26,9 @@ export interface LocalProfile {
     controlStyle: "pro" | "arcade";
     sound: boolean;
     grindAssist: boolean;
+    /** The controls preset: "regular" is shown as Normal. See input/riding.ts. */
     stance: "regular" | "goofy";
+    controlsVersion: number;
     daylight: 'day'|'sunset'|'night'|'sunrise';
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
@@ -51,6 +54,7 @@ export function loadProfile(): LocalProfile {
       sound: true,
       grindAssist: true,
       stance: "regular",
+      controlsVersion: CONTROLS_VERSION,
       daylight: 'day',
       mountFlourish: true,
       characterQuality:'auto',
@@ -92,7 +96,12 @@ export function loadProfile(): LocalProfile {
       profile.activeRideable = "longboard";
     if (saved.settings?.controlStyle === "arcade")
       profile.settings.controlStyle = "arcade";
-    if (saved.settings?.stance === "goofy") profile.settings.stance = "goofy";
+    // Controls version 2 swapped which preset is called Normal. A save from before
+    // keeps its physical buttons: its old name maps to the other preset, once.
+    const savedStance = saved.settings?.stance === "goofy" ? "goofy" : "regular";
+    // Arcade bindings never depended on the preset, so an Arcade save keeps its stance.
+    const legacyControls = !!saved.settings && saved.settings.controlsVersion !== CONTROLS_VERSION && saved.settings.controlStyle !== "arcade";
+    profile.settings.stance = legacyControls ? (savedStance === "goofy" ? "regular" : "goofy") : savedStance;
     // Grind assist is always on: a stale saved Off from the old toggle is ignored.
     for (const key of ["sound", "mountFlourish"] as const)
       if (typeof saved.settings?.[key] === "boolean")

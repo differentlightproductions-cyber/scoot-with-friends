@@ -35,7 +35,7 @@ try{
    if(kind==='bri'||kind==='inward'){
     for(let i=0;i<=24;i++){const r=(kind==='bri'?1:-1)*i*Math.PI*2/24;a(.014,{rx:Math.cos(r),ry:Math.sin(r)});}
    }else if(kind==='hop'){a(.1,{ry:1});a(1/120,{ry:-1});}
-   else a(1/120,{pressed:{[kind==='whip'?'hop':'brakeBars']:true}});
+   else a(1/120,{pressed:{[kind==='whip'?'pushDeck':'brakeBars']:true}});
    check('Box lip pop into '+kind+' '+x,!rider.grounded&&rider.velocity.y>0);
    if(kind==='bri'||kind==='inward')check('Box overhead gesture begins '+kind+' '+x,Math.abs(rider.tricks.bri.target)>6);
   }
@@ -50,14 +50,14 @@ try{
    s.position.copy(mid).addScaledVector(side,offset);s.position.y+=.3;s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);
    s.velocity.copy(dir).multiplyScalar(speed).addScaledVector(side,offset>0?-.8:0);s.velocity.y=vy;s.body.setLinvel(s.velocity,true);s.yaw=Math.atan2(dir.x,dir.z);s.grounded=false;s.state='Airborne';s.airTime=.2;s.tricks.startAir(false);return s;};
   for(const offset of [0,.15]){const rider=railPlace(offset);a(.12,{held:{pumpGrind:1}});check('Rail contact engages '+offset,!!rider.grind);
-   a(1/120,{pressed:{hop:true}});check('Tailwhip immediately exits rail '+offset,!rider.grind&&rider.tricks.deck.target!==0);}
+   a(1/120,{pressed:{pushDeck:true}});check('Tailwhip immediately exits rail '+offset,!rider.grind&&rider.tricks.deck.target!==0);}
   let rider=railPlace(0,18,-7);a(.035,{held:{pumpGrind:1}});check('High-speed descending rail engages before tunneling',!!rider.grind);
   rider=railPlace(.9);a(.1,{held:{pumpGrind:1}});check('A clear rail miss stays a miss',!rider.grind);
   rider=railPlace(-.7,0,0);rider.position.y-=.2;rider.body.setTranslation(rider.position,true);rider.velocity.copy(side).multiplyScalar(18);rider.body.setLinvel(rider.velocity,true);a(.1);
   check('Bad high-speed rail crossing produces physical impact',g.events.history.some(e=>e.type==='railImpact'||e.type==='bail'));
   g.sim.reset(0,true);a(.4);
-  a(.05,{pressed:{hop:true},held:{hop:1}});a(1/120,{released:{hop:true}});
-  check('Physical A tap retains tailwhip',!g.sim.grounded&&g.sim.tricks.deck.target!==0);
+  a(.05,{pressed:{pushDeck:true},held:{pushDeck:1}});a(1/120,{released:{pushDeck:true}});
+  check('Physical X tap (Normal whip) retains tailwhip',!g.sim.grounded&&g.sim.tricks.deck.target!==0);
   // Sampled inside the preload's own range. RS 0.2-0.5 is the gentle manual
   // band and deliberately produces no crouch at all, so the old .2/.5/1 samples
   // could not pass once manuals took that region.

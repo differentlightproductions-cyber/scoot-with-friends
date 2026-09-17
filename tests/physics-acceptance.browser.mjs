@@ -342,7 +342,7 @@ try {
       return { failures, observations: { releaseTick: release, peak: +peak(run.trace).toFixed(2), tricks: tricks(run.events), landings: landings(run.events), partAngleAtTouchdown: touchdown && +touchdown[part].toFixed(3) } };
     };
     scenario('B02', () => trickOverBox('Barspin', 'brakeBars'));
-    scenario('B03', () => trickOverBox('Tailwhip', 'hop'));
+    scenario('B03', () => trickOverBox('Tailwhip', 'pushDeck')); // Normal preset: X whips
     scenario('B04', () => {
       const failures = [], observations = { offsets: {} };
       const natural = naturalReleaseTick();
@@ -360,7 +360,7 @@ try {
         observations.offsets[offset] = { peak: +p.toFixed(2), pops: popEvents(run.events), landings: landings(run.events), bails: bails(run.events), extra: extraLaunches(run.trace), inGraceReplacement: [...replacements] };
       }
       // Pressing the trick button late while still holding the charge.
-      const late = bigBox({ script: (i) => (i < 40 ? {} : i === natural + 1 ? { ry: 1, pressed: { hop: true } } : { ry: 1 }) });
+      const late = bigBox({ script: (i) => (i < 40 ? {} : i === natural + 1 ? { ry: 1, pressed: { pushDeck: true } } : { ry: 1 }) });
       launchCheck(late, failures, 'late A with charge held');
       observations.lateButton = { peak: +peak(late.trace).toFixed(2), pops: popEvents(late.events), extra: extraLaunches(late.trace) };
       return { failures, observations, tolerances: { latePeakAboveBestOnLip_m: 0.1 } };

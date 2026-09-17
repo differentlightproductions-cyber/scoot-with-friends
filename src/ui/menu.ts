@@ -21,6 +21,7 @@ import {
 import { saveProfile, type LocalProfile } from "../data/loadout";
 import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
+import { presetName } from "../input/riding";
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
@@ -249,10 +250,10 @@ export class GameMenu {
         title = "TRICK BOOK";
         subtitle = "READ THE MOVEMENT, THEN MAKE IT YOURS";
         add("BUNNY HOP / TUCK", () => {}, "RS fully down to crouch, then return it 90% up to pop. A neutral release stands up; holding a tuck reduces drag at speed and helps on downhills.");
-        add("TAILWHIP / BARSPIN", () => {}, "Pro: stance whip button / B. Arcade: B whip / X bars. Tap once or hold for continuous rotations.");
+        add("TAILWHIP / BARSPIN", () => {}, "Normal: X tailwhip / B barspin / A push. Goofy: A tailwhip / B barspin / X push. Arcade: B whip / X bars. Tap once or hold for continuous rotations.");
         add("HEEL / FINGER WHIP", () => {}, "LT + whip = heelwhip. RT + whip = fingerwhip. LT + RT + whip = opposite fingerwhip.");
         add("BRI / INWARD BRI", () => {}, "RS down → lower-left → left = Bri. Down → lower-right → right = Inward. A complete circle still works. Finish the scoop near a ramp lip for an upward pop.");
-        add("KICKLESS / REWIND", () => {}, "During an active whip: tap the opposite-direction bumper to Rewind, or hold it for Kickless. Regular natural whip: LB; Goofy: RB. Heelwhips swap those sides. Attempts can fail if landed unfinished. RS up remains an alternate Kickless flick.");
+        add("KICKLESS / REWIND", () => {}, "During an active whip: tap the opposite-direction bumper to Rewind, or hold it for Kickless. Normal natural whip: LB; Goofy: RB. Heelwhips swap those sides. Attempts can fail if landed unfinished. RS up remains an alternate Kickless flick.");
         add("FRONTFLIP / BACKFLIP", () => {}, "During any valid air, hold LT + RT and move LS forward/back. Diagonal LS adds spin. Release eases rotation; countersteer brakes it. Natural ramp air and scooter trick combinations also permit flips.");
         add('SUPERMAN / GRABS',()=>{},'In the air, hold RT + Y for Superman (one trigger). LT + Y grabs the deck. LT + LB + Y tucks no-hands. RS charged takeoffs still work with a body-trick chord held.');
         add("FASTPLANT FRONTFLIP", () => {}, "At a reachable ramp/drop edge with enough speed and space, hold RT + LS forward and press physical A. The back foot plants, pushes once, then releases. Flat ground and midair cannot plant.");
@@ -406,7 +407,7 @@ export class GameMenu {
             this.show("settings");
           },
         );
-        add("STANCE " + this.profile.settings.stance.toUpperCase(), () => {
+        add("CONTROLS PRESET " + presetName(this.profile.settings.stance).toUpperCase(), () => {
           this.profile.settings.stance =
             this.profile.settings.stance === "regular" ? "goofy" : "regular";
           this.changed();

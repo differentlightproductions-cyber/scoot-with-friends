@@ -118,7 +118,7 @@ try {
     // A tailwhip into a manual, still with no fresh stick movement on landing.
     {
       const s = flat(7);
-      a(1 / 120, { pressed: { hop: true } });
+      a(1 / 120, { pressed: { pushDeck: true } }); // Normal preset: X whips
       let landed = false;
       for (let i = 0; i < 240 && !landed; i++) { a(1 / 120, { ry: .32 }); landed = s.grounded; }
       data.push({ whipToManual: { landed, active: s.manual.active, deck: s.tricks.deck.angle } });

@@ -35,7 +35,7 @@ try {
     const pushRun = (n) => {
       s.reset(12, true); a(0.4);
       const speeds = [];
-      for (let i = 0; i < n; i++) { a(1 / 120, { pressed: { pushDeck: true } }); a(0.49); speeds.push(s.speed); }
+      for (let i = 0; i < n; i++) { a(1 / 120, { pressed: { hop: true } }); a(0.49); speeds.push(s.speed); } // Normal preset: A pushes
       return speeds;
     };
     const run = pushRun(40);

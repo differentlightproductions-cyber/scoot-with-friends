@@ -1,8 +1,19 @@
 import { clamp, TUNE } from "../core/config";
 import type { InputFrame } from "./input";
 
-// Physical A/X names remain stable for menus and walking; riding resolves stance here.
+// Physical A/X names remain stable for menus and walking; riding resolves the
+// preset here, once, after device normalisation.
+//
+//   Preset (stance)      Push   Tailwhip   Barspin
+//   Normal ("regular")   A      X          B        <- default
+//   Goofy  ("goofy")     X      A          B
+//   Arcade (any stance)  X      B          X at takeoff / in air; A = quick hop
+//
+// Saves from before controls version 2 used the opposite names; loadProfile
+// migrates them once so nobody's buttons change under them.
 export type ControlStyle = "pro" | "arcade";
+export const CONTROLS_VERSION = 2;
+export const presetName = (stance: "regular" | "goofy") => (stance === "regular" ? "Normal" : "Goofy");
 export function ridingButtons(
   stance: "regular" | "goofy",
   style: ControlStyle = "pro",
@@ -16,16 +27,16 @@ export function ridingButtons(
     } as const;
   return stance === "regular"
     ? ({
-        push: "pushDeck",
-        whip: "hop",
-        pushLabel: "X",
-        whipLabel: "A",
-      } as const)
-    : ({
         push: "hop",
         whip: "pushDeck",
         pushLabel: "A",
         whipLabel: "X",
+      } as const)
+    : ({
+        push: "pushDeck",
+        whip: "hop",
+        pushLabel: "X",
+        whipLabel: "A",
       } as const);
 }
 

@@ -116,10 +116,12 @@ export class MusicPlayer {
     if (frame.pressed.pushDeck) void music.togglePlay();
     const vertical = frame.held.marker > 0.5 ? -1 : frame.held.menuDown > 0.5 ? 1 : Math.abs(frame.lean) > 0.5 ? Math.sign(frame.lean) : 0;
     const items = this.focusables();
+    // Up/down moves between rows of controls; controls side by side (tabs,
+    // transport, shuffle/repeat) are reached with left/right below.
     if (vertical && !this.navHeld && items.length) {
-      this.focus = (this.focus + vertical + items.length) % items.length;
+      this.focus = this.step(items, vertical, 0);
       this.render();
-      this.focusables()[this.focus]?.scrollIntoView({ block: "nearest" });
+      this.reveal(this.focusables()[this.focus]);
     }
     this.navHeld = !!vertical;
     const side = frame.held.menuLeft > 0.5 ? -1 : frame.held.menuRight > 0.5 ? 1 : Math.abs(frame.steer) > 0.5 ? Math.sign(frame.steer) : 0;
@@ -138,11 +140,47 @@ export class MusicPlayer {
         const index = PAGES.findIndex((p) => p.id === this.page);
         this.setPage(PAGES[(index + side + PAGES.length) % PAGES.length].id);
         this.sideHeld = now;
+      } else if (!this.sideHeld) {
+        this.focus = this.step(items, 0, side);
+        this.sideHeld = now;
+        this.render();
       }
     } else this.sideHeld = 0;
     if (frame.pressed.hop && focused) this.activate(focused);
   }
 
+  /** Rows of controls by on-screen position, top to bottom, each left to right. */
+  private rows(items: HTMLElement[]) {
+    const placed = items.map((item, index) => ({ index, rect: item.getBoundingClientRect() }));
+    if (placed.every((p) => !p.rect.height)) return items.map((_, index) => [index]);
+    placed.sort((a, b) => a.rect.top + a.rect.height / 2 - (b.rect.top + b.rect.height / 2));
+    const rows: { y: number; members: typeof placed }[] = [];
+    for (const p of placed) {
+      const y = p.rect.top + p.rect.height / 2, row = rows.at(-1);
+      if (row && Math.abs(row.y - y) < 14) row.members.push(p);
+      else rows.push({ y, members: [p] });
+    }
+    return rows.map((r) => r.members.sort((a, b) => a.rect.left - b.rect.left).map((m) => m.index));
+  }
+  /** Spatial focus step: vertical changes row (keeping the nearest column), horizontal stays in the row. */
+  private step(items: HTMLElement[], vertical: number, horizontal: number) {
+    const rows = this.rows(items);
+    const r = Math.max(0, rows.findIndex((row) => row.includes(this.focus)));
+    const row = rows[r], at = row.indexOf(this.focus);
+    if (horizontal) return row[Math.min(row.length - 1, Math.max(0, at + horizontal))] ?? this.focus;
+    const next = rows[(r + vertical + rows.length) % rows.length];
+    const x = (el: HTMLElement) => { const b = el.getBoundingClientRect(); return b.left + b.width / 2; };
+    const from = x(items[this.focus]);
+    return next.reduce((best, i) => (Math.abs(x(items[i]) - from) < Math.abs(x(items[best]) - from) ? i : best), next[0]);
+  }
+  /** Scrolls only the player's own page, never the game behind it. */
+  private reveal(target?: HTMLElement) {
+    const box = this.root.querySelector<HTMLElement>(".music-page");
+    if (!target || !box) return;
+    const t = target.getBoundingClientRect(), b = box.getBoundingClientRect();
+    if (t.top < b.top) box.scrollTop -= b.top - t.top + 6;
+    else if (t.bottom > b.bottom) box.scrollTop += t.bottom - b.bottom + 6;
+  }
   private setPage(page: Page) {
     this.page = page;
     this.render();

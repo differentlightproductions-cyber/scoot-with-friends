@@ -11,7 +11,7 @@ test('rotation naming uses tolerant 90-degree increments and preserves actual ya
 });
 test('live trick attempts are provisional and a bail awards nothing',()=>{
  const e=new Events(),t=new Tricks(e),s=new ScoreSystem(e);t.startAir(false);
- const f=emptyInput();f.pressed.hop=true;
+ const f=emptyInput();f.pressed.pushDeck=true;
  t.input(.04,f);assert.match(t.attempt?.name??'',/Tailwhip/);assert.equal(s.line,0);
  t.finish('failed');e.emit({type:'bail',reason:'test'});assert.equal(s.total,0);assert.equal(s.line,0);
 });
