@@ -252,14 +252,15 @@ export function deckGraphic(variant: string) {
 }
 
 /** Black coarse grip; Classic carries its wordmark in the grip itself. */
-export function gripTexture(variant: string) {
+export function gripTexture(variant: string, color = 0x1b1d1e) {
   const { c, ctx } = canvas(256, 1024);
-  ctx.fillStyle = "#1b1d1e";
+  ctx.fillStyle = "#" + color.toString(16).padStart(6, "0");
   ctx.fillRect(0, 0, 256, 1024);
   seed = 314;
   for (let i = 0; i < 9000; i++) {
-    const v = 26 + random() * 40;
-    ctx.fillStyle = `rgb(${v},${v},${v + 2})`;
+    // Grit: lighter and darker specks around the sheet's own colour.
+    const v = random() < 0.5 ? 255 : 0;
+    ctx.fillStyle = `rgba(${v},${v},${v},${0.08 + random() * 0.12})`;
     ctx.fillRect(random() * 256, random() * 1024, 1.4, 1.4);
   }
   if (variant === "classic") {

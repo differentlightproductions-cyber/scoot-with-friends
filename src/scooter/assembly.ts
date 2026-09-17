@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { defaultScooter, selectedPart, type ScooterLoadout } from '../data/scooterParts';
-import { lathe, extrusion, plate, tube, detailTexture, sidePlate } from './surfaces';
+import { lathe, extrusion, plate, tube, detailTexture, sidePlate, griptapeTexture } from './surfaces';
 const v=(x:number,y:number,z:number)=>new THREE.Vector3(x,y,z);
 /**
  * How far the palm centre sits outside the grip surface, so the hand wraps the
@@ -21,7 +21,8 @@ export class ScooterAssembly {
   gs.forEach(g=>g.dispose());ms.forEach(m=>{const t=m as THREE.MeshStandardMaterial;t.map?.dispose();t.bumpMap?.dispose();t.roughnessMap?.dispose();m.dispose();});
   this.root.clear();this.deckPivot=new THREE.Group();this.barPivot=new THREE.Group();this.wheels=[];
   this.root.add(this.deckPivot,this.barPivot);this.deckPivot.position.z=this.barPivot.position.z=.3;
-  const get=(slot:keyof ScooterLoadout)=>selectedPart(loadout[slot]);
+  // A loadout from before a slot existed (griptape) uses that slot's default.
+  const get=(slot:keyof ScooterLoadout)=>selectedPart(loadout[slot]??defaultScooter()[slot]);
   const mats=new Map<string,THREE.MeshStandardMaterial>();
   const mat=(color:number,finish='paint')=>{
    const key=color+'/'+finish;if(mats.has(key))return mats.get(key)!;
@@ -29,6 +30,13 @@ export class ScooterAssembly {
    const parameters={color,metalness:soft?0:chrome?.92:.68,roughness:soft?finish==='urethane'?.66:.88:chrome?.24:.37,envMapIntensity:chrome?1.1:.65};
    const m=color===0x71989b?new THREE.MeshPhysicalMaterial({...parameters,metalness:.92,roughness:.24,iridescence:1,iridescenceIOR:1.35,iridescenceThicknessRange:[140,480]}):new THREE.MeshStandardMaterial(parameters);
    if(finish==='rubber'||finish==='griptape'){m.bumpMap=detailTexture(finish==='rubber'?'rubber':'grip');m.bumpScale=.00022;}
+   if(finish.startsWith('griptape:')){
+    // Patterned sheet: the artwork carries the colour, stretched over the deck's
+    // own top face (shape coordinates run +-width/2, +-length/2).
+    const [,shape,accent,w,l]=finish.split(':');m.color.setHex(0xffffff);m.metalness=0;m.roughness=.9;
+    const map=griptapeTexture(shape,color,Number(accent));map.repeat.set(-1/Number(w),1/Number(l));map.offset.set(.5,.5);m.map=map;
+    m.bumpMap=detailTexture('grip');m.bumpScale=.00022;
+   }
    if(chrome)m.roughnessMap=detailTexture('brushed');m.name=finish;mats.set(key,m);return m;
   };
   const batches=new Map<THREE.Object3D,Map<string,{geometries:THREE.BufferGeometry[];material:THREE.Material;part:string}>>();
@@ -45,7 +53,9 @@ export class ScooterAssembly {
   };
   const d=get('deck'),length=d.part.shape==='street'?.74:d.part.shape==='light'?.57:.62,width=d.part.shape==='street'?.18:d.part.shape==='light'?.115:.135;
   add(this.deckPivot,plate(width,length-.10,.033,.017),d.variant.color,d.part.id,'paint',v(0,.092,-length/2+.04));
-  add(this.deckPivot,plate(width*.89,length*.72,.003,.014),0x323d3f,'griptape','griptape',v(0,.111,-length*.47));
+  // Grip sheet fitted to this deck's width and standing area.
+  const grip=get('griptape'),gw=width*.89,gl=length*.72;
+  add(this.deckPivot,plate(gw,gl,.003,.014),grip.variant.color,grip.part.id,grip.part.shape==='plain'?'griptape':`griptape:${grip.part.shape}:${grip.variant.accent??0xffffff}:${gw.toFixed(4)}:${gl.toFixed(4)}`,v(0,.111,-length*.47));
   for(const s of [-1,1]){
    add(this.deckPivot,plate(.010,length*.63,.005,.004),d.variant.color,d.part.id,'paint',v(s*width*.29,.073,-length*.46));
    const drop=new THREE.Shape();drop.moveTo(.09,.105);drop.lineTo(.045,.105);drop.quadraticCurveTo(.013,.098,-.012,.074);drop.quadraticCurveTo(-.027,.053,-.011,.039);drop.quadraticCurveTo(.007,.031,.02,.052);drop.lineTo(.041,.075);drop.lineTo(.09,.075);drop.closePath();

@@ -92,8 +92,8 @@ function buildShop(park:Park){
   const bounds=new THREE.Box3().setFromObject(group),centre=bounds.getCenter(new THREE.Vector3());
   group.position.set(cx-centre.x,shelfTop+.002-bounds.min.y,cz-centre.z);scene.add(group);
  };
- const stockCase=(category:Category,x:number,z:number,length:number)=>{
-  const items=shopStock('techno_gravity',category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')).flatMap(p=>p.variants.map(v=>({p,v})));
+ const stockCase=(category:Category,x:number,z:number,length:number,also?:Category)=>{
+  const items=[...shopStock('techno_gravity',category),...(also?shopStock('techno_gravity',also):[])].sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')).flatMap(p=>p.variants.map(v=>({p,v})));
   if(!items.length)return;
   const largest=Math.max(...items.map(({p,v})=>{const g=product({partId:p.id,variantId:v.id});g.updateMatrixWorld(true);const s=new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());return Math.max(s.x,s.y,s.z);}));
   const usable=length-.12,cols=Math.max(2,Math.min(6,Math.floor(usable/(Math.min(largest,.62)+.06)))),cellL=usable/cols;
@@ -120,10 +120,12 @@ function buildShop(park:Park){
   continue;}
   // Bearings and hardware get their own short case in the aisle; every other
   // category fills the long case nearest its display on its side of the shop.
+  // Grip tape shares the short aisle case with bearings (lower shelf).
+  if(display.category==='griptape')continue;
   const small=display.category==='bearings';
   const x=small?-1.9:display.x<0?-5.8:5.8,z=small?5.4:[0,3,6].reduce((a,b)=>Math.abs(b-display.z)<Math.abs(a-display.z)?b:a),length=small?1.6:2.65;
   if(small)glassCase(x,z,length);
-  stockCase(display.category,x,z,length);
+  stockCase(display.category,x,z,length,small?'griptape':undefined);
   sign(display.label.toUpperCase(),x,1.42,z,1.4,.25,'#efe3c4','#2a3637',small?Math.PI:x<0?Math.PI/2:-Math.PI/2);
  }
  // Wall grid, raised completes, hanging soft goods and service counter.

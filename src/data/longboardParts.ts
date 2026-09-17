@@ -111,6 +111,9 @@ export const LONGBOARD_PARTS: LongboardPart[] = [
   ]),
   part("grip", "ss-grip", "Coarse Grip Tape", "single", 15, [
     { id: "black", name: "Black", color: 0x1b1d1e },
+    { id: "charcoal", name: "Charcoal", color: 0x3a3f41 },
+    { id: "sand", name: "Sand", color: 0x8a7a5e },
+    { id: "sea-glass", name: "Sea Glass", color: 0x4f7d78 },
   ]),
   part("hardware", "ss-mounting-hardware", "Mounting Hardware", "set-of-8", 10, [
     { id: "black", name: "Black", color: 0x1c1e1f },

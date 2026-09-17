@@ -145,6 +145,7 @@ export class LongboardAssembly {
     this.wheels = [];
     this.footSockets = [];
     const deckPart = longboardPart(loadout.deck),
+      gripPart = longboardPart(loadout.grip),
       trucks = longboardPart(loadout.trucks),
       wheels = longboardPart(loadout.wheels),
       bushings = longboardPart(loadout.bushings),
@@ -268,9 +269,9 @@ export class LongboardAssembly {
     // shows through them.
     const grip = new THREE.Mesh(
       surfaceSheet(0.006, deckTop, 0.0019, true),
-      mat("grip/" + deckPart.variant.id, () =>
+      mat("grip/" + deckPart.variant.id + "/" + gripPart.variant.id, () =>
         new THREE.MeshStandardMaterial({
-          map: tex(gripTexture(deckPart.variant.id)),
+          map: tex(gripTexture(deckPart.variant.id, gripPart.variant.color)),
           bumpMap: tex(gripBump()),
           bumpScale: 0.0009,
           roughness: 0.97,

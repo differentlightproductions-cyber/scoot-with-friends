@@ -9,6 +9,7 @@ export const CATEGORIES = [
   "headset",
   "brake",
   "compression",
+  "griptape",
 ] as const;
 export type Category = (typeof CATEGORIES)[number];
 export interface PartVariant {
@@ -156,6 +157,30 @@ PARTS.push(
  mafioso('wheels','mafioso-wheels-petal','Petal 110 Wheel Pair','petal',55,[{id:'mafioso_wheels_petal_oilslick',name:'Oil Slick / Black',color:0x71989b},{id:'mafioso_wheels_petal_green_gold',name:'Green / Gold',color:0x638845,accent:0xc4a24f}]),
  mafioso('wheels','mafioso-wheels-broad','Broad Spoke 110 Wheel Pair','broad',55,[{id:'mafioso_wheels_broad_rainbow',name:'Rainbow / Black',color:0x71989b}]),
  mafioso('clamp','mafioso-clamp-segmented','Segmented Double Clamp','segmented',35,[{id:'mafioso_clamp_segmented_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_clamp_segmented_chrome',name:'Chrome',color:0xb8cbc6},{id:'mafioso_clamp_segmented_black',name:'Black',color:0x171b1e}])
+);
+// Griptape is cosmetic: it changes the deck's top sheet only, never grip,
+// friction, weight, speed or pop.
+const griptape = (id: string, name: string, shape: string, variants: PartVariant[]): ScooterPart => ({
+  ...make("griptape", id, name, shape, ["black"]),
+  variants,
+});
+PARTS.push(
+  griptape("standard-griptape", "Standard Grip Tape", "plain", [
+    { id: "black", name: "Black", color: 0x2b3133 },
+    { id: "smoke", name: "Smoke Grey", color: 0x4d5558 },
+  ]),
+  griptape("stripe-griptape", "Twin Stripe Grip Tape", "stripe", [
+    { id: "black-red", name: "Black / Red", color: 0x2b3133, accent: 0xe65330 },
+    { id: "black-blue", name: "Black / Blue", color: 0x2b3133, accent: 0x4281aa },
+  ]),
+  griptape("logo-griptape", "Logo Grip Tape", "logo", [
+    { id: "black-white", name: "Black / White", color: 0x2b3133, accent: 0xe9e5d9 },
+    { id: "smoke-red", name: "Smoke / Red", color: 0x4d5558, accent: 0xe65330 },
+  ]),
+  mafioso("griptape", "mafioso-griptape-crown", "Crown Grip Tape", "crown", 20, [
+    { id: "mafioso_grip_black_gold", name: "Black / Gold", color: 0x1d2022, accent: 0xc5a653 },
+    { id: "mafioso_grip_frost", name: "Frosted / White", color: 0x8c9496, accent: 0xe9e5d9 },
+  ]),
 );
 export type PartSelection = { partId: string; variantId: string };
 export type ScooterLoadout = Record<

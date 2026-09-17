@@ -5,7 +5,7 @@ export const PROTOCOL=1,CONTENT='swf-2026-09-sesh-1';
 export function appearance(value:any){
  if(!value||!RIDERS.some(r=>r.id===value.riderId)||!['skinny','regular','chunky'].includes(value.bodyBuild))return null;
  const outfit:any={};for(const slot of ['head','top','bottom','shoes']){if(!CLOTHING.some(c=>c.category===slot&&c.id===value.outfit?.[slot]))return null;outfit[slot]=value.outfit[slot];}
- const scooter:any={};for(const slot of [...CATEGORIES.filter(c=>c!=='wheels'),'frontWheel','rearWheel']){const item=value.scooter?.[slot],category=slot.includes('Wheel')?'wheels':slot;if(!PARTS.some(p=>p.id===item?.partId&&p.category===category&&p.variants.some(v=>v.id===item.variantId)))return null;scooter[slot]={partId:item.partId,variantId:item.variantId};}
+ const scooter:any={};for(const slot of [...CATEGORIES.filter(c=>c!=='wheels'),'frontWheel','rearWheel']){const category=slot.includes('Wheel')?'wheels':slot;const fallback=PARTS.find(p=>p.category===category);/* Griptape arrived later: a peer without it gets the default sheet. */const item=value.scooter?.[slot]??(category==='griptape'&&fallback?{partId:fallback.id,variantId:fallback.variants[0].id}:undefined);if(!PARTS.some(p=>p.id===item?.partId&&p.category===category&&p.variants.some(v=>v.id===item.variantId)))return null;scooter[slot]={partId:item.partId,variantId:item.variantId};}
  return {riderId:value.riderId,bodyBuild:value.bodyBuild,outfit,scooter};
 }
 // Render state only. No wallet, ownership, scripts, URLs or claimed sender ID.
