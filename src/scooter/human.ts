@@ -4,7 +4,7 @@ import {detailTexture,lathe,tube} from './surfaces';
 import {fittedPoint,type BodyBuild} from './body-fit';
 import {fittedHeadwear} from './headwear';
 import {clothEdges} from './cloth-edges';
-export interface HumanRig {rider:THREE.Group;hips:THREE.Object3D;torso:THREE.Object3D;head:THREE.Object3D;neck:THREE.Object3D;helmet:THREE.Object3D;upperArms:THREE.Object3D[];forearms:THREE.Object3D[];hands:THREE.Object3D[];thighs:THREE.Object3D[];shins:THREE.Object3D[];shoes:THREE.Object3D[]}
+export interface HumanRig {hideHead?:boolean;rider:THREE.Group;hips:THREE.Object3D;torso:THREE.Object3D;head:THREE.Object3D;neck:THREE.Object3D;helmet:THREE.Object3D;upperArms:THREE.Object3D[];forearms:THREE.Object3D[];hands:THREE.Object3D[];thighs:THREE.Object3D[];shins:THREE.Object3D[];shoes:THREE.Object3D[]}
 export type CharacterQuality='low'|'medium'|'high';
 type MeshAsset={positions:number[][];skinIndex:number[][];skinWeight:number[][];uv:number[][];faces:number[][][];remove?:number[];lod?:Record<string,number[][][]>};
 type Asset=MeshAsset&{handPoses:Record<string,{open:number[];closed:number[]}>;names:string[];anchors:number[][][];eyes:number[][];handFrames:{across:number[];along:number[];normal:number[];length:number}[];garments:Record<string,MeshAsset>;hair:MeshAsset};
@@ -109,6 +109,11 @@ export class HumanCharacter {
  }
  update(time:number){
   this.drivers.forEach((d,i)=>{d.updateMatrix();this.bones[i].matrix.copy(d.matrix);});
+  // First person, local rider only: the head bone collapses to the top of the
+  // neck so face, eyes and hair never sit in front of the lens. Remote riders
+  // are separate models and keep their heads.
+  const hidden=!!this.model.hideHead;if(hidden){const collar=new THREE.Vector3(0,.12,-.02).applyMatrix4(this.bones[1].matrix),tiny=new THREE.Matrix4().makeTranslation(collar.x,collar.y,collar.z).scale(new THREE.Vector3(.001,.001,.001));this.bones[2].matrix.copy(tiny);this.bones[3].matrix.copy(tiny);}
+  this.headwear.visible=!hidden;this.eyes.forEach(e=>e.visible=!hidden);
   this.headwear.position.copy(this.model.head.position);this.headwear.quaternion.copy(this.model.head.quaternion);
   this.model.helmet.position.z=this.model.head.position.z+.006;
   const blink=this.quality==='low'?0:Math.max(0,1-Math.abs((time%4.7)-.16)/.065);this.eyes.forEach(e=>e.scale.y=.9*(1-blink*.94));if(this.mesh.morphTargetInfluences){this.mesh.morphTargetInfluences[0]=this.model.hands[0].userData.openHand??0;this.mesh.morphTargetInfluences[1]=this.model.hands[1].userData.openHand??0;this.mesh.morphTargetInfluences[2]=blink;}

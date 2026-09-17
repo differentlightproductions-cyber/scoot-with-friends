@@ -33,6 +33,11 @@ export interface LocalProfile {
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     characterQuality:'auto'|'low'|'medium'|'high';
+    /** Personal camera; never networked. */
+    cameraView: 'third'|'first';
+    /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
+    firstPersonFov: number;
+    cameraMotion: 'reduced'|'full';
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
@@ -58,6 +63,9 @@ export function loadProfile(): LocalProfile {
       daylight: 'day',
       mountFlourish: true,
       characterQuality:'auto',
+      cameraView:'third',
+      firstPersonFov:90,
+      cameraMotion:'reduced',
       fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
     },
   };
@@ -72,6 +80,9 @@ export function loadProfile(): LocalProfile {
     if(['day','sunset','night','sunrise'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['auto','low','medium','high'].includes(saved.settings?.characterQuality))profile.settings.characterQuality=saved.settings.characterQuality;
+    if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
+    if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(110,Math.max(70,Math.round(saved.settings.firstPersonFov)));
+    if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
     const rider = RIDERS.find((r) => r.id === saved.riderId);
     for(const r of RIDERS){const entry=saved.riderOutfits?.[r.id];if(entry&&OUTFIT_SLOTS.every(s=>CLOTHING.some(c=>c.id===entry[s]&&c.category===s)))profile.riderOutfits[r.id]={...entry};}
     if (rider) {

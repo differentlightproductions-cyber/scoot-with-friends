@@ -100,6 +100,7 @@ export class GameMenu {
   onRide = (_map: MapId) => {};
   onChange = () => {};
   onEditor = () => {};
+  onCameraChange = (_settings: LocalProfile['settings']) => {};
   networkChoices=():{label:string;detail?:string;action:()=>void}[]=>[];
   private choices: {
     label: string;
@@ -391,6 +392,11 @@ export class GameMenu {
         add('TIME OF DAY '+this.profile.settings.daylight.toUpperCase(),()=>{
           const phases=['day','sunset','night','sunrise'] as const;this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%4];this.changed();this.render();
         });
+        // Camera settings take effect at once, in the Sesh too, and are saved straight away.
+        const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
+        add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
+        add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=110?70:c.firstPersonFov+5;}),'Horizontal field of view, 70° to 110°. Default 90°.');
+        add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
         add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
         add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{
           const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();

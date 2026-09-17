@@ -47,7 +47,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - TODO Mobile-only Xbox-style touch controls (Auto/On/Off, size, opacity, preview) through the same input pipeline.
 
 ## E. First-person mode (First-person prompt)
-- TODO Settings -> Camera: Third/First Person, FOV, Camera Motion Reduced/Full; local head hiding; camera follows body not scooter; crash camera policy; on-foot look; persistence; screenshots ZIP.
+- DONE (first person; screenshots in artifacts/claude/first-person) Settings -> Camera: Third/First Person, FOV, Camera Motion Reduced/Full; local head hiding; camera follows body not scooter; crash camera policy; on-foot look; persistence; screenshots ZIP. Known limits: in a tucked backflip the open collar edge can show at the bottom of the view; no held-item-specific first-person animation beyond the shared rig; not tested on a phone.
 
 ## F. Earlier open items
 - TODO Flip-video pass leftovers: camera jump diagnosis, frame-rate replays, Inward/Bri + flip continuity evidence.

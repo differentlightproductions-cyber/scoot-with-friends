@@ -3,6 +3,9 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Simulation } from "../physics/simulation";
 import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
+import type { RiderModel } from "../scooter/model";
+
+const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0);
 export class ChaseCamera {
   camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.08, 160);
   heading = 0;
@@ -15,7 +18,24 @@ export class ChaseCamera {
   private wasWalking=false;
   mountTime=0;
   private mountStart=new THREE.Vector3();
+  // ---- First person ----------------------------------------------------------
+  view: "third" | "first" = "third";
+  /** Horizontal degrees; converted to the camera's vertical FOV for the aspect. */
+  firstPersonFov = 90;
+  motion: "reduced" | "full" = "reduced";
+  rider: RiderModel | null = null;
+  /** True while this frame is drawn from the rider's eyes (false during a heavy crash). */
+  firstPersonActive = false;
+  private fpInit = false;
+  private fpCrash = 0;
+  private fpYaw = 0;
+  private fpPitch = 0;
+  private fpLookYaw = 0;
+  private fpLookPitch = 0;
+  private fpPosition = new THREE.Vector3();
+  private fpQuaternion = new THREE.Quaternion();
   reset() {
+    this.fpInit = false;this.fpCrash = 0;this.fpLookYaw = this.fpLookPitch = 0;
     this.initialized = false;
     this.wasWalking=false;this.mountTime=0;
     this.orbit = 0;
@@ -23,6 +43,8 @@ export class ChaseCamera {
     this.recenterTime = 0;
   }
   update(s: Simulation, input: InputFrame, dt: number, alpha: number) {
+    if (this.view === "first" && this.updateFirst(s, input, dt)) return;
+    if (this.firstPersonActive) { this.firstPersonActive = false; this.initialized = false; this.camera.near = 0.08; }
     const p = s.previousPosition.clone().lerp(s.position, alpha);
     const velocityYaw = Math.atan2(s.velocity.x, s.velocity.z);
     if(this.initialized && this.wasWalking && !s.walking){
@@ -130,6 +152,77 @@ export class ChaseCamera {
       dt,
     );
     this.camera.updateProjectionMatrix();
+  }
+  /**
+   * The rider's eyes. Riding, the view takes the head's orientation, which the
+   * body's spin and flip already carry exactly once; scooter-only tricks move the
+   * scooter, never the head, so they pass through the view. On foot RS looks
+   * around and walking follows the view. A violent crash cuts to the third-person
+   * view after a short reaction and returns once the rider is back up.
+   */
+  private updateFirst(s: Simulation, input: InputFrame, dt: number) {
+    const r = this.rider;
+    if (!r) return false;
+    if (s.state === "Bail") {
+      this.fpCrash += dt;
+      const violent = (s.crash ? new THREE.Vector3().copy(s.crash.rider.angvel()).length() > 1.2 : true) || this.fpCrash > 0.9;
+      if (this.fpCrash > 0.3 && violent) return false;
+    } else if (this.fpCrash > 0) { this.fpCrash = 0; this.fpInit = false; }
+    const reduced = this.motion === "reduced" || (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches);
+    r.root.updateMatrixWorld(true);
+    const headPosition = r.head.getWorldPosition(new THREE.Vector3());
+    const headQuaternion = r.head.getWorldQuaternion(new THREE.Quaternion());
+    const onFoot = s.walking || !!s.sitting;
+    // In a tucked flip the torso rounds up under the chin: the eye sits further out and looks further ahead.
+    const flipping = s.bodyFlip.active ? THREE.MathUtils.smoothstep(Math.abs(s.bodyFlip.velocity), 1.5, 6) : 0;
+    let look: THREE.Quaternion;
+    if (onFoot) {
+      if (!this.fpInit || this.firstPersonActive === false) this.fpYaw = s.yaw;
+      // RS looks; the body walks where the player looks (via heading below).
+      this.fpYaw -= input.rx * 2.3 * dt;
+      this.fpPitch = clamp(this.fpPitch - input.ry * 1.5 * dt, -1.15, 0.9);
+      look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12));
+    } else {
+      // Mounted: RS belongs to tricks. Look forward along the head, tipped down
+      // enough to see hands, bars and deck.
+      this.fpPitch = damp(this.fpPitch, 0, 3, dt);
+      this.fpYaw = s.yaw;
+      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.72 + flipping * 0.55));
+    }
+    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : 0.03) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    // Short collision check from the chest to the eye; the rider's own body is not a collider.
+    const chest = r.torso.getWorldPosition(new THREE.Vector3());
+    const toEye = eye.clone().sub(chest), length = toEye.length();
+    if (length > 1e-3) {
+      toEye.divideScalar(length);
+      const hit = s.world.castRay(new RAPIER.Ray(chest, toEye), length + 0.1, true, undefined, undefined, undefined, s.body);
+      if (hit && hit.timeOfImpact < length + 0.1) eye.copy(chest).addScaledVector(toEye, Math.max(0, hit.timeOfImpact - 0.1));
+    }
+    // The eye is filtered as an offset from the rider's root, never in world
+    // space, so it cannot trail behind the head at speed.
+    const local = r.root.worldToLocal(eye.clone());
+    const rootQuaternion = r.root.getWorldQuaternion(new THREE.Quaternion());
+    // Likewise the look is filtered relative to the body, so a real spin or flip
+    // turns the view immediately and exactly once; only rig noise is smoothed.
+    const localLook = rootQuaternion.clone().invert().multiply(look);
+    if (!this.fpInit || !this.firstPersonActive) {
+      this.fpPosition.copy(local); this.fpQuaternion.copy(localLook); this.fpInit = true;
+    } else {
+      // One light filter only: meaningful motion comes through, rig noise does not.
+      const positionRate = reduced ? (onFoot ? 12 : 28) : 60, turnRate = reduced ? 22 : 45;
+      this.fpPosition.lerp(local, 1 - Math.exp(-positionRate * dt));
+      this.fpQuaternion.slerp(localLook, 1 - Math.exp(-turnRate * dt));
+    }
+    this.camera.position.copy(r.root.localToWorld(this.fpPosition.clone()));
+    this.camera.quaternion.copy(rootQuaternion).multiply(this.fpQuaternion);
+    this.camera.near = 0.05;
+    const horizontal = THREE.MathUtils.degToRad(clamp(this.firstPersonFov, 70, 110));
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(horizontal / 2) / this.camera.aspect));
+    this.camera.updateProjectionMatrix();
+    // Walking moves relative to where the rider looks.
+    this.heading = onFoot ? this.fpYaw : s.yaw; this.orbit = 0;
+    this.firstPersonActive = true;
+    return true;
   }
   resize() {
     this.camera.aspect = innerWidth / innerHeight;

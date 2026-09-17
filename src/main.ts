@@ -86,6 +86,7 @@ async function boot() {
   ]);
   social.warehouse=ACTIVE_MAP==='warehouse';
   camera.mountFlourish=profile.settings.mountFlourish;
+  const applyCamera=()=>{camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;};applyCamera();
   rider.applyProfile(profile);
   sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
@@ -119,13 +120,14 @@ async function boot() {
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;applyCamera();};
   menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
     music.setSoundEnabled(audio.enabled);
-    camera.mountFlourish=profile.settings.mountFlourish;
+    camera.mountFlourish=profile.settings.mountFlourish;applyCamera();
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
     document.querySelector("#sound")!.textContent = audio.enabled
@@ -436,6 +438,7 @@ async function boot() {
     daylight.update(dt,profile.settings.daylight,sim.position);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
+    camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
     rider.update(sim, dt, alpha);
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
