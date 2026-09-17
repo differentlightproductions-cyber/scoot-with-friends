@@ -46,6 +46,11 @@ export const TUNE = {
   // launch roughly doubled the air and sent riders several metres up.
   rampTrickPopHeight: 0.25, // m, uncharged
   rampTrickPopChargeHeight: 0.5, // m more at full charge
+  // Box lips send the rider up and over a deck, so a pop there needs room for a
+  // trick: 0.5 m uncharged up to 1.8 m at full charge (about 4.5 m of air off
+  // the big box at 12 m/s, against 3 m with the quarter-pipe values).
+  boxTrickPopHeight: 0.5,
+  boxTrickPopChargeHeight: 1.3,
   // --- Bri / Inward direct RS takeoff --------------------------------------
   // Charge accumulates while RS is held deep and is CAPTURED when the scoop
   // gesture is accepted, so tracing the gesture cannot throw the preload away.

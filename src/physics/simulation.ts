@@ -832,8 +832,10 @@ export class Simulation {
     this.finishGrind();
     const rampPop = this.normal.y < 0.85 && this.velocity.y > 1;
     const rampRise = Math.max(0, this.velocity.y);
+    const popLip = this.launchLip(), boxPop = popLip?.module.kind === "box" && popLip.distance > -0.25 && popLip.distance < 1.25;
+    const popHeight = boxPop ? TUNE.boxTrickPopHeight + charge * TUNE.boxTrickPopChargeHeight : TUNE.rampTrickPopHeight + charge * TUNE.rampTrickPopChargeHeight;
     const hop = origin==='fastplant' ? (rampPop?2.4:4.8) : rampPop
-      ? Math.sqrt(rampRise * rampRise + 2 * TUNE.gravity * (TUNE.rampTrickPopHeight + charge * TUNE.rampTrickPopChargeHeight)) - rampRise
+      ? Math.sqrt(rampRise * rampRise + 2 * TUNE.gravity * popHeight) - rampRise
       : TUNE.hopMin + (TUNE.hopMax - TUNE.hopMin) * charge;
     if (!rampPop && origin!=='fastplant')
       this.velocity.addScaledVector(this.normal, 0.8 + charge * 0.4);

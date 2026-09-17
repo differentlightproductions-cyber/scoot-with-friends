@@ -4,7 +4,8 @@ Every owner request that is not finished, in working order. Updated as work land
 Status: TODO / IN PROGRESS / DONE (commit).
 
 ## A0. Urgent regressions
-- TODO Big box no longer launches high enough for tricks after the bounded ramp pop (ec38321).
+- DONE (box pop) Big box no longer launches high enough for tricks after the bounded ramp pop (ec38321).
+- TODO Flips combined with scooter tricks (tailwhip, barspin, grabs, Superman, rotating flips), worst on quarter airs: rider body clips through the scooter. Legs only wrap the bars in a tuck no-hander.
 
 ## A. Riding feel (latest messages, 2026-09-17)
 - DONE (ef9036a) Crooked/angled landings: ride away (absorb the angle) instead of sliding out.
@@ -28,6 +29,8 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE (menus) Menu: a "RIDES" section to switch between the customized scooter and board, with customization submenus under it instead of Customization as the main header.
 
 - TODO Longboard fakie/switch: ride backwards down quarters and ramps; pressing kick while rolling backwards switches to switch stance and pushes with the other foot, like Skate.
+- TODO Longboard power slide: scrub some speed while bombing, then settle straight back into the line.
+- TODO Longboard foot brake at extreme speed: rider crashes rolling forward, the board runs away; Y calls it back.
 
 ## C. Coping stability, re-entry, grinds (Coping/Mobile prompt 1-7, 16)
 - TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
