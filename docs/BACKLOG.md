@@ -55,7 +55,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE (b hill; 1440 m, scripted descents: scooter 107 s / 17 m/s, longboard 132 s / 14.7 m/s, no bails) Checkpoint 5: B Hill downhill map (always named "B Hill").
 - TODO Checkpoint 6: cross-system regression pass.
 - DONE (camcorder; shots in artifacts/claude/camcorder) '90s Camcorder filter (Settings -> Graphics), works with first person.
-- TODO Physics acceptance: remaining 35 NOT_RUN scenarios.
+- DONE (acceptance) Physics acceptance: all 53 scenarios bound and passing (automated headless replays, not a human controller test).
 - KNOWN Pre-existing failing suites: browser, advanced, addendum, memorial, polish.
 
 ## Done recently
