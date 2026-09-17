@@ -8,10 +8,11 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns } from "./outdoor";
+import { buildBHill, bHillHeight, B_HILL_SPAWNS } from "./bhill";
 export let OUTDOOR =
   typeof window !== "undefined" &&
-  !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
-export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "techno_gravity" : "warehouse");
+  !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity","b_hill"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
+export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /b_hill/.test(location.search) ? "b_hill" : typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "techno_gravity" : "warehouse");
 export interface Rail {
   id: string;
   a: THREE.Vector3;
@@ -33,11 +34,14 @@ const smooth = (t: number) => {
 const transition = (t: number, r: number) =>
   r - Math.sqrt(Math.max(0.1, r * r - t * t));
 export function terrainHeight(x: number, z: number): number {
+  // B Hill has no editor layers; their brush clamp is for the flat parks only.
+  if (ACTIVE_MAP === "b_hill") return bHillHeight(x, z);
   if (editedHeightQuery) return editedHeightQuery(x, z);
   return objectHeight(x, z, brushHeight(x, z, baseTerrainHeight(x, z)));
 }
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
+  if (ACTIVE_MAP === "b_hill") return bHillHeight(x, z);
   return 0;
 }
 export function legacyWarehouseHeight(x:number,z:number){
@@ -128,14 +132,14 @@ const warehouseSpawns = [
   { name: "BOWL / TRANSFERS", x: 20, z: 26, yaw: 0 },
   { name: "STAIRS / DOWN RAIL", x: 15, z: -18, yaw: 0 },
 ];
-export let SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
+export let SPAWNS = OUTDOOR ? outdoorSpawns : ACTIVE_MAP === "b_hill" ? B_HILL_SPAWNS : warehouseSpawns;
 let shopBuilder:((park:Park)=>void)|null=null;
 export function registerShop(build:(park:Park)=>void){shopBuilder=build;}
 const shopSpawns=[{name:"TECHNO GRAVITY / FRONTAGE",x:0,z:-11,yaw:0},{name:"DIY ALLEY",x:1,z:14,yaw:0}];
 export function selectPark(id: string) {
   ACTIVE_MAP = id;
   OUTDOOR = id === "outdoor";
-  SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:warehouseSpawns;
+  SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:id==="b_hill"?B_HILL_SPAWNS:warehouseSpawns;
 }
 export class Park {
   benches: {
@@ -189,6 +193,11 @@ export class Park {
     public scene: THREE.Scene,
     public world: RAPIER.World,
   ) {
+    // B Hill builds its own continuous road and hillside collision.
+    if (ACTIVE_MAP === "b_hill") {
+      buildBHill(this);
+      return;
+    }
     this.terrain();
     if (OUTDOOR) {
       buildOutdoor(this);

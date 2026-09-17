@@ -22,7 +22,7 @@ export class FreeRide {
  get endpoint(){return import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
  send(value:any){if(this.ws?.readyState===WebSocket.OPEN&&this.ws.bufferedAmount<65536)this.ws.send(JSON.stringify(value));}
  private async revision(){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(activeLayout??null)));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
- async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
+ async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
  private async receiveMap(m:any){this.status='Loading';this.generation=m.generation;this.map=m.map;this.clear();this.onLost();try{await this.loadMap(m.map);this.send({type:'ready',generation:m.generation,mapRevision:await this.revision()});}catch{this.lastError='Could not load the room destination. Leave and retry.';this.onChange();}}
  async connect(mode:'create'|'join'|'resume',name='Rider',code=''){
   if(mode!=='resume')await this.prepare();

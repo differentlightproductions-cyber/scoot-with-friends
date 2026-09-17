@@ -14,6 +14,7 @@ import {
   terrainHeight,
   terrainNormal,
   OUTDOOR,
+  ACTIVE_MAP,
 } from "../park/park";
 import { Tricks } from "../tricks/tricks";
 import { ManualBalance } from "../player/manual";
@@ -1884,12 +1885,14 @@ export class Simulation {
       !Number.isFinite(
         this.position.lengthSq() + this.velocity.lengthSq() + this.yaw,
       ) ||
-      Math.abs(this.position.x) > (OUTDOOR ? 113 : 34) ||
-      (OUTDOOR
-        ? this.position.z < -166 || this.position.z > 78
-        : Math.abs(this.position.z) > 46) ||
-      this.position.y < -8 ||
-      this.position.y > 35
+      (ACTIVE_MAP === "b_hill"
+        ? Math.abs(this.position.x) > 280 || this.position.z < -120 || this.position.z > 1260 || this.position.y < -20 || this.position.y > 220
+        : Math.abs(this.position.x) > (OUTDOOR ? 113 : 34) ||
+          (OUTDOOR
+            ? this.position.z < -166 || this.position.z > 78
+            : Math.abs(this.position.z) > 46) ||
+          this.position.y < -8 ||
+          this.position.y > 35)
     ) {
       if(this.state==='Bail'){this.position.copy(this.lastSafeGround);this.recoverLocally();}else this.reset();
       return;

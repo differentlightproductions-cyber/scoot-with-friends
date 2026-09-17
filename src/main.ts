@@ -172,7 +172,7 @@ async function boot() {
   let destinationLoading=false;
   const loadDestination = async (id:MapId) => {
     if(destinationLoading)return;destinationLoading=true;input.clear();
-    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":"Loading your park",10);
+    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B Hill":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if (id === "outdoor") await latestPark();
     await loadingStage("Building the destination",40);
@@ -341,12 +341,13 @@ async function boot() {
       "?map="+id,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":"WAREHOUSE <b>01</b>") +
+      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":ACTIVE_MAP==="b_hill"?"B HILL":"WAREHOUSE <b>01</b>") +
       '<span id="score">SESH 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
     ).join("");
     document.querySelector('[data-action="map"]')!.textContent = "Parks";
+    (document.querySelector('[data-action="hillstart"]') as HTMLElement).hidden = id !== "b_hill";
     hud.started = false;
     hud.start();
     hud.setPaused(false);
@@ -393,6 +394,11 @@ async function boot() {
             break;
           case "restart":
             reset(true);
+            break;
+          case "hillstart":
+            // Back to the top of B Hill; the personal D-pad marker is left alone.
+            sim.spawnIndex = 0;
+            reset();
             break;
           case "spot":
             sim.spawnIndex = Number(

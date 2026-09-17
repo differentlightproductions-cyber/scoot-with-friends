@@ -39,7 +39,7 @@ export function createRooms({port=8787,host='127.0.0.1',capacity=2,grace=30000,o
    if(!room||player.ws!==ws)return;
    if(m.type==='map'){
     if(room.owner!==player.id){error('Room owner required');return;}
-    if(!['outdoor','techno_gravity'].includes(m.map)||!/^([a-f0-9]{64})$/.test(m.mapRevision??'')){error('Unsupported room destination');return;}
+    if(!['outdoor','techno_gravity','b_hill'].includes(m.map)||!/^([a-f0-9]{64})$/.test(m.mapRevision??'')){error('Unsupported room destination');return;}
     room.map=m.map;room.mapRevision=m.mapRevision;room.generation=randomUUID();
     for(const p of room.players.values()){p.pose=null;p.ready=false;p.loadDeadline=Date.now()+30000;p.seq=-1;}
     broadcast(room,{type:'map',map:room.map,mapRevision:room.mapRevision,generation:room.generation});return;

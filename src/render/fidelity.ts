@@ -33,7 +33,7 @@ export class VisualFidelity {
   scene.userData.fidelity=quality;
  }
  update(player:THREE.Vector3,dt:number){
-  for(const {light,offset}of this.shadowLights){const x=Math.round(player.x*16)/16,z=Math.round(player.z*16)/16;light.target.position.set(x,0,z);light.position.copy(offset).add(light.target.position);light.target.updateMatrixWorld();}
+  for(const {light,offset}of this.shadowLights){const x=Math.round(player.x*16)/16,z=Math.round(player.z*16)/16;light.target.position.set(x,Math.round(player.y),z);light.position.copy(offset).add(light.target.position);light.target.updateMatrixWorld();}
   this.age+=dt;if(this.age<.3||!this.farTrees)return;this.age=0;let near=0,far=0;
   const range=this.quality==='low'?85:this.quality==='medium'?130:190;
   this.treeMatrices.forEach((m,i)=>{const dx=m.elements[12]-player.x,dz=m.elements[14]-player.z,d=Math.hypot(dx,dz);if(d>range)return;const target=this.nearTrees&&d<38?this.nearTrees:this.farTrees!;const index=target===this.nearTrees?near++:far++;target.setMatrixAt(index,m);target.setColorAt(index,this.treeColors[i]);});

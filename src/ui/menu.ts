@@ -456,7 +456,7 @@ export class GameMenu {
     this.cellCount=this.choices.filter(c=>c.cell).length;
     const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -542,7 +542,7 @@ export class GameMenu {
       .querySelectorAll("[data-menu-index]")
       .forEach((el, i) => {el.classList.toggle("selected", i === this.index);if(i===this.index){el.setAttribute('aria-current','true');this.reveal(el as HTMLElement);}else el.removeAttribute('aria-current');});
     if (this.screen === "maps") {
-      const map = PARK_MAPS[Math.min(this.index, 1)];
+      const map = PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)];
       (this.root.querySelector(".map-preview img") as HTMLImageElement).src =
         map.preview;
       this.root.querySelector("#map-type")!.textContent = map.type;

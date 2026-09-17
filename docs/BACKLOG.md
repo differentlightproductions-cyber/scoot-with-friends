@@ -52,7 +52,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 ## F. Earlier open items
 - TODO Flip-video pass leftovers: camera jump diagnosis, frame-rate replays, Inward/Bri + flip continuity evidence.
 - TODO Checkpoint 4 screenshots (longboard wall, rack storage, preview) and Checkpoint 4 tests.
-- TODO Checkpoint 5: B Hill downhill map (always named "B Hill").
+- DONE (b hill; 1440 m, scripted descents: scooter 107 s / 17 m/s, longboard 132 s / 14.7 m/s, no bails) Checkpoint 5: B Hill downhill map (always named "B Hill").
 - TODO Checkpoint 6: cross-system regression pass.
 - DONE (camcorder; shots in artifacts/claude/camcorder) '90s Camcorder filter (Settings -> Graphics), works with first person.
 - TODO Physics acceptance: remaining 35 NOT_RUN scenarios.
