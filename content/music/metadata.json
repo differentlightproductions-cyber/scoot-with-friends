@@ -1,8 +1,11 @@
 {
   "tracks": {
     "Keeto - Promise.mp3": { "artist": "Keeto", "title": "Promise", "genre": "Rock", "order": 0 },
-    "Stacks.mp3": { "title": "Stacks", "genre": "Hip-Hop", "order": 1 },
-    "Hollow.mp3": { "title": "Hollow", "genre": "Electronic", "order": 2 },
-    "Scraped My Knee.mp3": { "title": "Scraped My Knee", "genre": "Chill", "order": 3 }
+    "Stacks.mp3": { "artist": "Rama Low", "title": "Stacks", "genre": "Hip-Hop", "order": 1 },
+    "STATUS.mp3": { "artist": "N!CK ft TXNY", "title": "STATUS", "genre": "Hip-Hop", "order": 2 },
+    "DESERT.mp3": { "artist": "N!CK & Dannylosangeles", "title": "DESERT", "genre": "Hip-Hop", "order": 3 },
+    "Hollow.mp3": { "artist": "shrpnss", "title": "Hollow", "genre": "Electronic", "order": 4 },
+    "Scraped My Knee.mp3": { "artist": "heymrnoodles VII", "title": "Scraped My Knee", "genre": "Chill", "order": 5 },
+    "Pride and Other Things.mp3": { "artist": "N!CK & Dayne Thomas", "title": "Pride and Other Things", "genre": "Chill", "order": 6 }
   }
 }

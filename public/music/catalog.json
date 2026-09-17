@@ -13,29 +13,56 @@
     {
       "id": "stacks",
       "title": "Stacks",
-      "artist": "Unknown artist",
+      "artist": "Rama Low",
       "file": "/music/tracks/Stacks.mp3",
       "genre": "Hip-Hop",
       "order": 1,
       "bytes": 2784677
     },
     {
+      "id": "status",
+      "title": "STATUS",
+      "artist": "N!CK ft TXNY",
+      "file": "/music/tracks/STATUS.mp3",
+      "genre": "Hip-Hop",
+      "order": 2,
+      "bytes": 9675799
+    },
+    {
+      "id": "desert",
+      "title": "DESERT",
+      "artist": "N!CK & Dannylosangeles",
+      "file": "/music/tracks/DESERT.mp3",
+      "genre": "Hip-Hop",
+      "order": 3,
+      "bytes": 5540093
+    },
+    {
       "id": "hollow",
       "title": "Hollow",
-      "artist": "Unknown artist",
+      "artist": "shrpnss",
       "file": "/music/tracks/Hollow.mp3",
       "genre": "Electronic",
-      "order": 2,
+      "order": 4,
       "bytes": 5969221
     },
     {
       "id": "scraped-my-knee",
       "title": "Scraped My Knee",
-      "artist": "Unknown artist",
+      "artist": "heymrnoodles VII",
       "file": "/music/tracks/Scraped%20My%20Knee.mp3",
       "genre": "Chill",
-      "order": 3,
+      "order": 5,
       "bytes": 2158908
+    },
+    {
+      "id": "pride-and-other-things",
+      "title": "Pride and Other Things",
+      "artist": "N!CK & Dayne Thomas",
+      "file": "/music/tracks/Pride%20and%20Other%20Things.mp3",
+      "genre": "Chill",
+      "order": 6,
+      "bytes": 10137644
     }
   ]
 }
