@@ -42,111 +42,74 @@ test("Flair is recognised as its own result rather than a generic rule", () => {
   assert.equal(resolveTrick({ ...raw, flipPitch: TAU }).recognized, "front-flair");
 });
 
-// --- Flip-completion assist ----------------------------------------------
+// --- Flip intent and landing guidance ------------------------------------
 
-/**
- * Drives a flip to `turns`, lets the rate bleed off to `rate` (the player easing
- * toward a catch), then runs the final approach with the assist available.
- * Bleeding the rate matters: straight off full input the rider is rotating at
- * the maximum and no landing is reachable, which is correct but measures
- * momentum rather than the assist.
- */
-function flipTo(turns: number, options: {
-  seconds?: number;
-  chord?: boolean;
-  lean?: number;
-  rate?: number;
-  timeToContact?: number;
-  surfacePitch?: number;
-} = {}) {
+// A flip in flight with a ballistic contact estimate that counts down, driven by
+// a scripted stick: `hold` seconds of full LS with the chord, then relaxed
+// (`release`: triggers let go, otherwise chord held with LS neutral).
+function fly(options: { hold: number; air: number; release?: boolean; surfacePitch?: number; lean?: number }) {
   const flip = new BodyFlipControl();
   flip.begin("trick_initiated_pop", 0);
-  for (let i = 0; i < 4000 && Math.abs(flip.angle) < Math.abs(turns) * TAU; i++)
-    flip.step(1 / 120, true, -1, 0, { timeToContact: 99, surfacePitch: 0 });
-  if (options.rate !== undefined) flip.velocity = options.rate;
-  const drivenAngle = flip.angle;
-  const assistBefore = flip.assistUsed;
-  const preparedBefore = flip.prepared;
-  const steps = Math.round((options.seconds ?? 0.3) * 120);
-  for (let i = 0; i < steps; i++)
-    flip.step(1 / 120, options.chord ?? false, options.lean ?? 0, 0, {
-      timeToContact: options.timeToContact ?? 0.3,
-      surfacePitch: options.surfacePitch ?? 0,
-    });
-  return { flip, drivenAngle, drawn: flip.assistUsed - assistBefore, prepared: flip.prepared - preparedBefore };
+  const dt = 1 / 120;
+  let turnsAtContact = 0, peakRate = 0;
+  for (let t = 0; t < options.air; t += dt) {
+    const holding = t < options.hold;
+    const chord = holding || !options.release;
+    flip.step(dt, chord, holding ? (options.lean ?? -1) : 0, 0, { timeToContact: options.air - t, surfacePitch: options.surfacePitch ?? 0 });
+    peakRate = Math.max(peakRate, Math.abs(flip.velocity));
+  }
+  turnsAtContact = Math.abs(flip.angle) / TAU;
+  return { flip, turns: turnsAtContact, peakRate };
 }
 
-test("the assist only acts once a landing is imminent", () => {
-  // Eased to a rate that would very nearly finish the revolution on its own.
-  const far = flipTo(0.9, { rate: 2.1, timeToContact: 99 });
-  assert.equal(far.prepared, 0, "a distant landing must not be shaped");
-  assert.equal(far.drawn, 0, "a distant landing must not draw on the assist");
-  const near = flipTo(0.9, { rate: 2.1, timeToContact: 0.3 });
-  assert(near.prepared > 0, "an imminent, reachable landing should be shaped");
+test("a brief flick with plenty of air completes one flip and holds it", () => {
+  for (const release of [false, true]) {
+    const run = fly({ hold: 0.2, air: 2.2, release });
+    assert(Math.abs(run.turns - 1) < 0.06, `expected one flip, got ${run.turns.toFixed(2)} (release ${release})`);
+    assert(Math.abs(run.flip.velocity) < 0.5, "the rider is held upright for the landing, not still turning");
+    assert.equal(run.flip.intendedTurns, 1);
+  }
 });
 
-test("strong continued input keeps the rotation the player's own", () => {
-  // Still driving hard in the direction of travel: no assistance at all.
-  const driving = flipTo(0.85, { chord: true, lean: -1, timeToContact: 0.3 });
-  assert.equal(driving.flip.assistUsed, 0);
-  // The rider is free to carry on into a second revolution.
-  assert(Math.abs(driving.flip.angle) > 0.85 * TAU);
+test("holding the stick hard through the flip goes for a double", () => {
+  const held = fly({ hold: 1.2, air: 2.2 });
+  assert(held.flip.intendedTurns >= 2);
+  assert(Math.abs(held.turns - 2) < 0.08, `expected two flips, got ${held.turns.toFixed(2)}`);
 });
 
-test("the assist is bounded and cannot manufacture a missing half flip", () => {
-  // Barely turning, with 40% of the revolution still owed: fabricating it would
-  // need about 8 rad/s of correction, far outside the budget.
-  const helped = flipTo(0.6, { rate: 0.4, timeToContact: 0.3, seconds: 0.3 });
-  assert(helped.flip.assistUsed <= TUNE.flipAssistBudget + 1e-9,
-    "assist must not exceed its budget");
-  assert.equal(helped.drawn, 0, "an unreachable landing must not be manufactured");
-  const turned = Math.abs(helped.flip.angle) / TAU;
-  assert(turned < 0.8, `should not complete the flip from 0.6 turns, got ${turned}`);
+test("a flip is guided to finish within its air", () => {
+  // Air the player can make with a normal flick: finishes cleanly.
+  const run = fly({ hold: 0.25, air: 1.1 });
+  assert(Math.abs(run.turns - 1) < 0.06, `got ${run.turns.toFixed(2)}`);
 });
 
-test("a nearly finished flip is eased onto the whole revolution", () => {
-  const helped = flipTo(0.9, { rate: 2.1, timeToContact: 0.3, seconds: 0.3 });
-  assert(helped.prepared > 0, "landing preparation should contribute");
-  const turned = Math.abs(helped.flip.angle) / TAU;
-  assert(turned > 0.93, "the rotation should continue toward the revolution");
-  assert(turned < 1.12, `it should settle near one revolution, got ${turned}`);
+test("guidance cannot outrun the maximum rate, so too little air still lands short", () => {
+  const run = fly({ hold: 0.1, air: 0.55 });
+  assert(run.peakRate <= TUNE.flipMaxRate + 1e-9);
+  assert(run.turns < 0.8, `should not complete from so little air, got ${run.turns.toFixed(2)}`);
 });
 
-test("the assist never stops the rider at the first revolution by default", () => {
-  // Held input through a second revolution must reach it.
+test("opposite input brakes a flip to a stop and guidance does not restart it", () => {
   const flip = new BodyFlipControl();
   flip.begin("trick_initiated_pop", 0);
-  for (let i = 0; i < 4000 && Math.abs(flip.angle) < 2 * TAU; i++)
-    flip.step(1 / 120, true, -1, 0, { timeToContact: 0.3, surfacePitch: 0 });
-  assert(Math.abs(flip.angle) >= 2 * TAU, "a double must remain achievable");
-  assert.equal(flip.assistUsed, 0, "driving input must not draw on the assist");
+  for (let i = 0; i < 40; i++) flip.step(1 / 120, true, -1, 0, { timeToContact: 2, surfacePitch: 0 });
+  for (let i = 0; i < 120; i++) flip.step(1 / 120, true, 1, 0, { timeToContact: 1.5, surfacePitch: 0 });
+  assert.equal(flip.velocity, 0);
 });
 
-test("a banked receiving surface is measured as level, not as rotation owed", () => {
-  // Landing on a ramp pitched 0.5 rad: the reachable target shifts with it, so
-  // the assist does not try to add that angle as if it were missing flip.
-  const level = flipTo(0.93, { timeToContact: 0.3, surfacePitch: 0 });
-  const banked = flipTo(0.93, { timeToContact: 0.3, surfacePitch: 0.5 });
-  assert(banked.flip.assistUsed <= TUNE.flipAssistBudget + 1e-9);
-  assert(
-    Math.abs(banked.flip.angle - level.flip.angle) < TAU * 0.5,
-    "a banked surface must not demand a large extra correction",
-  );
+test("a banked receiving surface counts as level for the finish", () => {
+  const level = fly({ hold: 0.2, air: 1.6, surfacePitch: 0 });
+  const banked = fly({ hold: 0.2, air: 1.6, surfacePitch: 0.5 });
+  // Relative to the landing surface both finish upright: the banked run stops 0.5 rad further round.
+  assert(Math.abs(Math.abs(banked.flip.angle) - Math.abs(level.flip.angle) - 0.5) < 0.12,
+    `level ${level.flip.angle.toFixed(2)} banked ${banked.flip.angle.toFixed(2)}`);
 });
 
-test("the assist resets between attempts", () => {
-  const { flip } = flipTo(0.9, { rate: 1.5, timeToContact: 0.3 });
-  assert(flip.assistUsed > 0 && flip.prepared > 0);
+test("guidance state resets between attempts", () => {
+  const { flip } = fly({ hold: 1.2, air: 2.2 });
+  assert(flip.intendedTurns > 1 && flip.prepared > 0);
   flip.begin("trick_initiated_pop", 0);
-  assert.equal(flip.assistUsed, 0);
+  assert.equal(flip.intendedTurns, 1);
   assert.equal(flip.prepared, 0);
   assert.equal(flip.assisting, false);
-});
-
-test("assist limits are small enough to stay a nudge", () => {
-  // A whole revolution is 6.28 rad; the budget must be a fraction of that so
-  // several helpers can never stack into an invisible rescue.
-  assert(TUNE.flipAssistBudget < TAU * 0.25);
-  assert(TUNE.flipAssistRate < TUNE.flipMaxRate);
-  assert(TUNE.flipAssistWindow <= 0.6);
 });

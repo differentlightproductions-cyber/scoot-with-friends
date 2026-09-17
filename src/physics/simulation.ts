@@ -2619,7 +2619,9 @@ export class Simulation {
         alignment > 0 ? 10 : 4,
         dt,
       );
-      this.tricks.flip=this.bodyFlip.angle;
+      // Named against the surface being landed on: a frontflip back onto a steep
+      // quarter wall is a whole flip at less than 360 raw degrees, a backflip at more.
+      this.tricks.flip=this.bodyFlip.active?this.bodyFlip.angle-wrap(receiving-this.bodyFlip.basePitch):0;
       this.tricks.quarterAir=!!this.airQuarter;
       if (this.rideable === "scooter") this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);

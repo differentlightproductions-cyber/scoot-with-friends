@@ -1,25 +1,27 @@
 export const TUNE = {
-  flipAcceleration: 16,
-  flipMaxRate: 6.8,
+  // A backflip over a ~1 s air needs close to 7 rad/s average; the old 6.8 cap
+  // left quick flips at about 270 degrees.
+  flipAcceleration: 20,
+  flipMaxRate: 9,
   flipSlowRate: 1.8,
   flipTakeoffContribution: .5,
   // Counter LS opens the rider against the rotation: rad/s^2 at full stick.
   flipBrakeAcceleration: 14,
   flipYawRateScale: 0.8,
   flipNameTolerance: 20,
-  // --- Flip landing preparation --------------------------------------------
-  // A finish for a relaxed rotation, not a rescue. It only acts once a landing
-  // is imminent and only while the player is neither driving nor braking. It
-  // aims at the next upright in the direction of travel (or stops just past the
-  // last one), keeping the winding, so it never unwinds a double and never adds
-  // a missing half flip: opening up (slowing) is the rider's own control, while
-  // tucking to speed up draws on a small budget.
-  flipAssistWindow: 0.55, // only inside this long before predicted contact, s
-  flipAssistRate: 2.4, // fastest tuck speed-up, rad/s^2
-  flipAssistBudget: 0.9, // total speed-up one attempt may draw, rad/s
-  flipAssistInput: 0.35, // above this LS the player is still driving or braking
-  flipOpenAcceleration: 10, // fastest opening-up slow-down, rad/s^2
-  flipCatchOvershoot: 0.45, // just past an upright by less than this: stop there, rad
+  // --- Flip intent and landing guidance -----------------------------------
+  // A flip is one revolution unless strong LS is still held this far round a
+  // revolution, which commits to another. When the player is not driving or
+  // braking, guidance carries the rotation to that upright relative to the
+  // landing surface, finishing flipFinishLead before contact, then holds it.
+  // It never unwinds a rotation and never exceeds flipMaxRate.
+  flipAssistInput: 0.35, // above this LS the player is driving (or braking)
+  flipDoubleCommit: 1, // strong input still held as a revolution completes commits to another
+  flipFinishLead: 0.12, // s before predicted contact the rotation should be done
+  flipGuideMinRate: 2.4, // rad/s: a relaxed flip keeps at least this pace until done
+  flipGuideAcceleration: 20, // rad/s^2 fastest guided speed-up
+  flipOpenAcceleration: 10, // rad/s^2 fastest opening-up slow-down
+  flipCatchOvershoot: 0.45, // rad: carried past an upright by less than this, stop there
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,
