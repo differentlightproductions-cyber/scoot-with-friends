@@ -50,8 +50,8 @@ try {
         g.events.history.filter((e) => e.type === "pop").length === 1,
       );
       s = place();
-      a(0.0084, { pressed: { hop: true }, held: { hop: 1 } });
-      check("Pro A tailwhip takeoff", s.tricks.deck.target > 6 && !s.grounded);
+      a(0.0084, { pressed: { pushDeck: true }, held: { pushDeck: 1 } });
+      check("Normal preset X tailwhip takeoff", s.tricks.deck.target > 6 && !s.grounded);
       s = place();
       s.tricks.controlStyle = "arcade";
       a(0.0084, { pressed: { hop: true }, held: { hop: 1 } });

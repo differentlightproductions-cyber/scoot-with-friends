@@ -51,12 +51,12 @@ Status: TODO / IN PROGRESS / DONE (commit).
 
 ## F. Earlier open items
 - DONE (camera; X01 render rates; R11/R12 Inward/Bri + flip) Flip-video pass leftovers: camera jump diagnosis, frame-rate replays, Inward/Bri + flip continuity evidence.
-- TODO Checkpoint 4 screenshots (longboard wall, rack storage, preview) and Checkpoint 4 tests.
+- DONE (artifacts/claude/checkpoint4: longboard wall, board in a rack, standing builder preview, board shop; covered by checkpoint3, shop, complete-update, menu-brands probe and T01-T05) Checkpoint 4 screenshots (longboard wall, rack storage, preview) and Checkpoint 4 tests.
 - DONE (b hill; 1440 m, scripted descents: scooter 107 s / 17 m/s, longboard 132 s / 14.7 m/s, no bails) Checkpoint 5: B Hill downhill map (always named "B Hill").
-- TODO Checkpoint 6: cross-system regression pass.
+- DONE (regression) Checkpoint 6: cross-system regression pass. 88 unit tests, 53/53 physics acceptance, and these browser suites pass: flip-landings, repair-pass, new-riding, pop-flow, bri-integration, bri-air-return, checkpoint1, checkpoint3, riding-focus, addendum-controls, complete-update, crash-items, items-input, shop, shop-fit, sesh, menu-focus, mobile, music, bumper-attempts, character-poses, character-quality, fit-appearance, fit-camera, fit-contracts, human-visual, item-world, network, rider-contact, rider-shadow, ui-polish, visual-detail.
 - DONE (camcorder; shots in artifacts/claude/camcorder) '90s Camcorder filter (Settings -> Graphics), works with first person.
 - DONE (acceptance) Physics acceptance: all 53 scenarios bound and passing (automated headless replays, not a human controller test).
-- KNOWN Pre-existing failing suites: browser, advanced, addendum, memorial, polish.
+- KNOWN Failing suites, none caused by this pass: browser (times out), advanced (timed bumper rewind), addendum (Arcade X barspin in the air), memorial (BMX side path), polish (hop off metal bench), build2 (passive fakie scoring), build3 (expects the carried scooter lifted; the owner asked for it to roll alongside), editor (park editor shelved). Not runnable here: art-direction (needs a server on :5177), bri-motion (needs Playwright ffmpeg), accounts-live.
 
 ## Done recently
 - DONE Network shows each player's rideable and board (c086caf)
