@@ -4,6 +4,7 @@ import { Simulation } from "../physics/simulation";
 import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import type { RiderModel } from "../scooter/model";
+import { terrainHeight } from "../park/park";
 
 const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0);
 export class ChaseCamera {
@@ -15,6 +16,8 @@ export class ChaseCamera {
   initialized = false;
   recenterTime = 0;
   mountFlourish=true;
+  private clearance = 99;
+  private lift = 0;
   private wasWalking=false;
   mountTime=0;
   private mountStart=new THREE.Vector3();
@@ -66,8 +69,14 @@ export class ChaseCamera {
           0,
           1,
         );
-    this.heading +=
-      wrap(velocityYaw - this.heading) * (1 - Math.exp(-4.8 * follow * dt));
+    // Follow the travel direction at a bounded turn rate. When travel reverses on
+    // a quarter re-entry the raw follow swung the view by up to 13 degrees per
+    // frame; capped, the same turn takes a readable half second or so.
+    this.heading += clamp(
+      wrap(velocityYaw - this.heading) * (1 - Math.exp(-4.8 * follow * dt)),
+      -TUNE.cameraMaxTurnRate * dt,
+      TUNE.cameraMaxTurnRate * dt,
+    );
     // On the scooter the right stick is reserved exclusively for preload,
     // manuals and trick gestures.  Only on-foot movement can orbit the camera.
     const cameraMode = s.walking || !!s.sitting;
@@ -109,6 +118,9 @@ export class ChaseCamera {
       .clone()
       .add(new THREE.Vector3(0, 0.9, 0))
       .addScaledVector(s.velocity.clone().setY(0), 0.11);
+    // Leading the rider up a steep ramp put the look point inside the ramp, so the
+    // obstruction ray started blocked and the camera snapped in about a metre.
+    look.y = Math.max(look.y, terrainHeight(look.x, look.z) + 0.6);
     const desired = p
       .clone()
       .add(
@@ -118,22 +130,25 @@ export class ChaseCamera {
           -Math.cos(a) * distance,
         ),
       );
-    const rayDir = desired.clone().sub(look);
-    const len = rayDir.length();
-    rayDir.normalize();
-    const hit = s.world.castRay(
-      new RAPIER.Ray(look, rayDir),
-      len,
-      true,
-      undefined,
-      undefined,
-      undefined,
-      s.body,
-    );
-    if (hit)
-      desired
-        .copy(look)
-        .addScaledVector(rayDir, Math.max(0.7, hit.timeOfImpact - 0.23));
+    // Obstruction (thin rails and coping pipes never block the view). A ramp coming between camera and rider is first answered by
+    // rising over its edge (eased), which keeps the framing; only if the view is
+    // still blocked does the camera pull in, instantly, so it never sits inside
+    // the ramp. Pulling in alone jolted the view about a metre in one frame each
+    // time a rider started up a transition.
+    const cast = (to: THREE.Vector3) => {
+      const dir = to.clone().sub(look), length = dir.length();
+      dir.normalize();
+      return { dir, length, hit: s.world.castRay(new RAPIER.Ray(look, dir), length, true, undefined, undefined, undefined, s.body, (c) => !c.isSensor() && !s.park.railHandles.has(c.handle)) };
+    };
+    let liftTarget = 0;
+    if (cast(desired.clone().setY(desired.y + this.lift)).hit || cast(desired).hit)
+      for (const extra of [0, 0.6, 1.2, 1.8, 2.4]) if (!cast(desired.clone().setY(desired.y + extra)).hit) { liftTarget = extra; break; } else liftTarget = 2.4;
+    this.lift = !this.initialized ? liftTarget : this.lift + (liftTarget - this.lift) * (1 - Math.exp(-(liftTarget > this.lift ? 6 : 1.5) * dt));
+    desired.y += this.lift;
+    const { dir: rayDir, length: len, hit } = cast(desired);
+    const clear = hit ? Math.max(0.7, hit.timeOfImpact - 0.23) : len;
+    this.clearance = !this.initialized || clear < this.clearance ? clear : this.clearance + (clear - this.clearance) * (1 - Math.exp(-3 * dt));
+    if (this.clearance < len) desired.copy(look).addScaledVector(rayDir, this.clearance);
     if (!this.initialized) {
       this.camera.position.copy(desired);
       this.target.copy(look);

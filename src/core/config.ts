@@ -222,6 +222,7 @@ export const TUNE = {
   spinAccelerationFloor: 0.35,
   spinLowAirtime: 0.55,
   spinHighAirtime: 1.35,
+  cameraMaxTurnRate: 3.4, // rad/s the chase heading may turn while following travel
   stationaryCameraFollowThreshold: 1.2,
   cameraFullFollowSpeed: 3,
   railImpactBailSpeed: 4.5,

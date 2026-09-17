@@ -50,7 +50,7 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE (first person; screenshots in artifacts/claude/first-person) Settings -> Camera: Third/First Person, FOV, Camera Motion Reduced/Full; local head hiding; camera follows body not scooter; crash camera policy; on-foot look; persistence; screenshots ZIP. Known limits: in a tucked backflip the open collar edge can show at the bottom of the view; no held-item-specific first-person animation beyond the shared rig; not tested on a phone.
 
 ## F. Earlier open items
-- TODO Flip-video pass leftovers: camera jump diagnosis, frame-rate replays, Inward/Bri + flip continuity evidence.
+- DONE (camera; X01 render rates; R11/R12 Inward/Bri + flip) Flip-video pass leftovers: camera jump diagnosis, frame-rate replays, Inward/Bri + flip continuity evidence.
 - TODO Checkpoint 4 screenshots (longboard wall, rack storage, preview) and Checkpoint 4 tests.
 - DONE (b hill; 1440 m, scripted descents: scooter 107 s / 17 m/s, longboard 132 s / 14.7 m/s, no bails) Checkpoint 5: B Hill downhill map (always named "B Hill").
 - TODO Checkpoint 6: cross-system regression pass.
