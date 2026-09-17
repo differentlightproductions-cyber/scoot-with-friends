@@ -65,13 +65,45 @@ function buildShop(park:Park){
   if(selection.variantId!==part.variants[0].id){const base=product({partId:part.id,variantId:part.variants[0].id}),out=base.clone();out.traverse(o=>{if(o instanceof THREE.Mesh){const source=o.material as THREE.MeshStandardMaterial;if(source.color.getHex()===part.variants[0].color){const m=source.clone();m.color.setHex(variant.color);o.material=m;}}});prototypes.set(key,out);return out;}
   const root=new THREE.Group(),loadout=defaultScooter();if(part.category==='wheels'){loadout.frontWheel=selection;loadout.rearWheel=selection;}else loadout[part.category]=selection;
   new ScooterAssembly(root,loadout);root.updateMatrixWorld(true);const out=new THREE.Group(),keep=new Set<THREE.Material>();
-  root.traverse(o=>{if(o instanceof THREE.Mesh&&o.userData.part===part.id){if(part.category==='wheels'&&o.parent?.userData.slot==='rearWheel')return;const g=o.geometry.clone().applyMatrix4(o.matrixWorld),m=new THREE.Mesh(g,o.material);out.add(m);keep.add(o.material as THREE.Material);}});
+  root.traverse(o=>{if(o instanceof THREE.Mesh&&o.userData.part===part.id){if(part.category==='wheels'){for(let up:THREE.Object3D|null=o;up;up=up.parent)if(up.userData.slot==='rearWheel')return;}const g=o.geometry.clone().applyMatrix4(o.matrixWorld),m=new THREE.Mesh(g,o.material);out.add(m);keep.add(o.material as THREE.Material);}});
   const bounds=new THREE.Box3().setFromObject(out),center=bounds.getCenter(new THREE.Vector3());out.children.forEach(o=>o.position.sub(center));
   root.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();if(!keep.has(o.material as THREE.Material))(o.material as THREE.Material).dispose();}});
   prototypes.set(baseKey,out);return out;
  };
  const place=(partId:string,variantId:string,x:number,y:number,z:number,scale=1,yaw=Math.PI/2)=>{const group=product({partId,variantId}).clone();group.position.set(x,y,z);group.scale.setScalar(scale);group.rotation.y=yaw;scene.add(group);};
- for(const x of [-5.8,5.8])for(const z of [0,3,6]){box(x,.25,z,1.0,.5,2.65,0x222a2b);const collider=box(x,.75,z,1,1,2.65,0xb9d4ce);(collider.material as THREE.Material).dispose();(collider as THREE.Mesh).material=glassMat;for(const y of [.53,.86,1.2]){const shelf=box(x,y,z,.92,.012,2.6,0x394442,false);if(y>1)shelf.visible=false;}for(const sx of [-.49,.49]){for(const y of [.51,1.23])box(x+sx,y,z,.025,.025,2.65,0x657373,false);for(const dz of [-1.31,1.31])box(x+sx,.87,z+dz,.025,.73,.025,0x657373,false);}}
+ // Glass case: dark base, glass body, two glass shelves (tops at .536 and .866)
+ // under a glass lid at 1.25, and a steel frame.
+ const glassCase=(x:number,z:number,length:number)=>{box(x,.25,z,1.0,.5,length,0x222a2b);const collider=box(x,.75,z,1,1,length,0xb9d4ce);(collider.material as THREE.Material).dispose();(collider as THREE.Mesh).material=glassMat;for(const y of [.53,.86])box(x,y,z,.92,.012,length-.05,0x394442,false);for(const sx of [-.49,.49]){for(const y of [.51,1.23])box(x+sx,y,z,.025,.025,length,0x657373,false);for(const dz of [-length/2+.015,length/2-.015])box(x+sx,.87,z+dz,.025,.73,.025,0x657373,false);}};
+ for(const x of [-5.8,5.8])for(const z of [0,3,6])glassCase(x,z,2.65);
+ // Every product lies on a shelf inside its case: turned onto its broadest face,
+ // scaled down only when it would not fit its cell or the shelf clearance, and
+ // lowered until its underside rests on the glass.
+ const shelve=(partId:string,variantId:string,cx:number,cz:number,shelfTop:number,cellW:number,cellL:number,clearance:number)=>{
+  const group=product({partId,variantId}).clone();group.updateMatrixWorld(true);
+  const size=new THREE.Box3().setFromObject(group).getSize(new THREE.Vector3()).toArray();
+  const [thin,mid,long]=[0,1,2].sort((a,b)=>size[a]-size[b]);
+  const cols=[new THREE.Vector3(),new THREE.Vector3(),new THREE.Vector3()];
+  cols[thin].set(0,1,0);cols[mid].set(1,0,0);cols[long].set(0,0,1);
+  const basis=new THREE.Matrix4().makeBasis(cols[0],cols[1],cols[2]);
+  if(basis.determinant()<0){cols[mid].set(-1,0,0);basis.makeBasis(cols[0],cols[1],cols[2]);}
+  group.quaternion.setFromRotationMatrix(basis);
+  group.scale.setScalar(Math.min(1,cellW*.9/size[mid],cellL*.9/size[long],clearance/size[thin]));
+  group.position.set(0,0,0);group.updateMatrixWorld(true);
+  const bounds=new THREE.Box3().setFromObject(group),centre=bounds.getCenter(new THREE.Vector3());
+  group.position.set(cx-centre.x,shelfTop+.002-bounds.min.y,cz-centre.z);scene.add(group);
+ };
+ const stockCase=(category:Category,x:number,z:number,length:number)=>{
+  const items=shopStock('techno_gravity',category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')).flatMap(p=>p.variants.map(v=>({p,v})));
+  if(!items.length)return;
+  const largest=Math.max(...items.map(({p,v})=>{const g=product({partId:p.id,variantId:v.id});g.updateMatrixWorld(true);const s=new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());return Math.max(s.x,s.y,s.z);}));
+  const usable=length-.12,cols=Math.max(2,Math.min(6,Math.floor(usable/(Math.min(largest,.62)+.06)))),cellL=usable/cols;
+  // Upper shelf first (eye level), two rows either side of the light strip.
+  const shelves=[{top:.866,clearance:.34},{top:.536,clearance:.30}];
+  items.slice(0,shelves.length*2*cols).forEach(({p,v},n)=>{
+   const shelf=shelves[Math.floor(n/(2*cols))],row=Math.floor(n/cols)%2,col=n%cols;
+   shelve(p.id,v.id,x+(row?.23:-.23),z-usable/2+cellL*(col+.5),shelf.top,.4,cellL,shelf.clearance);
+  });
+ };
  for(const display of SHOP_DISPLAYS){if(display.category==='longboard'){
   // Sometimes Summer wall: one complete board per authored graphic, standing
   // nose-up in wall hooks with the underside artwork facing the shop floor.
@@ -86,9 +118,13 @@ function buildShop(park:Park){
   });
   sign('SOMETIMES SUMMER',-7.7,1.72,display.z-.47,2.2,.3,'#f1e4c6','#2b3a3f',Math.PI/2);
   continue;}
-  const parts=shopStock('techno_gravity',display.category).sort((a,b)=>Number(b.brandId==='mafioso')-Number(a.brandId==='mafioso')),x=display.x<0?-5.8:display.x>0?5.8:0;let n=0;
-  for(const p of parts)for(const variant of p.variants){if(n>=12)break;const row=Math.floor(n/4),col=n%4;place(p.id,variant.id,x+(row-1)*.22,.65+row*.18,display.z-.85+col*.48,p.category==='bars'?.85:p.category==='deck'?1:1.25,p.category==='bars'?0:Math.PI/2);n++;}
-  sign(display.label.toUpperCase(),x,1.35,display.z,1.4,.25,'#efe3c4','#2a3637',x<0?Math.PI/2:x>0?-Math.PI/2:Math.PI);
+  // Bearings and hardware get their own short case in the aisle; every other
+  // category fills the long case nearest its display on its side of the shop.
+  const small=display.category==='bearings';
+  const x=small?-1.9:display.x<0?-5.8:5.8,z=small?5.4:[0,3,6].reduce((a,b)=>Math.abs(b-display.z)<Math.abs(a-display.z)?b:a),length=small?1.6:2.65;
+  if(small)glassCase(x,z,length);
+  stockCase(display.category,x,z,length);
+  sign(display.label.toUpperCase(),x,1.42,z,1.4,.25,'#efe3c4','#2a3637',small?Math.PI:x<0?Math.PI/2:-Math.PI/2);
  }
  // Wall grid, raised completes, hanging soft goods and service counter.
  for(let z=-3;z<8;z+=.4)box(7.82,1.85,z,.02,2,.016,0x313b3d,false);for(let y=.9;y<3;y+=.4)box(7.82,y,2.4,.02,.015,11,0x313b3d,false);

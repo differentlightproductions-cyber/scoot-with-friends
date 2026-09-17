@@ -14,7 +14,7 @@ export const SHOPS: readonly ShopDefinition[] = [{
     {x:-4.7,z:-.3,category:'wheels',label:'Wheels / pairs'}, {x:-4.7,z:2.5,category:'clamp',label:'Clamps'},
     {x:4.8,z:3,category:'bars',label:'Handlebars'}, {x:-4.7,z:5,category:'deck',label:'Decks'},
     {x:4.8,z:.2,category:'fork',label:'Forks'}, {x:4.8,z:5.5,category:'grips',label:'Grips'},
-    {x:0,z:6.8,category:'bearings',label:'Bearings / hardware'},
+    {x:-.9,z:5.4,category:'bearings',label:'Bearings / hardware'},
     {x:-6.9,z:-2.6,category:'longboard',label:'Sometimes Summer longboards'}
   ]
 }];
