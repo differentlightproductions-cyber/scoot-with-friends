@@ -552,11 +552,15 @@ export class RiderModel {
       return;
     }
     const usingItem=!!s.emote&&['drink','eat','drink-fountain','vend'].includes(s.emote.id);
+    // A jump-on: the hands pull the deck in from beside the rider to under their
+    // feet (walkOffset easing to zero) while the knees lift for it.
     const placing = !!s.jumpOn;
     this.placed = placing
-      ? Math.min(1, this.placed + dt / TUNE.jumpOnDropTime)
+      ? Math.min(1, this.placed + dt / TUNE.jumpOnPullTime)
       : 0;
-    this.carry = damp(this.carry, s.walking && s.running && !s.heldItem && !usingItem && !placing ? 1 : 0, placing ? 30 : 8, dt);
+    // The scooter rolls alongside a walking or running rider, hand on the bars;
+    // it is never lifted onto its side.
+    this.carry = damp(this.carry, 0, 8, dt);
     this.scooter.rotation.set(
       posturePitch * (1 - this.carry),
       0,
@@ -565,7 +569,7 @@ export class RiderModel {
     this.walkOffset = damp(
       this.walkOffset,
       s.sitting?.id ? 0.78 : s.walking && !placing ? 0.48 : 0,
-      placing ? 40 : 14,
+      placing ? 1 / Math.max(.05, TUNE.jumpOnPullTime * .35) : 14,
       dt,
     );
     this.scooter.position.x = this.walkOffset;
@@ -579,11 +583,7 @@ export class RiderModel {
       ? Math.sin(Math.abs(s.manual.pitch)) * 0.32
       : s.sitting
         ? -0.55
-        : placing
-          ? this.carry * 1.02 +
-            this.placed *
-              Math.max(-2, s.jumpOn!.deck.y + TUNE.radius - s.position.y)
-          : this.carry * 1.02;
+        : this.carry * 1.02 + (placing ? Math.sin(this.placed * Math.PI) * 0.12 : 0);
     const bri = s.tricks.bri.angle,
       kickless = s.tricks.kickless.angle;
     const briActive =
@@ -623,6 +623,7 @@ export class RiderModel {
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
         this.flipTuck(s) * TUCK.crouch +
+        (placing ? Math.sin(this.placed * Math.PI) * 0.3 : 0) +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * (0.4 + s.landingCompression) : 0) +
         (s.popTimer > 0 ? 0.1 : 0);
@@ -910,7 +911,9 @@ export class RiderModel {
         poseRod(this.upperArms[i], shoulder, elbow);
       }
       const grabbingHand=(pose==='Deck Grab'||pose==='Superman')&&i===(s.tricks.stance==='regular'?1:0);
-      const holdingGrip=!s.walking&&!s.sitting&&!s.emote&&(!pose||(pose==='Deck Grab'||pose==='Superman')&&!grabbingHand)&&(s.tricks.fingerTime===0||sign!==s.tricks.fingerHand)&&Math.abs(s.tricks.bars.velocity)<1;
+      // Walking or running, the hand on the scooter's side keeps hold of its bar.
+      const walkingGrip=s.walking&&!s.sitting&&!s.emote&&!s.heldItem&&sign>0&&this.walkOffset>.3;
+      const holdingGrip=walkingGrip||!s.walking&&!s.sitting&&!s.emote&&(!pose||(pose==='Deck Grab'||pose==='Superman')&&!grabbingHand)&&(s.tricks.fingerTime===0||sign!==s.tricks.fingerHand)&&Math.abs(s.tricks.bars.velocity)<1;
       const gripRotation=new THREE.Quaternion();
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);

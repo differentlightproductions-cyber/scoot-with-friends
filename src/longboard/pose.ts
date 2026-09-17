@@ -34,8 +34,8 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
     assembly.setLean(s.roll - board.surfaceRoll, board.lean * 0.2 * (1 - board.slide));
     model.boardWheelAngle += (s.speed * dt) / 0.035;
   } else if (s.jumpOn) {
-    // Put down under the feet for a jump-on.
-    model.board.position.set(0, Math.max(-2, s.jumpOn.deck.y + TUNE.radius - s.position.y), 0);
+    // Pulled up under the feet for a jump-on.
+    model.board.position.set(0, 0, 0);
     model.board.rotation.set(0, 0, 0);
     assembly.setLean(0, 0);
   } else {

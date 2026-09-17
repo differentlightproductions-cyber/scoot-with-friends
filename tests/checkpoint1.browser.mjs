@@ -101,6 +101,9 @@ try {
         mounted = !s.walking;
         if (s.walking && s.grounded && i > 30) { landedOnFoot = true; break; }
       }
+      // Mounting now happens in the air; follow it through to the landing.
+      for (let i = 0; i < 240 && mounted && !s.grounded; i++) a(1 / 120, { lean });
+      if (mounted) a(1 / 120, { lean });
       return { approach, armedByJump, placed, mounted, landedOnFoot, rideSpeed: s.speed, jumpOnLanded: s.jumpOnLanded };
     };
     const jumpOnly = approachJump({ running: true, placeAfter: null });

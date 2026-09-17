@@ -138,7 +138,7 @@ export const TUNE = {
   // completes on touchdown, unless the landing spot is obstructed.
   jumpOnWindow: 1.6, // seconds a placed deck waits for the rider to land
   jumpOnCaptureHeight: 0.16, // feet-to-deck gap at which touchdown counts
-  jumpOnDropTime: 0.14, // seconds for the scooter to travel from hands to ground
+  jumpOnPullTime: 0.22, // seconds the hands take to pull the deck up under the feet
   jumpOnRunSpeed: 3.4, // committed running approach, above a standing hop
   jumpOnBoost: 2.3, // bounded extra carried into riding, applied once
   jumpOnRearm: 0.45, // a fresh on-foot approach and jump is required each time

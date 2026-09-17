@@ -165,6 +165,8 @@ export class Simulation {
   private jumpOnId = 0;
   /** Set for one landing when a jump-on succeeded, for the HUD and the rider pose. */
   jumpOnLanded = 0;
+  /** Mounted in the air by a jump-on and not yet landed. */
+  private jumpOnPending = false;
   mantle: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null =
     null;
   walking = false;
@@ -394,6 +396,7 @@ export class Simulation {
     this.jumpOn = null;
     this.jumpOnRearm = 0;
     this.jumpOnLanded = 0;
+    this.jumpOnPending = false;
     this.footJumped = false;
     this.surfaceMemory = null;
     this.launch = null;
@@ -1414,13 +1417,15 @@ export class Simulation {
           ? travel.clone().normalize()
           : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
       this.jumpOn = {
-        deck: this.position.clone().setY(this.support().height),
+        deck: this.position.clone().setY(this.position.y - TUNE.radius),
         yaw: Math.atan2(heading.x, heading.z),
         time: 0,
         running: this.running,
         approach: travel.length(),
         id: ++this.jumpOnId,
       };
+      this.mountInAir(this.jumpOn, heading);
+      return;
     }
     if (this.grounded) {
       const magnitude = desired.length();
@@ -1506,6 +1511,13 @@ export class Simulation {
     this.jumpOnRearm = Math.max(0, this.jumpOnRearm - dt);
     const attempt = this.jumpOn;
     if (!attempt) return;
+    // Mounted in the air: the attempt only times the hands pulling the deck in.
+    if (!this.walking) {
+      attempt.time += dt;
+      attempt.deck.set(this.position.x, this.position.y - TUNE.radius, this.position.z);
+      if (attempt.time > TUNE.jumpOnPullTime || this.grounded || (this.state as RideState) === "Bail") this.jumpOn = null;
+      return;
+    }
     attempt.time += dt;
     attempt.deck.set(this.position.x, this.support().height, this.position.z);
     if (
@@ -1576,6 +1588,38 @@ export class Simulation {
     this.jumpOnRearm = TUNE.jumpOnRearm;
     this.jumpOnLanded = 0.55;
     this.finishManual();
+    this.events.emit({ type: "dismount", walking: false });
+  }
+  /**
+   * Y in the air after an on-foot A jump: the rider's hands pull the scooter up
+   * under their feet and they are riding from that moment. Everything a normal
+   * air has then applies: LS pitch and spin, flips, and a landing graded and
+   * aligned against the surface they come down on (a ramp, a drop-in, flat).
+   * Vertical motion is untouched; a committed running approach adds the bounded
+   * jump-on bonus along the heading once.
+   */
+  private mountInAir(attempt: NonNullable<Simulation["jumpOn"]>, heading: THREE.Vector3) {
+    const travel = new THREE.Vector3(this.velocity.x, 0, this.velocity.z);
+    const committed = attempt.running && attempt.approach >= TUNE.jumpOnRunSpeed;
+    const along = Math.max(0, travel.dot(heading));
+    const speed = Math.min(TUNE.pushMaxSpeed, along + (committed ? TUNE.jumpOnBoost : 0));
+    const vy = this.velocity.y;
+    this.velocity.copy(heading).multiplyScalar(speed).setY(vy);
+    this.body.setLinvel(this.velocity, true);
+    this.walking = false;
+    this.running = false;
+    this.yaw = this.previousYaw = attempt.yaw;
+    this.grounded = false;
+    this.state = "Airborne";
+    this.airTime = 0.1;
+    this.footJumped = false;
+    this.jumpOnPending = true;
+    this.jumpOnRearm = TUNE.jumpOnRearm;
+    this.finishManual();
+    this.tricks.startAir(false);
+    this.bodyFlip.begin("manual_hop", this.pitch);
+    this.airWeight.reset(this.pitch, this.yaw);
+    this.airSpin.reset();
     this.events.emit({ type: "dismount", walking: false });
   }
   /**
@@ -1696,6 +1740,8 @@ export class Simulation {
       this.manualCatchTimer > 0 &&
       Math.abs(wrap(this.pitch - slopePitch)) < TUNE.manualCatchPitchError;
     this.lastLanding = quality;
+    if (this.jumpOnPending && quality !== "failed") this.jumpOnLanded = 0.55;
+    this.jumpOnPending = false;
     this.events.emit({ type: "landing", quality, impact });
     if (this.airQuarter) this.lipClearTimer = Math.max(this.lipClearTimer, TUNE.quarterReentryClearTime);
     const quarter=this.airQuarter?.module;
@@ -1740,6 +1786,8 @@ export class Simulation {
     this.previousYaw = this.yaw;
     this.elapsed += dt;
     this.score.tick(dt);
+    // A jump-on mounted in the air keeps timing its deck pull while riding.
+    if (this.jumpOn && !this.walking) this.updateJumpOn(dt);
     this.lipClearTimer = Math.max(0, this.lipClearTimer - dt);
     this.railImpactCooldown = Math.max(0, this.railImpactCooldown - dt);
     this.pushTimer = Math.max(0, this.pushTimer - dt);
