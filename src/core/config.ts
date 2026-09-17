@@ -3,20 +3,23 @@ export const TUNE = {
   flipMaxRate: 6.8,
   flipSlowRate: 1.8,
   flipTakeoffContribution: .5,
-  flipReleaseDamping: 1.8,
+  // Counter LS opens the rider against the rotation: rad/s^2 at full stick.
+  flipBrakeAcceleration: 14,
   flipYawRateScale: 0.8,
   flipNameTolerance: 20,
-  // --- Flip-completion assist ----------------------------------------------
-  // A forgiving finish for a nearly completed flip, not a rescue. It only acts
-  // once a landing is imminent and only while the player has eased off: strong
-  // input in the direction of travel means they intend to keep rotating, and
-  // opposing input is deliberate braking. It picks whichever whole revolution is
-  // genuinely reachable in the time left, so it never invents a missing half
-  // flip and never insists on stopping at the first revolution.
-  flipAssistWindow: 0.55, // only inside this long before predicted contact
-  flipAssistRate: 2.4, // ceiling on the angular rate it may request, rad/s
-  flipAssistBudget: 0.9, // total rate adjustment one attempt may draw, rad/s
-  flipAssistInput: 0.35, // above this the player is still driving the rotation
+  // --- Flip landing preparation --------------------------------------------
+  // A finish for a relaxed rotation, not a rescue. It only acts once a landing
+  // is imminent and only while the player is neither driving nor braking. It
+  // aims at the next upright in the direction of travel (or stops just past the
+  // last one), keeping the winding, so it never unwinds a double and never adds
+  // a missing half flip: opening up (slowing) is the rider's own control, while
+  // tucking to speed up draws on a small budget.
+  flipAssistWindow: 0.55, // only inside this long before predicted contact, s
+  flipAssistRate: 2.4, // fastest tuck speed-up, rad/s^2
+  flipAssistBudget: 0.9, // total speed-up one attempt may draw, rad/s
+  flipAssistInput: 0.35, // above this LS the player is still driving or braking
+  flipOpenAcceleration: 10, // fastest opening-up slow-down, rad/s^2
+  flipCatchOvershoot: 0.45, // just past an upright by less than this: stop there, rad
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,

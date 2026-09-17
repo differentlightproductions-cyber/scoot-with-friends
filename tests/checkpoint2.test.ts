@@ -66,21 +66,23 @@ function flipTo(turns: number, options: {
   if (options.rate !== undefined) flip.velocity = options.rate;
   const drivenAngle = flip.angle;
   const assistBefore = flip.assistUsed;
+  const preparedBefore = flip.prepared;
   const steps = Math.round((options.seconds ?? 0.3) * 120);
   for (let i = 0; i < steps; i++)
     flip.step(1 / 120, options.chord ?? false, options.lean ?? 0, 0, {
       timeToContact: options.timeToContact ?? 0.3,
       surfacePitch: options.surfacePitch ?? 0,
     });
-  return { flip, drivenAngle, drawn: flip.assistUsed - assistBefore };
+  return { flip, drivenAngle, drawn: flip.assistUsed - assistBefore, prepared: flip.prepared - preparedBefore };
 }
 
 test("the assist only acts once a landing is imminent", () => {
   // Eased to a rate that would very nearly finish the revolution on its own.
   const far = flipTo(0.9, { rate: 2.1, timeToContact: 99 });
+  assert.equal(far.prepared, 0, "a distant landing must not be shaped");
   assert.equal(far.drawn, 0, "a distant landing must not draw on the assist");
   const near = flipTo(0.9, { rate: 2.1, timeToContact: 0.3 });
-  assert(near.drawn > 0, "an imminent, reachable landing should draw on it");
+  assert(near.prepared > 0, "an imminent, reachable landing should be shaped");
 });
 
 test("strong continued input keeps the rotation the player's own", () => {
@@ -104,7 +106,7 @@ test("the assist is bounded and cannot manufacture a missing half flip", () => {
 
 test("a nearly finished flip is eased onto the whole revolution", () => {
   const helped = flipTo(0.9, { rate: 2.1, timeToContact: 0.3, seconds: 0.3 });
-  assert(helped.drawn > 0, "the assist should contribute");
+  assert(helped.prepared > 0, "landing preparation should contribute");
   const turned = Math.abs(helped.flip.angle) / TAU;
   assert(turned > 0.93, "the rotation should continue toward the revolution");
   assert(turned < 1.12, `it should settle near one revolution, got ${turned}`);
@@ -133,10 +135,11 @@ test("a banked receiving surface is measured as level, not as rotation owed", ()
 });
 
 test("the assist resets between attempts", () => {
-  const { flip } = flipTo(0.9, { rate: 2.1, timeToContact: 0.3 });
-  assert(flip.assistUsed > 0);
+  const { flip } = flipTo(0.9, { rate: 1.5, timeToContact: 0.3 });
+  assert(flip.assistUsed > 0 && flip.prepared > 0);
   flip.begin("trick_initiated_pop", 0);
   assert.equal(flip.assistUsed, 0);
+  assert.equal(flip.prepared, 0);
   assert.equal(flip.assisting, false);
 });
 

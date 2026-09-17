@@ -2552,8 +2552,11 @@ export class Simulation {
           .dot(new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw))),
         support.normal.y,
       );
+      // Ballistic time until the rider's centre reaches the surface below, valid
+      // while still rising, for the flip's landing preparation.
+      const fall = (this.velocity.y + Math.sqrt(Math.max(0, this.velocity.y * this.velocity.y + 2 * TUNE.gravity * Math.max(0, verticalGap)))) / TUNE.gravity;
       this.pitch=this.bodyFlip.step(dt,flipChord,input.lean,this.pitch,{
-        timeToContact:contact,
+        timeToContact:fall,
         surfacePitch:receiving,
       });
       this.spin = this.airSpin.step(
