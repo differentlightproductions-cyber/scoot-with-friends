@@ -290,10 +290,12 @@ export class Tricks {
     );
     this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
     let pose = "";
-    if (input.held.body > 0.5 && !flipChord) {
+    if (input.held.body > 0.5) {
       this.gesture.reset();
-      pose =
-        finger
+      // Inside a flip the chord holds RT, so Y is a no-hander rather than Superman.
+      pose = flipChord
+        ? "No-hander"
+        : finger
           ? "Superman"
           : heel && lb
             ? "Tuck No-hander"

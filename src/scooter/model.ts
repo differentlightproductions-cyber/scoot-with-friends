@@ -489,6 +489,11 @@ export class RiderModel {
     this.human?.update(elapsed);
     this.backpack.position.copy(this.torso.position);this.backpack.quaternion.copy(this.torso.quaternion);
   }
+  private tuck = 0;
+  /** 0..1 flip tuck from the rotation rate, smoothed so it opens out gradually. */
+  private flipTuck(s: Simulation) {
+    return s.bodyFlip.active ? THREE.MathUtils.smoothstep(Math.abs(s.bodyFlip.velocity), 1.5, 6) : 0;
+  }
   update(s: Simulation, dt: number, alpha: number) {
     const onBoard = s.rideable === "longboard";
     this.scooter.visible = !onBoard;
@@ -615,7 +620,7 @@ export class RiderModel {
       (s.sitting?.id ? 0.8 : s.emote?.id === "sit" ? .65 : 0) +
         s.getUpTimer * 0.8 +
         s.charge * 0.3 +
-        (s.bodyFlip.active?Math.min(.32,Math.abs(s.bodyFlip.velocity)*.055):0) +
+        this.flipTuck(s) * 0.5 +
         s.compression * 0.16 +
         (s.landTimer > 0 ? s.landTimer * (0.4 + s.landingCompression) : 0) +
         (s.popTimer > 0 ? 0.1 : 0);
@@ -626,6 +631,10 @@ export class RiderModel {
       crouchTarget < this.crouch ? 5.5 : 16,
       dt,
     );
+    // Tucked flips pull the knees (and so the deck) up toward the chest, then
+    // open out as guidance slows the rotation for the landing.
+    this.scooter.position.y+=this.flipTuck(s)*.24;
+    this.scooter.position.z-=this.flipTuck(s)*.04;
     const fingerReach=s.tricks.fingerTime>0?Math.sin((1-s.tricks.fingerTime/.35)*Math.PI):0;
     this.scooter.position.y+=fingerReach*.28;
     const grabBlend=s.tricks.visualPose==='Deck Grab'?s.tricks.poseBlend:0;
@@ -647,11 +656,14 @@ export class RiderModel {
     const pose = s.tricks.visualPose,
       blend = s.tricks.poseBlend;
     if (pose === "Superman") {
-      this.torso.rotation.x += blend * 1.1;
-      this.torso.position.z -= blend * .36;
-      this.torso.position.y += blend * .12;
-      this.scooter.position.lerp(v(.03,.78,-.62),blend);
-      this.scooter.rotation.x+=blend*1.08;
+      // Body stretched out flat toward the bars with the legs kicked back; the
+      // scooter rises a little and stays ahead, so the deck never sweeps through
+      // the torso on the way in.
+      this.torso.rotation.x += blend * 1.2;
+      this.torso.position.z -= blend * .1;
+      this.torso.position.y -= blend * .06;
+      this.scooter.position.lerp(v(.03,.42,.34),blend);
+      this.scooter.rotation.x+=blend*.12;
     }
     if (pose === "Tuck No-hander") {
       this.torso.position.y -= blend * 0.2;
@@ -738,7 +750,7 @@ export class RiderModel {
       }
       if (!s.walking) {
         const target = foot.clone();
-        if (pose === "Superman") target.set(sign * 0.16, .96, -1.3);
+        if (pose === "Superman") target.set(sign * 0.13, .82, -1.05);
         if (pose === "No Foot") target.set(sign * 0.48, 0.45, -0.1);
         if (pose === "Can Can")
           target.set(s.tricks.poseSide * (0.5 + i * 0.14), 0.5, -0.15);
