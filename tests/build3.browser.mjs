@@ -40,16 +40,20 @@ try {
       held: { ...g.input.previous.held, ...held },
       released: { ...g.input.previous.released },
     });
-    // Home is PLAY / SHOPS / CUSTOMIZATION / SETTINGS / ACCOUNT, and riders live
-    // under Customization > Rider. Riders are named people now, not "Rider 0N".
+    // Home is PLAY / SHOPS / RIDES / RIDER / SETTINGS / ACCOUNT. Riders are
+    // named people now, not "Rider 0N".
     g.menu.update(f({}, { menuDown: 1 }), 0.3);
     check("D-pad navigates main menu", g.menu.index === 1);
     g.menu.update(f(), 0.1);
     g.menu.update(f({}, { menuDown: 1 }), 0.3);
-    check("D-pad reaches Customization", g.menu.index === 2);
+    check("D-pad reaches Rides", g.menu.index === 2);
+    g.menu.update(f(), 0.1);
+    g.menu.update(f({}, { menuDown: 1 }), 0.3);
+    check("D-pad reaches Rider", g.menu.index === 3);
     g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
-    check("A opens Customization", g.menu.screen === "customization");
+    check("A opens Rider", g.menu.screen === "rider");
+    g.menu.index = g.menu.choices.findIndex((c) => c.label === "CHANGE CHARACTER");
     g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
     check("A opens the rider list", g.menu.screen === "characters");
@@ -66,27 +70,34 @@ try {
     );
     check("Choosing a character opens that rider", g.menu.screen === "rider");
     g.menu.update(f({ brakeBars: true }), 0.1);
-    check("B steps back to Customization", g.menu.screen === "customization");
+    check("B steps back from Rider to the main menu", g.menu.screen === "home");
+    g.menu.show("rides");
+    check("Rides offers both rideables and their builds", ["SCOOTER", "LONGBOARD", "CUSTOMIZE SCOOTER", "CUSTOMIZE LONGBOARD"].every((l) => g.menu.choices.some((c) => c.label === l)));
     g.menu.update(f(), 0.1);
     g.menu.update(f({ brakeBars: true }), 0.1);
     check("B returns to main menu", g.menu.screen === "home");
     // Return to the category list explicitly each pass. Selecting a variant can
     // route through the purchase screens, so a fixed number of back() calls no
     // longer lands reliably on "scooter".
-    for (let index = 0; index < 10; index++) {
-      g.menu.show("scooter");
-      g.menu.index = index;
-      g.menu.select();
-      check("Category opens " + index, g.menu.screen === "parts");
-      g.menu.index = 1;
-      g.menu.select();
-      check(
-        "Product has authored variants " + index,
-        g.menu.screen === "variants",
-      );
-      g.menu.index = 0;
-      g.menu.select();
-    }
+    // Customization lists owned parts by brand: brand -> category -> colourways.
+    g.menu.show("scooter");
+    g.menu.index = 0;
+    g.menu.select();
+    check("Brand opens its categories", g.menu.screen === "brand");
+    const categories = g.menu.choices.filter((c) => c.cell).length;
+    for (let page = 0; page < 2; page++)
+      for (let index = 0; index < 8; index++) {
+        g.menu.show("brand");
+        g.menu.catPage = page;
+        g.menu.show("brand");
+        if (!g.menu.choices[index]?.cell) continue;
+        g.menu.index = index;
+        g.menu.select();
+        check("Category opens " + page + "/" + index, g.menu.screen === "brand-items");
+        g.menu.index = Math.min(1, g.menu.choices.filter((c) => c.cell).length - 1);
+        g.menu.select();
+      }
+    check("Brand pages hold every category", categories === 8);
     g.menu.show("scooter");
     check(
       "Separate wheel slots receive matching selections",

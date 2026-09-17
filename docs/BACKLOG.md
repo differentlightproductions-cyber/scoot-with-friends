@@ -3,6 +3,9 @@
 Every owner request that is not finished, in working order. Updated as work lands.
 Status: TODO / IN PROGRESS / DONE (commit).
 
+## A0. Urgent regressions
+- TODO Big box no longer launches high enough for tricks after the bounded ramp pop (ec38321).
+
 ## A. Riding feel (latest messages, 2026-09-17)
 - DONE (ef9036a) Crooked/angled landings: ride away (absorb the angle) instead of sliding out.
 - DONE (ef9036a) Fakie landings near max speed must need steady LS to hold; fakie steering feels reversed (camera sees the rider's front).
@@ -13,14 +16,23 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE (ff23356) Quarter-pipe access stairs: remove the unwalkable connecting board; one simple stairset beside the left of the quarter nearest the big box and the right of the quarter nearest the parking lot.
 
 ## B. Customization and shop organization
-- TODO Customize (pause Sesh menu) lists owned parts only; unowned parts are bought in the shop first.
-- TODO Brand-first multipage menus: Brand -> category -> parts in readable columns; shop shows unowned, customize shows owned; no long scrolls.
-- TODO Preview / draft / committed loadout separation; no preview leaking into equipment; apply without repeated refreshes; latest-request guards.
+- DONE (menus) Customize (pause Sesh menu) lists owned parts only; unowned parts are bought in the shop first.
+- DONE (menus) Brand-first multipage menus: Brand -> category -> parts in readable columns; shop shows unowned, customize shows owned; no long scrolls.
+- DONE (menus) Longboard deck preview: stand the board on its tail with the graphic facing out so it can be spun around and seen whole.
+- DONE (menus) Preview / draft / committed loadout separation; no preview leaking into equipment; apply without repeated refreshes; latest-request guards.
+
+## B2. Longboard and rides (2026-09-17 message)
+- DONE (menus) Sesh Music: add "Promise" by Keeto (Downloads MP3) as the first song.
+- TODO Longboard carry: hand actually holds the board, knuckles wrapped round the top truck while walking, tucked under the arm standing still.
+- TODO Longboard push animation: front foot forward on the board, kicking foot pushes out to the side and forward; carving turns the feet sideways as now.
+- DONE (menus) Menu: a "RIDES" section to switch between the customized scooter and board, with customization submenus under it instead of Customization as the main header.
+
+- TODO Longboard fakie/switch: ride backwards down quarters and ramps; pressing kick while rolling backwards switches to switch stance and pushes with the other foot, like Skate.
 
 ## C. Coping stability, re-entry, grinds (Coping/Mobile prompt 1-7, 16)
 - TODO Record coping failures with replay buffer; single arbitration of pop/grind/stall/re-entry; no stacked boosts; extreme-state guard with diagnostics.
 - TODO Same-wall re-entry targets the transition below coping with logged small budgets.
-- TODO Always-on grind assist: remove the player toggle, migrate stale Off saves, developer-only off baseline.
+- DONE (menus) Always-on grind assist: remove the player toggle, migrate stale Off saves, developer-only off baseline.
 - TODO Angled deck-slide capture on rails, benches, ledges, small-box hub; hysteresis; same-feature recapture inhibit.
 
 ## D. Controls (Coping/Mobile prompt 10-15)

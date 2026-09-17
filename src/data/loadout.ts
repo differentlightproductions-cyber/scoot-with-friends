@@ -93,7 +93,8 @@ export function loadProfile(): LocalProfile {
     if (saved.settings?.controlStyle === "arcade")
       profile.settings.controlStyle = "arcade";
     if (saved.settings?.stance === "goofy") profile.settings.stance = "goofy";
-    for (const key of ["sound", "grindAssist", "mountFlourish"] as const)
+    // Grind assist is always on: a stale saved Off from the old toggle is ignored.
+    for (const key of ["sound", "mountFlourish"] as const)
       if (typeof saved.settings?.[key] === "boolean")
         profile.settings[key] = saved.settings[key];
   } catch {

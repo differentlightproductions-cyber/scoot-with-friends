@@ -87,7 +87,7 @@ async function boot() {
   social.warehouse=ACTIVE_MAP==='warehouse';
   camera.mountFlourish=profile.settings.mountFlourish;
   rider.applyProfile(profile);
-  sim.grindAssist = profile.settings.grindAssist;
+  sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
   sim.tricks.controlStyle = profile.settings.controlStyle;
   audio.enabled = profile.settings.sound;
@@ -120,7 +120,7 @@ async function boot() {
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
   menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
-    sim.grindAssist = profile.settings.grindAssist;
+    sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
@@ -311,7 +311,7 @@ async function boot() {
     social.warehouse=id==='warehouse';
     rider.applyProfile(profile);
     fidelity.apply(scene,profile.settings.fidelity);
-    sim.grindAssist = profile.settings.grindAssist;
+    sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     history.replaceState(
@@ -370,14 +370,6 @@ async function boot() {
           case "reset":
             reset();
             break;
-          case "assist":
-            sim.grindAssist = !sim.grindAssist;
-            profile.settings.grindAssist = sim.grindAssist;
-            saveProfile(profile);
-            document.querySelector("#assist")!.textContent = sim.grindAssist
-              ? "ON"
-              : "OFF";
-            break;
           case "restart":
             reset(true);
             break;
@@ -388,7 +380,7 @@ async function boot() {
             reset();
             break;
           case "map":
-          case "customization":
+          case "rides":
           case "shops":
           case "rider":
           case "scooter":

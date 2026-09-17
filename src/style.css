@@ -1081,3 +1081,16 @@ body.ui-open #help,body.ui-open #emote-wheel,body.ui-open #social-chat,body.ui-o
   .music-cover { width: min(110px, 22vh); }
   .music-page { gap: 5px; }
 }
+
+/* Brand-first part browsing: readable two-column pages instead of long lists. */
+.game-menu .menu-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:8px}
+.game-menu .menu-grid button.menu-cell{margin:0;min-height:64px;padding:10px 11px;font-size:14px;line-height:1.2;overflow-wrap:anywhere;border-top:0;border-radius:7px}
+.game-menu .menu-grid button.menu-cell small{font-size:12px;margin-top:4px}
+.game-menu .menu-grid button.menu-cell b{top:8px;right:8px}
+.game-menu .menu-grid button.menu-cell.chosen{box-shadow:inset 4px 0 0 #db7959}
+.sesh-overlay .game-menu .menu-grid button.menu-cell{font-size:14px}
+@media(max-width:800px){.game-menu .menu-grid button.menu-cell{min-height:52px;padding:7px 8px;font-size:12px}.game-menu .menu-grid button.menu-cell small{font-size:11px}}
+.game-menu nav button.menu-page{display:inline-block;width:calc(50% - 3px);margin-right:6px;padding:9px 10px;font-size:13px}
+.game-menu nav button.menu-page+button.menu-page{margin-right:0}
+.game-menu nav button.menu-page small{display:none}
+#start .game-menu .menu-grid button.menu-cell{min-height:56px;padding:9px 10px;margin:0}

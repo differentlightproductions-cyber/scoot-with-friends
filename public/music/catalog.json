@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "tracks": []
+  "tracks": [
+    {
+      "id": "keeto-promise",
+      "title": "Promise",
+      "artist": "Keeto",
+      "file": "/music/tracks/Keeto%20-%20Promise.mp3",
+      "order": 0,
+      "bytes": 1778351
+    }
+  ]
 }
