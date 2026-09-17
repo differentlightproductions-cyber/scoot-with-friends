@@ -259,21 +259,30 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
 // ramp beneath the stepped visuals, which keeps the climb reliable and the
 // collision in agreement with what the player sees.
 export const STAIR_WIDTH = 0.85,
-  STAIR_STEPS = 20,
-  STAIR_RUN = 0.42;
+  STAIR_STEPS = 18,
+  STAIR_RUN = 0.42,
+  STAIR_LANDING = 0.6;
+/**
+ * One plain stairset per quarter at the +x end of its deck: it steps straight
+ * down away from the deck, beside the platform's back edge, so the walker climbs
+ * onto the deck and riders carving along the transition never meet it. From the
+ * flat that is the left of the quarter that leads into the big box and the right
+ * of the one by the parking lot.
+ */
+export function quarterStair(m: RampModule) {
+  const back = m.reverse ? m.z0 : m.z1,
+    toward = m.reverse ? 1 : -1;
+  return { top: m.x1, z: back + toward * STAIR_WIDTH, back, toward, span: STAIR_STEPS * STAIR_RUN };
+}
 export function stairHeight(x: number, z: number) {
   let height = 0;
   for (const m of modules) {
     if (m.kind !== "quarter") continue;
-    const lip = rampLips(m)[0],
-      back = m.reverse ? m.z0 : m.z1,
-      away = Math.sign(back - lip),
-      stairX = m.x0 - 1.2,
-      span = STAIR_STEPS * STAIR_RUN;
-    if (Math.abs(x - stairX) > STAIR_WIDTH) continue;
-    const along = (z - back) * away;
-    if (along < 0 || along > span) continue;
-    height = Math.max(height, m.h * (1 - along / span));
+    const st = quarterStair(m);
+    if (Math.abs(z - st.z) > STAIR_WIDTH) continue;
+    const d = x - st.top;
+    if (d < 0 || d > STAIR_LANDING + st.span) continue;
+    height = Math.max(height, d <= STAIR_LANDING ? m.h : m.h * (1 - (d - STAIR_LANDING) / st.span));
   }
   return height;
 }
@@ -443,49 +452,38 @@ export function buildOutdoor(park: Park) {
         new THREE.Vector3(0, 0, m.reverse ? -1 : 1),
       );
       const back = m.reverse ? m.z0 : m.z1;
-      // Side access stairs to the top platform. They sit beyond the back edge
-      // and outside the ramp's own x range, so they never cross the riding
-      // transition, the coping takeoff or the landing. Rise 0.3 over run 0.46
-      // is about 33 degrees, which the existing on-foot step-up handles.
-      const away = Math.sign(back - lip);
-      const stairX = m.x0 - 1.2,
-        steps = STAIR_STEPS,
+      // Stairs off the end of the deck (see quarterStair). Treads are visual
+      // only: stairHeight() supplies the walkable surface.
+      const st = quarterStair(m),
         run = STAIR_RUN,
-        span = steps * run;
-      // Treads are visual only: stairHeight() supplies the walkable surface, so
-      // adding solid boxes here would fight it. Each tread sits on the ramp.
-      for (let i = 0; i < steps; i++) {
-        const along = span - i * run,
-          z = back + away * along,
-          y = m.h * (1 - along / span);
-        box(stairX, y + 0.03, z, 1.7, 0.09, run + 0.14, 0xb08a5f, false);
-        box(stairX, y - 0.09, z + away * run * 0.5, 1.6, 0.2, 0.06, 0x8d6c46, false);
+        at = (d: number) => st.top + d;
+      box(at(STAIR_LANDING / 2), m.h / 2 - 0.05, st.z, STAIR_LANDING, m.h - 0.1, 1.6, 0x8d6c46, false);
+      box(at(STAIR_LANDING / 2), m.h - 0.05, st.z, STAIR_LANDING, 0.1, 1.7, 0xb08a5f, false);
+      for (let i = 0; i < STAIR_STEPS; i++) {
+        const d = STAIR_LANDING + (i + 0.5) * run,
+          y = m.h * (1 - (i + 1) / STAIR_STEPS);
+        box(at(d), y + 0.03, st.z, run + 0.04, 0.09, 1.7, 0xb08a5f, false);
+        box(at(d), y / 2, st.z, run, Math.max(0.02, y), 1.6, 0x8d6c46, false);
       }
-      box(stairX + 0.62, m.h - 0.05, back + away * 0.55, 2.9, 0.1, 1.3, 0xb08a5f, false);
-      for (let i = 0; i <= steps; i += 5) {
-        const along = span - i * run,
-          z = back + away * along,
-          y = m.h * (1 - along / span);
-        box(stairX - 0.82, y + 0.55, z, 0.12, 1.1, 0.12, 0x9f764c, true);
+      // Handrails on both sides: posts every few steps with short stepped rails.
+      const posts: [number, number][] = [[STAIR_LANDING, m.h]];
+      for (let i = 4; i <= STAIR_STEPS; i += 4) posts.push([STAIR_LANDING + i * run, m.h * (1 - i / STAIR_STEPS)]);
+      for (const side of [-1, 1]) {
+        const railZ = st.z + side * (STAIR_WIDTH - 0.06);
+        posts.forEach(([d, y], k) => {
+          box(at(d), y + 0.55, railZ, 0.12, 1.1, 0.12, 0x9f764c, true);
+          if (k > 0) {
+            const [d0, y0] = posts[k - 1];
+            box(at((d + d0) / 2), (y + y0) / 2 + 1.05, railZ, Math.abs(d - d0), 0.1, 0.1, 0xae8754, false);
+          }
+        });
       }
-      box(stairX - 0.82, m.h * 0.6 + 0.2, back + away * span * 0.5, 0.1, 0.1, span, 0xae8754, true);
-      // The guardrail opens where the stairs arrive, so the top step is not
-      // walled off. A post on each side of the gap finishes the opening.
-      const gate = m.x0 + 2.6;
-      for (let x = gate; x <= m.x1; x += 2.5)
+      // Back guardrail spans the whole deck; nothing arrives from behind now.
+      for (let x = m.x0; x <= m.x1 + 0.01; x += 2.6)
         box(x, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
-      box(m.x0, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
+      box(m.x1, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
       for (const h of [0.45, 1.1])
-        box(
-          (gate + m.x1) / 2,
-          m.h + h,
-          back,
-          m.x1 - gate,
-          0.11,
-          0.12,
-          0xae8754,
-          true,
-        );
+        box((m.x0 + m.x1) / 2, m.h + h, back, m.x1 - m.x0, 0.11, 0.12, 0xae8754, true);
     }
   }
   // The small box hub ledge (a hubba): an up-ledge along the bank, a level run
