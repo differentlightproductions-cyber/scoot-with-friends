@@ -81,7 +81,7 @@ export const modules: RampModule[] = [
   {
     id: "small-box",
     x0: -4,
-    x1: 1,
+    x1: 0.61,
     z0: -7.5,
     z1: 5.5,
     h: 1.4,
@@ -273,7 +273,7 @@ export function smallBoxLedge() {
     top = 0.42,
     // Far enough in from the box's right edge that a rider grinding the right
     // side (seat plus half the bar width) clears the spine rising beside it at x1.
-    x = box3.x1 - 0.7;
+    x = 0.3;
   return {
     line: [
       new THREE.Vector3(x, profile(box3, box3.z0 + 1) + top, box3.z0 + 1),
@@ -651,7 +651,11 @@ export function buildOutdoor(park: Park) {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed small-box")) { disposeModel(model); return; }
     model.name = "Detailed small-box";
-    model.position.set(-1.5, 0, -1);
+    // The hub skin is 0.62 m wide at x=-0.01..0.61. Keep the small-box skin
+    // anchored to the large transfer at x=-4 and end it at that hub side wall,
+    // instead of leaving its original 0.39 m tongue exposed toward the spine.
+    model.scale.x = 4.61 / 5;
+    model.position.set((-4 + 0.61) / 2, 0, -1);
     model.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       object.castShadow = object.receiveShadow = true;
@@ -721,3 +725,4 @@ export function buildOutdoor(park: Park) {
     park.showDetailedSpine();
   });
 }
+
