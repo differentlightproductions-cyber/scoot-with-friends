@@ -79,6 +79,11 @@ try {
           launchId: s.launch?.id ?? null, launchKind: s.launch?.kind ?? null,
         };
         if (record) Object.assign(row, record(s, i));
+        // Successful landing resets the channels. Read their contact values,
+        // otherwise every catch assertion would see an artificial zero.
+        const contact = s.diagnostics.landings.at(-1);
+        if (!before.grounded && s.grounded && contact?.t === s.elapsed)
+          Object.assign(row, { deck: contact.deck, bars: contact.bars, bri: contact.bri });
         trace.push(row);
         if (stopWhen?.(s, row, trace)) break;
       }
@@ -1131,7 +1136,7 @@ try {
       const briTravel = Math.max(0, ...airborneBri.map(Math.abs));
       const briRange = { min: Math.min(0, ...airborneBri), max: Math.max(0, ...airborneBri) };
       const targetChanges = run.trace.filter((r, k, rows) => k === 0 || Math.abs((r.briTarget ?? 0) - (rows[k - 1].briTarget ?? 0)) > 0.1).map((r) => ({ tick: r.i, grounded: r.grounded, angle: +((r.bri ?? 0).toFixed(2)), target: +((r.briTarget ?? 0).toFixed(2)) }));
-      const maxBriStep = airborneBri.slice(1).reduce((max, angle, k) => Math.max(max, Math.abs(wrapAngle(angle - airborneBri[k]))), 0);
+      const maxBriStep = airborneBri.slice(1).reduce((max, angle, k) => Math.max(max, Math.abs(angle - airborneBri[k])), 0);
       const caught = touchdown && Math.min(Math.abs(touchdown.bri % TAU), Math.abs(Math.abs(touchdown.bri % TAU) - TAU)) < 0.35;
       const names = tricks(run.events);
       expect(failures, !!air, 'no takeoff');

@@ -21,19 +21,24 @@ function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(p);
-    else
-      assets["/" + path.relative(client, p).replaceAll("\\", "/")] = {
+    else {
+      const relative = path.relative(client, p).replaceAll("\\", "/");
+      // Music remains in dist/client for local and Windows builds. The hosted
+      // Worker streams these large files from the existing PARKS R2 binding.
+      if (relative.startsWith("music/tracks/")) continue;
+      assets["/" + relative] = {
         type: types[path.extname(p)] || "application/octet-stream",
         body: gzipSync(fs.readFileSync(p),{level:9}).toString("base64"),
         encoding: "gzip",
       };
+    }
   }
 }
 walk(client);
 fs.mkdirSync("work", { recursive: true });
 fs.writeFileSync("work/site-assets.json", JSON.stringify(assets));
 await build({
-  entryPoints: ["server/worker.ts"],
+  entryPoints: [path.resolve("server/worker.ts")],
   outfile: "dist/server/index.js",
   bundle: true,
   format: "esm",

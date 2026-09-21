@@ -1,12 +1,15 @@
 ﻿import { parkAPI } from "./park-api";
 import assets from "../work/site-assets.json";
 import { authAPI } from "./auth-api";
+import { musicAPI } from "./music-delivery";
 export default {
   async fetch(request: Request, env: any) {
     const accountResponse = await authAPI(request, env);
     if (accountResponse) return accountResponse;
     const response = await parkAPI(request, env);
     if (response) return response;
+    const musicResponse = await musicAPI(request, env);
+    if (musicResponse) return musicResponse;
     const url = new URL(request.url);
     const path = url.pathname === "/" ? "/index.html" : url.pathname;
     const a = (assets as Record<string, { type: string; body: string;encoding?:string }>)[path];

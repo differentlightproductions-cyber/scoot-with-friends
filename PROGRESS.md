@@ -11,6 +11,8 @@
 - Diagnostic history now retains actual equipment/orientation and release/analog input state, plus the latest 30 landings before velocity/part reset.
 - Read-only follow-up: longboard grip is correctly hidden below raised truck mounting hardware; no geometry change warranted. Coping collision filtering still has overly broad rail exemptions; investigate pair-specific contact and wrong-side descent before claiming M2 complete. M0's full contact-pair/catch geometry contract is not yet complete.
 - Existing-site music delivery is being moved to the already provisioned PARKS storage, with owner-authenticated upload and byte-range playback. No new resource, DNS change, or GitHub push is authorized by this work.
+- Music delivery implementation passes focused range/auth/upload checks (3/3), the existing music UI journey passes 24/24, and the full unit/service suite and TypeScript pass. Server output is now 11,705,060 bytes; local/Windows copies retain all seven tracks. Upload and hosted playback verification follow deployment.
+- Real pre-reset catch angles are now used by acceptance assertions; all 53 physics checks still pass. Windows copy refreshed; root backup is `releases/Scoot-with-Friends-Windows.pre-physics-20260921.zip`.
 
 - Source: GitHub `origin/claude/bugfix-pass`, ea8c5856480b21c19ab8bc115dc47c7446c68eb2. User confirmed this matches their local game.
 - Working branch: `codex/claude-release-lan`. Other checkouts remain untouched.
