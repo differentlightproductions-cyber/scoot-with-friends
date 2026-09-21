@@ -7,7 +7,7 @@ import { GarmentSkin, sneakerGeometry } from './character-skin';
 import { tube, detailTexture } from './surfaces';
 import { Simulation } from "../physics/simulation";
 import {ScooterAssembly, GRIP_PALM_OFFSET} from "./assembly";
-import {HumanCharacter,loadHuman} from './human';
+import {ImportedHuman,loadImportedHuman} from './imported-human';
 import { RIDERS } from "../data/riders";
 import { clothing, defaultOutfit } from '../data/outfits';
 import type { LocalProfile } from "../data/loadout";
@@ -81,7 +81,7 @@ export function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   if(m.userData.legFrame)m.quaternion.copy(legFrame(a,b));else m.quaternion.setFromUnitVectors(v(0, 1, 0), b.clone().sub(a).normalize());
 }
 export class RiderModel {
-  human?:HumanCharacter;
+  human?:ImportedHuman;
   private humanKey='';private humanRequest=0;
   private restingPose:{hip:THREE.Vector3;rotation:THREE.Quaternion;scooter:THREE.Vector3;scooterRotation:THREE.Quaternion;parts:{position:THREE.Vector3;rotation:THREE.Quaternion;scale:THREE.Vector3}[]}|null=null;
   private poseParts(){return [this.hips,this.torso,this.head,this.neck,...this.upperArms,...this.forearms,...this.hands,...this.thighs,...this.shins,...this.shoes];}
@@ -455,13 +455,13 @@ export class RiderModel {
     }
     this.garmentSkins.forEach(g=>g.update());
     const quality=profile.settings.characterQuality==='auto'?profile.settings.fidelity:profile.settings.characterQuality;
-    const key=[rider.id,profile.bodyBuild,profile.scooter.grips.partId,quality,head.model,head.color,top.model,bottom.model,top.color,bottom.color].join(':');
-    if(this.human){this.helmet.visible=false;this.headDetails.visible=false;this.garmentSkins.forEach(g=>g.mesh.visible=false);}
-    if(this.humanKey!==key){const request=++this.humanRequest;void loadHuman(rider.id).then(()=>{
+    const key=[rider.id,profile.bodyBuild,profile.scooter.grips.partId,quality].join(':');
+    if(this.human){[this.helmet,this.headDetails,this.hood,this.garmentDetails,...this.shortLegs,...this.cuffs,...this.shoes].forEach(o=>o.visible=false);this.garmentSkins.forEach(g=>g.mesh.visible=false);}
+    if(this.humanKey!==key){const request=++this.humanRequest;void loadImportedHuman().then(()=>{
       if(request!==this.humanRequest)return;
-      this.human?.dispose();this.human=new HumanCharacter(this,rider.id,quality,{head:head.model,top:top.model,bottom:bottom.model},[rider.skin,top.color,bottom.color],profile.bodyBuild);this.humanKey=key;
-      [this.torso,this.head,this.neck,this.hips,...this.hands,...this.knees,...this.upperArms,...this.forearms,...this.thighs,...this.shins].forEach(o=>o.visible=false);
-      this.garmentSkins.forEach(g=>g.mesh.visible=false);this.root.userData.characterRevision='anatomical-riders-1';
+      this.human?.dispose();this.human=new ImportedHuman(this,rider.id,quality,profile.bodyBuild);this.humanKey=key;
+      [this.torso,this.head,this.neck,this.hips,...this.hands,...this.knees,...this.upperArms,...this.forearms,...this.thighs,...this.shins,...this.shoes,...this.shortLegs,...this.cuffs,this.hood,this.garmentDetails].forEach(o=>o.visible=false);
+      this.garmentSkins.forEach(g=>g.mesh.visible=false);this.root.userData.characterRevision='christian-1';
       this.helmet.geometry.dispose();this.helmet.geometry=new THREE.SphereGeometry(.098,32,20,0,Math.PI*2,0,1.72);this.helmet.scale.set(1,.85,1.12);
       this.headDetails.visible=false;this.helmet.visible=false;
     });}
@@ -476,8 +476,8 @@ export class RiderModel {
       const rotation=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
       const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
       const shoulder=v(sign*.19,.17,0).applyEuler(this.torso.rotation).add(this.torso.position);
-      const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
-      const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.38,-.12,-.9).normalize(),bend);
+      const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.26*.26-Math.min(.25,reach/2)**2));
+      const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.34,-.85,-.12).normalize(),bend);
       poseRod(this.upperArms[i],shoulder,elbow);poseRod(this.forearms[i],elbow,hand);
       this.hands[i].position.copy(hand);this.hands[i].quaternion.copy(rotation);this.hands[i].userData.openHand=0;
     }
@@ -965,8 +965,8 @@ export class RiderModel {
       if(holdingGrip||grabbingHand||fingerContact||this.carry>.001){
         const delta=hand.clone().sub(shoulder);const reach=delta.length();
         if(reach>.68)hand.copy(shoulder).addScaledVector(delta,.68/reach);
-        const bend=Math.sqrt(Math.max(.0004,.34*.34-Math.min(.33,reach/2)**2));
-        elbow.copy(shoulder).lerp(hand,.5).addScaledVector((fingerContact||grabbingHand?v(sign*.8,-.3,.7):v(sign*.38,-.12,-.9)).normalize(),bend);
+        const bend=Math.sqrt(Math.max(.0004,.26*.26-Math.min(.25,reach/2)**2));
+        elbow.copy(shoulder).lerp(hand,.5).addScaledVector((fingerContact||grabbingHand?v(sign*.8,-.3,.7):v(sign*.34,-.85,-.12)).normalize(),bend);
         poseRod(this.upperArms[i],shoulder,elbow);
       }
       poseRod(this.forearms[i], elbow, hand);

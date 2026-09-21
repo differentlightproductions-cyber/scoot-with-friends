@@ -9,7 +9,6 @@ import {loadProfile} from '../data/loadout';
 import { version } from '../../package.json';
 import * as THREE from "three";
 import { MAPS, type MapId } from "../data/maps";
-import { RIDERS } from "../data/riders";
 import { CLOTHING, OUTFIT_SLOTS, clothing, type OutfitSlot } from '../data/outfits';
 import {
   CATEGORIES,
@@ -287,27 +286,8 @@ export class GameMenu {
         add('BACKPACK',()=>{this.profile.pockets.backpack=!this.profile.pockets.backpack;this.changed();this.render();},this.profile.pockets.backpack?'Equipped / same inventory':'Off / Pockets');
         add('BODY BUILD',()=>this.show('body-build'),this.profile.bodyBuild.toUpperCase());
         title = "RIDER";
-        subtitle = "SAME PHYSICS. YOUR STYLE.";
-        for(const slot of OUTFIT_SLOTS)add(slot.toUpperCase(),()=>{this.outfitSlot=slot;this.show('clothing');},clothing(this.profile.outfit,slot).name);
-        add('CHANGE CHARACTER',()=>this.show('characters'),RIDERS.find(r=>r.id===this.profile.riderId)?.name);
-        break;
-      case "characters":
-        title="CHOOSE YOUR RIDER";subtitle="THREE RIDERS. YOUR STYLE.";
-        for (const rider of RIDERS)
-          add(
-            rider.name,
-            () => {
-              this.profile.riderOutfits[this.profile.riderId]={...this.profile.outfit};
-              const defaults=rider.id==='rider-02'?{head:'head-none-black',top:'top-hoodie-gray',bottom:'bottom-chinos-sand',shoes:'shoes-high-top-navy'}:rider.id==='rider-03'?{head:'head-none-black',top:'top-tee-forest',bottom:'bottom-shorts-black',shoes:'shoes-skate-gray'}:{head:'head-helmet-red',top:'top-tee-sand',bottom:'bottom-chinos-forest',shoes:'shoes-low-top-black'};
-              this.profile.outfit={...(this.profile.riderOutfits[rider.id]??defaults)};
-              this.profile.riderId = rider.id;
-              this.profile.outfitId = rider.outfitId;
-              this.changed();
-              this.show("rider");
-            },
-            rider.description,
-            this.profile.riderId === rider.id,
-          );
+        subtitle = "CHRISTIAN / SAME PHYSICS. YOUR STYLE.";
+        add('SIGNATURE OUTFIT',()=>{},'Original outfit supplied with Christian');
         break;
       case 'body-build':
         title='BODY BUILD';subtitle='COSMETIC FIT / SAME RIDING';
@@ -392,15 +372,37 @@ export class GameMenu {
       case "settings":
         title="SETTINGS";subtitle="MAKE YOURSELF AT HOME";
         add("HELP & CONTROLS",()=>this.show("guide"),"Trick book and controller guide");
-        add('USE HELD ITEM',()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / on foot');
+        add('RIDING & CONTROLS',()=>this.show('settings-riding'),'Control style, stance, held item and controller test');
+        add('CAMERA',()=>this.show('settings-camera'),'View, field of view, motion and filter');
+        add('GRAPHICS',()=>this.show('settings-graphics'),'Visual quality and rider detail');
+        add('TIME & WEATHER',()=>this.show('settings-time'),'Day, sunset, night, sunrise or snow');
+        add('AUDIO',()=>this.show('settings-audio'),'Game sound');
+        add('ACCESSIBILITY & TOUCH',()=>this.show('settings-touch'),'Touch controls, size, opacity and reset');
         if(this.owner())add('OWNER / ALPHA TEST CREDIT',()=>this.show('test-credit'),'Local testing only; separate from earned Credit.');
-
+        break;
+      case 'settings-riding':
+        title='RIDING & CONTROLS';subtitle='SETTINGS / INPUT & FEEL';
+        add('USE HELD ITEM',()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / on foot');
+        add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
+        add("CONTROLS "+(this.profile.settings.controlStyle==='pro'?'PRO / ADVANCED':'ARCADE'),()=>{this.profile.settings.controlStyle=this.profile.settings.controlStyle==='pro'?'arcade':'pro';this.changed();this.render();});
+        add('CONTROLS PRESET '+presetName(this.profile.settings.stance).toUpperCase(),()=>{this.profile.settings.stance=this.profile.settings.stance==='regular'?'goofy':'regular';this.changed();this.render();});
+        add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
+        break;
+      case 'settings-graphics':
+        title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';
         add('CHARACTER QUALITY '+this.profile.settings.characterQuality.toUpperCase(),()=>{
           const levels=['auto','low','medium','high'] as const;this.profile.settings.characterQuality=levels[(levels.indexOf(this.profile.settings.characterQuality)+1)%4];this.changed();this.render();
         },'Auto follows the graphics preset. Override to prioritize your rider.');
+        add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},'Visual detail, resolution and shadows; riding stays identical.');
+        break;
+      case 'settings-time':
+        title='TIME & WEATHER';subtitle='SETTINGS / SKY & CONDITIONS';
         add('TIME OF DAY '+this.profile.settings.daylight.toUpperCase(),()=>{
           const phases=['day','sunset','night','sunrise','snow'] as const;this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%5];this.changed();this.render();
         },'Day, golden hours, Night, or visual Snow. Riding surfaces and physics stay unchanged.');
+        break;
+      case 'settings-camera':
+        title='CAMERA';subtitle='SETTINGS / YOUR VIEW';
         // Camera settings take effect at once, in the Sesh too, and are saved straight away.
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
@@ -408,35 +410,17 @@ export class GameMenu {
         add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
         add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
         if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');
-        add('TOUCH CONTROLS '+this.profile.settings.touchControls.toUpperCase(),()=>camera(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),'Phones and tablets only. Auto shows them when no controller is in use.');
-        add('TOUCH CONTROL SIZE '+this.profile.settings.touchSize+'%',()=>camera(c=>{c.touchSize=c.touchSize>=130?80:c.touchSize+10;}),'80% to 130%. Layout only: stick response and gestures are unchanged.');
-        add('TOUCH CONTROL OPACITY '+this.profile.settings.touchOpacity+'%',()=>camera(c=>{c.touchOpacity=c.touchOpacity>=85?20:Math.min(85,c.touchOpacity+15);}),'20% to 85%. Appearance only; hit areas stay the same.');
-        add('RESET TOUCH LAYOUT',()=>camera(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;}),'Auto, 100% size, 50% opacity.');
-        add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
-        add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
-        add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{
-          const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();
-        },'Visual detail, resolution and shadows; riding stays identical.');
-        add(
-          "CONTROLS " +
-            (this.profile.settings.controlStyle === "pro"
-              ? "PRO / ADVANCED"
-              : "ARCADE"),
-          () => {
-            this.profile.settings.controlStyle =
-              this.profile.settings.controlStyle === "pro" ? "arcade" : "pro";
-            this.changed();
-            this.show("settings");
-          },
-        );
-        add("CONTROLS PRESET " + presetName(this.profile.settings.stance).toUpperCase(), () => {
-          this.profile.settings.stance =
-            this.profile.settings.stance === "regular" ? "goofy" : "regular";
-          this.changed();
-          this.render();
-        });
-        title = "SETTINGS";
-        subtitle = "KEEP THE SESH FEELING RIGHT";
+        break;
+      case 'settings-touch':
+        title='ACCESSIBILITY & TOUCH';subtitle='SETTINGS / ON-SCREEN CONTROLS';
+        const touch=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
+        add('TOUCH CONTROLS '+this.profile.settings.touchControls.toUpperCase(),()=>touch(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),'Phones and tablets only. Auto shows them when no controller is in use.');
+        add('TOUCH CONTROL SIZE '+this.profile.settings.touchSize+'%',()=>touch(c=>{c.touchSize=c.touchSize>=130?80:c.touchSize+10;}),'80% to 130%. Layout only: stick response and gestures are unchanged.');
+        add('TOUCH CONTROL OPACITY '+this.profile.settings.touchOpacity+'%',()=>touch(c=>{c.touchOpacity=c.touchOpacity>=85?20:Math.min(85,c.touchOpacity+15);}),'20% to 85%. Appearance only; hit areas stay the same.');
+        add('RESET TOUCH LAYOUT',()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;}),'Auto, 100% size, 50% opacity.');
+        break;
+      case 'settings-audio':
+        title='AUDIO';subtitle='SETTINGS / SOUND';
         add("SOUND " + (this.profile.settings.sound ? "ON" : "OFF"), () => {
           this.profile.settings.sound = !this.profile.settings.sound;
           this.changed();
@@ -444,7 +428,7 @@ export class GameMenu {
         });
         break;
     }
-    if(this.seshOpen && ["rider","scooter","settings","rides","brand","brand-items","longboard"].includes(this.screen))add("APPLY / SAVE CHANGES",()=>this.applySesh(),this.dirty()?"Unsaved choices. Appearance refreshes when safely grounded.":"Nothing to apply yet.");
+    if(this.seshOpen && (["rider","scooter","settings","rides","brand","brand-items","longboard"].includes(this.screen)||this.screen.startsWith('settings-')))add("APPLY / SAVE CHANGES",()=>this.applySesh(),this.dirty()?"Unsaved choices. Appearance refreshes when safely grounded.":"Nothing to apply yet.");
     if (this.screen !== "home"&&this.screen!=="leave-sesh")
       add(
         !this.seshOpen && this.screen === "rider"
@@ -572,6 +556,7 @@ export class GameMenu {
     if(this.buying)return;
     if(this.seshOpen&&["rides","rider","settings","maps","shops","online"].includes(this.screen)){if(this.dirty()){this.leaveReturn=this.screen;this.show('leave-sesh');return;}this.closeSesh();return;}
     if(this.screen==='leave-sesh'){this.show(this.leaveReturn);return;}
+    if(this.screen.startsWith('settings-')||this.screen==='test-controller'){this.show('settings');return;}
     if(this.seshOpen&&this.screen==="travel"){this.show("maps");return;}
     if(this.shopOpen&&this.screen===this.shopRoot){this.closeShop();return;}
     if(this.shopOpen&&(this.screen==="longboard"||this.screen==="shop")){if(this.screen==="shop")this.closeShop();else this.show("shop");return;}
@@ -645,7 +630,7 @@ export class GameMenu {
     this.previewCamera.position.set(this.focus.x+this.pan.x+Math.sin(this.orbit)*distance,this.focus.y+this.pan.y+distance*.22,this.focus.z+this.pan.z+Math.cos(this.orbit)*distance);
     this.previewCamera.lookAt(center);this.previewCamera.updateProjectionMatrix();
     if(compact){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
-    if(!["maps","shops","play","online","settings","guide","tricks","leave-sesh"].includes(this.screen))renderer.render(this.previewScene,this.previewCamera);
+    if(!["maps","shops","play","online","settings","guide","tricks","leave-sesh"].includes(this.screen)&&!this.screen.startsWith('settings-'))renderer.render(this.previewScene,this.previewCamera);
     if(compact){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
   }
 }

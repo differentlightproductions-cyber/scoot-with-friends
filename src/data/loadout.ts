@@ -102,7 +102,9 @@ export function loadProfile(): LocalProfile {
     if(Number.isFinite(saved.settings?.touchOpacity))profile.settings.touchOpacity=Math.min(85,Math.max(20,Math.round(saved.settings.touchOpacity)));
     if(Number.isFinite(saved.settings?.filterStrength))profile.settings.filterStrength=Math.min(100,Math.max(0,Math.round(saved.settings.filterStrength)));
     const rider = RIDERS.find((r) => r.id === saved.riderId);
-    for(const r of RIDERS){const entry=saved.riderOutfits?.[r.id];if(entry&&OUTFIT_SLOTS.every(s=>CLOTHING.some(c=>c.id===entry[s]&&c.category===s)))profile.riderOutfits[r.id]={...entry};}
+    // Retain the inactive characters' saved outfits while Christian is the only
+    // selectable rider. Switching models must not erase a player's old gear choices.
+    for(const id of ['rider-01','rider-02','rider-03']){const entry=saved.riderOutfits?.[id];if(entry&&OUTFIT_SLOTS.every(s=>CLOTHING.some(c=>c.id===entry[s]&&c.category===s)))profile.riderOutfits[id]={...entry};}
     if (rider) {
       profile.riderId = rider.id;
       profile.outfitId = rider.outfitId;

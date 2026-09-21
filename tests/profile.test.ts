@@ -2,15 +2,25 @@ import { ridingButtons } from '../src/input/riding.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadProfile, saveProfile, PROFILE_KEY } from '../src/data/loadout';
+import { RIDERS } from '../src/data/riders';
 test('versioned profile migrates old saves and preserves authored gear/settings',()=>{
  const store=new Map<string,string>();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
  store.set(PROFILE_KEY,JSON.stringify({version:1,riderId:'rider-02',settings:{stance:'goofy',controlStyle:'arcade',sound:false}}));
- const p=loadProfile();assert.equal(p.version,3);assert.equal(p.riderId,'rider-02');assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
+ const p=loadProfile();assert.equal(p.version,3);assert.equal(p.riderId,'rider-01');assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
  assert.equal(p.bodyBuild,'regular');
  p.bodyBuild='chunky';p.outfit.head='head-vented-forest';p.outfit.top='top-hoodie-red';p.settings.daylight='night';
  assert.equal(saveProfile(p),true);assert.deepEqual(loadProfile(),p);
  const bad={...p,outfit:{...p.outfit,head:'../../secret'}};store.set(PROFILE_KEY,JSON.stringify(bad));assert.equal(loadProfile().outfit.head,'head-helmet-red');
+});
+test('Christian is the only selectable rider while inactive outfits and scooter parts survive migration',()=>{
+ const store=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
+ const original=loadProfile();original.riderId='rider-03';original.riderOutfits['rider-03']={...original.outfit};original.settings.daylight='snow';
+ store.set(PROFILE_KEY,JSON.stringify(original));
+ const migrated=loadProfile();assert.deepEqual(RIDERS.map(r=>r.name),['Christian']);assert.equal(migrated.riderId,'rider-01');
+ assert.deepEqual(migrated.riderOutfits['rider-03'],original.outfit);assert.deepEqual(migrated.scooter,original.scooter);assert.equal(migrated.settings.daylight,'snow');
+ assert.equal(saveProfile(migrated),true);assert.deepEqual(loadProfile().riderOutfits,migrated.riderOutfits);
 });
 test('controls version 2: Normal is the default and old presets keep their physical buttons once',()=>{
  const store=new Map<string,string>();
@@ -28,3 +38,4 @@ test('controls version 2: Normal is the default and old presets keep their physi
   saveProfile(p);assert.equal(loadProfile().settings.stance,next,'migration runs once');
  }
 });
+

@@ -67,3 +67,17 @@
 - Replacement human figure export passes all52 bind matrices; rest pose recovered with Skeleton.pose. Runtime skin validation:23,019 of23,188 vertices have hips as primary influence; moving limbs creates spikes while body stays T-posed. Source preserved artifacts/christian/replacement-source.glb; adapter remains unwired. No character asset served.
 - Visual advisor report artifacts/ramp-import/VISUAL-REVIEW.md identifies pale linear shader color, removed material maps, curled source silhouettes and exposed substrate. HD texture/mesh repair NOT completed.
 - Small box corrected to x=-4..0.61, matching hub outer wall; terrain/module width follows, hub center remains0.3. Six-instance browser surface checks pass (small max0.027m), screenshot reviewed; unit suite, TypeScript and production builds pass. Budget latest75%, ceiling76%. Sites publication pending; GitHub not authorized.
+
+- Version26 requested for commit5f441ae72c8e139918d13ed761af5ee670a366d3, deployment appgdep_6ab1b52dc3dc8191acf93c4a7937628f. Windows root ZIP refreshed; previous retained as pre-hub-alignment-20260921.zip. GitHub untouched. Source visual advisor findings also saved at VISUAL-REVIEW.md. Reported usage75%,4 points since71 baseline, maximum76%.
+
+- Version26 successfully published: https://scoot-with-friends.nicsoundcloud22.chatgpt.site, deployment appgdep_6ab1b52dc3dc8191acf93c4a7937628f. Small-box alignment only; character and HD material repairs remain disabled/pending.
+
+## Connected park / Christian / settings pass
+Owner authorizes15 percentagepoints, baseline76%, hardceiling91%. Preserve testedversion26 until replacementpasses. Parallelownership: humanoid_repair Blenderasset; settings_pause UI; ramp_visual_advisor rampgeometry/materials; root rig/runtime/integration. Scope: connectedspine-hub, amberwood, Christianonly withfixedskinweights, categorizedsettings, frozen/translucentpause, cleartime/weathercontrols. NoGitHubpush.
+
+## Stage2 quarter physics addendum
+Read attachment38c2d0fc. LatestownerrequiresLOCALONLY: noSite/GitHub/releasepublication. Continueparallelart/UI/character; deliverbuiltlocaltestcopy. At77%newstagebaseline, target83-85%, softstop85%, hardstop87% (conservativecombinedaccountusageincludingparallelwork; stricterthanprior91). Reproducecurrentquarterfailuresbeforetuning; noinputrewrite, noadvancedFlairtuning, noengineglobalclamps. Currentliveversion26 remainsunchanged.
+
+- LatestownerexplicitlyreauthorizesLIVEWEBSITEupdates, overridingStage2local-onlypublicationrestriction. PublishtestedbuildtoexistingSiteandrefreshlocalcopy. GitHubremainsnotauthorized. Combinedusageceiling87%unchanged.
+
+- Current pass: source Tripo meshes retained; amber grading restores source material maps. Small box/hub/spine share x=.61. Added six full quarter safety-fence envelopes. Christian imported with repaired bind/weights and anatomical driver mapping; sole rider selection, signature outfit, legacy inventory preserved. Six settings categories with Time & Weather, transparent paused game backdrop; freeze test passes. Eleven simulated character pose checks, full unit suite, TypeScript and production builds pass. Stage2 physics: 22 existing-behavior results pass, no physics source change. Final spine boundary clamp and rider-fence crossing checks pending before release. Current usage83%, soft85/hard87; no GitHub push.

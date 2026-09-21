@@ -38,7 +38,7 @@ import { WarehouseBuilder } from './editor/warehouse';
 import { Daylight } from './park/daylight';
 import { Weather } from './park/weather';
 import { ACTIVE_MAP } from './park/park';
-import {loadHuman} from './scooter/human';
+import {loadImportedHuman} from './scooter/imported-human';
 import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
 import { MusicPlayer } from './ui/music-player';
@@ -46,7 +46,7 @@ async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
-  await loadHuman(profile.riderId);
+  await loadImportedHuman();
   const events = new Events(),
     hud = new HUD(events),
     input = new Input(),
@@ -462,6 +462,8 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
+    const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen);
+    if (!worldFrozen) {
     if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
       // and not while the current one sits in a rack.
@@ -475,12 +477,15 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    }
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
     // (and releases everything) while they own input, except in the controller test view.
     touchPad.suspended=(overlayOpen||musicPlayer.open||!social.wheel.hidden||!social.chat.hidden)&&!touchPad.preview;
-    if(overlayOpen){renderer.setClearColor(0xc5cbc1);renderer.clear();}else if (hud.started){network.render(camera.camera,dt);camcorder.render(renderer,scene, camera.camera);}
-    if(!hud.started||menu.shopOpen||menu.seshOpen)menu.preview(renderer);
+    // Keep the last world pose/camera underneath translucent pause menus. Rendering
+    // that unchanged scene also survives resize/context compositing without a screenshot.
+    if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
+    else {renderer.setClearColor(0xc5cbc1);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);

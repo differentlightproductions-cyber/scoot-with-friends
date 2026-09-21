@@ -68,7 +68,7 @@ export const modules: RampModule[] = [
   },
   {
     id: "spine",
-    x0: 1,
+    x0: 0.61,
     x1: 8,
     z0: -2.625,
     z1: 3.625,
@@ -440,6 +440,23 @@ export function buildOutdoor(park: Park) {
       box(m.x1, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
       for (const h of [0.45, 1.1])
         box((m.x0 + m.x1) / 2, m.h + h, back, m.x1 - m.x0, 0.11, 0.12, 0xae8754, true);
+      // The imported Tripo fence also returns along both deck sides. Thin full
+      // fence-envelope colliders prevent the rider/scooter slipping between
+      // decorative bars while following the visible back and side rails.
+      park.world.createCollider(
+        RAPIER.ColliderDesc.cuboid((m.x1 - m.x0) / 2, .65, .075)
+          .setTranslation((m.x0 + m.x1) / 2, m.h + .65, back)
+          .setFriction(.8)
+          .setCollisionGroups(GROUPS.surface),
+      );
+      const sideMidZ = (back + lip) / 2;
+      for (const x of [m.x0, m.x1])
+        park.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(.075, .65, m.deck / 2)
+            .setTranslation(x, m.h + .65, sideMidZ)
+            .setFriction(.8)
+            .setCollisionGroups(GROUPS.surface),
+        );
       quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !guardStart.has(child)));
     }
   }
@@ -710,14 +727,26 @@ export function buildOutdoor(park: Park) {
     scene.add(model);
     hubFallback.forEach((object) => { object.visible = false; });
   });
-  new GLTFLoader().load("/models/park/spine.glb?v=1", ({ scene: model }) => {
+  new GLTFLoader().load("/models/park/spine.glb?v=7", ({ scene: model }) => {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed spine")) { disposeModel(model); return; }
     model.name = "Detailed spine";
-    model.position.set(4.5, 0, 0.5);
+    // Meet the hub's right wall at x=.61 while retaining the authored far edge
+    // at x=8. The module above uses the same bounds for terrain and collision.
+    model.scale.x = 1;
+    model.position.set((0.61 + 8) / 2, 0, 0.5);
     model.traverse((object) => {
       if (!(object instanceof THREE.Mesh)) return;
       object.castShadow = object.receiveShadow = true;
+      if (object.name.startsWith("Spine entry plate")) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          if (material instanceof THREE.MeshStandardMaterial) {
+            material.color.setHex(0x606b6b);
+            material.metalness = .72;
+            material.roughness = .46;
+          }
+        }
+      }
     });
     applyCleanRampFinish(model);
     scene.add(model);
