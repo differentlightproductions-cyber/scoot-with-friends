@@ -23,9 +23,9 @@ function walk(dir) {
     if (entry.isDirectory()) walk(p);
     else {
       const relative = path.relative(client, p).replaceAll("\\", "/");
-      // Music remains in dist/client for local and Windows builds. The hosted
-      // Sites source builds serve them directly as static assets.
-      if (relative.startsWith("music/tracks/")) continue;
+      // Large media stays in dist/client for local/Windows play and the Sites
+      // static asset service; do not also embed it in the API Worker.
+      if (relative.startsWith("music/tracks/") || relative.startsWith("models/park/")) continue;
       assets["/" + relative] = {
         type: types[path.extname(p)] || "application/octet-stream",
         body: gzipSync(fs.readFileSync(p),{level:9}).toString("base64"),

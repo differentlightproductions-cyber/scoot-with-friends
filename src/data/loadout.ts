@@ -29,7 +29,7 @@ export interface LocalProfile {
     /** The controls preset: "regular" is shown as Normal. See input/riding.ts. */
     stance: "regular" | "goofy";
     controlsVersion: number;
-    daylight: 'day'|'sunset'|'night'|'sunrise';
+    daylight: 'day'|'sunset'|'night'|'sunrise'|'snow';
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     characterQuality:'auto'|'low'|'medium'|'high';
@@ -90,7 +90,7 @@ export function loadProfile(): LocalProfile {
     profile.pockets=validPockets(saved.pockets);
     if(BODY_BUILDS.includes(saved.bodyBuild))profile.bodyBuild=saved.bodyBuild;
     for(const slot of OUTFIT_SLOTS)if(CLOTHING.some(p=>p.category===slot&&p.id===saved.outfit?.[slot]))profile.outfit[slot]=saved.outfit[slot];
-    if(['day','sunset','night','sunrise'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
+    if(['day','sunset','night','sunrise','snow'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['auto','low','medium','high'].includes(saved.settings?.characterQuality))profile.settings.characterQuality=saved.settings.characterQuality;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;

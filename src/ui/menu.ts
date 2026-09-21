@@ -399,8 +399,8 @@ export class GameMenu {
           const levels=['auto','low','medium','high'] as const;this.profile.settings.characterQuality=levels[(levels.indexOf(this.profile.settings.characterQuality)+1)%4];this.changed();this.render();
         },'Auto follows the graphics preset. Override to prioritize your rider.');
         add('TIME OF DAY '+this.profile.settings.daylight.toUpperCase(),()=>{
-          const phases=['day','sunset','night','sunrise'] as const;this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%4];this.changed();this.render();
-        });
+          const phases=['day','sunset','night','sunrise','snow'] as const;this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%5];this.changed();this.render();
+        },'Day, golden hours, Night, or visual Snow. Riding surfaces and physics stay unchanged.');
         // Camera settings take effect at once, in the Sesh too, and are saved straight away.
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');

@@ -36,6 +36,7 @@ import { VisualFidelity } from './render/fidelity';
 import { WorldInteractions } from './park/interactions';
 import { WarehouseBuilder } from './editor/warehouse';
 import { Daylight } from './park/daylight';
+import { Weather } from './park/weather';
 import { ACTIVE_MAP } from './park/park';
 import {loadHuman} from './scooter/human';
 import {MobileGate} from './ui/mobile';
@@ -53,6 +54,7 @@ async function boot() {
   await loadingStage("Preparing the park",40);
   await RAPIER.init();
   const scene = new THREE.Scene();
+  scene.userData.parkGeneration=0;
   const waterEffects = new WaterEffects(scene);
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -75,10 +77,11 @@ async function boot() {
   let park = new Park(scene, world),
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
+  rider.root.userData.weatherDynamic=true;
   const economy=new CreditEconomy();economy.onChange=()=>{profile.wallet=loadProfile().wallet;};window.addEventListener("storage",()=>{profile.wallet=loadProfile().wallet;});events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
-  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park);
+  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park), weather = new Weather(scene);
   const interact = () => { const f=emptyInput();f.pressed.brakeBars=true;interactions.update(sim,f,0); };
   social.onInteract=interact;social.onScooter=interact;social.onMusic=()=>musicPlayer.show();
   social.onItems=()=>interactions.openItems(sim);interactions.openOptions=(title,options)=>social.openOptions(title,options);
@@ -298,6 +301,7 @@ async function boot() {
       sim.score.dispose();
       sim.contactEvents.free();
       world.free();
+      scene.userData.parkGeneration++;
       const geometries = new Set<THREE.BufferGeometry>(),
         materials = new Set<THREE.Material>();
       scene.remove(editor.helper, editor.highlight);
@@ -316,6 +320,7 @@ async function boot() {
         (m as THREE.MeshBasicMaterial).map?.dispose();
         m.dispose();
       });
+      weather.dispose();
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -324,7 +329,8 @@ async function boot() {
       park = new Park(scene, world);
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);
+      rider.root.userData.weatherDynamic=true;
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);weather=new Weather(scene);
       interactions.openOptions=(title,options)=>social.openOptions(title,options);
     }
     sim.reset(0, true);
@@ -460,7 +466,8 @@ async function boot() {
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
       // and not while the current one sits in a rack.
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
-    daylight.update(dt,profile.settings.daylight,sim.position);
+    daylight.update(dt,profile.settings.daylight==='snow'?'day':profile.settings.daylight,sim.position);
+    weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
@@ -597,7 +604,7 @@ async function boot() {
       },
       camera, camcorder, touchPad,
       social,
-      get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},
+      get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
       music, musicPlayer,
       renderer,
       fidelity,

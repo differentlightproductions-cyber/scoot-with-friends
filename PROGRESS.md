@@ -34,3 +34,19 @@
 - Usage latest 53% against 42% baseline and 57% ceiling. No GitHub push.
 
 - Both fitted original Tripo quarters are opt-in only via ?map=outdoor&tripoQuarter=1. Default visuals preserved. Final fit/overlap/rail-height visual review remains before enabling by default; original vertices and UVs retained. Fit report and Blender script/source are in artifacts/ramp-import. Updated client/server build and Windows package pass.
+- Version23 deployed successfully: appgdep_6ab1948cb0f881918d6adf33b4bfcb62, commit69f36666c7b295ff8739efec117d788fe83cf231. Live URL unchanged. Windows root copy refreshed, previous preserved. Reported usage54% (12 points above42 baseline, below15-point cap). Both quarters remain opt-in pending visual approval. GitHub untouched.
+
+## Ramp replacement repair
+- New user limit: remaining3 percentagepoints. Verified start55%; hardceiling58%, preserve release before ceiling.
+- Priority: remove old visible terrain in replaced footprints, correct facing, inspect small-box source, test and publish. Day/night and accumulating reflective snow requested but not yet implemented; don't claim them complete.
+
+- Owner added10 further percentagepoints: task ceiling now68% from55 baseline. Use margin for packaging/publication. Blender inspection must reject overlap, backwards-facing profiles, holes/missingwood, and material artifacts before normalrelease.
+
+## September 21 fitted ramp release (supersedes opt-in status)
+- Original Tripo quarter, small box, large box and hub sources retained untouched in Downloads. Blender derivatives preserve source textures/UVs; profiles fit existing colliders. Both wooden quarters enabled by default; old riding skins hidden only after successful model loads. Correct opposing orientations. Small box remains middle, large left, spine right; hub beside small box.
+- Browser derivatives: quarter 101,988 triangles; small 116,012; large 116,790; hub 117,186. Large-source decimation occurs before deformation to preserve its roof. Source-detail limits remain: stretched source texture on the elongated large landing is not newly authored high-resolution artwork.
+- Day/Sunset/Night/Sunrise/Snow available through Settings > Time of Day. Snow accumulates visually with flakes and surface glints. Existing riding physics unchanged.
+- Validation: full unit/service suite, TypeScript, client/server builds pass. Physics acceptance 53/53. Five fitted instances pass sampled vertical surface checks, max discrepancy 0.086m; visual review found and repaired the open quarter-side appearance. Desktop Chrome software rendering only; physical mobile/controller tests unverified.
+- Original prior Windows release preserved; refreshed player ZIP and existing Sites publication follow. No GitHub push authorized or performed. Current rounded usage65%, task ceiling68%; reserve remaining margin for delivery.
+- Owner follow-up: removed both temporary quarter access stairsets and handrails, including stair terrain support. Former stair samples now return ground height zero. Other park stairs are preserved.
+- Final quarter-edge repair: mask includes the 0.125m terrain interpolation fringe; flat apron strips replace that visual sliver. Screenshot verified no remaining gray slope at the quarter side. Usage66% before publication, below68% ceiling.

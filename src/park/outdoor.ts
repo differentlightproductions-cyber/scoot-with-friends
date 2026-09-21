@@ -254,44 +254,11 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
   }
   return null;
 }
-// Quarter-pipe side access. The on-foot walker is pinned to the terrain height
-// and only mantles onto terrain, so a flight built purely from solid boxes can
-// never be climbed. The stairs are therefore part of the terrain as a steady
-// ramp beneath the stepped visuals, which keeps the climb reliable and the
-// collision in agreement with what the player sees.
-export const STAIR_WIDTH = 0.85,
-  STAIR_STEPS = 18,
-  STAIR_RUN = 0.42,
-  STAIR_LANDING = 0.6;
-/**
- * One plain stairset per quarter at the +x end of its deck: it steps straight
- * down away from the deck, beside the platform's back edge, so the walker climbs
- * onto the deck and riders carving along the transition never meet it. From the
- * flat that is the left of the quarter that leads into the big box and the right
- * of the one by the parking lot.
- */
-export function quarterStair(m: RampModule) {
-  const back = m.reverse ? m.z0 : m.z1,
-    toward = m.reverse ? 1 : -1;
-  return { top: m.x1, z: back + toward * STAIR_WIDTH, back, toward, span: STAIR_STEPS * STAIR_RUN };
-}
-export function stairHeight(x: number, z: number) {
-  let height = 0;
-  for (const m of modules) {
-    if (m.kind !== "quarter") continue;
-    const st = quarterStair(m);
-    if (Math.abs(z - st.z) > STAIR_WIDTH) continue;
-    const d = x - st.top;
-    if (d < 0 || d > STAIR_LANDING + st.span) continue;
-    height = Math.max(height, d <= STAIR_LANDING ? m.h : m.h * (1 - (d - STAIR_LANDING) / st.span));
-  }
-  return height;
-}
 export function outdoorHeight(x: number, z: number) {
   let height = extensionHeight(x, z);
   for (const m of modules)
     if (x >= m.x0 && x <= m.x1) height = Math.max(height, profile(m, z));
-  return Math.max(height, stairHeight(x, z));
+  return height;
 }
 /**
  * The small box hub ledge: the slab centre line (three straight pieces), the
@@ -378,6 +345,7 @@ export function buildOutdoor(park: Park) {
           roughness: 0.85,
         }),
       );
+      mesh.name = `${m.id} structural side`;
       mesh.castShadow = true;
       scene.add(mesh);
     }
@@ -408,7 +376,7 @@ export function buildOutdoor(park: Park) {
       0.3,
       0x606b6b,
     );
-    if (m.kind === "quarter")
+    if (m.kind === "quarter" || m.id === "small-box" || m.id === "large-transfer")
       quarterFallbacks.set(m.id, scene.children.filter((child) => !visualStart.has(child)));
     if (m.kind === "spine")
       rampLips(m).forEach((lip, i) =>
@@ -422,6 +390,7 @@ export function buildOutdoor(park: Park) {
         ),
       );
     if (m.kind === "box") {
+      const boxVisualStart = new Set(scene.children);
       const lip = rampLips(m)[0];
       box(
         (m.x0 + m.x1) / 2,
@@ -445,6 +414,8 @@ export function buildOutdoor(park: Park) {
         true,
         new THREE.Vector3(0, 0, -1),
       );
+      if (m.id === "small-box" || m.id === "large-transfer")
+        quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !boxVisualStart.has(child)));
     }
     if (m.kind === "quarter") {
       const lip = rampLips(m)[0];
@@ -459,32 +430,6 @@ export function buildOutdoor(park: Park) {
       );
       quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !copingStart.has(child)));
       const back = m.reverse ? m.z0 : m.z1;
-      // Stairs off the end of the deck (see quarterStair). Treads are visual
-      // only: stairHeight() supplies the walkable surface.
-      const st = quarterStair(m),
-        run = STAIR_RUN,
-        at = (d: number) => st.top + d;
-      box(at(STAIR_LANDING / 2), m.h / 2 - 0.05, st.z, STAIR_LANDING, m.h - 0.1, 1.6, 0x8d6c46, false);
-      box(at(STAIR_LANDING / 2), m.h - 0.05, st.z, STAIR_LANDING, 0.1, 1.7, 0xb08a5f, false);
-      for (let i = 0; i < STAIR_STEPS; i++) {
-        const d = STAIR_LANDING + (i + 0.5) * run,
-          y = m.h * (1 - (i + 1) / STAIR_STEPS);
-        box(at(d), y + 0.03, st.z, run + 0.04, 0.09, 1.7, 0xb08a5f, false);
-        box(at(d), y / 2, st.z, run, Math.max(0.02, y), 1.6, 0x8d6c46, false);
-      }
-      // Handrails on both sides: posts every few steps with short stepped rails.
-      const posts: [number, number][] = [[STAIR_LANDING, m.h]];
-      for (let i = 4; i <= STAIR_STEPS; i += 4) posts.push([STAIR_LANDING + i * run, m.h * (1 - i / STAIR_STEPS)]);
-      for (const side of [-1, 1]) {
-        const railZ = st.z + side * (STAIR_WIDTH - 0.06);
-        posts.forEach(([d, y], k) => {
-          box(at(d), y + 0.55, railZ, 0.12, 1.1, 0.12, 0x9f764c, true);
-          if (k > 0) {
-            const [d0, y0] = posts[k - 1];
-            box(at((d + d0) / 2), (y + y0) / 2 + 1.05, railZ, Math.abs(d - d0), 0.1, 0.1, 0xae8754, false);
-          }
-        });
-      }
       // Back guardrail spans the whole deck; nothing arrives from behind now.
       const guardStart = new Set(scene.children);
       for (let x = m.x0; x <= m.x1 + 0.01; x += 2.6)
@@ -501,6 +446,7 @@ export function buildOutdoor(park: Park) {
   // and bent 48 degrees over the lip - a kink no grind can follow, so every
   // grind dropped off there. Three long straight pieces read as one built ledge,
   // and their edges join end to end so a grind carries along the whole run.
+  const hubVisualStart = new Set(scene.children);
   {
     const box3 = modules.find((m) => m.id === "small-box")!;
     const { line, width, thick } = smallBoxLedge(),
@@ -591,6 +537,7 @@ export function buildOutdoor(park: Park) {
           new THREE.Vector3(-side, 0, 0),
         );
   }
+  const hubFallback = scene.children.filter((child) => !hubVisualStart.has(child));
   park.rail(
     "Wood park flat rail",
     new THREE.Vector3(15, 0.62, -3),
@@ -611,20 +558,139 @@ export function buildOutdoor(park: Park) {
   for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
   // Detailed Tripo-authored visual skin. Analytic terrain and coping remain the
   // sole physics authority; procedural sides stay visible until loading succeeds.
-  if (new URLSearchParams(location.search).get("tripoQuarter") === "1")
-    new GLTFLoader().load("/models/park/wooden-quarter.glb", ({ scene: source }) => {
+  const parkGeneration = scene.userData.parkGeneration;
+  const stale = () => scene.userData.parkGeneration !== parkGeneration;
+  const disposeModel = (root: THREE.Object3D) => root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    object.geometry.dispose();
+    for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
+  });
+  if (new URLSearchParams(location.search).get("tripoQuarter") !== "0")
+    new GLTFLoader().load("/models/park/wooden-quarter.glb?v=4", ({ scene: source }) => {
+    if (stale()) { disposeModel(source); return; }
     for (const m of modules.filter((module) => module.kind === "quarter")) {
+      const name = `Detailed ${m.id}`;
+      if (scene.getObjectByName(name)) continue;
       const model = source.clone(true);
       model.position.set(0, 0, (m.z0 + m.z1) / 2);
-      model.rotation.y = m.reverse ? Math.PI : 0;
-      model.name = `Detailed ${m.id}`;
+      // Blender's glTF export changes the fitted Z-forward sign.
+      model.rotation.y = m.reverse ? 0 : Math.PI;
+      model.name = name;
       model.traverse((object) => {
         if (!(object instanceof THREE.Mesh)) return;
         object.castShadow = true;
         object.receiveShadow = true;
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          const textured = material as THREE.MeshStandardMaterial;
+          if (textured.map) textured.map.anisotropy = 8;
+          if (object.name.startsWith("Quarter_side_cap")) {
+            textured.color.setHex(0x765838);
+            textured.depthTest = true;
+          }
+          textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
+          textured.metalness = Math.min(0.05, textured.metalness ?? 0);
+          if (textured.normalScale) textured.normalScale.set(Math.sign(textured.normalScale.x) * 0.4, Math.sign(textured.normalScale.y) * 0.4);
+        }
       });
       scene.add(model);
       quarterFallbacks.get(m.id)?.forEach((object) => { object.visible = false; });
+      // The authored skin is open below its riding sheet. Close that silhouette
+      // just outside the imported trim, from the ground to the full profile.
+      for (const x of [m.x0 - 0.04, m.x1 + 0.04]) {
+        const vertices: number[] = [], indices: number[] = [];
+        for (let i = 0; i <= 72; i++) {
+          const z = m.z0 + ((m.z1 - m.z0) * i) / 72;
+          vertices.push(x, 0.006, z, x, profile(m, z), z);
+          if (i < 72) {
+            const a = i * 2;
+            indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+          }
+        }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+        const side = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+          color: 0x4f3420, roughness: 0.92, side: THREE.DoubleSide,
+        }));
+        side.name = `${m.id} detailed side closure`;
+        side.castShadow = side.receiveShadow = true;
+        scene.add(side);
+      }
     }
+    // The 12.5 cm terrain grid otherwise interpolates a tall wedge from each
+    // quarter edge to the first flat sample outside it. Cover that masked cell
+    // with the flat apron the height function specifies beyond x=+/-13.
+    if (!scene.getObjectByName("Quarter flat side aprons")) {
+      const aprons = new THREE.Group();
+      aprons.name = "Quarter flat side aprons";
+      for (const x of [-13.075, 13.075]) for (const z of [-26, 26]) {
+        const apron = new THREE.Mesh(
+          new THREE.BoxGeometry(0.15, 0.012, 8.02),
+          new THREE.MeshStandardMaterial({ color: 0xb7bab4, roughness: 0.91 }),
+        );
+        apron.position.set(x, 0.002, z);
+        apron.receiveShadow = true;
+        aprons.add(apron);
+      }
+      scene.add(aprons);
+    }
+    park.showDetailedQuarters();
     });
+  new GLTFLoader().load("/models/park/small-box.glb?v=4", ({ scene: model }) => {
+    if (stale()) { disposeModel(model); return; }
+    if (scene.getObjectByName("Detailed small-box")) { disposeModel(model); return; }
+    model.name = "Detailed small-box";
+    model.position.set(-1.5, 0, -1);
+    model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.castShadow = object.receiveShadow = true;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        const textured = material as THREE.MeshStandardMaterial;
+        if (textured.map) textured.map.anisotropy = 8;
+        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
+        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
+      }
+    });
+    scene.add(model);
+    quarterFallbacks.get("small-box")?.forEach((object) => { object.visible = false; });
+    park.showDetailedSmallBox();
+  });
+  new GLTFLoader().load("/models/park/large-box.glb?v=4", ({ scene: model }) => {
+    if (stale()) { disposeModel(model); return; }
+    if (scene.getObjectByName("Detailed large-box")) { disposeModel(model); return; }
+    model.name = "Detailed large-box";
+    model.position.set(-10, 0, -0.5);
+    model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.castShadow = object.receiveShadow = true;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        const textured = material as THREE.MeshStandardMaterial;
+        if (textured.map) textured.map.anisotropy = 8;
+        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
+        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
+      }
+    });
+    scene.add(model);
+    quarterFallbacks.get("large-transfer")?.forEach((object) => { object.visible = false; });
+    park.showDetailedLargeBox();
+  });
+  new GLTFLoader().load("/models/park/wood-hub.glb?v=4", ({ scene: model }) => {
+    if (stale()) { disposeModel(model); return; }
+    if (scene.getObjectByName("Detailed wood-hub")) { disposeModel(model); return; }
+    model.name = "Detailed wood-hub";
+    model.position.set(0.3, 0, -0.15);
+    model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.castShadow = object.receiveShadow = true;
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+        const textured = material as THREE.MeshStandardMaterial;
+        if (textured.map) textured.map.anisotropy = 8;
+        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
+        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
+      }
+    });
+    scene.add(model);
+    hubFallback.forEach((object) => { object.visible = false; });
+  });
 }
