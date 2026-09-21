@@ -88,7 +88,15 @@ export class ScooterAssembly {
    const socket=new THREE.Object3D();socket.position.set(s*(bw-.05),1.01,-.04);socket.userData.gripRadius=r;this.barPivot.add(socket);this.gripSockets.push(socket);
   }
   const clamp=get('clamp'),n=clamp.part.shape==='triple'?3:2,h=n*.021;
-  add(this.barPivot,new THREE.LatheGeometry([[.018,-h/2],[.027,-h/2],[.028,-h/2+.003],[.028,h/2-.003],[.027,h/2],[.018,h/2]].map(([x,y])=>new THREE.Vector2(x,y)),32,.09,Math.PI*2-.18),clamp.variant.color,clamp.part.id,'paint',v(0,.336+h/2,-.009));
+  // A closed split sleeve: the old lathe omitted the inner wall and slit caps,
+  // so the isolated shop preview looked like separated rings and bolt rows.
+  const sleeve=new THREE.Shape(),start=-Math.PI/2+.09,end=Math.PI*1.5-.09;
+  sleeve.absarc(0,0,.028,start,end,false);
+  sleeve.lineTo(Math.cos(end)*.018,Math.sin(end)*.018);
+  sleeve.absarc(0,0,.018,end,start,true);sleeve.closePath();
+  const sleeveGeometry=new THREE.ExtrudeGeometry(sleeve,{depth:h,steps:1,bevelEnabled:true,bevelSize:.0008,bevelThickness:.0008,bevelSegments:2,curveSegments:32});
+  sleeveGeometry.rotateX(Math.PI/2);
+  add(this.barPivot,sleeveGeometry,clamp.variant.color,clamp.part.id,'paint',v(0,.336+h,-.009));
   if(clamp.part.shape==='segmented')for(let row=0;row<3;row++)for(let face=0;face<10;face++){
    const angle=.25+face*(Math.PI*2-.5)/10;const geo=plate(.016,.013,.010,.002);geo.rotateX(Math.PI/2);geo.rotateY(angle);add(this.barPivot,geo,clamp.variant.color,clamp.part.id,'paint',v(Math.sin(angle)*.030,.343+row*.014,-.009+Math.cos(angle)*.030));
   }
