@@ -143,6 +143,8 @@ export function selectPark(id: string) {
 }
 export class Park {
   private detailedQuarterMask = { value: 0 };
+  private detailedSpineMask = { value: 0 };
+  showDetailedSpine() { this.detailedSpineMask.value = 1; }
   private detailedSmallBoxMask = { value: 0 };
   private detailedLargeBoxMask = { value: 0 };
   showDetailedQuarters() { this.detailedQuarterMask.value = 1; }
@@ -386,9 +388,10 @@ export class Park {
       shader.uniforms.woodGrain={value:surfaceTexture('wood')};
       shader.uniforms.detailedQuarterMask=this.detailedQuarterMask;
       shader.uniforms.detailedSmallBoxMask=this.detailedSmallBoxMask;
+      shader.uniforms.detailedSpineMask=this.detailedSpineMask;
       shader.uniforms.detailedLargeBoxMask=this.detailedLargeBoxMask;
-      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform float detailedQuarterMask;\nuniform float detailedSmallBoxMask;\nuniform float detailedLargeBoxMask;\n'+shader.fragmentShader;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>\nif((detailedQuarterMask>.5 && abs(vMapUv.x)<=13.14 && ((vMapUv.y>=22.0&&vMapUv.y<=30.0)||(vMapUv.y>=-30.0&&vMapUv.y<=-22.0))) || (detailedSmallBoxMask>.5&&vMapUv.x>=-4.01&&vMapUv.x<=1.01&&vMapUv.y>=-7.51&&vMapUv.y<=5.51) || (detailedLargeBoxMask>.5&&vMapUv.x>=-16.01&&vMapUv.x<=-3.99&&vMapUv.y>=-9.01&&vMapUv.y<=8.01)) discard;`);
+      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform float detailedSpineMask;\nuniform float detailedQuarterMask;\nuniform float detailedSmallBoxMask;\nuniform float detailedLargeBoxMask;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>\nif((detailedSpineMask>.5 && vMapUv.x>=.86 && vMapUv.x<=8.14 && vMapUv.y>=-2.765 && vMapUv.y<=3.765) || (detailedQuarterMask>.5 && abs(vMapUv.x)<=13.14 && ((vMapUv.y>=22.0&&vMapUv.y<=30.0)||(vMapUv.y>=-30.0&&vMapUv.y<=-22.0))) || (detailedSmallBoxMask>.5&&vMapUv.x>=-4.14&&vMapUv.x<=1.14&&vMapUv.y>=-7.64&&vMapUv.y<=5.64) || (detailedLargeBoxMask>.5&&vMapUv.x>=-16.14&&vMapUv.x<=-3.86&&vMapUv.y>=-9.14&&vMapUv.y<=8.14)) discard;`);
       shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\n#endif\ndiffuseColor*=groundSample;`);
     };
     const mesh = new THREE.Mesh(g,terrainMaterial);

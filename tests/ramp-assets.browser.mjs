@@ -5,8 +5,9 @@ mkdirSync(folder, { recursive: true });
 const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
-const ids = process.env.QUARTERS_ONLY ? ['front-quarter','back-quarter'] : ['front-quarter','back-quarter','small-box','large-box','wood-hub'];
+const ids = process.env.QUARTERS_ONLY ? ['front-quarter','back-quarter'] : ['front-quarter','back-quarter','small-box','large-box','wood-hub','spine'];
 page.on('pageerror', error => errors.push(error.message));
+page.on('console', message => { if(message.type()==='error') errors.push(message.text()); });
 try {
   await page.goto((process.env.LAZER_URL || 'http://127.0.0.1:5186') + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER, null, { timeout: 90000 });
@@ -43,6 +44,8 @@ try {
     ['back-quarter-side',[20,6,27],[0,2,26]],
     ['middle-assembly',[16,12,15],[-2,1,0]],
     ['small-box-close',[-8,4,9],[-1.5,.7,0]],
+    ['spine-close',[10,4,7],[4.5,.9,0]],
+
   ])) {
     const shot = await page.evaluate(({eye,target})=>{ const g=window.__LAZER,cam=g.camera.camera; cam.position.set(...eye);cam.lookAt(...target);cam.updateProjectionMatrix();g.renderer.render(g.park.scene,cam); return g.renderer.domElement.toDataURL('image/png'); },{eye,target});
     writeFileSync(`${folder}/${name}.png`,Buffer.from(shot.split(',')[1],'base64'));
@@ -52,4 +55,3 @@ try {
   for(const s of surfaces) console.log(`${s.id}: missing ${s.missing}, max surface error ${s.maxError.toFixed(3)}m`);
   if(errors.length || surfaces.some(s=>s.missing || s.maxError>.1)) process.exitCode=1;
 } finally { await browser.close(); }
-

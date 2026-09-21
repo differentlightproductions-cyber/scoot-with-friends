@@ -6,6 +6,7 @@ import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
+import { applyCleanRampFinish } from "./cleanRampFinish";
 import {
   buildMemorialGrounds,
   extensionHeight,
@@ -257,7 +258,7 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
 export function outdoorHeight(x: number, z: number) {
   let height = extensionHeight(x, z);
   for (const m of modules)
-    if (x >= m.x0 && x <= m.x1) height = Math.max(height, profile(m, z));
+    if (x >= m.x0 - 0.125 && x <= m.x1 + 0.125) height = Math.max(height, profile(m, z));
   return height;
 }
 /**
@@ -318,6 +319,8 @@ export function buildOutdoor(park: Park) {
   // Dark sheet-metal sides follow each curved profile rather than solid blocks.
   const quarterFallbacks = new Map<string, THREE.Object3D[]>();
   for (const m of modules) {
+    // A concrete pad masks the grass beneath imported shells and their edge fringe.
+    box((m.x0 + m.x1) / 2, -0.035, (m.z0 + m.z1) / 2, m.x1 - m.x0 + 0.25, 0.03, m.z1 - m.z0 + 0.25, 0xb7bab4);
     const visualStart = new Set(scene.children);
     for (const x of [m.x0, m.x1]) {
       const vertices: number[] = [],
@@ -376,7 +379,7 @@ export function buildOutdoor(park: Park) {
       0.3,
       0x606b6b,
     );
-    if (m.kind === "quarter" || m.id === "small-box" || m.id === "large-transfer")
+    if (m.kind === "quarter" || m.kind === "spine" || m.id === "small-box" || m.id === "large-transfer")
       quarterFallbacks.set(m.id, scene.children.filter((child) => !visualStart.has(child)));
     if (m.kind === "spine")
       rampLips(m).forEach((lip, i) =>
@@ -558,6 +561,12 @@ export function buildOutdoor(park: Park) {
   for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
   // Detailed Tripo-authored visual skin. Analytic terrain and coping remain the
   // sole physics authority; procedural sides stay visible until loading succeeds.
+  const apron = new THREE.Mesh(new THREE.PlaneGeometry(48, 66), new THREE.MeshStandardMaterial({ color: 0xb6b8ad, roughness: .91 }));
+  apron.name = "Wood park concrete substrate";
+  apron.rotation.x = -Math.PI / 2;
+  apron.position.y = .001;
+  apron.receiveShadow = true;
+  scene.add(apron);
   const parkGeneration = scene.userData.parkGeneration;
   const stale = () => scene.userData.parkGeneration !== parkGeneration;
   const disposeModel = (root: THREE.Object3D) => root.traverse((object) => {
@@ -592,6 +601,7 @@ export function buildOutdoor(park: Park) {
           if (textured.normalScale) textured.normalScale.set(Math.sign(textured.normalScale.x) * 0.4, Math.sign(textured.normalScale.y) * 0.4);
         }
       });
+      applyCleanRampFinish(model);
       scene.add(model);
       quarterFallbacks.get(m.id)?.forEach((object) => { object.visible = false; });
       // The authored skin is open below its riding sheet. Close that silhouette
@@ -652,6 +662,7 @@ export function buildOutdoor(park: Park) {
         textured.metalness = Math.min(0.05, textured.metalness ?? 0);
       }
     });
+    applyCleanRampFinish(model);
     scene.add(model);
     quarterFallbacks.get("small-box")?.forEach((object) => { object.visible = false; });
     park.showDetailedSmallBox();
@@ -671,6 +682,7 @@ export function buildOutdoor(park: Park) {
         textured.metalness = Math.min(0.05, textured.metalness ?? 0);
       }
     });
+    applyCleanRampFinish(model);
     scene.add(model);
     quarterFallbacks.get("large-transfer")?.forEach((object) => { object.visible = false; });
     park.showDetailedLargeBox();
@@ -690,7 +702,22 @@ export function buildOutdoor(park: Park) {
         textured.metalness = Math.min(0.05, textured.metalness ?? 0);
       }
     });
+    applyCleanRampFinish(model);
     scene.add(model);
     hubFallback.forEach((object) => { object.visible = false; });
+  });
+  new GLTFLoader().load("/models/park/spine.glb?v=1", ({ scene: model }) => {
+    if (stale()) { disposeModel(model); return; }
+    if (scene.getObjectByName("Detailed spine")) { disposeModel(model); return; }
+    model.name = "Detailed spine";
+    model.position.set(4.5, 0, 0.5);
+    model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      object.castShadow = object.receiveShadow = true;
+    });
+    applyCleanRampFinish(model);
+    scene.add(model);
+    quarterFallbacks.get("spine")?.forEach((object) => { object.visible = false; });
+    park.showDetailedSpine();
   });
 }

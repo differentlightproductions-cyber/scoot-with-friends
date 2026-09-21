@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const paths=process.argv.slice(2);
-if(!paths.length) paths.push('public/models/park/wooden-quarter.glb','public/models/park/small-box.glb','public/models/park/large-box.glb','public/models/park/wood-hub.glb');
+if(!paths.length) paths.push('public/models/park/wooden-quarter.glb','public/models/park/small-box.glb','public/models/park/large-box.glb','public/models/park/wood-hub.glb','public/models/park/spine.glb');
 for (const path of paths) {
   const bytes=readFileSync(path),gltf=JSON.parse(bytes.subarray(20,20+bytes.readUInt32LE(12)).toString());
   const primitives=(gltf.meshes??[]).flatMap(mesh=>mesh.primitives);
