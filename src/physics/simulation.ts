@@ -466,6 +466,7 @@ export class Simulation {
     this.copingDrop = null;
     this.copingDropHeld = 0;
     this.preload.reset();
+    this.briTakeoff = -99;
     this.spineLaunchVelocity.set(0, 0, 0);
     this.spineLaunchAngle = 0;
     this.spawnIndex = index;
@@ -530,7 +531,7 @@ export class Simulation {
     this.lastSlope = 0;
     this.manualRecorded = false;
     this.lastSpeed = 0;
-    this.lastGround = this.elapsed;
+    this.lastGround = restart ? 0 : this.elapsed;
     if (restart) {
       this.marker.clear();
       this.elapsed = 0;
@@ -1806,6 +1807,16 @@ export class Simulation {
       this.manualCatchTimer > 0 &&
       Math.abs(wrap(this.pitch - slopePitch)) < TUNE.manualCatchPitchError;
     this.lastLanding = quality;
+    this.diagnostics.landing({
+      t: this.elapsed, position: [this.position.x, this.position.y, this.position.z],
+      velocity: [this.velocity.x, this.velocity.y, this.velocity.z],
+      normal: [support.normal.x, support.normal.y, support.normal.z],
+      impact, pitchError: wrap(this.pitch - slopePitch), quality,
+      launch: this.launch ? this.launch.kind + "#" + this.launch.id : null,
+      quarter: this.airQuarter && "id" in this.airQuarter.module ? this.airQuarter.module.id : null,
+      deck: this.tricks.deck.angle, bars: this.tricks.bars.angle,
+      bri: this.tricks.bri.angle, briMismatch: this.tricks.bri.mismatch,
+    });
     if (this.jumpOnPending && quality !== "failed") this.jumpOnLanded = 0.55;
     this.jumpOnPending = false;
     this.events.emit({ type: "landing", quality, impact });
@@ -1857,14 +1868,17 @@ export class Simulation {
       this.body.setTranslation(this.position, true);
       this.body.setLinvel(this.velocity, true);
     }
-    const held: string[] = [], pressed: string[] = [];
+    const held: string[] = [], pressed: string[] = [], released: string[] = [];
     for (const key in input.held) if ((input.held as Record<string, number>)[key] > 0.5) held.push(key);
     for (const key in input.pressed) if ((input.pressed as Record<string, boolean>)[key]) pressed.push(key);
+    for (const key in input.released) if ((input.released as Record<string, boolean>)[key]) released.push(key);
     this.diagnostics.record({
       t: +this.elapsed.toFixed(4), state: this.state, grounded: this.grounded, grind: this.grind?.rail.id ?? null,
       position: [this.position.x, this.position.y, this.position.z], velocity: [this.velocity.x, this.velocity.y, this.velocity.z],
       normalY: this.normal.y, launch: this.launch ? this.launch.kind + "#" + this.launch.id : null,
-      input: { steer: input.steer, lean: input.lean, rx: input.rx, ry: input.ry, held, pressed },
+      orientation: [this.yaw, this.pitch, this.bodyFlip.angle],
+      equipment: { deck: this.tricks.deck.angle, bars: this.tricks.bars.angle, bri: this.tricks.bri.angle, briTarget: this.tricks.bri.target, briMismatch: this.tricks.bri.mismatch },
+      input: { steer: input.steer, lean: input.lean, rx: input.rx, ry: input.ry, held, pressed, released, brake: input.held.brake, pump: input.held.pumpGrind },
     });
   }
   private stepCore(dt: number, input: InputFrame) {
@@ -2135,6 +2149,8 @@ export class Simulation {
     // scooter back under the feet mid-trick, so require real approach speed into
     // the surface during the grace window rather than mere proximity.
     const staleTakeoffContact =
+      !wasGrounded &&
+      this.elapsed >= this.briTakeoff &&
       this.elapsed - this.briTakeoff < TUNE.briTakeoffGrace &&
       this.velocity.dot(support.normal) > -0.5;
     // A grounded rider keeps a 10 cm band that holds them over small bumps. An

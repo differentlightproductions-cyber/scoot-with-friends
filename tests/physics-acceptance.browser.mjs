@@ -182,6 +182,10 @@ try {
       const windowPops = air && touchdown ? popEvents(events, air.start - 30, touchdown.i) : popEvents(events);
       expect(failures, windowPops <= 1, `${windowPops} launch events for one air`);
       expect(failures, !!touchdown && touchdown.ny < 0.8, `did not return onto the transition (touchdown normal y ${touchdown?.ny.toFixed(2)})`);
+      const transitionMinZ = Math.min(lip, m.reverse ? m.z1 : m.z0);
+      const transitionMaxZ = Math.max(lip, m.reverse ? m.z1 : m.z0);
+      const sameTransition = touchdown && touchdown.x >= m.x0 && touchdown.x <= m.x1 && touchdown.z >= transitionMinZ && touchdown.z <= transitionMaxZ;
+      expect(failures, !!sameTransition, `touchdown was not on ${module} (x/z ${touchdown?.x.toFixed(2)}/${touchdown?.z.toFixed(2)})`);
       expect(failures, !!touchdown && touchdown.y < m.h + TUNE.radius / 0.3, 're-entry above the coping');
       expect(failures, !bails(events).length, 'bailed: ' + bails(events).join(','));
       expect(failures, landings(events).every((q) => q === 'clean' || q === 'good'), 'landing grade ' + landings(events).join(','));
@@ -197,7 +201,7 @@ try {
           fixture: { module, lip, speed, stance, yawOffset, start: [x, z] },
           release: release && { tick: release.i, y: +release.y.toFixed(3), vy: +release.vy.toFixed(2), lipDistanceBefore: trace[release.i - 1]?.lipDistance && +trace[release.i - 1].lipDistance.toFixed(2) },
           apex: apex && +apex.toFixed(2), allowedApex: allowedApex && +allowedApex.toFixed(2),
-          touchdown: touchdown && { tick: touchdown.i, y: +touchdown.y.toFixed(2), z: +touchdown.z.toFixed(2), normalY: +touchdown.ny.toFixed(2) },
+          touchdown: touchdown && { tick: touchdown.i, x: +touchdown.x.toFixed(2), y: +touchdown.y.toFixed(2), z: +touchdown.z.toFixed(2), normalY: +touchdown.ny.toFixed(2), module: sameTransition ? module : null },
           maxPitchStepAtTouchdown: +maxAbs(around, 'dPitch').toFixed(3),
           events: events.filter((e) => ['pop', 'landing', 'trick', 'bail'].includes(e.type)),
           rideAway: after && { state: after.state, speed: +after.speed.toFixed(2) },
@@ -255,24 +259,34 @@ try {
       const apexes = [];
       for (let k = 1; k < run.trace.length - 1; k++) {
         const r = run.trace[k];
-        if (run.trace[k - 1].vy > 0 && r.vy <= 0 && r.y > 1) apexes.push(+r.y.toFixed(3));
+        if (run.trace[k - 1].vy > 0 && r.vy <= 0 && r.y > 1) apexes.push({ tick: r.i, y: +r.y.toFixed(3), z: +r.z.toFixed(3) });
       }
-      return { apexes, maxSpeed: Math.max(...run.trace.map((r) => r.speed)), bails: bails(run.events), pumps: run.events.filter((e) => e.type === 'pump').length };
+      const middleCrossings = run.trace.filter((r, k) => k > 0 && Math.sign(run.trace[k - 1].z) !== Math.sign(r.z) && Math.abs(r.z) < 0.3).length;
+      return { apexes, middleCrossings, maxSpeed: Math.max(...run.trace.map((r) => r.speed)), bails: bails(run.events), pumps: run.events.filter((e) => e.type === 'pump').length };
+    };
+    const expectHalfpipeFlow = (failures, flow, label) => {
+      expect(failures, flow.bails.length === 0, `${label}: bailed ${flow.bails.join(',')}`);
+      expect(failures, flow.apexes.length >= 3, `${label}: fewer than three cycles observed`);
+      expect(failures, flow.middleCrossings >= flow.apexes.length - 1, `${label}: ${flow.apexes.length} apexes but only ${flow.middleCrossings} middle crossings`);
+      for (let k = 1; k < flow.apexes.length; k++)
+        expect(failures, Math.sign(flow.apexes[k].z) === -Math.sign(flow.apexes[k - 1].z) && Math.abs(flow.apexes[k].z) > 20, `${label}: apexes ${k - 1}/${k} did not alternate opposing walls (${flow.apexes[k - 1].z}, ${flow.apexes[k].z})`);
     };
     scenario('Q06', () => {
       const passive = halfpipeApexes(false), failures = [];
       for (let k = 1; k < passive.apexes.length; k++)
-        if (passive.apexes[k] > passive.apexes[k - 1] + 0.02) failures.push(`passive energy gain between cycles ${k - 1} and ${k}: ${passive.apexes[k - 1]} -> ${passive.apexes[k]}`);
-      expect(failures, passive.apexes.length >= 3, 'fewer than three cycles observed');
+        if (passive.apexes[k].y > passive.apexes[k - 1].y + 0.02) failures.push(`passive energy gain between cycles ${k - 1} and ${k}: ${passive.apexes[k - 1].y} -> ${passive.apexes[k].y}`);
+      expectHalfpipeFlow(failures, passive, 'passive');
       return { failures, observations: passive, tolerances: { perCycleApexGain_m: 0.02 } };
     });
     scenario('Q07', () => {
       const passive = halfpipeApexes(false), active = halfpipeApexes(true), failures = [];
       for (let k = 1; k < active.apexes.length; k++)
-        if (active.apexes[k] > active.apexes[k - 1] + 0.8) failures.push(`pump gain too large at cycle ${k}: ${active.apexes[k - 1]} -> ${active.apexes[k]}`);
+        if (active.apexes[k].y > active.apexes[k - 1].y + 0.8) failures.push(`pump gain too large at cycle ${k}: ${active.apexes[k - 1].y} -> ${active.apexes[k].y}`);
+      expectHalfpipeFlow(failures, passive, 'passive control');
+      expectHalfpipeFlow(failures, active, 'active');
       expect(failures, active.maxSpeed <= TUNE.extremeSpeed, 'pumping exceeded the protective speed ceiling');
       expect(failures, active.pumps > 0, 'no pump actuations recorded, so any gain is not attributable');
-      const sum = (a) => a.reduce((x, y) => x + y, 0);
+      const sum = (a) => a.reduce((x, point) => x + point.y, 0);
       expect(failures, sum(active.apexes.slice(0, 4)) >= sum(passive.apexes.slice(0, 4)) - 0.2, 'pumping did not help relative to passive riding');
       return { failures, observations: { passive, active }, tolerances: { perCyclePumpGain_m: 0.8 } };
     });
@@ -304,6 +318,13 @@ try {
     // ---- B: charged big-box takeoffs ----------------------------------------
     // The large transfer box: lip at z = 4, approached from +z heading -z.
     const bigBox = ({ speed = 12, script, style = 'pro', seconds = 3.5 }) => ride({ x: -10, z: 14, yaw: Math.PI, speed, style, seconds, script });
+    const largeTransfer = quarter('large-transfer');
+    const largeTransferDeckEnd = rampLips(largeTransfer)[0] - largeTransfer.deck;
+    // Ignore a one-frame spawn settle left by the previous fixture; box input
+    // starts at tick 40, so the relevant air session must start after that.
+    const boxAir = (run) => airSessions(run.trace).find((session) => session.start > 40);
+    const boxTouchdown = (run) => { const air = boxAir(run); return air && run.trace.find((r) => r.i >= (air.end ?? Infinity) && r.grounded); };
+    const clearedLargeTransfer = (touchdown) => !!touchdown && touchdown.x >= largeTransfer.x0 && touchdown.x <= largeTransfer.x1 && touchdown.z < largeTransferDeckEnd;
     const holdThenRelease = (releaseTick, extra = {}) => (i) => {
       if (i < 40) return {};
       if (releaseTick === null || i < releaseTick) return { ry: 1 };
@@ -312,7 +333,7 @@ try {
     };
     const naturalReleaseTick = () => {
       const run = bigBox({ script: (i) => ({ ry: i > 40 ? 1 : 0 }) });
-      return airSessions(run.trace)[0]?.start ?? null;
+      return boxAir(run)?.start ?? null;
     };
     const launchCheck = (run, failures, label) => {
       const extra = extraLaunches(run.trace);
@@ -325,7 +346,9 @@ try {
         const run = bigBox({ speed, script: (i) => ({ ry: i > 40 ? 1 : 0 }) });
         launchCheck(run, failures, `speed ${speed}`);
         expect(failures, !bails(run.events).length, `speed ${speed}: bailed ${bails(run.events)}`);
-        observations[speed] = { peak: +peak(run.trace).toFixed(2), landings: landings(run.events), bails: bails(run.events) };
+        const touchdown = boxTouchdown(run);
+        expect(failures, clearedLargeTransfer(touchdown), `speed ${speed}: did not clear the large-transfer deck (touchdown x/z ${touchdown?.x.toFixed(2)}/${touchdown?.z.toFixed(2)})`);
+        observations[speed] = { peak: +peak(run.trace).toFixed(2), touchdown: touchdown && { x: +touchdown.x.toFixed(2), z: +touchdown.z.toFixed(2) }, landings: landings(run.events), bails: bails(run.events) };
       }
       return { failures, observations };
     });
@@ -336,10 +359,13 @@ try {
       launchCheck(run, failures, name);
       expect(failures, tricks(run.events).some((t) => t.includes(name)), `${name} was not confirmed (tricks: ${tricks(run.events).join(',')})`);
       expect(failures, !bails(run.events).length && landings(run.events).every((q) => q !== 'failed'), 'landing failed: ' + bails(run.events).join(','));
-      const touchdown = firstTouchdownAfterAir(run.trace);
+      const touchdown = boxTouchdown(run);
       const part = name === 'Barspin' ? 'bars' : 'deck';
+      const partTravel = Math.max(...run.trace.map((r) => Math.abs(r[part])));
+      expect(failures, partTravel > TAU - 0.35, `${part} never completed a full rotation (max ${partTravel.toFixed(2)} rad)`);
       expect(failures, !!touchdown && Math.abs(((touchdown[part] % TAU) + TAU) % TAU) < 0.35 || Math.abs(((touchdown?.[part] % TAU) + TAU) % TAU - TAU) < 0.35, `${part} not caught at touchdown (${touchdown?.[part]?.toFixed(2)} rad)`);
-      return { failures, observations: { releaseTick: release, peak: +peak(run.trace).toFixed(2), tricks: tricks(run.events), landings: landings(run.events), partAngleAtTouchdown: touchdown && +touchdown[part].toFixed(3) } };
+      expect(failures, clearedLargeTransfer(touchdown), `${name} did not clear the large-transfer deck (touchdown x/z ${touchdown?.x.toFixed(2)}/${touchdown?.z.toFixed(2)})`);
+      return { failures, observations: { releaseTick: release, peak: +peak(run.trace).toFixed(2), tricks: tricks(run.events), landings: landings(run.events), partTravel: +partTravel.toFixed(3), partAngleAtTouchdown: touchdown && +touchdown[part].toFixed(3), touchdown: touchdown && { x: +touchdown.x.toFixed(2), z: +touchdown.z.toFixed(2) } } };
     };
     scenario('B02', () => trickOverBox('Barspin', 'brakeBars'));
     scenario('B03', () => trickOverBox('Tailwhip', 'pushDeck')); // Normal preset: X whips
@@ -1093,17 +1119,31 @@ try {
       } });
       return run;
     };
-    for (const [id, direction] of [['B07', 1], ['B08', -1]]) scenario(id, () => {
+    // From the preloaded down position, left is the natural Bri scoop and right
+    // is Inward. Keep the scenario identity independent of whichever label fires.
+    for (const [id, direction, expectedName] of [['B07', -1, 'Bri'], ['B08', 1, 'Inward']]) scenario(id, () => {
       const failures = [];
       const run = lipGesture(direction);
-      const air = airSessions(run.trace)[0];
+      const air = boxAir(run);
       const briTarget = Math.max(...run.trace.map((r) => Math.abs(r.briTarget ?? 0)));
+      const touchdown = boxTouchdown(run);
+      const airborneBri = air?.rows.map((r) => r.bri ?? 0) ?? [];
+      const briTravel = Math.max(0, ...airborneBri.map(Math.abs));
+      const briRange = { min: Math.min(0, ...airborneBri), max: Math.max(0, ...airborneBri) };
+      const targetChanges = run.trace.filter((r, k, rows) => k === 0 || Math.abs((r.briTarget ?? 0) - (rows[k - 1].briTarget ?? 0)) > 0.1).map((r) => ({ tick: r.i, grounded: r.grounded, angle: +((r.bri ?? 0).toFixed(2)), target: +((r.briTarget ?? 0).toFixed(2)) }));
+      const maxBriStep = airborneBri.slice(1).reduce((max, angle, k) => Math.max(max, Math.abs(wrapAngle(angle - airborneBri[k]))), 0);
+      const caught = touchdown && Math.min(Math.abs(touchdown.bri % TAU), Math.abs(Math.abs(touchdown.bri % TAU) - TAU)) < 0.35;
       const names = tricks(run.events);
       expect(failures, !!air, 'no takeoff');
       expect(failures, popEvents(run.events) <= 1, `${popEvents(run.events)} launch events`);
       expect(failures, extraLaunches(run.trace).length === 0, 'extra launch impulse');
-      expect(failures, briTarget > 6, `the ${direction > 0 ? 'Bri' : 'Inward'} never committed a full scoop (target ${briTarget.toFixed(2)})`);
-      return { failures, observations: { tricks: names, briTarget: +briTarget.toFixed(2), pops: popEvents(run.events), landings: landings(run.events), bails: bails(run.events), note: 'An attempt may still fail on actual contact; the requirement is one takeoff and a complete scooter motion.' } };
+      expect(failures, briTarget > 6, `the ${expectedName} never committed a full scoop (target ${briTarget.toFixed(2)})`);
+      expect(failures, briTravel > TAU - 0.35, `actual scooter motion did not complete a rotation (max ${briTravel.toFixed(2)} rad)`);
+      expect(failures, maxBriStep < 0.5, `scooter motion snapped ${maxBriStep.toFixed(2)} rad in one tick`);
+      expect(failures, !!caught, `scooter was not caught at touchdown (${touchdown?.bri?.toFixed(2)} rad)`);
+      expect(failures, clearedLargeTransfer(touchdown), `attempt did not clear the large-transfer deck (touchdown x/z ${touchdown?.x.toFixed(2)}/${touchdown?.z.toFixed(2)})`);
+      expect(failures, names.some((name) => new RegExp(expectedName).test(name)), `completed feasible attempt was not confirmed as ${expectedName} (${names.join(',')})`);
+      return { failures, observations: { tricks: names, air: air && { start: air.start, end: air.end }, briTarget: +briTarget.toFixed(2), briTravel: +briTravel.toFixed(2), briRange: { min: +briRange.min.toFixed(2), max: +briRange.max.toFixed(2) }, targetChanges, maxBriStep: +maxBriStep.toFixed(3), caught: !!caught, touchdown: touchdown && { tick: touchdown.i, x: +touchdown.x.toFixed(2), z: +touchdown.z.toFixed(2), bri: +touchdown.bri.toFixed(3) }, pops: popEvents(run.events), landings: landings(run.events), bails: bails(run.events) } };
     });
 
     // ---- R11/R12: body flip started during an airborne Inward / Bri -------------------------

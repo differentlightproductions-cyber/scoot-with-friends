@@ -1,5 +1,17 @@
 # Release progress — 2026-09-21
 
+## Current physics pass
+
+- User authorized a new independent maximum of 15 percentage points. Baseline weekly usage 42%; absolute ceiling 57%. Aim to finish below 56% to allow reporting delay and final saving.
+- Brief: Downloads/01_Scooter_Physics_Research_and_Implementation.md. Work follows M0 evidence, M1 quarter/box baseline, then contact/rotation/griptape gates.
+- Smaller agents assigned read-only acceptance audit (Sol) and griptape audit (Luna); integration owner retains physics/source edits.
+- No new GitHub push or deployment permission inferred from the physics document. Existing publication remains blocked by embedded music payload.
+- M0/M1 repair: reset now clears the previous Bri takeoff timestamp. The stale-contact guard requires a nonnegative age and an airborne rider; restart support timestamps use the restarted clock. Previously, a Bri followed by a restarted Inward run could lose support and fail even though the standalone Inward passed.
+- Acceptance tightened: same-quarter touchdown; alternating halfpipe walls and center crossings without bails; real box clearance, part movement and catch; Bri/Inward signed progress, continuity and confirmed result. After repair: 53/53 automated scenarios pass (headless Windows Chrome, software rendering, fixed-step replay). Physical controller/device tests remain unverified.
+- Diagnostic history now retains actual equipment/orientation and release/analog input state, plus the latest 30 landings before velocity/part reset.
+- Read-only follow-up: longboard grip is correctly hidden below raised truck mounting hardware; no geometry change warranted. Coping collision filtering still has overly broad rail exemptions; investigate pair-specific contact and wrong-side descent before claiming M2 complete. M0's full contact-pair/catch geometry contract is not yet complete.
+- Existing-site music delivery is being moved to the already provisioned PARKS storage, with owner-authenticated upload and byte-range playback. No new resource, DNS change, or GitHub push is authorized by this work.
+
 - Source: GitHub `origin/claude/bugfix-pass`, ea8c5856480b21c19ab8bc115dc47c7446c68eb2. User confirmed this matches their local game.
 - Working branch: `codex/claude-release-lan`. Other checkouts remain untouched.
 - User budget: maximum 3 percentage points from reported weekly usage 38%; stop before 41%, allowing for delayed reporting. No other project's budget applies.

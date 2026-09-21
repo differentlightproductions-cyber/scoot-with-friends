@@ -16,7 +16,25 @@ export interface ReplayRow {
   velocity: [number, number, number];
   normalY: number;
   launch: string | null;
-  input: { steer: number; lean: number; rx: number; ry: number; held: string[]; pressed: string[] };
+  orientation: [number, number, number];
+  equipment: { deck: number; bars: number; bri: number; briTarget: number; briMismatch: number };
+  input: { steer: number; lean: number; rx: number; ry: number; held: string[]; pressed: string[]; released: string[]; brake: number; pump: number };
+}
+/** Captured before landing response changes velocity or resets trick state. */
+export interface LandingEntry {
+  t: number;
+  position: [number, number, number];
+  velocity: [number, number, number];
+  normal: [number, number, number];
+  impact: number;
+  pitchError: number;
+  quality: string;
+  launch: string | null;
+  quarter: string | null;
+  deck: number;
+  bars: number;
+  bri: number;
+  briMismatch: number;
 }
 export interface AssistEntry { t: number; kind: string; detail: Record<string, number> }
 export interface Incident { t: number; reason: string; before: [number, number, number]; after: [number, number, number]; replay: ReplayRow[]; assists: AssistEntry[] }
@@ -33,6 +51,7 @@ export class RidingDiagnostics {
   readonly replay: ReplayRow[] = [];
   readonly assists: AssistEntry[] = [];
   readonly incidents: Incident[] = [];
+  readonly landings: LandingEntry[] = [];
   private tick = 0;
 
   record(row: Omit<ReplayRow, "tick">) {
@@ -43,6 +62,11 @@ export class RidingDiagnostics {
   assist(t: number, kind: string, detail: Record<string, number>) {
     this.assists.push({ t, kind, detail });
     if (this.assists.length > 60) this.assists.shift();
+  }
+
+  landing(entry: LandingEntry) {
+    this.landings.push(entry);
+    if (this.landings.length > 30) this.landings.shift();
   }
 
   /**
