@@ -101,6 +101,9 @@ export class MusicService {
   private savedPosition = 0;
   private lastSave = 0;
   private hiddenPaused = false;
+  private loadedTrackId: string | null = null;
+  private objectUrl: string | null = null;
+  private fetchAbort: AbortController | null = null;
   private listeners = new Set<() => void>();
   onNowPlaying: (track: MusicTrack) => void = () => {};
 
@@ -239,7 +242,7 @@ export class MusicService {
     if (!this.settings.enabled) this.setSetting("enabled", true);
     this.wantsPlay = true;
     this.hiddenPaused = false;
-    if (!this.audio.src || !this.audio.src.endsWith(this.current.file)) await this.load(this.current, this.savedPosition);
+    if (this.loadedTrackId !== this.current.id) await this.load(this.current, this.savedPosition);
     else await this.start(this.loadToken);
   }
   async pause() {
@@ -330,7 +333,7 @@ export class MusicService {
     const list = this.channelTracks();
     if (list.length && !list.some((t) => t.id === this.current?.id)) {
       if (this.wantsPlay) this.select(list[0].id);
-      else { this.current = list[0]; this.savedPosition = 0; this.audio.removeAttribute("src"); }
+      else { this.current = list[0]; this.savedPosition = 0; this.releaseSource(); }
     }
     this.persist(true);
     this.emit();
@@ -373,6 +376,8 @@ export class MusicService {
 
   private async load(track: MusicTrack, position: number) {
     const token = ++this.loadToken;
+    this.fetchAbort?.abort();
+    const abort = this.fetchAbort = new AbortController();
     const switching = !!this.audio.src && this.status === "playing";
     if (switching) await this.fadeTo(0, TRACK_FADE_OUT);
     if (token !== this.loadToken) return;
@@ -381,7 +386,23 @@ export class MusicService {
     this.savedPosition = 0;
     this.setStatus("loading");
     this.emit();
-    this.audio.src = track.file;
+    let blob: Blob;
+    try {
+      const response = await fetch(track.file, { signal: abort.signal });
+      if (!response.ok) throw new Error(`Track request failed: ${response.status}`);
+      blob = await response.blob();
+    } catch (error) {
+      if (token !== this.loadToken || (error as DOMException)?.name === "AbortError") return;
+      this.trackFailed("This track could not be played.");
+      return;
+    }
+    if (token !== this.loadToken) return;
+    const previous = this.objectUrl;
+    this.objectUrl = URL.createObjectURL(blob);
+    this.loadedTrackId = track.id;
+    this.audio.pause();
+    this.audio.src = this.objectUrl;
+    if (previous) URL.revokeObjectURL(previous);
     this.audio.preload = "auto";
     if (position > 0) {
       const at = position;
@@ -392,6 +413,16 @@ export class MusicService {
     this.persist(true);
     if (this.settings.notifications) this.onNowPlaying(track);
     await this.start(token, TRACK_FADE_IN);
+  }
+  private releaseSource() {
+    this.fetchAbort?.abort();
+    this.fetchAbort = null;
+    this.audio.pause();
+    this.audio.removeAttribute("src");
+    this.audio.load();
+    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+    this.objectUrl = null;
+    this.loadedTrackId = null;
   }
   private async start(token: number, fadeIn = RESUME_FADE_IN) {
     if (!this.wantsPlay || !this.current) return;
@@ -423,14 +454,14 @@ export class MusicService {
     this.next(false);
   }
   private trackFailed(message: string) {
-    if (!this.current || !this.audio.src) return;
+    if (!this.current) return;
     this.unavailable.add(this.current.id);
     this.errorMessage = message;
     this.setStatus("error");
     this.failures++;
     // Skip to the next working track, but never loop forever over a broken library.
     if (this.wantsPlay && this.failures < this.tracks.length && this.playable().length) this.next(false);
-    else this.wantsPlay = false;
+    else { this.wantsPlay = false; this.audio.pause(); }
   }
   private visibility() {
     if (document.hidden) {

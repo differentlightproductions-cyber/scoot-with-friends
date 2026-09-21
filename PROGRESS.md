@@ -26,3 +26,11 @@
 - Windows ZIP built with Claude's features and clamp fix. Root release ZIP refreshed with prior copy preserved. No LAN integration in this ZIP; earlier LAN source remains intact.
 - Usage closeout: reported 40% weekly, versus 38% baseline. Stopped with margin before 41%; reporting is rounded and may lag.
 - Next: move music to supported static/object delivery with audio MIME and Range support, then publish existing Sites project. Live site remains version 21. GitHub push is not authorized for this pass.
+
+## Latest release status (supersedes earlier delivery blockers)
+- Sites version 22 successfully published clamp/physics updates and all seven music files. Static hosting serves audio directly; no R2 upload needed. Removed unused experimental music routes/uploader.
+- Hosted MP3 Range requests return full bodies; active-track Blob playback fixes seeking. All seven hosted tracks passed playback/seek checks; local music UI 24/24 passed. Full unit suite, TypeScript, client/server builds passed after this change.
+- Tripo prompt/color pack prepared with original reference photos. Both wooden quarters requested. Original Tripo geometry and UVs preserved in Blender derivative; final visual integration pending verification.
+- Usage latest 53% against 42% baseline and 57% ceiling. No GitHub push.
+
+- Both fitted original Tripo quarters are opt-in only via ?map=outdoor&tripoQuarter=1. Default visuals preserved. Final fit/overlap/rail-height visual review remains before enabling by default; original vertices and UVs retained. Fit report and Blender script/source are in artifacts/ramp-import. Updated client/server build and Windows package pass.

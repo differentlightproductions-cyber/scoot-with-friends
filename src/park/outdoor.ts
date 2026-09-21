@@ -1,6 +1,7 @@
 import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -348,7 +349,9 @@ export function buildOutdoor(park: Park) {
   box(0, -0.15, 0, 230, 0.2, 230, 0x719253);
   buildMemorialGrounds(park);
   // Dark sheet-metal sides follow each curved profile rather than solid blocks.
+  const quarterFallbacks = new Map<string, THREE.Object3D[]>();
   for (const m of modules) {
+    const visualStart = new Set(scene.children);
     for (const x of [m.x0, m.x1]) {
       const vertices: number[] = [],
         indices: number[] = [];
@@ -405,6 +408,8 @@ export function buildOutdoor(park: Park) {
       0.3,
       0x606b6b,
     );
+    if (m.kind === "quarter")
+      quarterFallbacks.set(m.id, scene.children.filter((child) => !visualStart.has(child)));
     if (m.kind === "spine")
       rampLips(m).forEach((lip, i) =>
         park.rail(
@@ -443,6 +448,7 @@ export function buildOutdoor(park: Park) {
     }
     if (m.kind === "quarter") {
       const lip = rampLips(m)[0];
+      const copingStart = new Set(scene.children);
       park.rail(
         "Quarter coping",
         new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
@@ -451,6 +457,7 @@ export function buildOutdoor(park: Park) {
         true,
         new THREE.Vector3(0, 0, m.reverse ? -1 : 1),
       );
+      quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !copingStart.has(child)));
       const back = m.reverse ? m.z0 : m.z1;
       // Stairs off the end of the deck (see quarterStair). Treads are visual
       // only: stairHeight() supplies the walkable surface.
@@ -479,11 +486,13 @@ export function buildOutdoor(park: Park) {
         });
       }
       // Back guardrail spans the whole deck; nothing arrives from behind now.
+      const guardStart = new Set(scene.children);
       for (let x = m.x0; x <= m.x1 + 0.01; x += 2.6)
         box(x, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
       box(m.x1, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
       for (const h of [0.45, 1.1])
         box((m.x0 + m.x1) / 2, m.h + h, back, m.x1 - m.x0, 0.11, 0.12, 0xae8754, true);
+      quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !guardStart.has(child)));
     }
   }
   // The small box hub ledge (a hubba): an up-ledge along the bank, a level run
@@ -600,4 +609,22 @@ export function buildOutdoor(park: Park) {
     }
   addDesertRidges(scene);
   for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
+  // Detailed Tripo-authored visual skin. Analytic terrain and coping remain the
+  // sole physics authority; procedural sides stay visible until loading succeeds.
+  if (new URLSearchParams(location.search).get("tripoQuarter") === "1")
+    new GLTFLoader().load("/models/park/wooden-quarter.glb", ({ scene: source }) => {
+    for (const m of modules.filter((module) => module.kind === "quarter")) {
+      const model = source.clone(true);
+      model.position.set(0, 0, (m.z0 + m.z1) / 2);
+      model.rotation.y = m.reverse ? Math.PI : 0;
+      model.name = `Detailed ${m.id}`;
+      model.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+      });
+      scene.add(model);
+      quarterFallbacks.get(m.id)?.forEach((object) => { object.visible = false; });
+    }
+    });
 }

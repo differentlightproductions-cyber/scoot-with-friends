@@ -24,7 +24,7 @@ function walk(dir) {
     else {
       const relative = path.relative(client, p).replaceAll("\\", "/");
       // Music remains in dist/client for local and Windows builds. The hosted
-      // Worker streams these large files from the existing PARKS R2 binding.
+      // Sites source builds serve them directly as static assets.
       if (relative.startsWith("music/tracks/")) continue;
       assets["/" + relative] = {
         type: types[path.extname(p)] || "application/octet-stream",
