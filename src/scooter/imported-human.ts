@@ -37,6 +37,9 @@ export class ImportedHuman {
  private restLocal=new Map<THREE.Bone,THREE.Matrix4>();
  private desired=new Map<THREE.Bone,THREE.Matrix4>();
  private normalization=1;
+ private firstPerson={value:0};
+ private viewMaterials:THREE.Material[]=[];
+ setFirstPerson(active:boolean){this.firstPerson.value=active?1:0;}
 
  constructor(private model:HumanRig,public id:string,public quality:CharacterQuality,public bodyBuild:BodyBuild='regular'){
   if(!source)throw Error('Imported human must be loaded before construction');
@@ -118,6 +121,23 @@ export class ImportedHuman {
   for(const name of ['leftleg','rightleg']){const b=byName(name);if(b){const i=side(b);bind(name,()=>driverFrame(model.shins[i]),true,name.replace('leg','foot'));}}
   for(const name of ['leftfoot','rightfoot']){const b=byName(name);if(b){const i=side(b);bind(name,anchorFrame(model.shoes[i]));}}
   for(const bone of this.bones){const n=bone.name.toLowerCase(),m=n.match(/(left|right)hand(thumb|index|middle|ring|pinky)([1-3])$/);if(m){const i=side(bone),axis=(curlAxes[i]??new THREE.Vector3(1,0,0)).clone().applyQuaternion(bone.getWorldQuaternion(Q()).invert());this.fingers.push({bone,rest:bone.quaternion.clone(),axis,side:i,digit:m[2],joint:Number(m[3])});}}
+  // Hide only this rider's central body from the eye camera. Keep the actual
+  // skeleton intact: arms, knees and full-body shadows still use the same pose.
+  this.mesh.traverse(o=>{if(!(o instanceof THREE.SkinnedMesh))return;
+   if(!o.userData.ownsHumanGeometry)o.geometry=o.geometry.clone();
+   o.userData.ownsHumanGeometry=true;
+   const indices=o.geometry.getAttribute('skinIndex'),weights=o.geometry.getAttribute('skinWeight'),mask=new Float32Array(indices.count);
+   const core=o.skeleton.bones.map(b=>/hips|spine|neck|head|shoulder|(?:left|right)arm$/i.test(b.name));
+   for(let i=0;i<mask.length;i++)for(let k=0;k<4;k++)if(core[indices.getComponent(i,k)])mask[i]+=weights.getComponent(i,k);
+   o.geometry.setAttribute('firstPersonCore',new THREE.BufferAttribute(mask,1));
+   const prepare=(sourceMaterial:THREE.Material)=>{const material=sourceMaterial.clone();this.viewMaterials.push(material);
+    material.onBeforeCompile=shader=>{shader.uniforms.firstPersonBody=this.firstPerson;
+     shader.vertexShader='attribute float firstPersonCore;\nvarying float vFirstPersonCore;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvFirstPersonCore = firstPersonCore;');
+     shader.fragmentShader='uniform float firstPersonBody;\nvarying float vFirstPersonCore;\n'+shader.fragmentShader.replace('#include <clipping_planes_fragment>','#include <clipping_planes_fragment>\nif (firstPersonBody > 0.5 && vFirstPersonCore > 0.15) discard;');
+    };material.customProgramCacheKey=()=> 'christian-first-person-core-2';return material;
+   };
+   o.material=Array.isArray(o.material)?o.material.map(prepare):prepare(o.material);
+  });
   model.rider.add(this.group);this.update(0);
  }
 
@@ -137,12 +157,13 @@ export class ImportedHuman {
   for(const f of this.fingers){const open=THREE.MathUtils.clamp(this.model.hands[f.side].userData.openHand??0,0,1),closed=1-open;
    const angle=f.digit==='thumb'?(f.joint===1?.3:.45):([.65,.8,.55][f.joint-1]??.6);f.bone.matrix.multiply(new THREE.Matrix4().makeRotationAxis(f.axis,angle*closed));f.bone.matrixWorldNeedsUpdate=true;
   }
-  const head=this.bindings.find(b=>b.bone.name.toLowerCase().endsWith('head'))?.bone;if(head&&this.model.hideHead)head.matrix.scale(new THREE.Vector3(.001,.001,.001));
+  this.setFirstPerson(!!this.model.hideHead);
   this.mesh.updateMatrixWorld(true);
  }
 
  dispose(){
   this.group.removeFromParent();
+  this.viewMaterials.forEach(material=>material.dispose());
   this.mesh.traverse(o=>{if(o instanceof THREE.SkinnedMesh){o.skeleton.dispose();if(o.userData.ownsHumanGeometry)o.geometry.dispose();}});
  }
 }

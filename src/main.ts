@@ -477,6 +477,8 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    rider.hideHead=camera.firstPersonActive&&camera.view==='first';
+    rider.human?.setFirstPerson(rider.hideHead);
     }
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside

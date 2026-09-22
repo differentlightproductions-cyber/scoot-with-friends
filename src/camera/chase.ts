@@ -24,7 +24,7 @@ export class ChaseCamera {
   // ---- First person ----------------------------------------------------------
   view: "third" | "first" = "third";
   /** Horizontal degrees; converted to the camera's vertical FOV for the aspect. */
-  firstPersonFov = 90;
+  firstPersonFov = 110;
   motion: "reduced" | "full" = "reduced";
   rider: RiderModel | null = null;
   /** True while this frame is drawn from the rider's eyes (false during a heavy crash). */
@@ -202,9 +202,11 @@ export class ChaseCamera {
       // enough to see hands, bars and deck.
       this.fpPitch = damp(this.fpPitch, 0, 3, dt);
       this.fpYaw = s.yaw;
-      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.72 + flipping * 0.55));
+      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.76 + flipping * 0.55));
     }
-    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : 0.03) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    // A small rearward eye offset keeps the grips in front of the lens even
+    // when the preload pose brings the rider's chin over the crossbar.
+    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : -0.18) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
     // Short collision check from the chest to the eye; the rider's own body is not a collider.
     const chest = r.torso.getWorldPosition(new THREE.Vector3());
     const toEye = eye.clone().sub(chest), length = toEye.length();

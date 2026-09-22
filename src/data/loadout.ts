@@ -37,6 +37,7 @@ export interface LocalProfile {
     cameraView: 'third'|'first';
     /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
     firstPersonFov: number;
+    firstPersonViewVersion?: number;
     cameraMotion: 'reduced'|'full';
     /** Presentation only; the 3D image, never the HUD or part previews. */
     cameraFilter: 'off'|'camcorder';
@@ -72,7 +73,8 @@ export function loadProfile(): LocalProfile {
       mountFlourish: true,
       characterQuality:'auto',
       cameraView:'third',
-      firstPersonFov:90,
+      firstPersonFov:110,
+      firstPersonViewVersion:1,
       cameraMotion:'reduced',
       cameraFilter:'off',
       filterStrength:65,
@@ -95,6 +97,7 @@ export function loadProfile(): LocalProfile {
     if(['auto','low','medium','high'].includes(saved.settings?.characterQuality))profile.settings.characterQuality=saved.settings.characterQuality;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(110,Math.max(70,Math.round(saved.settings.firstPersonFov)));
+    if(!saved.settings?.firstPersonViewVersion&&profile.settings.firstPersonFov===90)profile.settings.firstPersonFov=110;
     if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
     if(['off','camcorder'].includes(saved.settings?.cameraFilter))profile.settings.cameraFilter=saved.settings.cameraFilter;
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;
