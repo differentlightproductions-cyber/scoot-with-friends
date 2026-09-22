@@ -506,6 +506,36 @@ export class RiderModel {
    * through the torso. Only a tuck no-hander keeps the full ball-up.
    */
   private trickClear = 0;
+  /** Keep the rigid scooter outside the chest/head during its authored sweep.
+   * This adjusts presentation before hand IK; it never moves the physics body. */
+  private clearTrickBody(side:number) {
+    const toRoot=(object:THREE.Object3D,p:THREE.Vector3)=>this.root.worldToLocal(object.localToWorld(p));
+    const direction=v(side*.8,0,.6).normalize(),total=v(0,0,0);
+    const centres:[THREE.Vector3,number][]=[
+      [toRoot(this.rider,this.hips.position.clone()),.17],
+      [toRoot(this.rider,this.torso.position.clone().add(v(0,.05,0).applyQuaternion(this.torso.quaternion))),.20],
+      [toRoot(this.rider,this.head.position.clone()),.135],
+    ];
+    let minimum=Infinity;
+    for(let pass=0;pass<7;pass++){
+      this.root.updateMatrixWorld(true);
+      const grips=this.assembly.gripSockets.map(o=>toRoot(o,v(0,0,0)));
+      const segments:[THREE.Vector3,THREE.Vector3,number][]=[
+        [toRoot(this.barPivot,v(0,.30,-.008)),grips[0].clone().lerp(grips[1],.5),.025],
+        [grips[0],grips[1],.028],
+        [toRoot(this.deckPivot,v(0,.10,-.62)),toRoot(this.deckPivot,v(0,.10,0)),.085],
+      ];
+      let shift=0;minimum=Infinity;
+      for(const [centre,radius] of centres)for(const [a,b,thickness] of segments){
+        const delta=new THREE.Line3(a,b).closestPointToPoint(centre,true,v(0,0,0)).sub(centre),clearance=delta.length()-radius-thickness;
+        minimum=Math.min(minimum,clearance);
+        if(clearance<.006){const dot=delta.dot(direction),r=radius+thickness+.008;shift=Math.max(shift,-dot+Math.sqrt(Math.max(0,dot*dot+r*r-delta.lengthSq())));}
+      }
+      if(shift<.001)break;
+      const step=direction.clone().multiplyScalar(Math.min(.16,shift));this.scooter.position.add(step);total.add(step);
+    }
+    this.root.userData.trickBodyClearance={minimum,offset:total.toArray()};
+  }
   /** 0..1 flip tuck from the rotation rate, smoothed so it opens out gradually. */
   private flipTuck(s: Simulation) {
     const rate = s.bodyFlip.active ? THREE.MathUtils.smoothstep(Math.abs(s.bodyFlip.velocity), 1.5, 6) : 0;
@@ -692,7 +722,7 @@ export class RiderModel {
       this.torso.rotation.x += blend * (1.2 - inFlip * 0.45);
       this.torso.position.z -= blend * .1;
       this.torso.position.y -= blend * .06;
-      this.scooter.position.lerp(inFlip ? v(.03,.12,.74) : v(.03,.3,.56),blend);
+      this.scooter.position.lerp(inFlip ? v(.03,.30,.50) : v(.03,.36,.34),blend);
       this.scooter.rotation.x+=blend*(.12 + inFlip * .25);
     }
     if (pose === "Tuck No-hander") {
@@ -745,6 +775,23 @@ export class RiderModel {
       0,
     );
     this.root.updateMatrixWorld(true);
+    this.root.userData.trickBodyClearance=null;
+    if(briActive||kicklessActive){
+      // Keep the rigid bar sweep within both arms' reach before solving hands.
+      // Clamping each wrist alone leaves a visible gap at the far grip.
+      const inverse=this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
+      for(let pass=0;pass<4;pass++)for(let i=0;i<2;i++){
+        const socket=this.assembly.gripSockets[i],q=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
+        const wrist=this.root.worldToLocal(socket.getWorldPosition(v(0,0,0))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(q));
+        const shoulder=this.root.worldToLocal(this.rider.localToWorld(v((i===0?-1:1)*.19,.17,0).applyQuaternion(this.torso.quaternion).add(this.torso.position)));
+        const delta=shoulder.sub(wrist),distance=delta.length();
+        if(distance>.66){this.scooter.position.addScaledVector(delta,(distance-.66)/distance);this.root.updateMatrixWorld(true);}
+      }
+    }
+    if(!s.walking&&!s.sitting&&(briActive||kicklessActive||fingerReach>0||grabBlend>0||pose==='Superman')){
+      this.clearTrickBody(briActive?side:kicklessActive?Math.sign(kickless):0);
+      this.root.updateMatrixWorld(true);
+    }
     for (let i = 0; i < 2; i++) {
       const sign = i === 0 ? -1 : 1;
       const rear = s.tricks.stance === "regular" ? 1 : 0;
@@ -830,6 +877,10 @@ export class RiderModel {
         foot.set(sign * 0.12, -0.49, 0.4);
         this.shoes[i].position.copy(foot);
       }
+      // Imported feet are anchored at the ankle, while the old targets located
+      // the shoe centre. Apply the measured sole offset before solving the leg.
+      foot.add(v(0,this.human?.ankleOffsets[i]??0,0).applyQuaternion(this.shoes[i].quaternion));
+      this.shoes[i].position.copy(foot);
       if(!s.sitting){const hip=v(sign*.095,-.015,0).applyEuler(this.hips.rotation).add(this.hips.position),delta=foot.clone().sub(hip),length=delta.length(),direction=delta.clone().normalize();const bendDirection=v(sign*.07,0,1);const pole=bendDirection.addScaledVector(direction,-bendDirection.dot(direction)).normalize();knee.copy(hip).lerp(foot,.5).addScaledVector(pole,Math.sqrt(Math.max(.0001,.415*.415-Math.min(.413,length/2)**2)));}
       this.knees[i].position.copy(knee);
       poseRod(

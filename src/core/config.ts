@@ -197,6 +197,7 @@ export const TUNE = {
   wallBailSpeed: 5.5,
   wallWobbleSpeed: 1.5,
   rollingDrag: 0.1,
+  fakieRollingDrag: 0.4, // extra wheel/deck scrub while coasting backward
   crouchFastDragMultiplier: 0.72,
   crouchDownhillGain: 0.5,
   brake: 7.5,

@@ -1,0 +1,68 @@
+{
+  "joints": 52,
+  "restoredNodeTransforms": 52,
+  "vertices": 23188,
+  "bbox": [
+    [
+      -0.44647216796875,
+      0.44647216796875
+    ],
+    [
+      0,
+      0.9771117568016052
+    ],
+    [
+      -0.0975189134478569,
+      0.0975189134478569
+    ]
+  ],
+  "positionHash": "64c6b89e9b29c72454e0d392a26cc7ad455114193020ffded85bb2713a325b5e",
+  "outputPositionHash": "64c6b89e9b29c72454e0d392a26cc7ad455114193020ffded85bb2713a325b5e",
+  "positionsIdentical": true,
+  "outsoleCheck": {
+    "vertices": 872,
+    "maxNonFootWeight": 0,
+    "simpleAnkleTranslation": 0.05,
+    "maxTranslationError": 0
+  },
+  "primaryCounts": {
+    "mixamorig:RightFoot": 1600,
+    "mixamorig:RightToeBase": 4,
+    "mixamorig:RightLeg": 1027,
+    "mixamorig:RightUpLeg": 1877,
+    "mixamorig:LeftUpLeg": 3379,
+    "mixamorig:LeftLeg": 1089,
+    "mixamorig:LeftFoot": 1503,
+    "mixamorig:Hips": 183,
+    "mixamorig:Spine": 1006,
+    "mixamorig:Spine1": 767,
+    "mixamorig:Spine2": 624,
+    "mixamorig:LeftShoulder": 201,
+    "mixamorig:LeftArm": 867,
+    "mixamorig:Neck": 566,
+    "mixamorig:RightShoulder": 138,
+    "mixamorig:RightArm": 935,
+    "mixamorig:RightHandIndex2": 309,
+    "mixamorig:RightHandThumb2": 227,
+    "mixamorig:RightHandIndex1": 173,
+    "mixamorig:RightHand": 440,
+    "mixamorig:RightHandThumb3": 32,
+    "mixamorig:RightHandThumb1": 137,
+    "mixamorig:RightHandMiddle1": 4,
+    "mixamorig:RightHandRing1": 33,
+    "mixamorig:RightHandPinky1": 36,
+    "mixamorig:RightForeArm": 467,
+    "mixamorig:Head": 3648,
+    "mixamorig:LeftForeArm": 483,
+    "mixamorig:LeftHand": 402,
+    "mixamorig:LeftHandThumb1": 159,
+    "mixamorig:LeftHandThumb2": 277,
+    "mixamorig:LeftHandIndex1": 180,
+    "mixamorig:LeftHandIndex2": 280,
+    "mixamorig:LeftHandIndex3": 58,
+    "mixamorig:LeftHandMiddle1": 11,
+    "mixamorig:LeftHandRing1": 25,
+    "mixamorig:LeftHandPinky1": 41
+  },
+  "bytes": 3944900
+}

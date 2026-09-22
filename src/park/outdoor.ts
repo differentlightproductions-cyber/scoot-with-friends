@@ -645,23 +645,6 @@ export function buildOutdoor(park: Park) {
         scene.add(side);
       }
     }
-    // The 12.5 cm terrain grid otherwise interpolates a tall wedge from each
-    // quarter edge to the first flat sample outside it. Cover that masked cell
-    // with the flat apron the height function specifies beyond x=+/-13.
-    if (!scene.getObjectByName("Quarter flat side aprons")) {
-      const aprons = new THREE.Group();
-      aprons.name = "Quarter flat side aprons";
-      for (const x of [-13.075, 13.075]) for (const z of [-26, 26]) {
-        const apron = new THREE.Mesh(
-          new THREE.BoxGeometry(0.15, 0.012, 8.02),
-          new THREE.MeshStandardMaterial({ color: 0xb7bab4, roughness: 0.91 }),
-        );
-        apron.position.set(x, 0.002, z);
-        apron.receiveShadow = true;
-        aprons.add(apron);
-      }
-      scene.add(aprons);
-    }
     park.showDetailedQuarters();
     });
   new GLTFLoader().load("/models/park/small-box.glb?v=4", ({ scene: model }) => {

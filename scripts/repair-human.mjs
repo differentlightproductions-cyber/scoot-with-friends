@@ -81,14 +81,29 @@ const allowed = p => {
   const side=p[0] <= 0 ? 'Left' : 'Right', y=p[1];
   const lateral=Math.abs(p[0]), armEdge=y>.80?.105:.075;
   if (y > .61 && lateral > armEdge) {
-    const arm=jointRecords.filter(b => b.name.includes(side) && /Shoulder|Arm|ForeArm|Hand/.test(b.name));
+    // Keep sleeve vertices on the four major arm bones.  Finger segments are
+    // very close to one another and made the nearest-segment solver pull long,
+    // flat spikes out of the cuff when the elbow bent.
+    let names;
+    if (lateral >= .345) names=['Hand'];
+    else if (lateral < .13) names=['Shoulder','Arm'];
+    else if (lateral < .20) names=['Arm'];
+    else if (lateral < .25) names=['Arm','ForeArm'];
+    else if (lateral < .31) names=['ForeArm'];
+    else names=['ForeArm','Hand'];
+    const arm=jointRecords.filter(b => b.name.startsWith(`mixamorig:${side}`) && names.some(name => b.name === `mixamorig:${side}${name}` || (name === 'Hand' && lateral >= .345 && b.name.startsWith(`mixamorig:${side}Hand`))));
     // Let inner sleeve/shoulder vertices blend into the upper torso instead of
     // switching groups at a single x/y plane.
-    return lateral < .18 ? arm.concat(jointRecords.filter(b => /Spine2|Neck/.test(b.name))) : arm;
+    return lateral < .13 ? arm.concat(jointRecords.filter(b => b.name.endsWith('Spine2'))) : arm;
   }
   // The shirt collar and broad shoulder panels reach above 0.80; reserving
   // Head for the actual cranium avoids pulling those panels with head motion.
   if (y > .845) return jointRecords.filter(b => b.name.endsWith('Head'));
+  // Keep the outsole and shoe body rigid under the foot.  The source shoe is
+  // flat at y=0; blending those vertices with the shin shortens it under IK.
+  if (y < .085) return jointRecords.filter(b => b.name === `mixamorig:${side}Foot` || (p[2] < -.025 && b.name === `mixamorig:${side}ToeBase`));
+  // Only the ankle collar needs a shin/foot transition.
+  if (y < .14) return jointRecords.filter(b => b.name === `mixamorig:${side}Foot` || b.name === `mixamorig:${side}Leg`);
   if (y < .53) return jointRecords.filter(b => b.name.includes(side) && /UpLeg|Leg|Foot|Toe/.test(b.name));
   return jointRecords.filter(b => /Hips|Spine|Neck|Head/.test(b.name));
 };
@@ -104,6 +119,22 @@ for (let i = 0; i < points.length; i++) {
   }
 }
 const outputPositionHash = createHash('sha256').update(bin.subarray(pos.offset, pos.offset + pos.stride * pos.a.count)).digest('hex');
+if (positionHash !== outputPositionHash || points.length !== 23188) throw new Error('skin repair changed source geometry');
+let outsoleVertices=0, maxOutsoleNonFootWeight=0;
+for (let i=0;i<points.length;i++) if (points[i][1] <= .025) {
+  outsoleVertices++;
+  let nonFoot=0;
+  for (let k=0;k<4;k++) {
+    const weight=bin.readFloatLE(weights.offset+i*weights.stride+k*4);
+    const name=json.nodes[skin.joints[bin.readUInt16LE(joints.offset+i*joints.stride+k*2)]]?.name||'';
+    if (!/Foot$|ToeBase$/.test(name)) nonFoot+=weight;
+  }
+  maxOutsoleNonFootWeight=Math.max(maxOutsoleNonFootWeight,nonFoot);
+}
+// A translation applied to the ankle subtree must move every sole vertex by
+// exactly the same amount, preserving sole height and shape under simple IK.
+const simpleAnkleTranslation=.05, maxOutsoleTranslationError=maxOutsoleNonFootWeight*simpleAnkleTranslation;
+if (!outsoleVertices || maxOutsoleTranslationError > 1e-7) throw new Error('outsole is not rigidly bound to the foot subtree');
 const encoded = Buffer.from(JSON.stringify(json));
 const paddedLength = (encoded.length + 3) & ~3;
 const jsonChunk = Buffer.alloc(paddedLength, 0x20); encoded.copy(jsonChunk);
@@ -112,6 +143,6 @@ result.write('glTF', 0); result.writeUInt32LE(2, 4); result.writeUInt32LE(result
 result.writeUInt32LE(paddedLength, 12); result.writeUInt32LE(0x4e4f534a, 16); jsonChunk.copy(result, 20);
 result.writeUInt32LE(bin.length, 20 + paddedLength); result.writeUInt32LE(0x004e4942, 24 + paddedLength); bin.copy(result, 28 + paddedLength);
 writeFileSync(output, result);
-const report={ joints: skin.joints.length, restoredNodeTransforms: skin.joints.length, vertices: pos.a.count, bbox, positionHash, outputPositionHash, positionsIdentical: positionHash===outputPositionHash, primaryCounts, bytes: result.length };
+const report={ joints: skin.joints.length, restoredNodeTransforms: skin.joints.length, vertices: pos.a.count, bbox, positionHash, outputPositionHash, positionsIdentical: positionHash===outputPositionHash, outsoleCheck:{vertices:outsoleVertices,maxNonFootWeight:maxOutsoleNonFootWeight,simpleAnkleTranslation,maxTranslationError:maxOutsoleTranslationError}, primaryCounts, bytes: result.length };
 writeFileSync(output.replace(/\.glb$/i,'.repair.json'),JSON.stringify(report,null,2));
 console.log(JSON.stringify(report));

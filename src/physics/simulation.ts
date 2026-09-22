@@ -2625,9 +2625,9 @@ export class Simulation {
       const crouching = this.preload.amount > 0.08 && input.ry > 0.55 && !this.manual.active;
       const downhill = tangent.y * sign;
       const brake = input.held.brake;
-      const rollingDrag = crouching && speed > 4
+      const rollingDrag = (crouching && speed > 4
         ? TUNE.rollingDrag * TUNE.crouchFastDragMultiplier
-        : TUNE.rollingDrag;
+        : TUNE.rollingDrag) + (along < -0.3 ? TUNE.fakieRollingDrag : 0);
       const loss = (rollingDrag + brake * TUNE.brake) * dt;
       const current = this.velocity.length();
       if (current > 0)
@@ -2648,6 +2648,7 @@ export class Simulation {
       const pushAllowed =
         !this.manual.active &&
         !revert.reverting &&
+        along >= -0.3 &&
         this.normal.y > 0.96 &&
         brake < 0.35 &&
         this.rampLean < 0.22;

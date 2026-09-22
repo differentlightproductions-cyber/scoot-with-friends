@@ -16,11 +16,21 @@ export function loadImportedHuman(){
 type Binding={bone:THREE.Bone;bindWorld:THREE.Matrix4;sourceFrame:THREE.Matrix4;target:()=>THREE.Matrix4};
 type Finger={bone:THREE.Bone;rest:THREE.Quaternion;axis:THREE.Vector3;side:0|1;digit:string;joint:number};
 const V=()=>new THREE.Vector3(),Q=()=>new THREE.Quaternion(),S=()=>new THREE.Vector3();
+// A stable front reference prevents the minimal +Y rotation from twisting a
+// sleeve 180 degrees when the forearm points downward.
+function armFrame(direction:THREE.Vector3,front=new THREE.Vector3(0,0,1)){
+ const y=direction.clone().normalize(),z=front.clone().addScaledVector(y,-front.dot(y));
+ if(z.lengthSq()<.001)z.set(0,1,0).addScaledVector(y,-y.y);
+ z.normalize();const x=y.clone().cross(z).normalize();z.crossVectors(x,y);
+ return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x,y,z));
+}
 
 /** Adapts the supplied textured Mixamo character to the existing pose drivers. */
 export class ImportedHuman {
  group=new THREE.Group();
  mesh:THREE.Object3D;
+ /** Legacy shoe drivers locate the shoe centre, 4.5 cm above its sole. */
+ ankleOffsets=[0,0];
  private bones:THREE.Bone[]=[];
  private bindings:Binding[]=[];
  private fingers:Finger[]=[];
@@ -40,6 +50,14 @@ export class ImportedHuman {
   const worldPos=(b:THREE.Object3D)=>b.getWorldPosition(V());
   const hips=byName('hips');if(!hips)throw Error('Christian Mixamo hips bone is missing');
   const hipX=worldPos(hips).x;
+  for(const name of ['leftfoot','rightfoot']){const bone=byName(name);if(!bone)continue;const point=worldPos(bone),i=point.x<hipX?0:1;let sole=Infinity;
+   this.mesh.traverse(o=>{if(!(o instanceof THREE.SkinnedMesh))return;const p=o.geometry.getAttribute('position'),j=o.geometry.getAttribute('skinIndex'),w=o.geometry.getAttribute('skinWeight');
+    const footBones=o.skeleton.bones.map(b=>/foot|toe/i.test(b.name)&&(worldPos(b).x<hipX?0:1)===i);
+    const vertex=new THREE.Vector3();
+    for(let n=0;n<p.count;n++){let weight=0;for(let k=0;k<4;k++)if(footBones[j.getComponent(n,k)])weight+=w.getComponent(n,k);if(weight>.5)sole=Math.min(sole,vertex.fromBufferAttribute(p,n).applyMatrix4(o.matrixWorld).y);}
+   });
+   this.ankleOffsets[i]=Number.isFinite(sole)?Math.max(0,(point.y-sole)*this.normalization-.045):0;
+  }
   if(bodyBuild!=='regular'){
    // Shape changes are confined to the skin around the original skeleton. Bone
    // lengths, hand contacts, shoes and all gameplay dimensions stay unchanged.
@@ -61,7 +79,7 @@ export class ImportedHuman {
    });
   }
   const side=(bone:THREE.Bone):0|1=>worldPos(bone).x<hipX?0:1;
-  const driverFrame=(driver:THREE.Object3D)=>{driver.updateMatrix();const p=V(),q=Q(),s=S();driver.matrix.decompose(p,q,s);return new THREE.Matrix4().compose(p,q,new THREE.Vector3(this.normalization,s.y,this.normalization));};
+  const driverFrame=(driver:THREE.Object3D,arm=false)=>{driver.updateMatrix();const p=V(),q=Q(),s=S();driver.matrix.decompose(p,q,s);if(arm)q.copy(armFrame(new THREE.Vector3(0,1,0).applyQuaternion(q),new THREE.Vector3(0,0,1).applyQuaternion(model.torso.quaternion)));return new THREE.Matrix4().compose(p,q,new THREE.Vector3(this.normalization,s.y,this.normalization));};
   const anchorFrame=(driver:THREE.Object3D)=>()=>{driver.updateMatrix();const p=V(),q=Q();driver.matrix.decompose(p,q,S());return new THREE.Matrix4().compose(p,q,new THREE.Vector3().setScalar(this.normalization));};
   const at=(a:THREE.Object3D,b:THREE.Object3D,t:number)=>()=>{a.updateMatrix();b.updateMatrix();return new THREE.Matrix4().compose(a.position.clone().lerp(b.position,t),a.quaternion.clone().slerp(b.quaternion,t),new THREE.Vector3().setScalar(this.normalization));};
   // Torso/head/shoe drivers use body axes, not the source bone's local axes.
@@ -70,7 +88,7 @@ export class ImportedHuman {
   const sourceLimb=(bone:THREE.Bone,child?:THREE.Bone)=>{
    child??=bone.children.find(c=>c instanceof THREE.Bone) as THREE.Bone|undefined;
    if(!child)return sourceAnchor(bone);
-   const a=worldPos(bone),b=worldPos(child),rotation=/upleg|leftleg|rightleg/i.test(bone.name)?legFrame(a,b):new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),b.clone().sub(a).normalize());
+   const a=worldPos(bone),b=worldPos(child),rotation=/upleg|leftleg|rightleg/i.test(bone.name)?legFrame(a,b):armFrame(b.clone().sub(a));
    return new THREE.Matrix4().compose(a.clone().lerp(b,.5),rotation,new THREE.Vector3(1,a.distanceTo(b),1));
   };
   const bind=(name:string,target:()=>THREE.Matrix4,limb=false,childName?:string)=>{const bone=byName(name);if(bone)this.bindings.push({bone,bindWorld:bone.matrixWorld.clone(),sourceFrame:limb?sourceLimb(bone,childName?byName(childName):undefined):sourceAnchor(bone),target});};
@@ -82,10 +100,10 @@ export class ImportedHuman {
   bind('neck',()=>new THREE.Matrix4().compose(new THREE.Vector3(0,-model.neck.scale.y/2,0).applyQuaternion(model.neck.quaternion).add(model.neck.position),model.torso.quaternion,new THREE.Vector3().setScalar(this.normalization)));bind('head',anchorFrame(model.head));
   for(const name of ['leftshoulder','rightshoulder']){const b=byName(name);if(b){const i=side(b),sign=i?1:-1;bind(name,()=>{
    const arm=model.upperArms[i],end=new THREE.Vector3(0,-arm.scale.y/2,0).applyQuaternion(arm.quaternion).add(arm.position),start=new THREE.Vector3(sign*.03,.15,0).applyQuaternion(model.torso.quaternion).add(model.torso.position);
-   return new THREE.Matrix4().compose(start.clone().lerp(end,.5),new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),end.clone().sub(start).normalize()),new THREE.Vector3(this.normalization,start.distanceTo(end),this.normalization));
+   return new THREE.Matrix4().compose(start.clone().lerp(end,.5),armFrame(end.clone().sub(start),new THREE.Vector3(0,0,1).applyQuaternion(model.torso.quaternion)),new THREE.Vector3(this.normalization,start.distanceTo(end),this.normalization));
   },true,name.replace('shoulder','arm'));}}
-  for(const name of ['leftarm','rightarm']){const b=byName(name);if(b){const i=side(b);bind(name,()=>driverFrame(model.upperArms[i]),true,name.replace('arm','forearm'));}}
-  for(const name of ['leftforearm','rightforearm']){const b=byName(name);if(b){const i=side(b);bind(name,()=>driverFrame(model.forearms[i]),true,name.replace('forearm','hand'));}}
+  for(const name of ['leftarm','rightarm']){const b=byName(name);if(b){const i=side(b);bind(name,()=>driverFrame(model.upperArms[i],true),true,name.replace('arm','forearm'));}}
+  for(const name of ['leftforearm','rightforearm']){const b=byName(name);if(b){const i=side(b);bind(name,()=>driverFrame(model.forearms[i],true),true,name.replace('forearm','hand'));}}
   const curlAxes:THREE.Vector3[]=[];
   for(const name of ['lefthand','righthand']){const b=byName(name);if(b){
    const i=side(b),index=byName(name.replace('hand','handindex1')),middle=byName(name.replace('hand','handmiddle1')),pinky=byName(name.replace('hand','handpinky1'));

@@ -29,14 +29,22 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
             * smoothstep(.002, .016, sourceRampColor.r - sourceRampColor.b);
           #ifdef USE_METALNESSMAP
             float sourceMetal = texture2D(metalnessMap, vMetalnessMapUv).b;
+            float nonMetalWood = 1.0 - smoothstep(.35, .72, sourceMetal);
             float paleWood = smoothstep(.32, .58, sourceLuma) * (1.0 - smoothstep(.35, .72, sourceMetal));
-            woodColor = max(woodColor, paleWood);
+            // Dark atlas fragments on the riding skin are baked source noise,
+            // not separate hardware. The original metalness map distinguishes
+            // them from coping and fasteners without replacing the source UVs.
+            woodColor = max(woodColor, max(paleWood, nonMetalWood));
           #endif
           // Compress the source's broad generated highlight streaks while the
           // retained material maps continue to supply fine grain and relief.
-          float retainedDetail = clamp((sourceLuma - .24) * .28, -.055, .065);
-          vec3 darkAmber = vec3(.225, .086, .023) * (1.0 + retainedDetail);
-          diffuseColor.rgb = mix(sourceRampColor, darkAmber, woodColor * .90);
+          // The source atlases contain broad baked-light islands which become
+          // long foil-like bands after fitting. Keep only a restrained amount
+          // of base-color variation; normal/roughness maps retain the actual
+          // grain, seams, fasteners and surface relief.
+          float retainedDetail = clamp((sourceLuma - .24) * .09, -.025, .03);
+          vec3 darkAmber = vec3(.105, .034, .008) * (1.0 + retainedDetail);
+          diffuseColor.rgb = mix(sourceRampColor, darkAmber, woodColor * .985);
         `);
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <roughnessmap_fragment>',
@@ -45,7 +53,7 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
       };
       const cache = material.customProgramCacheKey.bind(material);
       const key = cache();
-      material.customProgramCacheKey = () => key + '|source-detail-dark-amber-1|' + root.name;
+      material.customProgramCacheKey = () => key + '|source-detail-dark-amber-3|' + root.name;
       material.needsUpdate = true;
     }
   });

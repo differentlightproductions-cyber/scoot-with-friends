@@ -12,8 +12,9 @@ Date: 2026-09-21
 | Same-wall re-entry | Verified existing behavior; no new fix in this pass |
 | False landing crash | Verified existing behavior; no new fix in this pass |
 | Halfpipe flow | Verified existing behavior in deterministic production-fixture replay |
+| Fakie speed | Fixed: backward coasting now has natural extra scrub and push input cannot add an impulse |
 
-No physics source was changed in this pass. The current checkout already contains the focused Stage 2 corrections, and all relevant production-fixture replays passed. Retuning a passing system would have violated the requirement to reproduce a failure before tuning.
+The current checkout already contains the focused quarter corrections, and all relevant production-fixture replays passed, so quarter physics was not retuned without a reproduction. The later owner-reported fakie speed issue did reproduce and received the small ground-force correction documented below.
 
 ## Baseline and implementation verified
 
@@ -26,6 +27,7 @@ No physics source was changed in this pass. The current checkout already contain
 - Re-entry: the current implementation does not use a landing magnet. Same-wall context retains the source quarter for receiving-surface attitude and coping clearance. Touchdown requires actual contact against the local surface.
 - Landing: impact is `-velocity dot surfaceNormal`; pitch and body alignment are measured relative to the receiving surface. A successful landing removes only into-surface velocity and retains tangential speed (GOOD keeps 97%; SKETCHY keeps 86%).
 - Mounted RS remains on the existing riding/trick input path; this pass did not edit input.
+- Fakie uses the same surface-relative gravity as forward riding, adds 0.4 m/s² of backward-only rolling scrub to the base 0.1 m/s², and rejects push cadence while velocity is opposite the scooter tangent.
 
 ## Reproduction and demonstrated causes
 
@@ -51,7 +53,9 @@ The first abnormal writer for the historical coping/launch failure was therefore
 - contact-relative airborne touchdown gap: max of 0.02 m or one tick of closing speed
 - fixed step: 1/120 s
 
-No tuning values were changed during this verification pass.
+No quarter or landing tuning values were changed during this verification pass.
+
+The later fakie completion added one feel value: `fakieRollingDrag: 0.4` m/s². It is gradual drag, not a speed clamp; downhill gravity remains free to exceed it.
 
 ## Tests actually run
 
@@ -72,7 +76,16 @@ node tests/stage2-quarter.browser.mjs
 
 The attempts were exactly three each at 10.2, 11 and 12 m/s. At every speed, releases occurred at 0.50 m from the lip, 0.36 m from the lip (0.10 m before the automatic 0.26 m transition departure), and on the first coyote tick after natural departure. A grounded release at 0.10 m is impossible because automatic departure has already occurred, so the coyote case is the meaningful post-departure coverage. All nine attempts retained one launch ID, emitted one pop, stayed between 10.37 and 12.08 m/s maximum total speed, returned below coping on the source transition, and graded PERFECT. The largest airborne per-tick speed increase was 2.15 m/s during the bounded natural-to-pop replacement; no diagnostic guard fired. Artifact: `artifacts/physics/stage2-quarter.json`.
 
-The focused total was **22 scenario/attempt results**: 13 broader acceptance scenarios plus 9 charged RS attempts. Several acceptance scenarios contain multiple internal fixtures or halfpipe cycles, but those are not inflated into the stated attempt count.
+The focused quarter total was **22 scenario/attempt results**: 13 broader acceptance scenarios plus 9 charged RS attempts. Several acceptance scenarios contain multiple internal fixtures or halfpipe cycles, but those are not inflated into the stated attempt count.
+
+The completed Stage 2 follow-up also passed:
+
+- variable render-rate replay at 30, 60, 120 and 144 Hz: one pop at every rate and less than 0.08 m peak-height spread;
+- held charge through a clamped frame hitch: zero fabricated pop events;
+- flat fakie with no input: 8.00 -> 6.50 m/s over 3 seconds;
+- flat fakie with push held: the same 8.00 -> 6.50 m/s and zero push events;
+- downhill fakie: 2.87 -> 6.82 m/s over 1 second, proving gravity still wins on a real slope;
+- all nine charged-RS quarter attempts after the fakie change.
 
 Coverage included:
 
@@ -92,9 +105,10 @@ Negative cases remained negative: a deliberate platform exit was not pulled back
 
 ## Known limits
 
-- These are deterministic headless Chrome replays at the fixed simulation tick, not a hands-on controller feel test or variable-render-rate coverage.
+- These are deterministic headless Chrome replays, not a hands-on controller feel test. Render cadence was emulated at 30/60/120/144 Hz while simulation remained fixed at 120 Hz.
 - Advanced Flair, doubles and compound scooter/body tricks were intentionally not tuned in Stage 2.
 - The new upper-platform safety fences were outside this agent's file scope. Quarter surfaces and coping were unchanged, and the current platform-exit fixture passed with the updated production geometry.
+- Agent sandbox execution hit an `os.userInfo()` / shared dependency permission failure. Root reran `npm test` and the complete TypeScript, client and server build with the configured runtime and permissions: both passed. This was an execution-environment failure, not a remaining game failure.
 
 ## Local launch
 
