@@ -34,6 +34,16 @@ const materials = {
   shoe: new THREE.MeshStandardMaterial({ color: 0x263333, roughness: .86 }),
 };
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+function armElbow(shoulder:THREE.Vector3,hand:THREE.Vector3,pole:THREE.Vector3){
+  const delta=hand.clone().sub(shoulder),distance=Math.max(.001,delta.length()),direction=delta.divideScalar(distance);
+  // A hinge with fixed segment lengths, rather than an off-axis midpoint
+  // offset which lengthened one arm segment and compressed the other.
+  const stretch=Math.max(1,distance/.548),upper=.285*stretch,lower=.265*stretch;
+  const along=(upper*upper-lower*lower+distance*distance)/(2*distance);
+  pole.addScaledVector(direction,-pole.dot(direction));
+  if(pole.lengthSq()<.001)pole.set(0,0,1).addScaledVector(direction,-direction.z);
+  return shoulder.clone().addScaledVector(direction,along).addScaledVector(pole.normalize(),Math.sqrt(Math.max(0,upper*upper-along*along)));
+}
 function box(
   parent: THREE.Object3D,
   size: THREE.Vector3,
@@ -476,8 +486,7 @@ export class RiderModel {
       const rotation=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
       const hand=this.rider.worldToLocal(socket.getWorldPosition(new THREE.Vector3())).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(rotation));
       const shoulder=v(sign*.19,.17,0).applyEuler(this.torso.rotation).add(this.torso.position);
-      const reach=shoulder.distanceTo(hand),bend=Math.sqrt(Math.max(.0004,.26*.26-Math.min(.25,reach/2)**2));
-      const elbow=shoulder.clone().lerp(hand,.5).addScaledVector(v(sign*.34,-.85,-.12).normalize(),bend);
+      const elbow=armElbow(shoulder,hand,v(sign*.34,-.85,-.12));
       poseRod(this.upperArms[i],shoulder,elbow);poseRod(this.forearms[i],elbow,hand);
       this.hands[i].position.copy(hand);this.hands[i].quaternion.copy(rotation);this.hands[i].userData.openHand=0;
     }
@@ -838,15 +847,13 @@ export class RiderModel {
         if (
           s.tricks.deck.reversalAge < 0.18 &&
           reversal?.side === (i === 0 ? "left" : "right")
-        )
-          foot.lerp(
-            v(
-              Math.sin(reversal.angle) * 0.35,
-              0.35,
-              Math.cos(reversal.angle) * 0.35,
-            ),
-            1 - s.tricks.deck.reversalAge / 0.18,
-          );
+        ) {
+          const kick=this.assembly.deckSocket.position.clone();
+          kick.x=sign*Math.abs(kick.x);kick.y+=.045;
+          kick.applyAxisAngle(v(0,1,0),reversal.angle).add(this.deckPivot.position);
+          const contact=this.rider.worldToLocal(this.scooter.localToWorld(kick));
+          foot.lerp(contact,1-s.tricks.deck.reversalAge/.18);
+        }
       }
       if(s.fastplant&&i===rear){
         const plant=s.fastplant;
@@ -991,7 +998,14 @@ export class RiderModel {
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
         const riderRotation=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert();gripRotation.premultiply(riderRotation);
-        hand.copy(this.rider.worldToLocal(this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3()))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
+        const contact=this.assembly.gripSockets[i].getWorldPosition(new THREE.Vector3());
+        if(walkingGrip){
+          // Hold the crossbar near the stem while wheeling the scooter beside
+          // the body. Reaching for its far grip overextended the right arm.
+          contact.add(this.assembly.gripSockets[0].getWorldPosition(v(0,0,0))).multiplyScalar(.5);
+          contact.add(v(-.075,0,0).applyQuaternion(this.assembly.gripSockets[i].getWorldQuaternion(new THREE.Quaternion())));
+        }
+        hand.copy(this.rider.worldToLocal(contact)).add(v(0,(walkingGrip?.012:this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(gripRotation));
       }
       const carryingContact=this.carry>.001&&!s.emote&&!s.heldItem;
       if(carryingContact){
@@ -1013,21 +1027,26 @@ export class RiderModel {
       const fingerContact=s.tricks.fingerTime>0&&sign===s.tricks.fingerHand;
       if(s.walking&&s.heldItem&&i===0&&!usingItem)hand.set(-.22,.95,.20);
       if(fingerContact){const local=this.assembly.deckSocket.position.clone();local.x*=sign;const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(local));const sidePoint=v(sign*.38,Math.max(.55,deckTarget.y+.15),.30);const contact=deckTarget.x*sign>=-.02&&s.tricks.fingerTime>.20;const target=contact?sidePoint.lerp(deckTarget,THREE.MathUtils.smoothstep(fingerReach,.35,.7)):sidePoint;hand.lerp(target,fingerReach);}
-      if(holdingGrip||grabbingHand||fingerContact||this.carry>.001){
+      if(holdingGrip||grabbingHand||fingerContact||this.carry>.001||(s.walking&&!s.sitting&&!s.emote&&!s.heldItem)){
         const delta=hand.clone().sub(shoulder);const reach=delta.length();
         if(reach>.68)hand.copy(shoulder).addScaledVector(delta,.68/reach);
-        const bend=Math.sqrt(Math.max(.0004,.26*.26-Math.min(.25,reach/2)**2));
-        elbow.copy(shoulder).lerp(hand,.5).addScaledVector((fingerContact||grabbingHand?v(sign*.8,-.3,.7):v(sign*.34,-.85,-.12)).normalize(),bend);
+        elbow.copy(armElbow(shoulder,hand,fingerContact||grabbingHand?v(sign*.8,-.3,.7):v(sign*.34,-.85,-.12)));
         poseRod(this.upperArms[i],shoulder,elbow);
       }
       poseRod(this.forearms[i], elbow, hand);
-      this.hands[i].userData.openHand=holdingGrip||fingerContact||grabbingHand||this.carry>.5?0:s.emote?1:s.walking?.65:.7;
+      this.hands[i].userData.openHand=holdingGrip||fingerContact||grabbingHand||this.carry>.5?0:s.emote?1:s.walking?.35:.7;
       this.hands[i].position.copy(hand);
       this.hands[i].quaternion.setFromUnitVectors(
         v(0, 1, 0),
         elbow.clone().sub(hand).normalize(),
       );
       if(holdingGrip||grabbingHand||carryingContact)this.hands[i].quaternion.copy(gripRotation);
+      else if(s.walking&&!s.emote&&!s.sitting&&!s.heldItem){
+        const fingers=hand.clone().sub(elbow).normalize(),back=v(sign,0,0);
+        back.addScaledVector(fingers,-back.dot(fingers)).normalize();
+        const across=back.clone().cross(fingers).normalize();
+        this.hands[i].quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(across,back,fingers));
+      }
       if(s.walking&&s.heldItem&&i===0){const t=s.emote?.time??0,sip=s.emote?.id==='drink'?THREE.MathUtils.smoothstep(t,.48,1)*(1-THREE.MathUtils.smoothstep(t,1.75,2.35)):0;this.hands[i].quaternion.setFromEuler(new THREE.Euler(-.9*sip,0,Math.PI/2));this.hands[i].userData.openHand=0;}
     }
     this.garmentSkins.forEach(g=>g.update());

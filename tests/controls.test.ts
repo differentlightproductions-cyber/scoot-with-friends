@@ -93,13 +93,13 @@ test("Bumper tap rewinds but held bumper transitions to kickless; eligibility su
       f.held[bumper] = 1;
       run(t, hold ? 0.21 : 0.06, f);
       if (!hold) run(t, dt);
-      assert.equal(t.deck.reversals.length, hold ? 0 : 1);
+      assert.equal(t.deck.reversals.length, 0);
       assert.equal(t.kicklessHistory.length, hold ? 1 : 0);
       run(t, 1.2);
       if (hold) {
         assert.ok(Math.abs(t.kickless.turns) >= 1);
         assert.equal(t.kicklessHistory[0].direction, direction);
-      }
+      } else assert.equal(t.deck.reversals.length, 1);
     }
 });
 test("Whip rewind chains into a later contextual kickless without consuming a body modifier", () => {
@@ -112,6 +112,8 @@ test("Whip rewind chains into a later contextual kickless without consuming a bo
   f.held.leftModifier = 1;
   run(t, 0.04, f);
   run(t, dt);
+  for(let i=0;i<120&&!t.deck.reversals.length;i++)run(t,dt);
+  assert.equal(t.deck.reversals.length,1);
   window(t);
   f = emptyInput();
   f.pressed.rightModifier = true;
@@ -155,16 +157,18 @@ test("Neutral bumper holds and RS scoops cannot create kickless, body family nee
   }
 });
 
-test('stance-directional bumper attempts animate early and late without a landing-success gate',()=>{
- for(const stance of ['regular','goofy'] as const)for(const hold of [false,true])for(const progress of [.08,.4,.96]){
+test('bumper rewind waits for foot contact and locks a second rewind until the deck returns',()=>{
+ for(const stance of ['regular','goofy'] as const){
   const t=new Tricks(new Events());t.stance=stance;t.startAir(false);const d=t.naturalDirection;t.deck.kick(d);
-  t.deck.angle=d*Math.PI*2*progress;t.deck.velocity=d*8;
+  t.deck.angle=d*Math.PI*2*.72;t.deck.velocity=d*8;
   const correct=d===1?'leftModifier':'rightModifier',wrong=d===1?'rightModifier':'leftModifier';
   let f=emptyInput();f.pressed[wrong]=true;f.held[wrong]=1;run(t,dt,f);assert.equal(t.pendingBumper,null);
-  f=emptyInput();f.pressed[correct]=true;f.held[correct]=1;run(t,hold?.21:.025,f);if(!hold)run(t,dt);
-  const before=hold?t.kickless.angle:t.deck.angle;run(t,.12);const after=hold?t.kickless.angle:t.deck.angle;
-  assert.notEqual(after,before,'accepted attempt must move the model channel');
-  assert.equal(hold?t.kicklessHistory.length:t.deck.reversals.length,1);
-  t.reset();assert.equal(t.pendingBumper,null);assert.equal(t.kicklessHistory.length,0);
+  f=emptyInput();f.pressed[correct]=true;f.held[correct]=1;run(t,.025,f);run(t,dt);
+  assert.equal(t.deck.reversals.length,0,'tap queues without reversing mid-whip');
+  for(let i=0;i<120&&!t.deck.reversals.length;i++)run(t,dt);
+  assert.equal(t.deck.reversals.length,1);assert.ok(t.deck.reversalAge<.03,'foot contact starts the reversal');
+  f=emptyInput();f.pressed[correct]=true;f.held[correct]=1;run(t,dt,f);
+  assert.equal(t.pendingBumper,null,'another bumper cannot activate before return movement');
+  run(t,.15);assert.equal(t.deck.reversals[0].performed,true);
  }
 });

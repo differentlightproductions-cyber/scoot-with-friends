@@ -47,8 +47,9 @@ export class RotationChannel {
     });
     this.reversalAge = 0;
     this.segmentStart = this.angle;
-    this.segmentEnd =
-      direction > 0
+    this.segmentEnd = capturedWindow
+      ? this.angle + TAU * direction
+      : direction > 0
         ? Math.ceil(this.angle / TAU) * TAU
         : Math.floor(this.angle / TAU) * TAU;
     this.target = this.segmentEnd;
@@ -155,6 +156,7 @@ export class Tricks {
     direction: number;
     elapsed: number;
     originalTarget: number;
+    queued: boolean;
   } | null = null;
   bumperHeldDuration = 0;
   consumedBumpers = new Set<string>();
@@ -215,8 +217,8 @@ export class Tricks {
       ["rightModifier", "right", 1],
     ] as const) {
       if (!input.pressed[action] || this.pendingBumper) continue;
-      if ((Math.abs(this.deck.velocity)>.05||this.deck.mismatch>.02)&&Math.abs(this.deck.segmentEnd-this.deck.segmentStart)>.02) {
-        // Capture an active whip without a narrow percentage gate; the bumper chooses return direction.
+      const lastReversal = this.deck.reversals.at(-1);
+      if (this.deck.canRewind && lastReversal?.performed !== false) {
         const current = Math.sign(
           this.deck.segmentEnd - this.deck.segmentStart,
         );
@@ -227,12 +229,9 @@ export class Tricks {
           direction: -current,
           elapsed: 0,
           originalTarget: this.deck.target,
+          queued: false,
         };
         this.consumedBumpers.add(action);
-        this.deck.target =
-          this.deck.angle +
-          current *
-            Math.min(0.2, Math.abs(this.deck.segmentEnd - this.deck.angle));
       } else if (this.bars.canRewind) {
         this.bars.rewind(requested, side);
         this.consumedBumpers.add(action);
@@ -243,15 +242,19 @@ export class Tricks {
       pending.elapsed += dt;
       this.bumperHeldDuration = pending.elapsed;
       if (
-        input.released[pending.action] ||
-        (!input.pressed[pending.action] && input.held[pending.action] < 0.5)
+        pending.queued &&
+        Math.abs(this.deck.angle - pending.originalTarget) < 0.04 &&
+        Math.abs(this.deck.velocity) < 1
       ) {
-        this.deck.target = pending.originalTarget;
         this.deck.rewind(pending.direction, pending.side, true);
         this.pendingBumper = null;
-      } else if (pending.elapsed >= TUNE.bumperHoldThreshold) {
+      } else if (!pending.queued && (
+        input.released[pending.action] ||
+        (!input.pressed[pending.action] && input.held[pending.action] < 0.5)
+      )) {
+        pending.queued = true;
+      } else if (!pending.queued && pending.elapsed >= TUNE.bumperHoldThreshold) {
         const direction = -pending.direction;
-        this.deck.target = pending.originalTarget;
         this.continueKickless(pending.side,direction);
         this.pendingBumper = null;
       }

@@ -254,7 +254,7 @@ export const TUNE = {
   // under this fraction of the grind speed) releases after grindBlockedTime
   // instead of trapping the rider while the grind speed keeps building.
   grindBlockedRatio: 0.25,
-  grindBlockedTime: 0.1,
+  grindBlockedTime: 0.2, // ignore a brief joined-surface contact; a real obstruction still releases below the 0.3 s trap limit
   grindWheelReach: 0.34, // centre to wheel contact along the deck
   grindSeatResolve: 60, // 1/s: rise rate back out of a pipe, a contact resolution rather than a hop
   grindStancePitch: 0.2, // largest Smith/Feeble tilt kept from the entry, relative to the rail

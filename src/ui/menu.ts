@@ -111,6 +111,7 @@ export class GameMenu {
     action: () => void;
     selected?: boolean;
     cell?: boolean;
+    swatch?: number;
   }[] = [];
   private pageTurn=(_step:number)=>{};
   constructor(
@@ -214,7 +215,7 @@ export class GameMenu {
       selected = false,
     ) => this.choices.push({ label, action, detail, selected });
     // Grid cells come first on a screen so their indices line up with the page's items.
-    const cell=(label:string,action:()=>void,detail?:string,selected=false)=>this.choices.push({label,action,detail,selected,cell:true});
+    const cell=(label:string,action:()=>void,detail?:string,selected=false,swatch?:number)=>this.choices.push({label,action,detail,selected,cell:true,swatch});
     const pager=(pages:number,page:number,set:(page:number)=>void)=>{if(pages<2)return;
       add('‹ PREVIOUS PAGE',()=>{set((page+pages-1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / LT');
       add('NEXT PAGE ›',()=>{set((page+1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / RT');};
@@ -339,7 +340,7 @@ export class GameMenu {
         const {items:categories,page,pages}=paginate([...new Set(items.map(i=>i.category))],this.catPage,8);this.catPage=page;this.visibleCategories=categories;
         title=this.brandName().toUpperCase();subtitle=(mode==='shop'?'NOT OWNED YET / '+wallet.credit+' CREDIT':'OWNED PARTS / PICK A CATEGORY')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'');
         for(const category of categories){const count=items.filter(i=>i.category===category).length,on=selectedPart(this.selected(category as Category));
-          cell(category.toUpperCase(),()=>{this.browseCategory=category;this.category=category as Category;this.itemPage=0;this.show('brand-items');},mode==='shop'?count+' for sale':count+' owned / on: '+on.part.name.replace(on.part.brand+' ',''));}
+          cell(category.toUpperCase(),()=>{this.browseCategory=category;this.category=category as Category;this.itemPage=0;this.show('brand-items');},mode==='shop'?count+' for sale':plural(count,'owned colorway')+' / on: '+on.part.name.replace(on.part.brand+' ',''));}
         if(!categories.length)add(mode==='shop'?'ALL OWNED':'NOTHING OWNED YET',()=>{},mode==='shop'?'Every '+this.brandName()+' part here is already yours.':'Buy '+this.brandName()+' parts at Techno Gravity.');
         pager(pages,page,p=>{this.catPage=p;});
         break;}
@@ -350,8 +351,9 @@ export class GameMenu {
         title=this.brandName().toUpperCase()+' / '+this.browseCategory.toUpperCase();
         subtitle=(mode==='shop'?'NOT OWNED YET / '+wallet.credit+' CREDIT':this.seshOpen?'OWNED / CHOOSE, THEN APPLY':'OWNED / SELECT TO EQUIP')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'')+(this.browseCategory==='wheels'&&this.browseBrand!==BOARD_BRAND_ID?' / FRONT AND REAR':'');
         for(const item of items){const on=this.equippedSelection(item),equipped=on.partId===item.partId&&on.variantId===item.variantId;
-          cell(item.partName.toUpperCase(),()=>{this.product=item.partId;this.pendingVariant=item.variantId;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
-            item.variantName+' / '+(mode==='shop'?item.price+' Credit':equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip')),equipped);}
+          const swatch=item.rideable==='scooter'?PARTS.find(p=>p.id===item.partId)?.variants.find(v=>v.id===item.variantId)?.color:undefined;
+          cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{this.product=item.partId;this.pendingVariant=item.variantId;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
+            mode==='shop'?item.price+' Credit':equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch);}
         if(!items.length)add(mode==='shop'?'SOLD OUT FOR YOU':'NOTHING OWNED HERE',()=>this.back(),mode==='shop'?'You own every colorway in this category.':'Buy these at Techno Gravity.');
         pager(pages,page,p=>{this.itemPage=p;});
         break;}
@@ -438,7 +440,7 @@ export class GameMenu {
       );
     this.index=Math.min(this.index,Math.max(0,this.choices.length-1));
     this.cellCount=this.choices.filter(c=>c.cell).length;
-    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`;
+    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
     this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root

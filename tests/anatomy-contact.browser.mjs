@@ -24,12 +24,16 @@ try{
    });
    const inv=r.rider.matrixWorld.clone().invert(),localCore=core.map(p=>p.clone().applyMatrix4(inv)),box=new T.Box3().setFromPoints(localCore),grips=r.assembly.gripSockets.map(o=>o.getWorldPosition(new T.Vector3()).toArray());
    const handBounds=hands.map(ps=>new T.Box3().setFromPoints(ps.map(p=>new T.Vector3(...p))).getSize(new T.Vector3()).toArray());
-   let image;if(['mounted','on-foot','bri-0.75','finger-0.25','superman-0.5'].includes(name)){const camera=g.camera.camera.clone(),center=r.rider.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,.83,0));camera.position.copy(center).add(new T.Vector3(1.6,.15,2.7));camera.lookAt(center);camera.aspect=1100/900;camera.updateProjectionMatrix();g.renderer.render(g.park.scene,camera);image=g.renderer.domElement.toDataURL('image/png');}
+   let image;if(['mounted','on-foot','running','bri-0.75','finger-0.25','superman-0.5'].includes(name)){const camera=g.camera.camera.clone(),center=r.rider.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,.83,0));camera.position.copy(center).add(new T.Vector3(1.6,.15,2.7));camera.lookAt(center);camera.aspect=1100/900;camera.updateProjectionMatrix();g.renderer.render(g.park.scene,camera);image=g.renderer.domElement.toDataURL('image/png');}
    const gripErrors=r.assembly.gripSockets.map((socket,i)=>{const q=socket.getWorldQuaternion(new T.Quaternion()),expected=socket.getWorldPosition(new T.Vector3()).add(new T.Vector3(0,(r.hands[i].userData.gripRadius??.0165)+.012,-r.hands[i].userData.palmLength).applyQuaternion(q));return expected.distanceTo(r.hands[i].getWorldPosition(new T.Vector3()));});
-   result.push({name,feet,handBounds,bodyBounds:box.getSize(new T.Vector3()).toArray(),grips,gripErrors,clearance:r.root.userData.trickBodyClearance,ankleOffsets:r.human.ankleOffsets,image});
+   const armLengths=r.upperArms.map((arm,i)=>[arm.scale.y,r.forearms[i].scale.y]);
+   const centerGrip=new T.Vector3(...grips[0]).lerp(new T.Vector3(...grips[1]),.5),q=r.assembly.gripSockets[1].getWorldQuaternion(new T.Quaternion());
+   centerGrip.add(new T.Vector3(-.075,.024,-r.hands[1].userData.palmLength).applyQuaternion(q));
+   const centerGripError=centerGrip.distanceTo(r.hands[1].getWorldPosition(new T.Vector3()));
+   result.push({name,feet,handBounds,bodyBounds:box.getSize(new T.Vector3()).toArray(),grips,gripErrors,centerGripError,armLengths,clearance:r.root.userData.trickBodyClearance,ankleOffsets:r.human.ankleOffsets,image});
   };
-  for(const mode of ['mounted','on-foot','crouch','manual','push']){s.reset(0,true);g.advance(.4,{},false);s.position.set(-10,terrainHeight(-10,10)+.22,10);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);s.yaw=s.previousYaw=0;
-   if(mode==='on-foot'){g.advance(1/120,{pressed:{body:true}},false);g.advance(.3,{},false);}
+  for(const mode of ['mounted','on-foot','running','crouch','manual','push']){s.reset(0,true);g.advance(.4,{},false);s.position.set(-10,terrainHeight(-10,10)+.22,10);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);s.yaw=s.previousYaw=0;
+   if(mode==='on-foot'||mode==='running'){g.advance(1/120,{pressed:{body:true}},false);g.advance(.3,{},false);if(mode==='running'){s.running=true;s.velocity.set(0,0,5);}}
    if(mode==='crouch')s.charge=1;if(mode==='manual'){s.manual.active=true;s.manual.pitch=.3;}if(mode==='push')s.pushTimer=.18;
    for(let n=0;n<45;n++)r.update(s,1/60,1);frame(mode);
   }
@@ -48,6 +52,7 @@ try{
  assert.deepEqual(errors,[],'no runtime errors');
  {
   assert.ok(rows.find(r=>r.name==='on-foot').feet.every(y=>y>=-.008&&y<.035),'stationary shoe soles must rest above ground');
+  for(const row of rows.filter(r=>r.name==='on-foot'||r.name==='running')){assert.ok(row.centerGripError<.001,`${row.name}: middle bar contact`);assert.ok(row.armLengths.every(([a,b])=>Math.abs(a-.285)<.001&&Math.abs(b-.265)<.001),`${row.name}: arms retain anatomical length`);}
   for(const row of rows){if(row.clearance)assert.ok(row.clearance.minimum>=-.004,`${row.name}: scooter/body clearance`);if(/^(mounted|bri-|inward-|kickless-)/.test(row.name))assert.ok(row.gripErrors.every(n=>n<.035),`${row.name}: connected grips`);if(row.name.startsWith('superman-'))assert.ok(row.gripErrors[0]<.035,`${row.name}: supporting grip`);}
  }
 }finally{await browser.close();}

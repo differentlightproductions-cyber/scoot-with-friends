@@ -10,7 +10,7 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 try {
-  await page.goto('http://127.0.0.1:5174/?map=outdoor');
+  await page.goto((process.env.LAZER_URL || 'http://127.0.0.1:5174') + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER, null, { timeout: 60000 });
   const result = await page.evaluate(async () => {
     const g = window.__LAZER;
@@ -114,6 +114,16 @@ try {
       data.push({ catchInto: name, landed, active: s.manual.active, nose: s.manual.nose });
       check('Bunny hop catches into ' + name, s.manual.active && s.manual.nose === (ry < 0),
         { landed, active: s.manual.active, nose: s.manual.nose, catch: s.manualCatchTimer });
+    }
+    for (const [name, ry] of [['Manual', .32], ['Nose Manual', -.32]]) {
+      const s = flat(7);
+      a(.16, { ry });
+      a(.2, { ry: .9 });
+      const before = g.events.history.filter((e) => e.type === 'pop').length;
+      a(1 / 120, { ry: -1 });
+      const pops = g.events.history.filter((e) => e.type === 'pop').length - before;
+      check(name + ' transitions into one pop', !s.manual.active && !s.grounded && pops === 1,
+        { active: s.manual.active, grounded: s.grounded, pops });
     }
     // A tailwhip into a manual, still with no fresh stick movement on landing.
     {

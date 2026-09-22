@@ -18,7 +18,7 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
       material.onBeforeCompile = (shader, renderer) => {
         previous.call(material, shader, renderer);
         shader.fragmentShader = shader.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
-          // Grade the existing warm wood texels into dark amber in linear
+          // Grade the existing warm wood texels into mid amber in linear
           // space. Neutral coping, bolts and entry plates retain their source
           // color and material response.
           vec3 sourceRampColor = diffuseColor.rgb;
@@ -27,14 +27,17 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
             - min(sourceRampColor.r, min(sourceRampColor.g, sourceRampColor.b));
           float woodColor = smoothstep(.006, .030, chroma)
             * smoothstep(.002, .016, sourceRampColor.r - sourceRampColor.b);
+          float cleanSteel = 0.0;
           #ifdef USE_METALNESSMAP
             float sourceMetal = texture2D(metalnessMap, vMetalnessMapUv).b;
-            float nonMetalWood = 1.0 - smoothstep(.35, .72, sourceMetal);
-            float paleWood = smoothstep(.32, .58, sourceLuma) * (1.0 - smoothstep(.35, .72, sourceMetal));
+            cleanSteel = smoothstep(.35, .72, sourceMetal);
+            float nonMetalWood = 1.0 - cleanSteel;
+            float paleWood = smoothstep(.32, .58, sourceLuma) * nonMetalWood;
             // Dark atlas fragments on the riding skin are baked source noise,
             // not separate hardware. The original metalness map distinguishes
             // them from coping and fasteners without replacing the source UVs.
             woodColor = max(woodColor, max(paleWood, nonMetalWood));
+            woodColor *= 1.0 - cleanSteel;
           #endif
           // Compress the source's broad generated highlight streaks while the
           // retained material maps continue to supply fine grain and relief.
@@ -43,17 +46,18 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
           // of base-color variation; normal/roughness maps retain the actual
           // grain, seams, fasteners and surface relief.
           float retainedDetail = clamp((sourceLuma - .24) * .09, -.025, .03);
-          vec3 darkAmber = vec3(.105, .034, .008) * (1.0 + retainedDetail);
-          diffuseColor.rgb = mix(sourceRampColor, darkAmber, woodColor * .985);
+          vec3 midAmber = vec3(.19, .07, .018) * (1.0 + retainedDetail);
+          diffuseColor.rgb = mix(sourceRampColor, midAmber, woodColor * .985);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.68, .70, .72), cleanSteel);
         `);
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <roughnessmap_fragment>',
-          '#include <roughnessmap_fragment>\nroughnessFactor = max(roughnessFactor, .72);',
+          '#include <roughnessmap_fragment>\nroughnessFactor = mix(max(roughnessFactor, .72), .38, cleanSteel);',
         );
       };
       const cache = material.customProgramCacheKey.bind(material);
       const key = cache();
-      material.customProgramCacheKey = () => key + '|source-detail-dark-amber-3|' + root.name;
+      material.customProgramCacheKey = () => key + '|source-detail-amber-silver-5|' + root.name;
       material.needsUpdate = true;
     }
   });

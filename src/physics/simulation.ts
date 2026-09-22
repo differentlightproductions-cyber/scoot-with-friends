@@ -814,6 +814,7 @@ export class Simulation {
   }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
     const replacing = !this.grounded && !this.grind && this.launch;
+    const fromGrind = !!this.grind;
     if (replacing) {
       if (replacing.kind === "pop" || this.elapsed - replacing.at > TUNE.coyoteTime + 1e-6) return;
       // Undo the departure's redirect; gravity since the departure still applies.
@@ -821,9 +822,15 @@ export class Simulation {
       this.velocity.y -= TUNE.gravity * (this.elapsed - replacing.at);
       this.normal.copy(replacing.normal);
     }
+    const grindVelocity = this.grind
+      ? this.grind.direction.clone().multiplyScalar(this.grind.speed).add(
+          new THREE.Vector3(this.grind.direction.z, 0, -this.grind.direction.x)
+            .normalize().multiplyScalar(this.grind.lateralSpeed),
+        )
+      : null;
     this.bodyFlip.begin(origin,this.pitch);
     this.body.setGravityScale(1,true);
-    const linked = this.manual.active || !!this.grind;
+    const linked = this.manual.active || fromGrind;
     if (this.grind) {
       const rail = this.grind.rail, near = (a: THREE.Vector3, b: THREE.Vector3) => a.distanceTo(b) < TUNE.grindJoinDistance;
       const edge = [rail];
@@ -836,9 +843,10 @@ export class Simulation {
     }
     this.finishManual();
     this.finishGrind();
-    const rampPop = this.normal.y < 0.85 && this.velocity.y > 1;
+    if (grindVelocity) this.velocity.copy(grindVelocity);
+    const rampPop = !fromGrind && this.normal.y < 0.85 && this.velocity.y > 1;
     const rampRise = Math.max(0, this.velocity.y);
-    const popLip = this.launchLip(), boxPop = popLip?.module.kind === "box" && popLip.distance > -0.25 && popLip.distance < 1.25;
+    const popLip = fromGrind ? null : this.launchLip(), boxPop = popLip?.module.kind === "box" && popLip.distance > -0.25 && popLip.distance < 1.25;
     const popHeight = boxPop ? TUNE.boxTrickPopHeight + charge * TUNE.boxTrickPopChargeHeight : TUNE.rampTrickPopHeight + charge * TUNE.rampTrickPopChargeHeight;
     const hop = origin==='fastplant' ? (rampPop?2.4:4.8) : rampPop
       ? Math.sqrt(rampRise * rampRise + 2 * TUNE.gravity * popHeight) - rampRise
@@ -861,7 +869,7 @@ export class Simulation {
       );
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
     }
-    const lip = this.launchLip();
+    const lip = fromGrind ? null : this.launchLip();
     this.airQuarter=lip?.module.kind==="quarter"?lip:null;
     if (lip && lip.distance > -0.25 && lip.distance < 1.25) {
       // A deliberate takeoff owns the coping for the rest of its short
@@ -899,7 +907,7 @@ export class Simulation {
     }
     if (!replacing)
       this.body.setTranslation(
-        this.position.clone().add(new THREE.Vector3(0, 0.06, 0)),
+        this.position.clone().add(new THREE.Vector3(0, fromGrind ? 0.12 : 0.06, 0)),
         true,
       );
     this.recordLaunch("pop", replacing ? replacing.id : undefined);

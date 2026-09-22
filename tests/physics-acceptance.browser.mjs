@@ -597,14 +597,19 @@ try {
       const failures = [], observations = {};
       for (const side of [-1, 1]) {
         const dir = ledgeGrind({ side, seg: 0, at: 0.35, reverse: false, speed: 6.5 });
-        const pops = [], off = g.events.on((e) => { if (e.type === 'pop') pops.push(e); });
+        const pops = [], impacts = [], off = g.events.on((e) => { if (e.type === 'pop') pops.push(e); if (e.type === 'railImpact') impacts.push(e); });
         let worst = -Infinity;
         // Settle, then legal balance changes: Smith lean, Feeble lean, small steer both ways.
         const script = [[12, {}], [18, { lean: -1 }], [18, { lean: 1 }], [10, { steer: 0.5 }], [10, { steer: -0.5 }]];
         for (const [ticks, extra] of script) for (let k = 0; k < ticks; k++) { g.advance(dt, { held: { pumpGrind: 1 }, ...extra }, false); if (s.grind) worst = Math.max(worst, edgeDepth()); }
         const grinding = !!s.grind, poppedRail = s.grind?.rail.id, alongBefore = s.velocity.dot(dir);
         // RS pop: load, then flick up, with grind released as a rider popping off does.
-        for (let k = 0; k < 45; k++) g.advance(dt, { ry: 1 }, false);
+        let lostWhileLoading = null;
+        for (let k = 0; k < 45; k++) {
+          const active = s.grind && { rail: s.grind.rail.id, t: s.grind.t, speed: s.grind.speed };
+          g.advance(dt, { ry: 1 }, false);
+          if (!s.grind && !lostWhileLoading) lostWhileLoading = { tick: k, active, position: [s.position.x, s.position.y, s.position.z], velocity: [s.velocity.x, s.velocity.y, s.velocity.z], state: s.state };
+        }
         g.advance(dt, { ry: -1 }, false);
         for (let k = 0; k < 3; k++) g.advance(dt, {}, false);
         const alongAfter = s.velocity.dot(dir), leftRail = !s.grind;
@@ -612,7 +617,7 @@ try {
         for (let k = 0; k < 150 && !s.grounded; k++) { g.advance(dt, {}, false); if (s.grind) { recaptured = s.grind.rail.id; break; } }
         off();
         const key = 'side ' + side;
-        observations[key] = { grindingBeforePop: grinding, rail: poppedRail, maxDepthDuringBalance_m: +worst.toFixed(3), pops: pops.length, leftRail, alongBefore: +alongBefore.toFixed(2), alongAfter: +alongAfter.toFixed(2), recaptured };
+        observations[key] = { grindingBeforePop: grinding, rail: poppedRail, maxDepthDuringBalance_m: +worst.toFixed(3), pops: pops.length, impacts: impacts.length, lostWhileLoading, leftRail, alongBefore: +alongBefore.toFixed(2), alongAfter: +alongAfter.toFixed(2), recaptured };
         expect(failures, grinding, key + ': grind did not survive legal balance changes');
         expect(failures, worst <= Math.max(0.002, 0.03 * 0.055), `${key}: ${worst.toFixed(3)} m inside wood/pipe during balance changes`);
         expect(failures, pops.length === 1, `${key}: ${pops.length} pop events`);
