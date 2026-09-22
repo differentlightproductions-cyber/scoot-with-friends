@@ -17,7 +17,7 @@ Vite prints the local address. `npm run preview` serves `dist/client`; it does n
 
 ## Branches and review
 
-`main` is the latest tested alpha; `develop` is integration. Start larger tasks from up-to-date develop on `codex/feature-name`, `fix/name`, `physics/name`, or `visual/name`. Never force-push shared branches. Pull before editing, commit a safe point before large AI changes, review `git diff`, run tests/build, then push the task branch and open a PR into develop. Promote develop to main only after testing. Do not use main as scratch work.
+`main` is the latest tested alpha; `develop` is integration. Start larger tasks on a task branch. Never force-push shared branches. Preserve existing work, review the diff and run tests/build. Push to GitHub only when the owner requests that specific push and explicitly answers yes. Earlier approval does not cover future pushes. Sites publication is a separate authorized workflow. Do not use main as scratch work.
 
 Two AI tools must use separate clones or worktrees and separate branches. Do not run Codex and Claude Code editing the same checkout concurrently. Exchange changes through Git and PRs, not ZIP copies. Before starting, read AGENTS.md and SYSTEMS.md and check `git status`.
 
@@ -34,7 +34,7 @@ git switch -c fix/example
 claude
 ```
 
-Install/authenticate Claude Code separately if `claude` is unavailable. Give Claude a bounded task; it should edit, test, build, inspect its diff, commit, and push its branch for review. GitHub access to the PRIVATE repository is required. Codex follows the same branch workflow.
+Install/authenticate Claude Code separately if `claude` is unavailable. Give Claude a bounded task; it should edit, test, build and inspect its diff. GitHub pushes require a specific owner request and fresh affirmative confirmation. Codex follows the same rule. Follow ART-DIRECTION.md for all visual work.
 
 ## Secrets and backups
 

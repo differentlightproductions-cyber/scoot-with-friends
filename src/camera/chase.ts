@@ -11,8 +11,13 @@ export class ChaseCamera {
   target = new THREE.Vector3();
   initialized = false;
   recenterTime = 0;
+  mountFlourish=true;
+  private wasWalking=false;
+  mountTime=0;
+  private mountStart=new THREE.Vector3();
   reset() {
     this.initialized = false;
+    this.wasWalking=false;this.mountTime=0;
     this.orbit = 0;
     this.elevation = 0.2;
     this.recenterTime = 0;
@@ -20,6 +25,14 @@ export class ChaseCamera {
   update(s: Simulation, input: InputFrame, dt: number, alpha: number) {
     const p = s.previousPosition.clone().lerp(s.position, alpha);
     const velocityYaw = Math.atan2(s.velocity.x, s.velocity.z);
+    if(this.initialized && this.wasWalking && !s.walking){
+      const viewYaw=wrap(this.heading+this.orbit);
+      this.heading=s.speed>TUNE.stationaryCameraFollowThreshold?velocityYaw:s.yaw;
+      this.orbit=wrap(viewYaw-this.heading);
+      this.mountStart.copy(this.camera.position);this.mountTime=this.mountFlourish&&!matchMedia('(prefers-reduced-motion: reduce)').matches?.32:0;
+    }
+    this.wasWalking=s.walking;
+    this.heading=wrap(this.heading);this.orbit=wrap(this.orbit);
     if (!this.initialized)
       this.heading =
         s.speed > TUNE.stationaryCameraFollowThreshold ? velocityYaw : s.yaw;
@@ -56,7 +69,7 @@ export class ChaseCamera {
     if (
       this.recenterTime > 0 ||
       input.held.recenter > 0.5 ||
-      (!s.walking && !input.rx && s.speed > 2)
+      (!s.walking && s.speed > 2)
     ) {
       this.orbit = damp(
         this.orbit,
@@ -102,7 +115,10 @@ export class ChaseCamera {
       this.target.copy(look);
       this.initialized = true;
     }
-    this.camera.position.lerp(desired, 1 - Math.exp(-12 * dt));
+    if(this.mountTime>0){
+      this.mountTime=Math.max(0,this.mountTime-dt);const t=1-this.mountTime/.32;
+      this.camera.position.copy(this.mountStart).lerp(desired,THREE.MathUtils.smoothstep(t,0,1));
+    }else this.camera.position.lerp(desired, 1 - Math.exp(-12 * dt));
     this.target.lerp(look, 1 - Math.exp(-15 * dt));
     this.camera.lookAt(this.target);
     this.camera.fov = damp(

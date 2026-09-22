@@ -1,3 +1,4 @@
+import { TUNE } from '../core/config';
 import type { LandingQuality } from "../core/events";
 export interface TrickPrimitives {
   bodyYaw: number;
@@ -46,7 +47,8 @@ export interface TrickRecord extends ResolvedTrick {
 export const completedDegrees = (radians: number) => {
   const actual = (Math.abs(radians) * 180) / Math.PI,
     nearest = Math.round(actual / 90) * 90;
-  return Math.abs(actual - nearest) <= 22.5 ? nearest : Math.floor(actual / 90) * 90;
+  if(actual < TUNE.firstSpinThreshold)return 0;
+  return Math.abs(actual - nearest) <= TUNE.spinNameTolerance + 1e-9 ? nearest : Math.floor(actual / 90) * 90;
 };
 const counted = (n: number, word: string) =>
   `${n === 1 ? "" : n === 2 ? "Double " : n === 3 ? "Triple " : n === 4 ? "Quad " : `${n}× `}${word}`;

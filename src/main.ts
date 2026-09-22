@@ -24,6 +24,7 @@ import { SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
 import type { MapId } from "./data/maps";
+import { VisualFidelity } from './render/fidelity';
 async function boot() {
   const profile = loadProfile();
   const events = new Events(),
@@ -64,12 +65,16 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const menu = new GameMenu(document.querySelector("#start")!, profile);
+  const fidelity=new VisualFidelity(renderer);
+  fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   menu.onChange = () => {
     rider.applyProfile(profile);
     sim.grindAssist = profile.settings.grindAssist;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
+    fidelity.apply(scene,profile.settings.fidelity);
+    menu.previewScene.environment=fidelity.environment;
     document.querySelector("#sound")!.textContent = audio.enabled
       ? "ON"
       : "OFF";
@@ -232,6 +237,7 @@ async function boot() {
         m.dispose();
       });
       scene.clear();
+      fidelity.disposeScene();
       selectPark(id);
       world = new RAPIER.World({ x: 0, y: -TUNE.gravity, z: 0 });
       world.timestep = TUNE.step;
@@ -241,6 +247,7 @@ async function boot() {
     }
     sim.reset(0, true);
     rider.applyProfile(profile);
+    fidelity.apply(scene,profile.settings.fidelity);
     sim.grindAssist = profile.settings.grindAssist;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
@@ -355,6 +362,7 @@ async function boot() {
     frame = emptyInput(),
     testMode = false;
   const render = (dt: number, alpha = 1) => {
+    fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     rider.update(sim, dt, alpha);
     camera.update(sim, frame, dt, alpha);
@@ -465,6 +473,7 @@ async function boot() {
       camera,
       social,
       renderer,
+      fidelity,
       snapshot: () => sim.snapshot(),
       testing: (value: boolean) => {
         testMode = value;

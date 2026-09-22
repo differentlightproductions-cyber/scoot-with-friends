@@ -2,13 +2,16 @@ import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { grainTexture } from "./materials";
+import { benchPlanks, surfaceMaterial, surfaceTexture } from './art';
+import { lathe } from '../scooter/surfaces';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns } from "./outdoor";
 export let OUTDOOR =
   typeof window !== "undefined" &&
-  new URLSearchParams(window.location.search).get("map") === "outdoor";
+  !["warehouse","shop","urban-gravity","techno-gravity"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
+export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "shop" : "warehouse");
 export interface Rail {
   id: string;
   a: THREE.Vector3;
@@ -29,6 +32,9 @@ export function terrainHeight(x: number, z: number): number {
 }
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
+  return 0;
+}
+export function legacyWarehouseHeight(x:number,z:number){
   let h = 0;
   // Broad quarter pipes with tangent-continuous bottoms and flat decks.
   const q = clamp(Math.abs(z) - 34, 0, 4.8);
@@ -97,6 +103,7 @@ const warehouseSpawns = [
 ];
 export let SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
 export function selectPark(id: string) {
+  ACTIVE_MAP = id;
   OUTDOOR = id === "outdoor";
   SPAWNS = OUTDOOR ? outdoorSpawns : warehouseSpawns;
 }
@@ -114,15 +121,14 @@ export class Park {
   bench(id: string, x: number, base: number, z: number, width = 1, length = 4) {
     const seat = base + 0.55;
     this.benches.push({ id, x, z, seat, width, length, base, yaw: 0 });
-    for(let i=1;i<5;i++)this.box(
-      new THREE.Vector3(x-width/2+i*width/5,seat+.002,z),
-      new THREE.Vector3(.008,.006,length-.04),0x635746);
-    this.box(
+    benchPlanks(this.scene,x,seat,z,width,length);
+    const seatCollider = this.box(
       new THREE.Vector3(x, seat - 0.06, z),
       new THREE.Vector3(width, 0.12, length),
       0xa17f55,
       true,
     );
+    seatCollider.visible=false;
     for (const dz of [-length * 0.34, length * 0.34])
       this.box(
         new THREE.Vector3(x, base + 0.24, z + dz),
@@ -158,7 +164,10 @@ export class Park {
       buildOutdoor(this);
       return;
     }
-    this.warehouse();
+    if(ACTIVE_MAP==="warehouse")this.warehouse();
+  }
+  legacyObstacles() {
+    const scene=this.scene;
     // Distinct, square stair treads replace the visually ramp-like sampled edges.
     for (let i = 0; i < 5; i++) {
       const height = 1.5 - i * 0.3,
@@ -322,12 +331,16 @@ export class Park {
         g.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
       return { g, p, idx };
     };
-    const step = OUTDOOR ? 0.125 : 0.25;
+    const step = OUTDOOR ? 0.125 : 2;
     const { g } = make(step, true);
-    const mesh = new THREE.Mesh(
-      g,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }),
-    );
+    const uv:number[]=[];const vertices=g.getAttribute('position');for(let i=0;i<vertices.count;i++)uv.push(vertices.getX(i),vertices.getZ(i));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    const terrainMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.91,map:surfaceTexture('concrete')});
+    terrainMaterial.onBeforeCompile=shader=>{
+      shader.uniforms.woodGrain={value:surfaceTexture('wood')};
+      shader.fragmentShader='uniform sampler2D woodGrain;\n'+shader.fragmentShader;
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\n#endif\ndiffuseColor*=groundSample;`);
+    };
+    const mesh = new THREE.Mesh(g,terrainMaterial);
     mesh.receiveShadow = true;
     this.scene.add(mesh);
     this.solids.push(mesh);
@@ -350,9 +363,8 @@ export class Park {
     collision = false,
   ) {
     const mesh = new THREE.Mesh(
-      new RoundedBoxGeometry(size.x, size.y, size.z, 1, Math.min(.035,size.x*.08,size.y*.08,size.z*.08)),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.85,
-        map: Math.max(size.x,size.z)>2 && size.y<.5 ? grainTexture() : null }),
+      new RoundedBoxGeometry(size.x, size.y, size.z, 2, Math.min(.035,size.x*.08,size.y*.08,size.z*.08)),
+      Math.max(size.x,size.z)>2 && size.y<.5 ? surfaceMaterial(color,((color>>16)&255)>((color>>8)&255)*1.12?'wood':'concrete',size.x,size.z) : new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
     );
     mesh.position.copy(pos);
     mesh.castShadow = true;
@@ -456,7 +468,7 @@ export class Park {
     const length = direction.length();
     const mid = a.clone().add(b).multiplyScalar(0.5);
     const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.045, 0.045, length, 8),
+      lathe([[0,-length/2],[.04,-length/2],[.045,-length/2+.005],[.045,length/2-.005],[.04,length/2],[0,length/2]],32),
       new THREE.MeshStandardMaterial({
         color: 0xe35c39,
         metalness: 0.6,

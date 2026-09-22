@@ -44,7 +44,7 @@ export class StickPreload {
     this.popped = false;
     // LB owns manual entry/balance. A deliberate unmodified down hold loads a hop.
     const down =
-      input.ry > 0.08 &&
+      input.ry > TUNE.preloadThreshold &&
       Math.abs(input.rx) < 0.5 &&
       input.held.leftModifier < 0.5;
     if (down && supported) {

@@ -48,6 +48,7 @@ const colors = {
   silver: 0xb8cbc6,
   gum: 0xb8945e,
   white: 0xe9e5d9,
+  'oil-slick': 0x71989b,
 };
 const make = (
   category: Category,
@@ -84,7 +85,7 @@ const make = (
   },
 });
 export const PARTS: ScooterPart[] = [
-  make("deck", "pro-deck", "Pro Deck", "pro", ["red", "black"]),
+  make("deck", "pro-deck", "Pro Deck", "pro", ["red", "black", "oil-slick"]),
   make("deck", "street-deck", "Street Deck", "street", ["silver", "blue"]),
   make("deck", "light-deck", "Light Deck", "light", ["white", "red"]),
   make("bars", "classic-bars", "Classic T-Bar", "t", ["silver", "black"]),

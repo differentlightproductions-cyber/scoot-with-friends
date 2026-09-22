@@ -330,6 +330,7 @@ export class Tricks {
   fakieRecord: TrickRecord | null = null;
   fakieDuration = 0;
   private nextRecordId = 1;
+  attemptId = 0;
   holdFakie(dt: number) {
     this.fakieDuration += dt;
     if (this.fakieDuration < 0.25) return;
@@ -356,17 +357,19 @@ export class Tricks {
       };
       this.history.push(this.fakieRecord);
       if (this.history.length > 256) this.history.shift();
-      this.add("Fakie", this.fakieRecord);
+
     }
     this.fakieRecord.raw.fakieSeconds = this.fakieDuration;
   }
-  endFakie() {
+  endFakie(success = true) {
+    if(success && this.fakieRecord)this.add("Fakie",this.fakieRecord);
     this.fakieRecord = null;
     this.fakieDuration = 0;
   }
   landing: LandingQuality = "clean";
   constructor(public events: Events) {}
   startAir(fromLink: boolean, keepGesture = false) {
+    this.attemptId=this.nextRecordId++;
     this.fingerTargets = [];
     this.pendingBumper = null;
     this.consumedBumpers.clear();
@@ -418,7 +421,7 @@ export class Tricks {
     const raw = this.primitives();
     const resolved = resolveTrick(raw);
     if (resolved.name) {
-      const record: TrickRecord = { ...resolved, id: this.nextRecordId++, landing: quality };
+      const record: TrickRecord = { ...resolved, id: this.attemptId, landing: quality };
       this.history.push(record);
       if (this.history.length > 256) this.history.shift();
       this.add(record.name, record);
@@ -477,14 +480,14 @@ export class Tricks {
   get attempt() {
     if (!this.airborne) return null;
     const resolved = resolveTrick(this.primitives(true));
-    return resolved.name ? { ...resolved, provisional: true, componentCount: resolved.components.length } : null;
+    return resolved.name ? { ...resolved, id:this.attemptId, provisional: true, componentCount: resolved.components.length } : null;
   }
   add(name: string, record?: TrickRecord) {
     this.last = name;
     this.line.push(name);
     if (this.line.length > 12) this.line.shift();
     this.ordinary = 0;
-    this.events.emit({ type: "trick", name, record });
+    this.events.emit({ type: "trick", name, record, attemptId:record?.id ?? this.nextRecordId++ });
     this.events.emit({ type: "line", names: [...this.line], ended: false });
   }
   tick(dt: number, linked: boolean) {
@@ -518,6 +521,6 @@ export class Tricks {
     this.line = [];
     this.last = "";
     this.ordinary = 0;
-    this.endFakie();
+    this.endFakie(false);
   }
 }

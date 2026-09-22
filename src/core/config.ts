@@ -110,6 +110,15 @@ export const TUNE = {
   pumpGain: 1.5,
   pumpCooldown: 0.38,
   comboTimeout: 3,
+  repetitionValues: [1, .75, .5, .35],
+  comboStep: .25,
+  comboCap: 4,
+  firstSpinThreshold: 75,
+  spinNameTolerance: 20,
+  manualMin: .2,
+  manualMax: .5,
+  manualDwell: .14,
+  preloadThreshold: .65,
   rumble: { pop: 0.12, clean: 0.2, sketchy: 0.38, bail: 0.6 },
 } as const;
 export const TAU = Math.PI * 2;

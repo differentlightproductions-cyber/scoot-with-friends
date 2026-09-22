@@ -10,7 +10,7 @@ export type GameEvent =
   | { type: "pump" }
   | { type: "landing"; quality: LandingQuality; impact: number }
   | { type: "bail"; reason: string }
-  | { type: "trick"; name: string; record?: TrickRecord }
+  | { type: "trick"; name: string; record?: TrickRecord; attemptId?:number }
   | { type: "railImpact"; speed: number; bail: boolean }
   | { type: "grindCatch"; name: string; assisted: boolean }
   | { type: "dismount"; walking: boolean }

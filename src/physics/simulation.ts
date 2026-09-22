@@ -1,3 +1,4 @@
+import { activeLayout } from '../editor/layout';
 import { inWater } from "../park/water";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -40,6 +41,7 @@ export type RideState =
   | "DropInReady"
   | "DropInCommit";
 export class Simulation {
+  get rampWorld(){return OUTDOOR || !!activeLayout?.objects.length;}
   body: RAPIER.RigidBody;
   tricks: Tricks;
   score: ScoreSystem;
@@ -101,6 +103,7 @@ export class Simulation {
     offset: number;
   } | null = null;
   manualEntryLock = 0;
+  manualIntentTime = 0;
   elapsed = 0;
   distance = 0;
   lastLanding = "";
@@ -140,7 +143,7 @@ export class Simulation {
         .setCanSleep(false),
     );
     world.createCollider(
-      RAPIER.ColliderDesc.ball(OUTDOOR ? 0.08 : 0.2)
+      RAPIER.ColliderDesc.ball(this.rampWorld ? 0.08 : 0.2)
         .setMass(65)
         .setFriction(0)
         .setRestitution(0)
@@ -357,7 +360,7 @@ export class Simulation {
       );
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
     }
-    const lip = OUTDOOR
+    const lip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -500,6 +503,7 @@ export class Simulation {
       this.stall = null;
     }
     this.body.setTranslation(this.position, true);
+    this.score.observe(this.tricks.attempt);
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(
       new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw),
@@ -514,7 +518,7 @@ export class Simulation {
       for (let i = 0; i < 16; i++) {
         const x = origin.x + Math.cos((i * Math.PI) / 8) * radius;
         const z = origin.z + Math.sin((i * Math.PI) / 8) * radius;
-        if (OUTDOOR && inWater(x, z, 1.08)) continue;
+        if (this.rampWorld && inWater(x, z, 1.08)) continue;
         if (terrainNormal(x, z).y < 0.75) continue;
         const p = new THREE.Vector3(x, terrainHeight(x, z) + TUNE.radius, z);
         if (
@@ -591,12 +595,12 @@ export class Simulation {
       !!this.groundIntent ||
       this.preload.amount > 0.08 ||
       this.tricks.gesture.confidence > 0.08 ||
-      Math.abs(this.tricks.deck.velocity) > 0.15 ||
-      Math.abs(this.tricks.bars.velocity) > 0.15 ||
-      Math.abs(this.tricks.bri.velocity) > 0.15 ||
-      Math.abs(this.tricks.kickless.velocity) > 0.15 ||
+
+
+
+
       this.tricks.poseBlend > 0.05 ||
-      (!this.grounded && Math.abs(input.steer) > 0.3) ||
+
       input.pressed[buttons.whip] ||
       input.pressed.brakeBars ||
       input.held.body > 0.3 ||
@@ -616,7 +620,7 @@ export class Simulation {
     )
       return;
     // Tricks, a transition exit, and a drop-in all have a higher priority than a rail.
-    const lip = OUTDOOR
+    const lip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -650,7 +654,7 @@ export class Simulation {
     if (
       candidate &&
       this.tricks.deck.mismatch < 0.45 &&
-      this.tricks.bars.mismatch < 0.45
+      this.tricks.bars.mismatch < 0.45 && this.tricks.bri.mismatch < .35 && this.tricks.kickless.mismatch < .35
     ) {
       this.tricks.finish("clean");
       this.grind = candidate;
@@ -884,6 +888,7 @@ export class Simulation {
     this.previousPosition.copy(this.position);
     this.previousYaw = this.yaw;
     this.elapsed += dt;
+    this.score.tick(dt);
     this.lipClearTimer = Math.max(0, this.lipClearTimer - dt);
     this.railImpactCooldown = Math.max(0, this.railImpactCooldown - dt);
     this.pushTimer = Math.max(0, this.pushTimer - dt);
@@ -927,7 +932,7 @@ export class Simulation {
     }
     this.getUpTimer = Math.max(0, this.getUpTimer - dt);
     if (
-      OUTDOOR &&
+      this.rampWorld &&
       inWater(this.position.x, this.position.z) &&
       this.position.y < 0.35 &&
       !this.waterBail
@@ -1076,9 +1081,9 @@ export class Simulation {
     }
     this.captureGrind(input);
     const support = this.support();
-    if (OUTDOOR)
+    if (this.rampWorld)
       support.normal = terrainNormal(this.position.x, this.position.z);
-    const copingLip = OUTDOOR
+    const copingLip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1163,10 +1168,10 @@ export class Simulation {
       this.world.step(this.contactEvents, this.contactHooks);
       return;
     }
-    if (OUTDOOR && this.grounded) this.normal.copy(support.normal);
+    if (this.rampWorld && this.grounded) this.normal.copy(support.normal);
     else this.normal.lerp(support.normal, 1 - Math.exp(-18 * dt)).normalize();
     if (wasGrounded && !this.grounded && !this.grind) {
-      const leavingLip = OUTDOOR
+      const leavingLip = this.rampWorld
         ? outdoorLip(
             this.position.x,
             this.position.z,
@@ -1216,7 +1221,7 @@ export class Simulation {
     if (this.grounded) this.lastGround = this.elapsed;
     const edgeGrace =
       this.elapsed - this.lastGround < TUNE.coyoteTime &&
-      (!OUTDOOR || !!outdoorLip(
+      (!this.rampWorld || !!outdoorLip(
         this.position.x,
         this.position.z,
         this.velocity.z,
@@ -1239,7 +1244,7 @@ export class Simulation {
       this.tricks.stance,
       this.tricks.controlStyle,
     ).whip;
-    const takeoffLip = OUTDOOR
+    const takeoffLip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1251,31 +1256,21 @@ export class Simulation {
       !!takeoffLip &&
       takeoffLip.distance > -0.25 &&
       takeoffLip.distance < 1.25;
-    // Holding physical A while firmly on flat ground becomes a push after a
-    // short delay. A tap still keeps the established tailwhip behavior.
-    const waitingForPush =
-      whip === "hop" && this.grounded && !this.grind && !atTakeoff &&
-      this.normal.y > 0.96 && input.held.hop > 0.5;
-    if (waitingForPush && input.pressed.hop) this.pendingPushTap = true;
-    const tapWhip = this.pendingPushTap && input.released.hop && this.pushHoldTime < TUNE.pushHoldDelay;
-    if (input.released.hop || this.pushHoldTime >= TUNE.pushHoldDelay || !this.grounded)
-      this.pendingPushTap = false;
     const barButton =
       this.tricks.controlStyle === "arcade" ? "pushDeck" : "brakeBars";
     if (
       supportedForTrick &&
-      ((tapWhip || (!waitingForPush && input.pressed[whip])) ||
+      (input.pressed[whip] ||
         (this.tricks.controlStyle === "arcade" && input.pressed.hop) ||
         (atTakeoff && input.pressed[barButton]))
     ) {
       this.pop(Math.max(0.15, this.preload.amount), input.lean);
-      if (tapWhip) this.tricks.deck.kick(this.tricks.naturalDirection * (input.held.brake > 0.5 ? -1 : 1));
       this.preload.reset();
     }
     if (this.groundIntent) {
       const intent = this.groundIntent;
       intent.age += dt;
-      const lip = OUTDOOR
+      const lip = this.rampWorld
         ? outdoorLip(
             this.position.x,
             this.position.z,
@@ -1299,7 +1294,7 @@ export class Simulation {
       }
     }
     // Preload survives the lip briefly and can buffer a release just before contact.
-    const preloadLip = OUTDOOR && supportedForTrick && !this.manual.active
+    const preloadLip = this.rampWorld && supportedForTrick && !this.manual.active
       ? outdoorLip(
           this.position.x,
           this.position.z,
@@ -1312,6 +1307,8 @@ export class Simulation {
       preloadLip.distance > -0.1 &&
       preloadLip.distance < 0.9 &&
       this.normal.y < 0.97;
+    const gentleRS = Math.abs(input.ry)>=TUNE.manualMin && Math.abs(input.ry)<=TUNE.manualMax && Math.abs(input.rx)<.25 && input.held.leftModifier<.3 && input.held.rightModifier<.3;
+    this.manualIntentTime=gentleRS?this.manualIntentTime+dt:0;
     const rsPop = this.preload.step(
       dt,
       input,
@@ -1326,7 +1323,7 @@ export class Simulation {
     // but the rider stands up as soon as the user stops actively holding down.
     this.lastRS = { x: input.rx, y: input.ry };
     this.charge = this.grounded && !this.manual.active && input.held.leftModifier < 0.5
-      ? clamp(input.ry, 0, 1) : 0;
+      ? (input.ry >= TUNE.preloadThreshold ? clamp(input.ry, 0, 1) : 0) : 0;
     if (rsPop !== null) {
       this.bufferCharge = rsPop;
       this.hopBuffer = TUNE.hopBuffer;
@@ -1362,7 +1359,7 @@ export class Simulation {
     }
     if (this.grind) {
       this.grindDuration += dt;
-      this.score.holdContact(dt, this.grindDuration, true, 1 + Math.abs(this.grind.direction.y));
+      this.score.holdContact(dt, this.grindDuration, true, 1 + Math.abs(this.grind.direction.y), this.grind.name);
       this.state = "Grinding";
       this.grounded = false;
       this.body.setGravityScale(0, true);
@@ -1527,8 +1524,7 @@ export class Simulation {
         this.tricks.controlStyle,
       ).push;
       const holdingPush =
-        input.held[pushButton] > 0.5 ||
-        (pushButton !== "hop" && input.held.hop > 0.5);
+        input.held[pushButton] > 0.5;
       const pushAllowed =
         !this.manual.active &&
         !revert.reverting &&
@@ -1546,7 +1542,7 @@ export class Simulation {
       ) {
         this.velocity.addScaledVector(
           tangent,
-          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.maxSpeed, 0.05, 1),
+          TUNE.push * clamp(1 - Math.max(0, along) / TUNE.maxSpeed, 0, 1),
         );
         this.pushTimer = TUNE.pushCadence;
         this.events.emit({ type: "push" });
@@ -1574,8 +1570,7 @@ export class Simulation {
       this.lastPump = pump;
       if (
         !this.manual.active &&
-        input.held.leftModifier > 0.5 &&
-        Math.abs(input.ry) > 0.5 &&
+        this.manualIntentTime >= TUNE.manualDwell &&
         speed > 0.7 &&
         this.manualEntryLock === 0
       ) {
@@ -1584,21 +1579,19 @@ export class Simulation {
         this.manualRecorded = false;
       }
       if (this.manual.active) {
-        this.score.holdContact(dt, this.manual.duration, false);
+        this.score.holdContact(dt, this.manual.duration, false, 1, this.manual.nose ? "Nose Manual" : "Manual");
         // Ignore the entry flick for a fraction of a second, then give the stick full balance control.
         const result = this.manual.step(
           dt,
-          this.manualEntryLock > 0 || this.preload.amount > 0 ? 0 : input.ry,
+          this.preload.amount > 0 ? (this.manual.nose ? -.32 : .32) : input.ry,
           (speed - this.lastSpeed) / dt,
         );
-        if (this.manual.duration > 0.25 && !this.manualRecorded) {
-          this.tricks.add(this.manual.nose ? "Nose Manual" : "Manual");
-          this.manualRecorded = true;
-        }
+
         if (result === "loop") {
           this.bail(this.manual.nose ? "Over the bars" : "Looped manual");
         }
         if (result === "drop") {
+          if(this.manual.duration>.18)this.tricks.add(this.manual.nose?"Nose Manual":"Manual");
           this.manualEntryLock = 0.5;
           this.manualRecorded = false;
         }
@@ -1636,7 +1629,7 @@ export class Simulation {
         this.normal,
         -this.velocity.dot(this.normal),
       );
-      if (OUTDOOR && this.velocity.lengthSq() > 0.00001)
+      if (this.rampWorld && this.velocity.lengthSq() > 0.00001)
         this.velocity.setLength(surfaceSpeed);
       this.lastSpeed = speed;
     } else {
@@ -1671,7 +1664,7 @@ export class Simulation {
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }
     if (this.velocity.length() > 28) this.velocity.setLength(28);
-    const lip = OUTDOOR
+    const lip = this.rampWorld
       ? outdoorLip(
           this.position.x,
           this.position.z,

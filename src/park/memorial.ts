@@ -2,6 +2,7 @@ import { activeLayout, brushHeight } from "../editor/layout";
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { addParkPeople } from "./people";
+import { canopy, rockShape } from './art';
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
@@ -619,21 +620,18 @@ export function buildMemorialGrounds(park: Park) {
   );
   const trunks = new THREE.InstancedMesh(
     mergeGeometries([
-      new THREE.CylinderGeometry(.15,.34,1,7),
-      new THREE.CylinderGeometry(.04,.13,.7,5).rotateZ(.7).translate(-.18,.26,0),
-      new THREE.CylinderGeometry(.04,.12,.64,5).rotateZ(-.85).translate(.2,.23,.02),
+      new THREE.CylinderGeometry(.15,.34,1,16),
+      new THREE.CylinderGeometry(.04,.13,.7,12).rotateZ(.7).translate(-.18,.26,0),
+      new THREE.CylinderGeometry(.04,.12,.64,12).rotateZ(-.85).translate(.2,.23,.02),
+      new THREE.CylinderGeometry(.015,.07,.55,10).rotateX(.7).translate(0,.4,.19),
+      new THREE.CylinderGeometry(.013,.06,.6,10).rotateX(-.85).translate(0,.42,-.19),
     ]),
     new THREE.MeshStandardMaterial({ color: 0x796248 }),
     trees.length,
   );
   const crowns = new THREE.InstancedMesh(
-    mergeGeometries([
-      new THREE.IcosahedronGeometry(.73,1).scale(1,1.1,1).translate(0,.32,0),
-      new THREE.IcosahedronGeometry(.65,1).translate(-.5,-.08,.1),
-      new THREE.IcosahedronGeometry(.7,1).translate(.45,-.05,-.12),
-      new THREE.IcosahedronGeometry(.53,1).translate(.02,-.18,.48),
-    ]),
-    new THREE.MeshStandardMaterial({ color: 0x607f3b, flatShading: true }),
+    canopy(1),
+    new THREE.MeshStandardMaterial({ color: 0x7b9958, vertexColors:true, roughness:.92 }),
     trees.length,
   );
   const matrix = new THREE.Matrix4(),
@@ -664,8 +662,8 @@ export function buildMemorialGrounds(park: Park) {
     lid.position.set(x,.84,z);scene.add(lid);
   }
   const shrubs = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 0),
-    new THREE.MeshStandardMaterial({ color: 0x72863c, flatShading: true }),
+    canopy(1),
+    new THREE.MeshStandardMaterial({ color: 0x82955b, vertexColors:true, roughness:.92 }),
     120,
   );
   for (let i = 0; i < 120; i++) {
@@ -688,8 +686,8 @@ export function buildMemorialGrounds(park: Park) {
   shrubs.name = "bushes";
   scene.add(shrubs);
   const rocks = new THREE.InstancedMesh(
-    new THREE.IcosahedronGeometry(1, 0),
-    new THREE.MeshStandardMaterial({ color: 0x9b947f, flatShading: true }),
+    rockShape(),
+    new THREE.MeshStandardMaterial({ color: 0x9b947f, roughness:.96 }),
     80,
   );
   for (let i = 0; i < 80; i++) {

@@ -13,6 +13,7 @@ export interface LocalProfile {
     grindAssist: boolean;
     stance: "regular" | "goofy";
     daylight: 'day'|'sunset'|'night'|'sunrise';
+    fidelity: 'low'|'medium'|'high';
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
@@ -29,6 +30,7 @@ export function loadProfile(): LocalProfile {
       grindAssist: true,
       stance: "regular",
       daylight: 'day',
+      fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
     },
   };
   try {
@@ -36,6 +38,7 @@ export function loadProfile(): LocalProfile {
     if (!saved || ![1,2].includes(saved.version)) return profile;
     for(const slot of OUTFIT_SLOTS)if(CLOTHING.some(p=>p.category===slot&&p.id===saved.outfit?.[slot]))profile.outfit[slot]=saved.outfit[slot];
     if(['day','sunset','night','sunrise'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
+    if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     const rider = RIDERS.find((r) => r.id === saved.riderId);
     if (rider) {
       profile.riderId = rider.id;
