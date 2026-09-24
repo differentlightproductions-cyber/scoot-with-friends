@@ -323,17 +323,19 @@ function missionsApp(d: PhoneDeps): View {
           g.font = `700 11px ${BODY}`; g.fillStyle = '#9aa3a9'; g.fillText(`Collection ${owned.have}/${owned.total} · ${prog.crates.length} crate${prog.crates.length === 1 ? '' : 's'} waiting`, bx, y + 78);
         } },
       ];
-      if (prog.crates.length) {
-        blocks.push({ type: 'title', text: 'CRATES', sub: 'Open them for parts and Credit. Never a duplicate.' });
-        blocks.push({ type: 'list', rows: prog.crates.slice(0, 12).map(c => ({ id: 'crate-' + c.id, label: CRATE_NAME[c.tier].toUpperCase(), detail: 'From ' + c.source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(c.id)) })) });
+      // One row per crate tier, rarest first, so a stack of crates stays short.
+      const stacks = (['legend', 'signature', 'pro', 'street'] as const).map(tier => ({ tier, crates: prog.crates.filter(c => c.tier === tier) })).filter(s => s.crates.length);
+      if (stacks.length) {
+        blocks.push({ type: 'title', text: 'CRATES', sub: 'Parts or Credit inside. No dupes.' });
+        blocks.push({ type: 'list', rows: stacks.map(({ tier, crates }) => ({ id: 'crates-' + tier, label: CRATE_NAME[tier].toUpperCase() + (crates.length > 1 ? ' ×' + crates.length : ''), detail: 'From ' + crates[0].source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(crates[0].id)) })) });
       }
-      blocks.push({ type: 'title', text: 'DAILY', sub: board.bonus ? 'All three done. New ones at midnight.' : 'Finish all three for a Pro Crate' });
-      blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Credit · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%', chosen: m.done })) });
-      blocks.push({ type: 'title', text: 'CAREER', sub: 'Each stage pays more. Stages II+ drop crates.' });
+      blocks.push({ type: 'title', text: 'DAILY', sub: board.bonus ? 'All done. New ones at midnight.' : 'All three = a Pro Crate' });
+      blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Credit · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
+      blocks.push({ type: 'title', text: 'CAREER', sub: 'Stage II and up drop crates.' });
       const career = board.career.slice().sort((a, b) => Number(a.complete) - Number(b.complete) || b.value / b.goal - a.value / a.goal);
-      blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Credit${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? '★' : Math.floor(m.value / m.goal * 100) + '%', chosen: m.complete })) });
+      blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Credit${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
       blocks.push({ type: 'text', text: owned.brands.map(b => `${b.brand} ${b.have}/${b.total}`).join(' · '), muted: true });
-      return { blocks, initial: prog.crates.length ? 'crate-' + prog.crates[0].id : undefined };
+      return { blocks, initial: stacks.length ? 'crates-' + stacks[0].tier : undefined };
     },
   };
 }
