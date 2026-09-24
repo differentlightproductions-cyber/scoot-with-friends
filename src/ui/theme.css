@@ -174,6 +174,29 @@
 }
 #start .preview-frame[data-mood="dusk"] .pf-label::before { content: "● "; color: #e0162b; }
 
+/* Screens without a preview get a big sticker slogan on the wall instead. */
+#start:is([data-screen="play"], [data-screen="online"], [data-screen^="settings"], [data-screen="guide"], [data-screen="tricks"], [data-screen="leave-sesh"])::after {
+  position: absolute;
+  right: 6vw;
+  top: 50%;
+  max-width: 42vw;
+  padding: 0.35em 0.5em 0.25em;
+  font: clamp(38px, 6.4vw, 104px)/0.95 var(--display);
+  color: var(--paper);
+  -webkit-text-stroke: 3px var(--ink);
+  paint-order: stroke fill;
+  text-align: right;
+  white-space: pre-line;
+  transform: translateY(-50%) rotate(-5deg);
+  filter: drop-shadow(8px 8px 0 var(--ink));
+  pointer-events: none;
+}
+#start[data-screen="play"]::after, #start[data-screen="online"]::after { content: "PICK A\A SPOT."; color: var(--sun); }
+#start[data-screen^="settings"]::after { content: "DIAL\A IT IN."; color: var(--lime); transform: translateY(-50%) rotate(4deg); }
+#start:is([data-screen="guide"], [data-screen="tricks"])::after { content: "LEARN IT.\A LAND IT."; font-family: var(--marker); color: var(--pink); -webkit-text-stroke: 2px var(--ink); }
+#start[data-screen="leave-sesh"]::after { content: "SAME TIME\A TOMORROW?"; color: var(--teal); }
+body.ui-open header { visibility: hidden; }
+
 /* ---- HOME: zine cover ------------------------------------------------------- */
 #start[data-screen="home"] .game-menu {
   background:
@@ -184,8 +207,10 @@
   transform: rotate(-0.6deg);
 }
 #start[data-screen="home"] .game-menu .eyebrow { background: var(--ink); color: var(--lime); }
+#start[data-screen="home"] .game-menu .menu-save-note { display: none; }
+#start[data-screen="home"] .game-menu nav button { margin-bottom: 8px; padding-top: 9px; padding-bottom: 8px; }
 #start[data-screen="home"] .game-menu h1 {
-  font-size: clamp(38px, 4.6vw, 70px);
+  font-size: clamp(34px, 4vw, 60px);
   background: none;
   color: var(--ink);
   -webkit-text-stroke: 0;
@@ -200,9 +225,9 @@
   transform: rotate(-3deg) skew(6deg);
 }
 #start[data-screen="home"] .game-menu button { font-size: 18px; }
-#start[data-screen="home"] .game-menu button:nth-child(-n+2) {
-  padding: 16px 16px 14px;
-  font-size: 26px;
+#start[data-screen="home"] .game-menu nav button:nth-child(-n+2) {
+  padding: 12px 16px 11px;
+  font-size: 24px;
   color: var(--ink);
   outline: none;
 }

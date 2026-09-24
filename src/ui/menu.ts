@@ -199,7 +199,7 @@ export class GameMenu {
     radial.addColorStop(0, '#fff'); radial.addColorStop(0.55, '#fff'); radial.addColorStop(1, '#000');
     fg.fillStyle = radial; fg.fillRect(0, 0, 256, 256);
     const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(5, 48),
+      new THREE.CircleGeometry(2.6, 48),
       new THREE.MeshStandardMaterial({ color: 0xb6beb2, roughness: 1, transparent: true, alphaMap: new THREE.CanvasTexture(fade), depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
@@ -698,7 +698,7 @@ export class GameMenu {
     if(this.previewScene.background!==creatorBackdrop(mood))this.previewScene.background=creatorBackdrop(mood);
     const backdrop=this.previewScene.background;
     if(backdrop instanceof THREE.Texture){const a=w/Math.max(1,h);if(a>=1){backdrop.repeat.set(1,1/a);backdrop.offset.set(0,(1-1/a)*.42);}else{backdrop.repeat.set(a,1);backdrop.offset.set((1-a)*.5,0);}}
-    if(floor instanceof THREE.Mesh)(floor.material as THREE.MeshStandardMaterial).color.setHex(({dusk:0xd9c8ae,noon:0xe6d2ae,night:0x8f8aa8,shop:0xc9a27a,sunrise:0xe9d3dc} as Record<BackdropMood,number>)[mood]);
+    if(floor instanceof THREE.Mesh)(floor.material as THREE.MeshStandardMaterial).color.setHex(({dusk:0x7a5a6c,noon:0xb58d66,night:0x3a3350,shop:0x6e4428,sunrise:0x9a82b8} as Record<BackdropMood,number>)[mood]);
     const center=this.focus.clone().add(this.pan);
     const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
     this.previewCamera.aspect=w/h;

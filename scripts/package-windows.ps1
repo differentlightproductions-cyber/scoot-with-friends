@@ -18,7 +18,7 @@ foreach ($name in $packages) {
     if (Test-Path -LiteralPath $gameTarget) { Remove-Item -LiteralPath $gameTarget -Recurse -Force }
     New-Item -ItemType Directory -Force -Path "$destination\game", "$destination\runtime" | Out-Null
     Copy-Item -Path "$projectRoot\dist\client\*" -Destination "$destination\game" -Recurse -Force
-    Copy-Item -LiteralPath "$projectRoot\portable\server.cjs", "$projectRoot\portable\Play Scoot with Friends.cmd", "$projectRoot\portable\READ ME.txt" -Destination $destination -Force
+    Copy-Item -LiteralPath "$projectRoot\portable\server.cjs", "$projectRoot\portable\qr.cjs", "$projectRoot\portable\Play Scoot with Friends.cmd", "$projectRoot\portable\Play on Phone.cmd", "$projectRoot\portable\READ ME.txt" -Destination $destination -Force
     Copy-Item -LiteralPath $runtime -Destination "$destination\runtime\node.exe" -Force
     Copy-Item -LiteralPath "$projectRoot\dist\lan\lan-runtime.cjs", "$projectRoot\portable\lan-start.cjs", "$projectRoot\portable\Host LAN.cmd", "$projectRoot\portable\Join LAN.cmd", "$projectRoot\portable\LAN READ ME.txt" -Destination $destination -Force
     $zip = Join-Path $projectRoot "releases\$name.zip"

@@ -30,3 +30,14 @@ and dirt, concrete, asphalt, or gravel surface. Test Ride uses that same park.
 Return to Editor keeps your work.
 
 This is a solo freestyle game. Multiplayer is not implemented.
+
+PLAY ON PHONE (same Wi-Fi)
+1. Double-click Play on Phone.cmd. Keep its window open.
+2. If Windows asks, allow Node on your PRIVATE network.
+3. Scan the code shown in the window (or on the page it opens) with the
+   phone camera, or type the address it prints into the phone's browser.
+4. Turn the phone sideways and tap Enable Game. Touch controls appear.
+Only the game itself is shared on your home network; the owner tools and
+your saves are not. Close the window to stop sharing. If the phone cannot
+connect, check that it is on the same Wi-Fi and that the router does not
+isolate wireless devices (guest networks often do).

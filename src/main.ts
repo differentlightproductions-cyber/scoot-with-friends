@@ -543,7 +543,7 @@ async function boot() {
     // Keep the last world pose/camera underneath translucent pause menus. Rendering
     // that unchanged scene also survives resize/context compositing without a screenshot.
     if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
-    else {renderer.setClearColor(0xc5cbc1);renderer.clear();menu.preview(renderer);}
+    else {renderer.setClearColor(0x15161a);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
