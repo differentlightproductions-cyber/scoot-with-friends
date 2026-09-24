@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const folder = 'artifacts/ramp-review';
 mkdirSync(folder, { recursive: true });
-const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined), headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 const ids = process.env.QUARTERS_ONLY ? ['front-quarter','back-quarter'] : ['front-quarter','back-quarter','small-box','large-box','wood-hub','spine'];

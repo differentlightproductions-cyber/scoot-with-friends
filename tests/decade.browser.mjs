@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 // and no Decade over a Bri / Inward (or Bri over a Decade).
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/decade.browser.mjs
 const folder='artifacts/decade';mkdirSync(folder,{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

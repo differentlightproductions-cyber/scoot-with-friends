@@ -1,5 +1,5 @@
 import {chromium} from 'playwright';import {mkdirSync,writeFileSync} from 'node:fs';import assert from 'node:assert/strict';
-const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+const b=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
 try{const p=await b.newPage({viewport:{width:1280,height:960}});await p.goto('http://127.0.0.1:5180/?map=outdoor');await p.waitForFunction(()=>window.__LAZER?.rider.human);await p.evaluate(()=>window.__LAZER.testing(true));const rows=[];mkdirSync('artifacts/complete-update/poses',{recursive:true});
  for(const pose of ['crouch','grab','finger','bri','inward','manual','walk','run','sit','flip']){
   const row=await p.evaluate(async pose=>{const g=window.__LAZER,s=g.sim;const THREE=await import('/node_modules/.vite/deps/three.js');s.reset(0,true);g.advance(.1);s.grounded= !['grab','finger','bri','inward','flip'].includes(pose);s.tricks.airborne=!s.grounded;

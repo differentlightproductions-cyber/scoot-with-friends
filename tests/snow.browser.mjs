@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 // powder once it is deep enough. Renders standing, riding and covered views.
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/snow.browser.mjs
 mkdirSync('artifacts/snow',{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:960,height:600}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

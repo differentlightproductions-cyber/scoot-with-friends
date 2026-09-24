@@ -21,7 +21,7 @@ try {
 mkdirSync('artifacts/physics', { recursive: true });
 
 const browser = await chromium.launch({
-  executablePath: process.env.BROWSER_EXECUTABLE || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   headless: true,
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // transfer (x = -4) and along its deck, and checks that nothing but the visible
 // wall pushes the rider sideways: the surface must follow the box right up to
 // its edge. Usage: LAZER_URL=http://127.0.0.1:5190 node tests/box-seam.browser.mjs
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:700,height:500}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

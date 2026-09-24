@@ -7,7 +7,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 // rests on the real terrain surface. Writes numbers to artifacts/nature/report.json
 // and screenshots next to it. Usage: LAZER_URL=http://127.0.0.1:5190 node tests/nature-review.browser.mjs
 const folder='artifacts/nature';mkdirSync(folder,{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const errors=[];
 try{
  const page=await browser.newPage({viewport:{width:1100,height:900}});

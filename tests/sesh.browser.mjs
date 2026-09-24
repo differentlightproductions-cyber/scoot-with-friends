@@ -1,5 +1,5 @@
 ﻿import {chromium} from 'playwright';import assert from 'node:assert/strict';import {mkdirSync,writeFileSync} from 'node:fs';
-const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});try{const p=await b.newPage({viewport:{width:1400,height:900}});await p.goto('http://127.0.0.1:5182');await p.waitForFunction(()=>window.__LAZER?.menu.previewRider.human);mkdirSync('artifacts/sesh',{recursive:true});
+const b=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});try{const p=await b.newPage({viewport:{width:1400,height:900}});await p.goto('http://127.0.0.1:5182');await p.waitForFunction(()=>window.__LAZER?.menu.previewRider.human);mkdirSync('artifacts/sesh',{recursive:true});
 // Read the palm offset from the implementation so this check cannot drift from it again.
 const PALM_OFFSET=await p.evaluate(async()=>(await import('/src/scooter/assembly.ts')).GRIP_PALM_OFFSET);
 

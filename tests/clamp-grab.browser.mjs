@@ -6,7 +6,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 // jump/spin, and no snapping of the hand while it reaches and returns.
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/clamp-grab.browser.mjs
 const folder='artifacts/clamp-grab';mkdirSync(folder,{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

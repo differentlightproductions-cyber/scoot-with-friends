@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 
-const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined)});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
 await mkdir('artifacts/settings-pause',{recursive:true});
 await page.goto('http://127.0.0.1:5186',{waitUntil:'networkidle'});

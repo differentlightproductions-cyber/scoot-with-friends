@@ -3,7 +3,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 // Side views of the rider holding the bars across air pitches and up the back
 // quarter's transition. Usage: LAZER_URL=http://127.0.0.1:5190 node tests/pitch-reach-visual.browser.mjs
 mkdirSync('artifacts/pitch-reach',{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:700,height:500}});
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');

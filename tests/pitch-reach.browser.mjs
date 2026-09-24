@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // not move the scooter (the old 0.17 m catch pop).
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/pitch-reach.browser.mjs
 mkdirSync('artifacts/pitch-reach',{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:700,height:500}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

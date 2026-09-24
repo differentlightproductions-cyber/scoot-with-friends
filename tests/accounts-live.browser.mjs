@@ -1,5 +1,5 @@
 import{chromium}from'playwright';import assert from'node:assert/strict';import{randomBytes}from'node:crypto';
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
 const username='qa_'+randomBytes(7).toString('hex'),password=randomBytes(24).toString('hex');let created=false,page;
 try{
  page=await browser.newPage({viewport:{width:1400,height:900}});await page.goto('https://scoot-with-friends.nicsoundcloud22.chatgpt.site/?map=outdoor');await page.locator('#destination-loading').waitFor({state:'hidden',timeout:60000});

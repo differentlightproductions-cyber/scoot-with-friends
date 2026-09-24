@@ -64,7 +64,7 @@ const POSES=[
  {name:'sit',sit:true},
 ].filter(p=>!only.length||only.includes(p.name));
 
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const errors=[];const rows=[];
 try{
  const page=await browser.newPage({viewport:{width:900,height:800}});

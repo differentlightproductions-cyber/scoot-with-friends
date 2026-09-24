@@ -1,5 +1,5 @@
 ﻿import {chromium} from 'playwright';import assert from 'node:assert/strict';import {mkdirSync,writeFileSync} from 'node:fs';
-const b=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});const errors=[];
+const b=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});const errors=[];
 try{const pages=[];for(let i=0;i<3;i++){const c=await b.newContext(),p=await c.newPage();p.on('pageerror',e=>errors.push(e.message));await p.goto('http://127.0.0.1:5182');await p.waitForFunction(()=>window.__LAZER?.rider.human);pages.push(p);}
 await pages[0].evaluate(()=>window.__LAZER.network.connect('create','Host'));await pages[0].waitForFunction(()=>window.__LAZER.network.status==='Connected');const code=await pages[0].evaluate(()=>window.__LAZER.network.code);
 await pages[1].evaluate(code=>window.__LAZER.network.connect('join','Friend',code),code);await pages[1].waitForFunction(()=>window.__LAZER.network.status==='Connected');await pages[2].evaluate(()=>window.__LAZER.network.connect('create','Other room'));await pages[2].waitForFunction(()=>window.__LAZER.network.status==='Connected');await pages[0].waitForTimeout(1500);

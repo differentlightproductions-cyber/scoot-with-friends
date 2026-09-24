@@ -2,7 +2,7 @@ import {chromium} from 'playwright';
 import {writeFileSync,mkdirSync} from 'node:fs';
 // artifacts/ is gitignored, so these output directories do not exist in a fresh clone.
 mkdirSync('artifacts',{recursive:true});
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
 try{
  await page.goto('http://127.0.0.1:5174/?map=outdoor');await page.waitForFunction(()=>window.__LAZER);

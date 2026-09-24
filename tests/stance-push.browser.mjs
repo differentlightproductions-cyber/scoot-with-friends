@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 // Also checks a held push repeats, and that fakie and the return from fakie
 // never change the configured stance or swap the push foot.
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/stance-push.browser.mjs
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));

@@ -1,5 +1,5 @@
 import {chromium} from 'playwright';import assert from 'node:assert/strict';import {mkdirSync,writeFileSync} from 'node:fs';
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
 const folder='artifacts/fit-pass/contracts';mkdirSync(folder,{recursive:true});
 try{const page=await browser.newPage({viewport:{width:1280,height:960}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:5180/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.rider.human);await page.evaluate(async()=>{window.__LAZER.testing(true);await window.__LAZER.startSession('outdoor',true);});const records=[];
 for(const id of ['rider-01','rider-02','rider-03'])for(const build of ['skinny','regular','chunky'])for(const quality of ['low','medium','high']){

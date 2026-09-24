@@ -5,7 +5,7 @@ import {mkdirSync,writeFileSync} from 'node:fs';
 // the skinned skeleton. Usage: LAZER_URL=http://127.0.0.1:5190 node tests/decade-visual.browser.mjs [regular|goofy] [arcade]
 const folder='artifacts/decade';mkdirSync(folder,{recursive:true});
 const stance=process.argv[2]??'regular',style=process.argv[3]??'arcade';
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');

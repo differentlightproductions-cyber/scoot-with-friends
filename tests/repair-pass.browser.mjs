@@ -4,7 +4,7 @@
 // These are AUTOMATED INPUT TESTS, not controller playtests.
 import { chromium } from 'playwright';
 const browser = await chromium.launch({
-  executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+  executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),
   headless: true,
   args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });

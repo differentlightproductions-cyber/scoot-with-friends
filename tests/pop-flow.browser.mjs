@@ -1,6 +1,6 @@
 import {chromium} from 'playwright';
 import {writeFileSync,mkdirSync} from 'node:fs';
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
 try{
  const page=await browser.newPage();await page.goto('http://127.0.0.1:5180/?map=outdoor');await page.waitForFunction(()=>window.__LAZER);
  const result=await page.evaluate(async()=>{

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 // clouds have replaced the simple stand-ins, so the plain versions never flash
 // on screen first. Rides through the same path as the menu's Ride button.
 // Usage: LAZER_URL=http://127.0.0.1:5190 node tests/asset-swap.browser.mjs
-const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
