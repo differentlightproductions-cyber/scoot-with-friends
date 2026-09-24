@@ -18,7 +18,9 @@ function trickActivity(s: Simulation) {
   return channelBusy(t.deck) || channelBusy(t.bars) || channelBusy(t.bri) || channelBusy(t.kickless) || channelBusy(t.decade) || t.poseBlend > 0.2 ? 1 : 0;
 }
 export class ChaseCamera {
-  camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.08, 160);
+  // Far enough for the desert and the mountains; depth precision with this
+  // near plane barely depends on the far plane.
+  camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.08, 1600);
   heading = 0;
   orbit = 0;
   elevation = 0.2;

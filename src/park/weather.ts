@@ -62,6 +62,8 @@ export class Weather {
   // Snowfall eases in and out over a few seconds instead of switching.
   this.intensity=THREE.MathUtils.clamp(this.intensity+(mode==='snow'?dt/4:-dt/2),0,1);
   this.group.visible=this.intensity>0||this.sprayAlive();
+  // Falling snow greys the sky dome (art/sky.ts reads this).
+  this.scene.userData.overcast=this.intensity;
   this.applyFog(this.intensity);
   this.scanAge+=dt;if(this.scanAge>1){this.scanAge=0;this.scan();}
   if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(Math.min(dt,.05),rider.camera??player);}

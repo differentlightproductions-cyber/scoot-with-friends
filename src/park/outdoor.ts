@@ -1,12 +1,12 @@
 import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
-import {addDesertRidges} from './ridges';
+import { buildDesert, scatterDesert } from "../art/desert";
 import type { Park } from "./park";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { buildWoodRamp, woodRampMaterials } from "./wood-ramps";
-import { loadNatureAsset, CLOUD_URL, trackAssetLoad } from "./nature";
+import { SkyDome } from "../art/sky";
 import {
   buildMemorialGrounds,
   extensionHeight,
@@ -299,8 +299,8 @@ export function smallBoxLedge() {
 }
 export function buildOutdoor(park: Park) {
   const { scene } = park;
-  scene.background = new THREE.Color(0x9dc6e6);
-  scene.fog = new THREE.Fog(0xadcde2, 85, 220);
+  new SkyDome(scene);
+  scene.fog = new THREE.Fog(0xd3dee6, 140, 900);
   scene.add(new THREE.HemisphereLight(0xe4f1ff, 0x777b46, 1.15));
   const sun = new THREE.DirectionalLight(0xffebcd, 3.2);
   sun.position.set(-28, 45, -22);
@@ -315,35 +315,6 @@ export function buildOutdoor(park: Park) {
   });
   sun.shadow.normalBias = 0.035;
   scene.add(sun);
-  // A handful of large, distant clouds - too far and too soft to usefully cast
-  // shadows or receive them, so both stay off for this instance.
-  const skyGeneration = scene.userData.parkGeneration;
-  trackAssetLoad(scene, loadNatureAsset(CLOUD_URL).then(({ geometry, width: sourceWidth }) => {
-    // A park rebuilt before the file arrived leaves this callback pending for a
-    // scene that has since been cleared and rebuilt; only the newest build acts.
-    if (scene.userData.parkGeneration !== skyGeneration) return;
-    const count = 22;
-    // The scanned base-color/normal maps read as a dark, mottled grey under
-    // this scene's lights instead of a bright sunlit puff. A flat white
-    // material lets the low-poly geometry's own soft shading read as fluff.
-    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
-    const clouds = new THREE.InstancedMesh(geometry, material, count);
-    clouds.name = "Sky clouds";
-    const matrix = new THREE.Matrix4(),
-      q = new THREE.Quaternion();
-    for (let i = 0; i < count; i++) {
-      const x = -130 + ((i * 53) % 260);
-      const z = -140 + ((i * 71) % 200);
-      const y = 42 + (i % 5) * 4;
-      const width = 34 + (i % 4) * 12;
-      const scale = width / sourceWidth;
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), i * 1.13);
-      matrix.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(scale, scale * 0.8, scale));
-      clouds.setMatrixAt(i, matrix);
-    }
-    clouds.instanceMatrix.needsUpdate = true;
-    scene.add(clouds);
-  }));
   const box = (
     x: number,
     y: number,
@@ -356,6 +327,19 @@ export function buildOutdoor(park: Park) {
   ) =>
     park.box(new THREE.Vector3(x, y, z), new THREE.Vector3(w, h, d), c, solid);
   box(0, -0.15, 0, 230, 0.2, 230, 0x719253);
+  // Beyond the park's lawns the Mojave runs out to the River Mountains.
+  const keepOut = (x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x) - 115), Math.max(0, Math.abs(z) - 115));
+  const desert = buildDesert(scene, { center: new THREE.Vector2(0, -20), base: -0.05, keepOut, rangeStart: 640, apron: { x: 0, z: 0, halfX: 115, halfZ: 115, width: 9 } });
+  // A concrete mow curb finishes the lawn's edge where the rock border starts.
+  const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xc9c2b6, roughness: 0.9, name: "Mow curb concrete" });
+  for (const [x, z, w, d] of [[0, 115.14, 230.56, 0.28], [0, -115.14, 230.56, 0.28], [115.14, 0, 0.28, 230], [-115.14, 0, 0.28, 230]]) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(w, 0.24, d), curbMaterial);
+    curb.position.set(x, -0.1, z);
+    curb.receiveShadow = true;
+    curb.name = "Mow curb";
+    scene.add(curb);
+  }
+  scatterDesert(scene, { keepOut, ground: desert.surface, center: new THREE.Vector2(0, 0), near: 2.5, far: 190, count: 2600 });
   buildMemorialGrounds(park);
   // Built wooden ramps: plywood, framing, kick plates and coping, generated
   // from the same profiles the rider rides (see wood-ramps.ts).
@@ -559,7 +543,6 @@ export function buildOutdoor(park: Park) {
       box(x, 5, z, 0.13, 10, 0.13, 0xa4adb0);
       box(x - 1, 10, z, 2.2, 0.12, 0.35, 0x667273);
     }
-  addDesertRidges(scene);
   for (const x of [-27, 27]) park.bench("Wood park bench " + x, x, 0, 6);
   // Detailed Tripo-authored visual skin. Analytic terrain and coping remain the
   // sole physics authority; procedural sides stay visible until loading succeeds.

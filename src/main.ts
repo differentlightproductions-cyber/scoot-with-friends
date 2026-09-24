@@ -512,7 +512,7 @@ async function boot() {
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
       // and not while the current one sits in a rack.
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
-    daylight.update(dt,profile.settings.daylight==='snow'?'day':profile.settings.daylight,sim.position);
+    daylight.update(dt,profile.settings.daylight==='snow'?'day':profile.settings.daylight,sim.position,renderer);
     weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);

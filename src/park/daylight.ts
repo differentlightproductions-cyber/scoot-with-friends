@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Park } from './park';
 import { OUTDOOR, terrainHeight } from './park';
+import type { SkyDome } from '../art/sky';
 export type DayPhase='day'|'sunset'|'night'|'sunrise';
 const phases={day:{sky:0xb3d2df,sun:0xffedce,power:3.2,ambient:1.15,environment:.35,night:0},sunset:{sky:0xb28283,sun:0xffa05f,power:2,ambient:.75,environment:.24,night:.35},night:{sky:0x111d31,sun:0x9bb9e8,power:.42,ambient:.34,environment:.11,night:1},sunrise:{sky:0xccabb1,sun:0xffc695,power:1.7,ambient:1.25,environment:.28,night:.25}};
 export class Daylight {
@@ -33,11 +34,23 @@ export class Daylight {
   }
   this.light.position.set(0,6,0);park.scene.add(this.light);
  }
- update(dt:number,phase:DayPhase,player:THREE.Vector3){
-  this.phase=phase;if(!OUTDOOR)return;
+ update(dt:number,phase:DayPhase,player:THREE.Vector3,renderer?:THREE.WebGLRenderer){
+  this.phase=phase;
   const p=phases[phase],a=1-Math.exp(-dt*.9);
+  // An outdoor map's sky dome sets the light: its sun direction swings the key
+  // light (long shadows at sunset), its horizon colours the distance haze and
+  // it renders the environment every material reflects.
+  const dome=this.park.scene.userData.sky as SkyDome|undefined;
+  if(dome){
+   dome.approach(phase,a);dome.step(dt,renderer);
+   if(this.park.scene.fog)this.park.scene.fog.color.copy(dome.horizon);
+   const offset=this.sun?.userData.shadowOffset as THREE.Vector3|undefined;
+   if(offset)offset.copy(dome.sunDirection).multiplyScalar(offset.length()||60);
+   else if(this.sun)this.sun.position.copy(this.sun.target.position).addScaledVector(dome.sunDirection,60);
+  }
+  if(!OUTDOOR&&!dome)return;
   if(this.park.scene.background instanceof THREE.Color)this.park.scene.background.lerp(this.sky.set(p.sky),a);
-  if(this.park.scene.fog)this.park.scene.fog.color.lerp(this.sky,a);
+  if(this.park.scene.fog&&!dome)this.park.scene.fog.color.lerp(this.sky,a);
   this.park.scene.environmentIntensity+=(p.environment-this.park.scene.environmentIntensity)*a;
   if(this.sun){this.sun.color.lerp(this.color.set(p.sun),a);this.sun.intensity+=(p.power-this.sun.intensity)*a;}
   if(this.ambient)this.ambient.intensity+=(p.ambient-this.ambient.intensity)*a;

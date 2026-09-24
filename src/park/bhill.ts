@@ -10,6 +10,13 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import type { Park } from "./park";
 import { surfaceTexture } from "./art";
+import { SkyDome } from "../art/sky";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { Noise2 } from "../art/noise";
+import { buildTerrain, desertMaterial, paintDesert, scatterDesert } from "../art/desert";
+import { buildHouses, planHouse, type HouseLot } from "../art/houses";
+import { asphaltTexture, gravelTexture } from "../art/textures";
+import { bursage, fanPalm, plant, yucca, type Placement } from "../art/flora";
 
 /** Plan-view control points (metres), top of the hill first. */
 const CONTROL: [number, number][] = [
@@ -169,8 +176,8 @@ export function routeProgress(x: number, z: number) {
 
 export function buildBHill(park: Park) {
   const { scene, world } = park;
-  scene.background = new THREE.Color(0xb7d3e4);
-  scene.fog = new THREE.Fog(0xc7d9e2, 120, 420);
+  new SkyDome(scene);
+  scene.fog = new THREE.Fog(0xd3dee6, 160, 1100);
   scene.add(new THREE.HemisphereLight(0xeaf4ff, 0x8a7a5a, 1.2));
   const sun = new THREE.DirectionalLight(0xffe9c8, 3.1);
   sun.position.set(-40, 70, -30);
@@ -180,10 +187,9 @@ export function buildBHill(park: Park) {
   sun.shadow.normalBias = 0.04;
   scene.add(sun, sun.target);
 
-  // ---- Road ribbon: one mesh and one matching trimesh collider ----------------
+  // ---- Road ribbon collider: one trimesh over the whole rideable corridor ----
   const across = [-CORRIDOR, -24, -16, -11, -ROAD_HALF_WIDTH - SHOULDER, -ROAD_HALF_WIDTH, -ROAD_HALF_WIDTH * 0.5, 0, ROAD_HALF_WIDTH * 0.5, ROAD_HALF_WIDTH, ROAD_HALF_WIDTH + SHOULDER, 11, 16, 24, CORRIDOR];
-  const positions: number[] = [], colors: number[] = [], uvs: number[] = [], index: number[] = [];
-  const asphalt = new THREE.Color(0x4b4d4f), shoulder = new THREE.Color(0x8b8374), dirt = new THREE.Color(0xa88a62), scrub = new THREE.Color(0x8c8a5a);
+  const positions: number[] = [], index: number[] = [];
   const step = 2;
   const rows = Math.floor((ROUTE.length - 1) / step) + 1;
   for (let r = 0; r < rows; r++) {
@@ -191,13 +197,7 @@ export function buildBHill(park: Park) {
     for (const o of across) {
       const x = p.x + p.tz * o, z = p.z - p.tx * o;
       // Heights use the same function queries use, at this vertex.
-      const y = bHillHeight(x, z);
-      positions.push(x, y, z);
-      const d = Math.abs(o);
-      const c = d <= ROAD_HALF_WIDTH ? asphalt : d <= ROAD_HALF_WIDTH + SHOULDER ? shoulder : d < 16 ? dirt : scrub;
-      const tint = 1 + 0.04 * Math.sin(p.s * 0.21 + o);
-      colors.push(c.r * tint, c.g * tint, c.b * tint);
-      uvs.push(o * 0.5, p.s * 0.5);
+      positions.push(x, bHillHeight(x, z), z);
     }
   }
   const cols = across.length;
@@ -206,40 +206,108 @@ export function buildBHill(park: Park) {
       const a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
       index.push(a, d, b, b, d, e);
     }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(index);
-  geometry.computeVertexNormals();
-  const road = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.93, map: surfaceTexture("concrete") }));
-  road.name = "B Hill road and hillside";
-  road.receiveShadow = true;
-  scene.add(road);
-  park.solids.push(road);
-  road.userData.collider = world.createCollider(
+  const colliderHandle = world.createCollider(
     RAPIER.ColliderDesc.trimesh(new Float32Array(positions), new Uint32Array(index)).setFriction(0).setRestitution(0).setCollisionGroups(GROUPS.surface),
   ).handle;
 
-  // Visual-only skirt beyond the rideable corridor: the ground falls away toward
-  // a valley floor, so it never rises over another stretch of the road.
+  // ---- What is drawn on it: asphalt, concrete gutters, gravel shoulders and
+  // the desert hillside, each a band sampled from the same height function.
+  const band = (offsets: number[], uvScale: number) => {
+    const p: number[] = [], uv: number[] = [], idx: number[] = [];
+    for (let r = 0; r < rows; r++) {
+      const q = ROUTE[Math.min(ROUTE.length - 1, r * step)];
+      for (const o of offsets) {
+        const x = q.x + q.tz * o, z = q.z - q.tx * o;
+        p.push(x, bHillHeight(x, z), z);
+        uv.push(o / uvScale, q.s / uvScale);
+      }
+    }
+    const n = offsets.length;
+    for (let r = 0; r < rows - 1; r++)
+      for (let c = 0; c < n - 1; c++) {
+        const a = r * n + c, b = a + 1, d = a + n, e = d + 1;
+        idx.push(a, d, b, b, d, e);
+      }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  };
+  const pair = (inner: number[], uvScale: number) => mergeGeometries([band(inner.map((o) => -o).reverse(), uvScale), band(inner, uvScale)])!;
+  const gutter = ROAD_HALF_WIDTH + 0.65;
+  const surfaces: [string, THREE.BufferGeometry, THREE.Material][] = [
+    ["B Hill road", band([-ROAD_HALF_WIDTH, -ROAD_HALF_WIDTH * 0.5, 0, ROAD_HALF_WIDTH * 0.5, ROAD_HALF_WIDTH], 7), new THREE.MeshStandardMaterial({ map: asphaltTexture(), roughness: 0.92, name: "Asphalt" })],
+    ["B Hill gutters", pair([ROAD_HALF_WIDTH, gutter], 2), new THREE.MeshStandardMaterial({ map: surfaceTexture("concrete"), color: 0xd8d2c6, roughness: 0.9, name: "Rolled curb" })],
+    ["B Hill shoulders", pair([gutter, ROAD_HALF_WIDTH + SHOULDER], 1.8), new THREE.MeshStandardMaterial({ map: gravelTexture(), color: 0xe2cfb2, roughness: 1, name: "Gravel shoulder" })],
+    ["B Hill hillside", paintDesert(pair([ROAD_HALF_WIDTH + SHOULDER, 11, 16, 24, CORRIDOR], 5), (x, z) => nearest(x, z).y), desertMaterial()],
+  ];
+  for (const [name, geometry, material] of surfaces) {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = name;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+    park.solids.push(mesh);
+    if (name === "B Hill road") mesh.userData.collider = colliderHandle;
+  }
+
+  // ---- The land around the road: the hill it descends and the ranges beyond --
+  // The hill is the route's own elevation spread smoothly outward (so between
+  // switchbacks the ground climbs from the lower leg to the upper one); beyond
+  // the road's cut it stands a little higher, rolls in swales further out and
+  // rises into the River Mountains far off.
+  const samples = ROUTE.filter((_, i) => i % 10 === 0);
+  const noise = new Noise2(20260924);
+  const hillBase = (x: number, z: number) => {
+    let sw = 0, sy = 0, near = Infinity;
+    for (const q of samples) {
+      const d2 = (q.x - x) ** 2 + (q.z - z) ** 2, w = 1 / (d2 + 2500) ** 2;
+      sw += w; sy += w * q.y; if (d2 < near) near = d2;
+    }
+    const dr = Math.sqrt(near);
+    return { y: sy / sw - 2 + 9 * THREE.MathUtils.smoothstep(dr, 30, 70) + noise.fbm(x * 0.008, z * 0.008, 4) * 7 * THREE.MathUtils.smoothstep(dr, 60, 220), dr };
+  };
+  const centre = new THREE.Vector2(-15, 570);
+  const land = (x: number, z: number) => {
+    const { y: base, dr } = hillBase(x, z);
+    let y = base;
+    const t = THREE.MathUtils.smoothstep(dr, 420, 900);
+    if (t > 0) {
+      const angle = Math.atan2(z - centre.y, x - centre.x);
+      const envelope = 0.45 + 0.55 * (0.5 + 0.5 * Math.sin(angle * 2 + 0.7)) * (0.7 + 0.3 * Math.sin(angle * 5 + 2.1));
+      const crest = noise.ridged(x * 0.0022 + 11, z * 0.0022 - 7, 6), body = noise.fbm(x * 0.0011 - 3, z * 0.0011 + 5, 3) * 0.5 + 0.5;
+      y += t * t * (40 + envelope * (160 + 330 * crest * body));
+    }
+    // Never over the road corridor: under it the land hides below the ribbon.
+    if (dr < 45) {
+      const n = nearest(x, z);
+      if (Math.abs(n.offset) < CORRIDOR + 2) y = Math.min(y, n.y + crossSection(n.offset, n.s) - 0.8);
+    }
+    return y;
+  };
+  const terrain = buildTerrain(scene, { center: centre, height: land, base: 0, floor: (x, z) => hillBase(x, z).y, radius: 1750, inner: 720, seed: 88, name: "B Hill desert and ranges" });
+
+  // Skirt: joins the corridor's edge to the land, so there is no seam or gap.
+  const SKIRT = [0, 8, 20, 36], BLEND = [0, 0.3, 0.72, 1];
+  const underRoads = (x: number, z: number, y: number) => {
+    const n = nearest(x, z);
+    return Math.abs(n.offset) < CORRIDOR ? Math.min(y, n.y + crossSection(n.offset, n.s) - 0.5) : y;
+  };
   {
-    const skirt: number[] = [], skirtColors: number[] = [], skirtIndex: number[] = [];
-    const reach = [0, 18, 40, 70];
-    const ground = new THREE.Color(0x9d8660), far = new THREE.Color(0x8a8a62);
+    const skirt: number[] = [], skirtIndex: number[] = [];
     for (const side of [-1, 1]) {
       const base = skirt.length / 3;
       for (let r = 0; r < rows; r++) {
         const p = ROUTE[Math.min(ROUTE.length - 1, r * step)];
         const ex = p.x + p.tz * CORRIDOR * side, ez = p.z - p.tx * CORRIDOR * side, edgeY = bHillHeight(ex, ez);
-        for (const extra of reach) {
-          const o = (CORRIDOR + extra) * side;
-          skirt.push(p.x + p.tz * o, Math.max(-4, edgeY - extra * 0.45 - (extra / 70) ** 2 * 10), p.z - p.tx * o);
-          const c = extra < 30 ? ground : far;
-          skirtColors.push(c.r, c.g, c.b);
-        }
+        SKIRT.forEach((extra, k) => {
+          const o = (CORRIDOR + extra) * side, x = p.x + p.tz * o, z = p.z - p.tx * o;
+          const y = k === 0 ? edgeY : underRoads(x, z, edgeY + (terrain.surface(x, z) + 0.05 - edgeY) * BLEND[k]);
+          skirt.push(x, y, z);
+        });
       }
-      const n = reach.length;
+      const n = SKIRT.length;
       for (let r = 0; r < rows - 1; r++)
         for (let c = 0; c < n - 1; c++) {
           const a0 = base + r * n + c, b0 = a0 + 1, d0 = a0 + n, e0 = d0 + 1;
@@ -249,127 +317,130 @@ export function buildBHill(park: Park) {
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(skirt, 3));
-    g.setAttribute("color", new THREE.Float32BufferAttribute(skirtColors, 3));
     g.setIndex(skirtIndex);
     g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+    paintDesert(g, (x, z) => hillBase(x, z).y);
+    const mesh = new THREE.Mesh(g, desertMaterial());
     mesh.name = "B Hill outer hillside (visual)";
     mesh.receiveShadow = true;
     scene.add(mesh);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600), new THREE.MeshStandardMaterial({ color: 0x8f8360, roughness: 1 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.set(0, -4.5, B_HILL_LENGTH / 2);
-    floor.name = "B Hill valley floor (visual)";
-    scene.add(floor);
   }
+  /** The drawn ground anywhere: corridor, skirt or land. */
+  const groundAt = (x: number, z: number) => {
+    const n = nearest(x, z), d = Math.abs(n.offset);
+    if (d <= CORRIDOR) return bHillHeight(x, z);
+    if (d < CORRIDOR + SKIRT[SKIRT.length - 1]) {
+      const side = Math.sign(n.offset), i = Math.round(n.index), p = ROUTE[Math.min(ROUTE.length - 1, i)];
+      const edgeY = bHillHeight(p.x + p.tz * CORRIDOR * side, p.z - p.tx * CORRIDOR * side), extra = d - CORRIDOR;
+      let k = 1;
+      for (let j = 1; j < SKIRT.length; j++) if (extra < SKIRT[j]) { k = BLEND[j - 1] + (BLEND[j] - BLEND[j - 1]) * (extra - SKIRT[j - 1]) / (SKIRT[j] - SKIRT[j - 1]); break; }
+      return underRoads(x, z, edgeY + (terrain.surface(x, z) + 0.05 - edgeY) * k);
+    }
+    return terrain.surface(x, z);
+  };
 
-  // Lane markings: dashed centre line, solid edge lines (visual only).
-  const markings = new THREE.Group();
-  const paint = new THREE.MeshBasicMaterial({ color: 0xe8dcae });
-  const white = new THREE.MeshBasicMaterial({ color: 0xdedcd2 });
-  const dash = new THREE.PlaneGeometry(0.14, 3), edge = new THREE.PlaneGeometry(0.12, 2.05);
+  // Lane markings: dashed centre line, solid edge lines, merged into two meshes.
+  const dashes: THREE.BufferGeometry[] = [], edges: THREE.BufferGeometry[] = [];
+  const dash = new THREE.PlaneGeometry(0.14, 3), edge = new THREE.PlaneGeometry(0.12, 2.05), place = new THREE.Object3D();
   for (let i = 0; i < ROUTE.length; i += 2) {
     const p = ROUTE[i];
-    const place = (geo: THREE.PlaneGeometry, mat: THREE.Material, o: number) => {
-      const m = new THREE.Mesh(geo, mat);
+    const mark = (geo: THREE.PlaneGeometry, list: THREE.BufferGeometry[], o: number) => {
       const x = p.x + p.tz * o, z = p.z - p.tx * o;
-      m.position.set(x, bHillHeight(x, z) + 0.02, z);
-      m.rotation.set(-Math.PI / 2, 0, -Math.atan2(p.tx, p.tz), "YXZ");
-      m.rotation.order = "YXZ";
-      m.rotation.set(-Math.PI / 2 + Math.atan2(ROUTE[Math.min(ROUTE.length - 1, i + 1)].y - p.y, 1), Math.atan2(p.tx, p.tz), 0);
-      markings.add(m);
+      place.position.set(x, bHillHeight(x, z) + 0.02, z);
+      place.rotation.order = "YXZ";
+      // Pitched to the grade: the uphill end (behind) rises with the road.
+      place.rotation.set(-Math.PI / 2 - Math.atan2(ROUTE[Math.min(ROUTE.length - 1, i + 1)].y - p.y, 1), Math.atan2(p.tx, p.tz), 0);
+      place.updateMatrix();
+      list.push(geo.clone().applyMatrix4(place.matrix));
     };
-    if (i % 8 === 0) place(dash, paint, 0);
-    place(edge, white, ROAD_HALF_WIDTH - 0.25);
-    place(edge, white, -ROAD_HALF_WIDTH + 0.25);
+    if (i % 8 === 0) mark(dash, dashes, 0);
+    mark(edge, edges, ROAD_HALF_WIDTH - 0.25);
+    mark(edge, edges, -ROAD_HALF_WIDTH + 0.25);
   }
-  markings.children.forEach((m) => { m.matrixAutoUpdate = false; m.updateMatrix(); });
-  scene.add(markings);
+  for (const [list, color, name] of [[dashes, 0xe8d49a, "B Hill centre line"], [edges, 0xe6e2d6, "B Hill edge lines"]] as const) {
+    const mesh = new THREE.Mesh(mergeGeometries(list as THREE.BufferGeometry[])!, new THREE.MeshStandardMaterial({ color, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }));
+    mesh.name = name;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+  }
 
-  // ---- Houses, retaining walls, driveways, palms, rocks ----------------------
+  // ---- Houses on cut-and-fill lots, with gravel yards and palms -------------
   const random = mulberry(20260917);
-  const stucco = [0xe6d8bd, 0xd9c7a5, 0xcdb89a, 0xe9e1cf, 0xc9b28f];
-  const roofs = [0x7b4f3a, 0x8c5b40, 0x6a5a4a, 0x9a6b48];
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x9e8f78, roughness: 0.95 });
-  const concrete = new THREE.MeshStandardMaterial({ color: 0xb9b3a6, roughness: 0.9 });
-  const glass = new THREE.MeshStandardMaterial({ color: 0x3f5560, roughness: 0.25, metalness: 0.2 });
-  const box = (w: number, h: number, l: number, material: THREE.Material, x: number, y: number, z: number, yaw: number, parent: THREE.Object3D = scene, cast = true) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), material);
-    m.position.set(x, y, z);
-    m.rotation.y = yaw;
-    m.castShadow = cast;
-    m.receiveShadow = true;
-    parent.add(m);
-    return m;
-  };
-  for (let s = 70; s < B_HILL_LENGTH - 120; s += 38 + random() * 22) {
-    const p = ROUTE[Math.round(s)];
-    const side = random() < 0.5 ? -1 : 1;
-    const setback = 17 + random() * 7;
-    const x = p.x + p.tz * setback * side, z = p.z - p.tx * setback * side;
-    const ground = bHillHeight(x, z), pad = Math.max(ground, p.y + 0.6) + 0.9;
-    const yaw = Math.atan2(p.tx, p.tz);
-    const house = new THREE.Group();
-    const w = 10 + random() * 5, l = 8 + random() * 4, h = 3.2 + (random() < 0.35 ? 3 : 0);
-    const color = new THREE.MeshStandardMaterial({ color: stucco[Math.floor(random() * stucco.length)], roughness: 0.92 });
-    // Pad and retaining wall facing the road.
-    box(w + 6, pad - ground + 1.2, l + 6, wallMat, 0, (pad - ground + 1.2) / 2 - 1.2, 0, 0, house);
-    box(w, h, l, color, 0, pad - ground + h / 2, 0, 0, house);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.hypot(w, l) * 0.56, 1.8, 4), new THREE.MeshStandardMaterial({ color: roofs[Math.floor(random() * roofs.length)], roughness: 0.85 }));
-    roof.position.set(0, pad - ground + h + 0.9, 0); roof.rotation.y = Math.PI / 4; roof.scale.set(w / Math.hypot(w, l) * 1.3, 1, l / Math.hypot(w, l) * 1.3); roof.castShadow = true; house.add(roof);
-    for (const wx of [-w * 0.28, w * 0.18]) box(1.6, 1.2, 0.08, glass, wx, pad - ground + 1.6, -side * (l / 2 + 0.03) * -1, 0, house, false);
-    box(2.6, 2.2, 0.1, concrete, w * 0.42, pad - ground + 1.1, -side * (l / 2 + 0.04) * -1, 0, house, false);
-    house.position.set(x, ground, z);
-    house.rotation.y = yaw + (side < 0 ? Math.PI : 0) + Math.PI / 2 * 0;
-    scene.add(house);
-    // Driveway sloping from the pad down to the shoulder (visual; no collision into the road).
-    const drive = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.12, setback - ROAD_HALF_WIDTH - SHOULDER - l / 2 - 2), concrete);
-    const dm = (setback + ROAD_HALF_WIDTH + SHOULDER) / 2;
-    const dx = p.x + p.tz * dm * side, dz = p.z - p.tx * dm * side;
-    drive.position.set(dx, (bHillHeight(dx, dz) + pad) / 2 - 0.3, dz);
-    drive.rotation.set(0, yaw + Math.PI / 2, 0);
-    drive.receiveShadow = true;
-    scene.add(drive);
+  const lots: HouseLot[] = [];
+  const clear = (x: number, z: number, margin: number) => Math.abs(nearest(x, z).offset) > ROAD_HALF_WIDTH + SHOULDER + margin;
+  for (let s = 70; s < B_HILL_LENGTH - 120; s += 34 + random() * 22) {
+    const p = ROUTE[Math.round(s)], side = random() < 0.5 ? -1 : 1, seed = Math.floor(random() * 1e6);
+    const plan = planHouse(seed);
+    // Set back so the yard's front wall stands 3 m or more clear of the shoulder.
+    const setback = ROAD_HALF_WIDTH + SHOULDER + 3 + plan.LD / 2 + random() * 3;
+    const nx = p.tz * side, nz = -p.tx * side, yaw = Math.atan2(-nx, -nz);
+    const x = p.x + nx * setback, z = p.z + nz * setback;
+    // Every corner of the lot must clear every stretch of road (switchbacks).
+    const ax = Math.cos(yaw), az = -Math.sin(yaw), fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([u, v]) => [x + ax * (plan.lotX + u * plan.LW / 2) + fx * v * plan.LD / 2, z + az * (plan.lotX + u * plan.LW / 2) + fz * v * plan.LD / 2]);
+    if (!corners.every(([cx, cz]) => clear(cx, cz, 2.5))) continue;
+    const frontGround = Math.min(...corners.map(([cx, cz]) => bHillHeight(cx, cz)));
+    const pad = Math.max(bHillHeight(x, z), p.y + 0.6) + 0.9;
+    const reach = setback - plan.LD / 2 - (ROAD_HALF_WIDTH + SHOULDER) + 0.3;
+    const sx = p.x + nx * (ROAD_HALF_WIDTH + SHOULDER) + ax * plan.gx, sz = p.z + nz * (ROAD_HALF_WIDTH + SHOULDER) + az * plan.gx;
+    const front = bHillHeight(x - nx * plan.LD / 2 + ax * plan.gx, z - nz * plan.LD / 2 + az * plan.gx);
+    lots.push({ x, z, yaw, ground: Math.min(frontGround, pad - 1), front, pad, reach, drop: pad - bHillHeight(sx, sz), seed });
   }
-  // Palms and rocks kept well clear of the road and shoulders.
-  const trunk = new THREE.CylinderGeometry(0.16, 0.26, 1, 7), frond = new THREE.ConeGeometry(2.2, 0.8, 7), rock = new THREE.DodecahedronGeometry(1, 0);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a6248, roughness: 1 }), frondMat = new THREE.MeshStandardMaterial({ color: 0x5f7a3c, roughness: 0.9 }), rockMat = new THREE.MeshStandardMaterial({ color: 0x9d8a70, roughness: 1, flatShading: true });
-  for (let s = 30; s < B_HILL_LENGTH; s += 9 + random() * 14) {
-    const p = ROUTE[Math.round(s)], side = random() < 0.5 ? -1 : 1, offset = ROAD_HALF_WIDTH + SHOULDER + 3 + random() * 20;
-    const x = p.x + p.tz * offset * side, z = p.z - p.tx * offset * side, y = bHillHeight(x, z);
-    if (random() < 0.45) {
-      const height = 5 + random() * 5;
-      const t = new THREE.Mesh(trunk, trunkMat); t.scale.set(1, height, 1); t.position.set(x, y + height / 2, z); t.rotation.z = (random() - 0.5) * 0.15; t.castShadow = true; scene.add(t);
-      const f = new THREE.Mesh(frond, frondMat); f.position.set(x, y + height + 0.2, z); f.rotation.x = Math.PI; f.castShadow = true; scene.add(f);
-    } else {
-      const r = new THREE.Mesh(rock, rockMat); const size = 0.5 + random() * 1.6; r.scale.set(size * 1.3, size * 0.7, size); r.position.set(x, y + size * 0.25, z); r.rotation.y = random() * 6; r.castShadow = true; scene.add(r);
-    }
-  }
-  // Distant connected ridgelines around the whole descent.
-  const center = new THREE.Vector3(0, 0, B_HILL_LENGTH / 2);
-  for (let layer = 0; layer < 2; layer++) {
-    const p: number[] = [], ix: number[] = [], segments = 96, radius = 520 + layer * 140;
-    for (let i = 0; i <= segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const hgt = 70 + layer * 40 + 35 * Math.sin(a * 3 + layer) + 18 * Math.sin(a * 7.3 + 1.1) + 9 * Math.sin(a * 13 + layer * 2);
-      p.push(center.x + Math.cos(a) * radius, -30, center.z + Math.sin(a) * radius, center.x + Math.cos(a) * radius, hgt, center.z + Math.sin(a) * radius);
-      if (i < segments) { const k = i * 2; ix.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3)); g.setIndex(ix); g.computeVertexNormals();
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: layer ? 0xa9a08e : 0x9c8d72, side: THREE.DoubleSide, fog: false }));
-    m.name = "B Hill distant ridge " + layer; scene.add(m);
-  }
+  const houses = buildHouses(scene, lots);
+  // Riders crash into walls and houses instead of passing through them.
+  for (const b of houses.solids)
+    world.createCollider(RAPIER.ColliderDesc.cuboid(b.half.x, b.half.y, b.half.z).setTranslation(b.center.x, b.center.y, b.center.z).setRotation(b.quaternion).setFriction(0.3).setCollisionGroups(GROUPS.surface));
+  const palms = [1, 2, 3].map(fanPalm), yuccas = [7, 8].map(yucca), shrubs = [7, 8].map(bursage);
+  const yardLists = { palm: palms.map(() => [] as Placement[]), yucca: yuccas.map(() => [] as Placement[]), shrub: shrubs.map(() => [] as Placement[]) };
+  houses.yard.forEach((spot, i) => {
+    const list = yardLists[spot.kind], scale = spot.kind === "palm" ? 0.8 + random() * 0.45 : 0.8 + random() * 0.4;
+    list[i % list.length].push({ x: spot.x, y: spot.y - 0.02, z: spot.z, scale, yaw: random() * Math.PI * 2 });
+  });
+  palms.forEach((m, k) => yardLists.palm[k].length && plant(scene, m, yardLists.palm[k], "B Hill yard palms"));
+  yuccas.forEach((m, k) => yardLists.yucca[k].length && plant(scene, m, yardLists.yucca[k], "B Hill yard yucca", true));
+  shrubs.forEach((m, k) => yardLists.shrub[k].length && plant(scene, m, yardLists.shrub[k], "B Hill yard shrubs", true));
+
+  // ---- Desert scatter over the hillsides ------------------------------------
+  const inLot = (x: number, z: number) => lots.some((l) => Math.hypot(x - l.x, z - l.z) < 16);
+  const scatter = scatterDesert(scene, {
+    keepOut: (x, z) => Math.abs(nearest(x, z).offset) - (ROAD_HALF_WIDTH + SHOULDER + 1),
+    ground: groundAt, center: centre, near: 0.3, far: 260, count: 3600, seed: 424,
+    avoid: inLot,
+    sample: (r) => {
+      const p = ROUTE[Math.floor(r() * (ROUTE.length - 1))], side = r() < 0.5 ? -1 : 1, o = (ROAD_HALF_WIDTH + SHOULDER + 1) + Math.pow(r(), 1.5) * 262;
+      return [p.x + p.tz * o * side, p.z - p.tx * o * side];
+    },
+  });
+  // Boulders and yucca near the road are solid.
+  for (const kind of scatter)
+    if (kind.solid)
+      kind.placements.forEach((list, m) => {
+        const model = kind.models[m];
+        for (const pl of list) {
+          if (Math.abs(nearest(pl.x, pl.z).offset) > CORRIDOR + 4 || pl.scale * model.height < 0.5) continue;
+          const radius = kind.name === "yucca" ? 0.3 * pl.scale : model.radius * pl.scale * 0.8, half = (model.height * pl.scale) / 2;
+          world.createCollider(RAPIER.ColliderDesc.cylinder(half, radius).setTranslation(pl.x, pl.y + half, pl.z).setFriction(0.3).setCollisionGroups(GROUPS.surface));
+        }
+      });
+
   // Start and finish banners.
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x5b5f63, metalness: 0.6, roughness: 0.45 });
   for (const [s, label] of [[70, "B HILL"], [B_HILL_LENGTH - 60, "FINISH"]] as const) {
     const pose = routePose(s);
     const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
     const ctx = canvas.getContext("2d")!; ctx.fillStyle = "#223331"; ctx.fillRect(0, 0, 512, 96); ctx.fillStyle = "#f3e2bb"; ctx.font = "bold 62px Impact, sans-serif"; ctx.textAlign = "center"; ctx.fillText(label, 256, 70);
     const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-    const banner = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.9), new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide }));
-    banner.position.set(pose.x, pose.y + 5.4, pose.z); banner.rotation.y = pose.yaw; scene.add(banner);
+    // Readable from both sides: riders coming down see the uphill face.
+    for (const turn of [Math.PI, 0]) {
+      const banner = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.9), new THREE.MeshStandardMaterial({ map: texture }));
+      banner.position.set(pose.x - Math.sin(pose.yaw) * (turn ? 0.01 : -0.01), pose.y + 5.4, pose.z - Math.cos(pose.yaw) * (turn ? 0.01 : -0.01));
+      banner.rotation.y = pose.yaw + turn;
+      banner.name = "B Hill banner";
+      scene.add(banner);
+    }
     for (const o of [-5.4, 5.4]) {
       const px = pose.x + Math.cos(pose.yaw) * o, pz = pose.z - Math.sin(pose.yaw) * o;
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 8), trunkMat); post.position.set(px, bHillHeight(px, pz) + 3.2, pz); post.castShadow = true; scene.add(post);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 8), postMat); post.position.set(px, bHillHeight(px, pz) + 3.2, pz); post.castShadow = true; scene.add(post);
     }
   }
 }

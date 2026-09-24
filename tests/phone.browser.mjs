@@ -36,7 +36,8 @@ try {
   const settle = (n = 30) => run((n) => window.__phone.step(null, n), n);
   const press = (action) => run(async (action) => { const f = await window.__phone.frame(); f.pressed[action] = true; f.held[action] = 1; window.__phone.step(f, 2); }, action);
   // Screenshots are evidence, not assertions: a slow software renderer can miss the timeout.
-  const shot = (name) => page.screenshot({ path: `artifacts/phone/${name}.png`, timeout: 90000 }).catch((e) => console.log("(no screenshot " + name + ": " + String(e).split("\n")[0] + ")"));
+  // Set SHOTS=1 for pictures; they are slow under a software renderer.
+  const shot = (name) => process.env.SHOTS ? page.screenshot({ path: `artifacts/phone/${name}.png`, timeout: 90000 }).catch((e) => console.log("(no screenshot " + name + ": " + String(e).split("\n")[0] + ")")) : Promise.resolve();
 
   // 1. Standing, third person.
   await run(() => { const g = window.__LAZER; g.camera.view = "third"; g.sim.walking = true; g.advance(0.3); });

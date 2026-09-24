@@ -17,4 +17,3 @@ Fonts (`public/fonts/`):
 Art assets:
 
 - **Lawn texture** (`public/textures/grass-lawn.jpg`) is a resized copy of ambientCG "Grass004", released under CC0 1.0 (public domain). Source: https://ambientcg.com/view?id=Grass004
-- **Pine tree, camellia shrub and cloud models** (`public/models/nature/`) were supplied by the project owner and optimized for the browser.

@@ -1,9 +1,7 @@
 import { activeLayout, brushHeight } from "../editor/layout";
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { addParkPeople } from "./people";
-import { canopy, rockShape } from './art';
-import { loadNatureAsset, trackAssetLoad, PINE_TREE_URL, CAMELLIA_SHRUB_URL } from './nature';
+import { aleppoPine, boulder, bursage, plant, yucca, type Placement } from '../art/flora';
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
@@ -673,65 +671,13 @@ export function buildMemorialGrounds(park: Park) {
         .setCollisionGroups(GROUPS.surface),
     );
   }
-  const trunks = new THREE.InstancedMesh(
-    mergeGeometries([
-      new THREE.CylinderGeometry(.15,.34,1,16),
-      new THREE.CylinderGeometry(.04,.13,.7,12).rotateZ(.7).translate(-.18,.26,0),
-      new THREE.CylinderGeometry(.04,.12,.64,12).rotateZ(-.85).translate(.2,.23,.02),
-      new THREE.CylinderGeometry(.015,.07,.55,10).rotateX(.7).translate(0,.4,.19),
-      new THREE.CylinderGeometry(.013,.06,.6,10).rotateX(-.85).translate(0,.42,-.19),
-    ]),
-    new THREE.MeshStandardMaterial({ color: 0x796248 }),
-    trees.length,
-  );
-  const crowns = new THREE.InstancedMesh(
-    canopy(1),
-    new THREE.MeshStandardMaterial({ color: 0x7b9958, vertexColors:true, roughness:.92 }),
-    trees.length,
-  );
-  const matrix = new THREE.Matrix4(),
-    q = new THREE.Quaternion();
-  trees.forEach(([x, z, h], i) => {
-    const ground = park.groundHeight(x, z);
-    q.setFromAxisAngle(v(0,1,0), i*2.399);
-    matrix.compose(v(x, ground + h / 2, z), q, v(1, h, 1));
-    trunks.setMatrixAt(i, matrix);
-    matrix.compose(v(x, ground + h + 0.8, z), q, v(2.4, h * 0.55, 2.4));
-    crowns.setMatrixAt(i, matrix);
-    crowns.setColorAt(i,new THREE.Color().setHSL(.23+(i%4)*.008,.34,.29+(i%5)*.014));
+  // Aleppo pines: the park's big shade trees (generated, see art/flora.ts).
+  // Four shapes, each tree its own size and turn.
+  const pines = [0, 1, 2, 3].map((k) => aleppoPine(k + 1));
+  pines.forEach((model, k) => {
+    const mine = trees.filter((_, i) => i % pines.length === k);
+    plant(scene, model, mine.map(([x, z, h], i) => ({ x, y: park.groundHeight(x, z) - 0.05, z, scale: (h * 2.3) / model.height, yaw: i * 2.399 + k })), "tree-pines");
   });
-  trunks.castShadow = crowns.castShadow = true;
-  trunks.name = "tree-trunks";
-  crowns.name = "tree-crowns";
-  scene.add(trunks, crowns);
-  // The authored pine tree replaces both procedural meshes at once (trunk and
-  // canopy are one mesh); the simple fallback stays visible until it loads.
-  // The scene is reused when a park is rebuilt, and every build waits on the
-  // same shared file request. A build that was replaced before the file arrived
-  // must not act at all: it would otherwise see the newer build's meshes and
-  // skip hiding that build's own fallback trees, which then stayed on screen.
-  const generation = scene.userData.parkGeneration,
-    isCurrentBuild = () => scene.userData.parkGeneration === generation;
-  trackAssetLoad(scene, loadNatureAsset(PINE_TREE_URL).then(({ geometry, material, height }) => {
-    if (!isCurrentBuild()) return;
-    const detailed = new THREE.InstancedMesh(geometry, material, trees.length);
-    detailed.name = "Detailed trees";
-    trees.forEach(([x, z, h], i) => {
-      q.setFromAxisAngle(v(0, 1, 0), i * 2.399);
-      const scale = h / height;
-      matrix.compose(v(x, park.groundHeight(x, z), z), q, v(scale, scale, scale));
-      detailed.setMatrixAt(i, matrix);
-    });
-    detailed.instanceMatrix.needsUpdate = true;
-    detailed.castShadow = true;
-    scene.add(detailed);
-    trunks.visible = false;
-    crowns.visible = false;
-    // The fidelity pass (render/fidelity.ts) builds nearby layered canopies out
-    // of the procedural crowns; they leave with them, immediately, not on the
-    // next frame the render loop happens to retire them.
-    scene.getObjectByName("Nearby layered foliage")?.removeFromParent();
-  }));
   addParkPeople(scene);
   // Bins and lamp bases use the same modest polygon and material budget as
   // nearby furniture, placed clear of riding paths.
@@ -745,11 +691,8 @@ export function buildMemorialGrounds(park: Park) {
     const lid=new THREE.Mesh(new THREE.CylinderGeometry(.27,.29,.04,12),rimMat);
     lid.position.set(x,.84,z);scene.add(lid);
   }
-  const shrubs = new THREE.InstancedMesh(
-    canopy(1),
-    new THREE.MeshStandardMaterial({ color: 0x82955b, vertexColors:true, roughness:.92 }),
-    120,
-  );
+  // Xeriscape beds along the paths: white bursage with the odd Mojave yucca.
+  const beds: Placement[] = [], accents: Placement[] = [];
   for (let i = 0; i < 120; i++) {
     const strip = i < 40 ? -42 : i < 80 ? 36 : -94;
     const x = -105 + (i % 40) * 5.3,
@@ -760,59 +703,24 @@ export function buildMemorialGrounds(park: Park) {
         Math.abs(x - 65) < 7 ||
         Math.abs(x + 28) < 6 ||
         Math.abs(x - 90) < 5);
-    matrix.compose(
-      v(x, entrance||!clearPlant(x,z,1.1) ? -2 : 0.45, z),
-      q,
-      v(0.65 + (i % 3) * 0.15, 0.55, 0.65),
-    );
-    shrubs.setMatrixAt(i, matrix);
+    if (entrance || !clearPlant(x, z, 1.1)) continue;
+    const spot = { x, y: park.groundHeight(x, z), z, scale: 0.9 + (i % 3) * 0.2, yaw: i * 1.7 };
+    (i % 9 === 4 ? accents : beds).push(spot);
   }
-  shrubs.name = "bushes";
-  scene.add(shrubs);
-  trackAssetLoad(scene, loadNatureAsset(CAMELLIA_SHRUB_URL).then(({ geometry, material, height }) => {
-    if (!isCurrentBuild()) return;
-    const detailed = new THREE.InstancedMesh(geometry, material, 120);
-    detailed.name = "Detailed shrubs";
-    for (let i = 0; i < 120; i++) {
-      const strip = i < 40 ? -42 : i < 80 ? 36 : -94;
-      const x = -105 + (i % 40) * 5.3,
-        z = strip + Math.sin(i * 2.3) * 1.8;
-      const entrance =
-        strip === -42 &&
-        (Math.abs(x) < 6 ||
-          Math.abs(x - 65) < 7 ||
-          Math.abs(x + 28) < 6 ||
-          Math.abs(x - 90) < 5);
-      const scale = (0.45 + (i % 3) * 0.12) / height;
-      q.setFromAxisAngle(v(0, 1, 0), i * 1.7);
-      matrix.compose(v(x, entrance || !clearPlant(x, z, 1.1) ? -2 : park.groundHeight(x, z), z), q, v(scale, scale, scale));
-      detailed.setMatrixAt(i, matrix);
-    }
-    detailed.instanceMatrix.needsUpdate = true;
-    detailed.castShadow = true;
-    scene.add(detailed);
-    shrubs.visible = false;
-  }));
-  const rocks = new THREE.InstancedMesh(
-    rockShape(),
-    new THREE.MeshStandardMaterial({ color: 0x9b947f, roughness:.96 }),
-    80,
-  );
+  [0, 1, 2].forEach((k) => plant(scene, bursage(k + 1), beds.filter((_, i) => i % 3 === k), "xeriscape bursage", true));
+  plant(scene, yucca(3), accents, "yucca");
+  // Varnished boulders set around the lawns, clear of the riding areas.
+  const stones: Placement[] = [];
   for (let i = 0; i < 80; i++) {
     const x = -108 + ((i * 41) % 216),
       z = -100 + ((i * 47) % 174);
     const occupied =
       (x > -35 && x < 96 && z > -94 && z < 35) ||
       (x > -83 && x < -40 && z > -32 && z < 38);
-    matrix.compose(
-      v(x, occupied ? -3 : 0.35, z),
-      q,
-      v(0.5 + (i % 3) * 0.3, 0.5, 0.65),
-    );
-    rocks.setMatrixAt(i, matrix);
+    if (occupied || !clearPlant(x, z, 1)) continue;
+    stones.push({ x, y: park.groundHeight(x, z) - 0.1, z, scale: 0.35 + (i % 4) * 0.18, yaw: i * 0.9 });
   }
-  rocks.name = "rocks";
-  scene.add(rocks);
+  [0, 1, 2].forEach((k) => plant(scene, boulder(k + 5), stones.filter((_, i) => i % 3 === k), "rocks", true));
   // The three parking floodlights used to stand a metre inside the lot, in the
   // rear drive aisle. They now line its southern verge beyond the footpath.
   for (const [x, z] of [
