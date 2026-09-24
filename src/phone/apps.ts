@@ -329,6 +329,12 @@ function missionsApp(d: PhoneDeps): View {
         blocks.push({ type: 'title', text: 'CRATES', sub: 'Parts or Credit inside. No dupes.' });
         blocks.push({ type: 'list', rows: stacks.map(({ tier, crates }) => ({ id: 'crates-' + tier, label: CRATE_NAME[tier].toUpperCase() + (crates.length > 1 ? ' ×' + crates.length : ''), detail: 'From ' + crates[0].source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(crates[0].id)) })) });
       }
+      // Starter missions teach the game: the next few still to do, one-time pay.
+      const todo = board.starter.filter(m => !m.done);
+      if (todo.length) {
+        blocks.push({ type: 'title', text: 'STARTER', sub: `${board.starter.length - todo.length}/${board.starter.length} done · one-time rewards` });
+        blocks.push({ type: 'list', rows: todo.slice(0, 6).map(m => ({ id: 'starter-' + m.id, label: m.title.toUpperCase(), detail: m.how, value: '+' + m.reward.credit })) });
+      }
       blocks.push({ type: 'title', text: 'DAILY', sub: board.bonus ? 'All done. New ones at midnight.' : 'All three = a Pro Crate' });
       blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Credit · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
       blocks.push({ type: 'title', text: 'CAREER', sub: 'Stage II and up drop crates.' });

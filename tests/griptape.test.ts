@@ -8,18 +8,20 @@ Object.defineProperty(globalThis, "localStorage", {
   value: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) },
 });
 
-const { CATEGORIES, PARTS, defaultScooter } = await import("../src/data/scooterParts.ts");
+const { CATEGORIES, PARTS, defaultScooter, starterOptions } = await import("../src/data/scooterParts.ts");
 const { loadProfile, PROFILE_KEY } = await import("../src/data/loadout.ts");
 const { appearance } = await import("../src/network/protocol.ts");
 const { LONGBOARD_PARTS, validLongboard, defaultLongboard } = await import("../src/data/longboardParts.ts");
 
-test("scooters have a griptape slot with a free default and several designs", () => {
+test("scooters have a griptape slot with a starter default and several designs", () => {
   assert(CATEGORIES.includes("griptape"));
   const tapes = PARTS.filter((p) => p.category === "griptape");
   assert(tapes.length >= 4);
   const standard = defaultScooter().griptape;
   const part = tapes.find((p) => p.id === standard.partId)!;
-  assert.equal(part.unlockType, "free");
+  // Lazer is the starter brand: the standard sheet can be a starter pick, but it is priced like every other Lazer part.
+  assert.equal(part.brandId, "lazer");
+  assert(starterOptions("griptape").some((o) => o.part.id === standard.partId && o.variant.id === standard.variantId));
   assert(tapes.some((p) => p.unlockType === "credit"), "at least one grip tape is sold for Credit");
   for (const p of tapes) assert(["plain", "stripe", "logo", "crown"].includes(p.shape));
 });

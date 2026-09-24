@@ -1,21 +1,26 @@
 import {loadProfile,saveProfile} from './loadout';
-import {type PartSelection} from './scooterParts';
+import {type PartSelection,validStarter} from './scooterParts';
 import {catalogEntry,ownershipKey as catalogKey,ownsSelection,ownsBoard,bundlePrice,completeBoardSelections} from './catalog';
 import {LONGBOARD_PARTS,type LongboardCategory} from './longboardParts';
-import {openCrate,record,type CrateResult,type Gains,type Stat} from './progress';
+import {dayKey,openCrate,record,type CrateResult,type Gains,type Stat} from './progress';
 import {dailyDeals} from './deals';
 import type {LocalProfile} from './loadout';
 const crateId=()=>'c'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('');
-export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number}
+export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number;
+ /** The one-time starter scooter has been claimed (claimStarter). Never resets. */
+ starter:boolean}
 export const CREDIT_POLICY={pointsPerCredit:100,maxBalance:10000000};
-export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0});
+export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0,starter:false});
+/** Reward receipts only guard against the same event paying twice, which happens moments apart; the newest are enough. */
+const RECEIPTS_KEPT=500;
 export const ownershipKey=catalogKey;
 export function owns(wallet:AlphaWallet,s:PartSelection){return ownsSelection(wallet,s);}
 export function validWallet(value:any):AlphaWallet{
  const w=emptyWallet();if(!value)return w;
  for(const k of ['credit','remainder','testCredit'] as const)if(Number.isSafeInteger(value[k])&&value[k]>=0)w[k]=Math.min(value[k],CREDIT_POLICY.maxBalance);
  w.owned=Array.isArray(value.owned)?[...new Set<string>(value.owned.filter((s:any)=>typeof s==='string'))]:[];
- w.receipts=Array.isArray(value.receipts)?[...new Set<string>(value.receipts.filter((s:any)=>typeof s==='string'))]:[];return w;
+ w.receipts=Array.isArray(value.receipts)?[...new Set<string>(value.receipts.filter((s:any)=>typeof s==='string'))].slice(-RECEIPTS_KEPT):[];
+ w.starter=value.starter===true;return w;
 }
 /** Local alpha entitlement transaction. There is no paid balance or payment path. */
 export class CreditEconomy {
@@ -30,15 +35,26 @@ export class CreditEconomy {
   this.queue=operation.then(()=>{},()=>{});return operation as Promise<T|string>;
  }
  /** Counts riding stats toward missions (and a map ridden); pays out whatever they complete. */
- async track(changes:Partial<Record<Stat,number>>,visit?:string){
+ async track(changes:Partial<Record<Stat,number>>,visit?:string,firsts:string[]=[]){
   const result=await this.update(p=>{
    if(visit&&!p.progress.visited.includes(visit))p.progress.visited.push(visit);
    if(visit)changes={...changes,maps:p.progress.visited.length};
-   const gains=record(p.progress,changes,crateId);
+   const gains=record(p.progress,changes,crateId,dayKey(),firsts);
    if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);return gains;});
   if(typeof result!=='string'&&(result.completed.length||result.levelsUp.length))this.onGains(result);
   return result;
  }
+ /**
+  * The one-time starter scooter: the chosen Lazer build (scooterParts.ts
+  * validStarter) becomes owned and equipped, and nothing else does. The claim
+  * is recorded in the same save, so a reload, another tab or a cloud copy can
+  * never claim a second one.
+  */
+ claimStarter(build:unknown){return this.update<LocalProfile>(p=>{
+  if(p.wallet.starter)return 'Your starter scooter is already built.';
+  const scooter=validStarter(build);if(!scooter)return 'Pick one Lazer part for every slot.';
+  for(const s of Object.values(scooter)){const key=catalogKey(s);if(!p.wallet.owned.includes(key))p.wallet.owned.push(key);}
+  p.wallet.starter=true;p.scooter=scooter;p.activeRideable='scooter';p.equipmentRevision=(p.equipmentRevision??0)+1;return p;});}
  /** Opens one crate: never a duplicate, and the crate is gone once opened. */
  openCrate(id:string){return this.update<CrateResult>(p=>{
   const crate=p.progress.crates.find(c=>c.id===id);if(!crate)return 'That crate is already open.';
@@ -84,7 +100,9 @@ export class CreditEconomy {
    if(part.rideable==='longboard')profile.longboard[part.category as LongboardCategory]={...s};
    else if(part.category==='wheels'){profile.scooter.frontWheel={...s};profile.scooter.rearWheel={...s};}else (profile.scooter as Record<string,PartSelection>)[part.category]={...s};
    profile.equipmentRevision=expectedRevision+1;if(!saveProfile(profile))return {error:'Could not save. Your equipped setup is unchanged.'};return {profile};};
-  const op=this.queue.then(()=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('swf-alpha-wallet',run):run());this.queue=op.then(()=>{},()=>{});return op;
+  const op=this.queue.then(()=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('swf-alpha-wallet',run):run());this.queue=op.then(()=>{},()=>{});
+  // Equipping anything counts for the "Customize your ride" Starter mission.
+  return op.then(r=>{if(r.profile)void this.track({},undefined,['customize']);return r;});
  }
  /** Switches the ridden rideable without touching either saved build. */
  setRideable(kind:'scooter'|'longboard',expectedRevision:number){

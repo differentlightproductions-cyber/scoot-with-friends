@@ -6,21 +6,37 @@ import type { Events } from "../core/events";
 import type { InputFrame } from "../input/input";
 import type { CreditEconomy } from "../data/credit";
 import { completedDegrees } from "../tricks/resolver";
-import { CRATE_COLOR, CRATE_NAME, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
+import { CRATE_COLOR, CRATE_NAME, FIRST_TRICKS, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
 import type { Progress } from "../data/progress";
 import "./rewards.css";
 
 // ---- Riding events -> mission stats ------------------------------------------
+/** What the tracker reads from the simulation each frame (physics/simulation.ts). */
+interface RiderState { walking: boolean; speed: number; state: string; grind: unknown; tricks: { quarterAir: boolean } }
+/** Starter mission thresholds (data/progress.ts STARTER). */
+const FIRST_SPEED = 20 / 3.6, FIRST_DISTANCE = 150, FIRST_GRIND = 3;
 export class MissionTracker {
   private pending: Partial<Record<Stat, number>> = {};
   private linePoints = 0;
   private flushIn = 0;
   private hill = { started: false, top: 0 };
+  /** Starter "firsts" seen this session (each reported once; the save ignores repeats). */
+  private firsts = new Set<string>();
+  private reported = new Set<string>();
+  private ridden = 0;
+  private grindRun = 0;
+  private quarterAir = false;
   dispose: () => void;
   constructor(events: Events, private economy: CreditEconomy) {
     this.dispose = events.on((e) => {
+      if (e.type === "push") this.first("push");
+      if (e.type === "grindCatch") this.first("grind");
+      if (e.type === "landing") { if (this.quarterAir && e.quality !== "failed") this.first("quarterLand"); this.quarterAir = false; }
       if (e.type === "trick" && e.record?.landing !== "failed") {
         const raw = e.record?.raw, name = e.name;
+        for (const [first, pattern] of FIRST_TRICKS) if (pattern.test(name)) this.first(first);
+        if (raw && completedDegrees(raw.bodyYaw) >= 180) this.first("spin:180");
+        if (raw && completedDegrees(raw.bodyYaw) >= 360) this.first("spin:360");
         this.add("tricks", 1);
         if (e.record?.landing === "clean") this.add("perfect", 1);
         if (/Frontflip|Backflip|Flair/.test(name)) this.add("flips", 1);
@@ -34,6 +50,18 @@ export class MissionTracker {
     });
   }
   private add(stat: Stat, amount: number) { this.pending[stat] = (this.pending[stat] ?? 0) + amount; if (!this.flushIn) this.flushIn = 0.6; }
+  /** A one-time Starter mission step (push, trick:Tailwhip, phone...). */
+  first(key: string) { if (this.reported.has(key)) return; this.reported.add(key); this.firsts.add(key); if (!this.flushIn) this.flushIn = 0.6; }
+  /** Riding firsts read from the simulation: speed, distance, quarter-pipe air, a long grind. */
+  sample(sim: RiderState, dt: number) {
+    if (sim.walking || sim.state === "Bail") { this.grindRun = 0; return; }
+    if (sim.speed >= FIRST_SPEED) this.first("speed");
+    this.ridden += sim.speed * dt;
+    if (this.ridden >= FIRST_DISTANCE) this.first("distance");
+    if (sim.tricks.quarterAir) { this.quarterAir = true; this.first("quarterAir"); }
+    this.grindRun = sim.grind ? this.grindRun + sim.speed * dt : 0;
+    if (this.grindRun >= FIRST_GRIND) this.first("grindLong");
+  }
   private best(stat: Stat, value: number) { this.pending[stat] = Math.max(this.pending[stat] ?? 0, value); if (!this.flushIn) this.flushIn = 0.6; }
   /** A map was ridden. */
   visit(count: number) { this.best("maps", count); }
@@ -52,8 +80,8 @@ export class MissionTracker {
     if (this.flushIn === 0) this.flush();
   }
   flush() {
-    const changes = this.pending; this.pending = {};
-    if (Object.keys(changes).length) void this.economy.track(changes);
+    const changes = this.pending, firsts = [...this.firsts]; this.pending = {}; this.firsts.clear();
+    if (Object.keys(changes).length || firsts.length) void this.economy.track(changes, undefined, firsts);
   }
 }
 
@@ -137,7 +165,7 @@ export class RewardFx {
   }
 
   /**
-   * Stickers for completed missions (three on screen at most, the rest
+   * Stickers for completed missions (two on screen at most, the rest
    * following), then each level-up slam in turn, never over an open crate.
    */
   private stickers: (() => void)[] = [];
@@ -150,7 +178,7 @@ export class RewardFx {
       this.moments = this.moments.then(async () => {
         while (this.overlay || this.stickers.length) await wait(300);
         this.levelUp(level, crates);
-        await wait(2900);
+        await wait(2500);
       });
     }
   }
@@ -159,7 +187,7 @@ export class RewardFx {
     if (this.pumping) return;
     this.pumping = true;
     while (this.stickers.length) {
-      while (this.overlay || this.toasts.children.length >= 3) await wait(250);
+      while (this.overlay || this.toasts.children.length >= 2) await wait(250);
       this.stickers.shift()!();
       await wait(650);
     }
@@ -171,8 +199,8 @@ export class RewardFx {
     el.innerHTML = `<span class="rt-label">MISSION COMPLETE</span><strong>${esc(title)}</strong><span class="rt-gain">+${credit} CREDIT · +${xp} XP${crate ? ` · <b>${esc(crate).toUpperCase()}</b>` : ""}</span>`;
     this.toasts.append(el);
     sfx.mission();
-    setTimeout(() => el.classList.add("out"), 3600);
-    setTimeout(() => el.remove(), 4200);
+    setTimeout(() => el.classList.add("out"), 2800);
+    setTimeout(() => el.remove(), 3300);
   }
   levelUp(level: number, crates: string[]) {
     const el = document.createElement("div");
@@ -181,8 +209,8 @@ export class RewardFx {
     this.root.append(el);
     sfx.level();
     confetti(el, ["#c6ff00", "#ff5a1f", "#1ecbe1", "#ffd23f", "#ffffff"], 90);
-    setTimeout(() => el.classList.add("out"), 2600);
-    setTimeout(() => el.remove(), 3200);
+    setTimeout(() => el.classList.add("out"), 2200);
+    setTimeout(() => el.remove(), 2800);
   }
 
   /** A purchase: ka-ching, and a burst in the item's colour and rarity. */

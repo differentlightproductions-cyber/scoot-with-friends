@@ -24,10 +24,17 @@ import { MAPS, type MapId } from "../data/maps";
 import {
   CATEGORIES,
   PARTS,
+  STARTER_PICKS,
+  defaultScooter,
   selectedPart,
+  starterOptions,
+  validStarter,
   type Category,
+  type PartVariant,
   type ScooterLoadout,
+  type ScooterPart,
 } from "../data/scooterParts";
+const STARTER_LABEL:Record<string,string>={griptape:'GRIP TAPE'};
 import { saveProfile, type LocalProfile } from "../data/loadout";
 import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
@@ -44,11 +51,14 @@ export class GameMenu {
   openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.longboard=structuredClone(latest.longboard);this.profile.activeRideable=latest.activeRideable;this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
   private applySesh():boolean{
     const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return false;}
-    for(const item of Object.values(this.profile.scooter))if(!owns(latest.wallet,item)){this.notice='An equipped item is not owned.';this.render();return false;}
+    // Only a newly chosen part must be owned; what was already saved stays valid.
+    for(const [slot,item] of Object.entries(this.profile.scooter) as [keyof ScooterLoadout,{partId:string;variantId:string}][]){const saved=latest.scooter[slot];if(!owns(latest.wallet,item)&&(saved.partId!==item.partId||saved.variantId!==item.variantId)){this.notice='An equipped item is not owned.';this.render();return false;}}
+    const customized=JSON.stringify(latest.scooter)!==JSON.stringify(this.profile.scooter)||JSON.stringify(latest.longboard)!==JSON.stringify(this.profile.longboard);
     if(this.profile.activeRideable==='longboard'&&!ownsBoard(latest.wallet,this.profile.longboard)){this.notice='Own every part of this board before riding it.';this.render();return false;}
     const nextRevision=(this.profile.equipmentRevision??0)+1;this.profile.equipmentRevision=nextRevision;
     if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return false;}
-    Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes '+savedWhere();this.saveFailed=false;this.render();return true;
+    Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes '+savedWhere();this.saveFailed=false;this.render();
+    if(customized)void this.economy.track({},undefined,['customize']);return true;
   }
   /** The rider creator (src/ui/creator.ts) edits a draft avatar on the preview rider. */
   readonly creator=new RiderCreator({
@@ -89,6 +99,20 @@ export class GameMenu {
   /** Browsing state: brand, category and page, shared by Customization (owned) and shops (not owned). */
   browseBrand='lazer';browseCategory='deck';catPage=0;itemPage=0;private shopRoot='shop';
   private visibleItems:InventoryItem[]=[];private visibleCategories:string[]=[];private cellCount=0;
+  /** The starter build being picked (never saved until claimed) and where to go after. */
+  private starterDraft:ScooterLoadout|null=null;private starterCategory:Category='deck';private starterPage=0;
+  private starterItems:{part:ScooterPart;variant:PartVariant}[]=[];private afterStarter:'ride'|'scooter'='ride';
+  /** A new rider builds their one free Lazer scooter before anything else. */
+  private needsStarter(){return !loadProfile().wallet.starter;}
+  private startStarter(after:'ride'|'scooter'){this.afterStarter=after;this.starterDraft??=validStarter(this.profile.scooter)??validStarter(defaultScooter());this.show('starter');}
+  private async claimStarter(){
+    if(this.buying||!this.starterDraft)return;this.buying=true;this.notice='Building your scooter...';this.render();
+    const result=await this.economy.claimStarter(this.starterDraft);this.buying=false;
+    if(typeof result==='string'){this.notice=result;if(!this.needsStarter()){this.starterDraft=null;this.show(this.afterStarter==='ride'?'play':'scooter');}else this.render();return;}
+    this.profile.wallet=result.wallet;this.profile.scooter=result.scooter;this.profile.activeRideable='scooter';this.profile.equipmentRevision=result.equipmentRevision;
+    this.starterDraft=null;this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Your starter scooter is yours. Every part on it is owned.';
+    if(this.afterStarter==='ride')this.onRide('outdoor');else this.show('scooter');
+  }
   private memory=new Map<string,number>();private repeatKey='';private repeatTimer=0;private equipRequest=0;private previewing=false;
   private browseMode():BrowseMode{return this.shopOpen?'shop':'owned';}
   private memoryKey(screen:string){return screen+'/'+(['brand','brand-items'].includes(screen)?this.browseBrand:'')+'/'+(screen==='brand-items'?this.browseCategory:'');}
@@ -289,7 +313,8 @@ export class GameMenu {
       case "online":
         title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
-        add("PLAY",()=>this.show("play"),"Find your next line");
+        if(this.needsStarter())add("BUILD YOUR SCOOTER",()=>this.startStarter('ride'),"Pick your first Lazer parts: they are yours to keep");
+        else add("PLAY",()=>this.show("play"),"Find your next line");
         add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
         add("RIDES",()=>this.show("rides"),"Ride and customize your scooter or longboard");
         add("RIDER",()=>this.show("rider"),"Your avatar: riders, body type, randomize");
@@ -305,7 +330,7 @@ export class GameMenu {
         const boardOwned=ownsBoard(loadProfile().wallet,this.profile.longboard),active=this.profile.activeRideable;
         add('SCOOTER',()=>void this.ride('scooter'),active==='scooter'?'Riding now':'Select to ride your scooter. Both builds stay saved.',active==='scooter');
         add('LONGBOARD',()=>void this.ride('longboard'),!boardOwned?'Buy a complete Sometimes Summer board at Techno Gravity first':active==='longboard'?'Riding now':'Select to ride your board. Both builds stay saved.',active==='longboard');
-        add('CUSTOMIZE SCOOTER',()=>this.show('scooter'),'Your parts by brand / '+selectedPart(this.profile.scooter.deck).part.name);
+        add('CUSTOMIZE SCOOTER',()=>this.needsStarter()?this.startStarter('scooter'):this.show('scooter'),this.needsStarter()?'Build your starter scooter first':'Your parts by brand / '+selectedPart(this.profile.scooter.deck).part.name);
         add('CUSTOMIZE LONGBOARD',()=>this.show('longboard'),boardOwned?'Sometimes Summer / '+longboardPart(this.profile.longboard.deck).variant.name+' build':'Your board parts by category');
         break;}
       case "guide":
@@ -372,7 +397,7 @@ export class GameMenu {
         if(!brands.length)add('ALL STOCK OWNED',()=>{},'Everything this shop sells is already yours. Equip it from Customization.');
         const exclusive=collectibles().filter(c=>c.exclusive),found=exclusive.filter(c=>wallet.owned.includes(c.partId+':'+c.variantId)).length;
         add('CRATE EXCLUSIVES',()=>{this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.';this.render();},`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
-        add('LAZER',()=>{},'Every Lazer part is free and already in your Customization.');break;}
+        break;}
       case "longboard":{
         const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard),mode=this.browseMode();this.browseBrand=BOARD_BRAND_ID;
         title="SOMETIMES SUMMER";subtitle=(this.shopOpen?this.activeShop.name.toUpperCase()+' / NOT OWNED YET / '+wallet.credit+' CREDIT':'DROP-THROUGH LONGBOARD / OWNED PARTS');
@@ -397,6 +422,21 @@ export class GameMenu {
         title='CONFIRM PURCHASE';subtitle='Sometimes Summer '+longboardPart({partId:'ss-drop-through-deck',variantId:this.pendingVariant}).variant.name+' complete / '+missing.length+' parts';
         add(this.buying?'SAVING...':'BUY / '+price+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();const deck=this.pendingVariant;void this.economy.buyCompleteBoard(deck).then(async result=>{this.buying=false;this.profile.wallet=loadProfile().wallet;if(result==='ok'){await this.equip('ss-drop-through-deck',deck);this.notice='Board purchased and saved. Ride it from Customization.';}else this.notice=result;this.show('longboard');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
         add('CANCEL',()=>this.show('board-complete'),'No charge');break;}
+      case "starter":{
+        const draft=this.starterDraft??=validStarter(defaultScooter())!;
+        title='FIRST BUILD.';subtitle='STARTER SCOOTER / YOURS TO KEEP';
+        for(const category of STARTER_PICKS){const {part,variant}=selectedPart(category==='wheels'?draft.frontWheel:draft[category]);
+          cell(STARTER_LABEL[category]??category.toUpperCase(),()=>{this.starterCategory=category;this.starterPage=0;this.show('starter-pick');},part.name.replace(/^Lazer /,'')+' / '+variant.name,false,variant.color);}
+        add(this.buying?'BUILDING...':'RIDE IT',()=>void this.claimStarter(),'Bearings, headset, brake and compression included',false,{primary:true});
+        break;}
+      case "starter-pick":{
+        const draft=this.starterDraft??=validStarter(defaultScooter())!,current=this.starterCategory==='wheels'?draft.frontWheel:draft[this.starterCategory as Exclude<Category,'wheels'>];
+        const {items,page,pages}=paginate(starterOptions(this.starterCategory),this.starterPage,8);this.starterPage=page;this.starterItems=items;
+        title='STARTER / '+(STARTER_LABEL[this.starterCategory]??this.starterCategory.toUpperCase());subtitle='PICK ONE / FREE WITH YOUR FIRST SCOOTER'+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'');
+        for(const o of items){const on=current.partId===o.part.id&&current.variantId===o.variant.id;
+          cell(o.part.name.replace(/^Lazer /,'').toUpperCase()+' / '+o.variant.name.toUpperCase(),()=>{const s={partId:o.part.id,variantId:o.variant.id};if(this.starterCategory==='wheels'){draft.frontWheel={...s};draft.rearWheel={...s};}else (draft as Record<string,{partId:string;variantId:string}>)[this.starterCategory]=s;this.show('starter');},on?'Picked':'Starter pick',on,o.variant.color);}
+        pager(pages,page,p=>{this.starterPage=p;});
+        break;}
       case "scooter":{
         const wallet=loadProfile().wallet;title="SCOOTER";subtitle="YOUR PARTS BY BRAND / BUY MORE AT TECHNO GRAVITY";
         for(const b of inventoryBrands(wallet,'owned',{rideable:'scooter'}))add(b.brand.toUpperCase(),()=>{this.browseBrand=b.brandId;this.catPage=0;this.show('brand');},plural(b.count,'owned colorway')+' / '+plural(b.categories.length,'category'));
@@ -548,6 +588,7 @@ export class GameMenu {
   }
   /** The row or cell the preview should show, without touching the draft or saved loadout. */
   private focusedSelection(){
+    if(this.screen==='starter-pick'&&this.index<this.cellCount){const o=this.starterItems[this.index];if(o)return {partId:o.part.id,variantId:o.variant.id};}
     if(this.screen==='brand-items'&&this.index<this.cellCount){const item=this.visibleItems[this.index];if(item)return {partId:item.partId,variantId:item.variantId};}
     if(['purchase','purchased'].includes(this.screen)&&this.product)return {partId:this.product,variantId:this.pendingVariant};
     return undefined;
@@ -556,15 +597,17 @@ export class GameMenu {
     const ridesBoard=this.screen==='rides'&&(this.index===1||this.index===3);
     const boardBrowse=this.browseBrand===BOARD_BRAND_ID&&['brand-items','purchase','purchased'].includes(this.screen);
     const boardScreen=["longboard","board-complete","board-purchase"].includes(this.screen)||boardBrowse||ridesBoard;
-    let category:string=this.screen==='brand-items'?this.browseCategory:this.category;
+    let category:string=this.screen==='starter-pick'?this.starterCategory:this.screen==='brand-items'?this.browseCategory:this.category;
     if(this.screen==='brand'&&this.index<this.cellCount)category=this.visibleCategories[this.index]??category;
-    const active=!boardScreen&&["brand","brand-items","purchase","purchased"].includes(this.screen);
+    const active=!boardScreen&&["brand","brand-items","purchase","purchased","starter-pick"].includes(this.screen);
+    // The starter screens preview the draft build (with the focused pick on it).
+    const starterScreen=(this.screen==='starter'||this.screen==='starter-pick')&&!!this.starterDraft;
     const focused=this.focusedSelection(),entry=focused&&catalogEntry(focused.partId);
     this.previewRider.board.visible=boardScreen;
     // Browsing only ever changes the inspection model. The draft/saved profile is
     // never mutated, and leaving a focused row restores the current draft.
-    const previewKey=entry?.rideable==='scooter'?focused!.partId+':'+focused!.variantId:'';
-    if(previewKey&&previewKey!==this.previewKey){const preview=structuredClone(this.profile);if(entry!.category==="wheels"){preview.scooter.frontWheel={...focused!};preview.scooter.rearWheel={...focused!};}else (preview.scooter as Record<string,{partId:string;variantId:string}>)[entry!.category]={...focused!};this.previewRider.applyProfile(preview);this.previewing=true;}
+    const previewKey=entry?.rideable==='scooter'?focused!.partId+':'+focused!.variantId+(starterScreen?':'+JSON.stringify(this.starterDraft):''):starterScreen?'starter:'+JSON.stringify(this.starterDraft):'';
+    if(previewKey&&previewKey!==this.previewKey){const preview=structuredClone(this.profile);if(starterScreen)preview.scooter=structuredClone(this.starterDraft!);if(entry?.rideable==='scooter'){if(entry!.category==="wheels"){preview.scooter.frontWheel={...focused!};preview.scooter.rearWheel={...focused!};}else (preview.scooter as Record<string,{partId:string;variantId:string}>)[entry!.category]={...focused!};}this.previewRider.applyProfile(preview);this.previewing=true;}
     else if(!previewKey&&this.previewing){this.previewRider.applyProfile(this.profile);this.previewing=false;}
     this.previewKey=previewKey;
     if(boardScreen){
@@ -658,6 +701,8 @@ export class GameMenu {
     if(this.screen==="board-complete"){this.show("longboard");return;}
     if(this.screen==="board-purchase"){this.show("board-complete");return;}
     if(this.screen==="longboard"){this.show("rides");return;}
+    if(this.screen==="starter-pick"){this.show("starter");return;}
+    if(this.screen==="starter"){this.starterDraft=null;this.previewRider.applyProfile(this.profile);this.show(this.afterStarter==='ride'?'home':'rides');return;}
     this.show(
       this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
     );

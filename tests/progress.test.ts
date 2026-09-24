@@ -8,11 +8,11 @@ import {emptyWallet} from '../src/data/credit';
 let n = 0;
 const id = () => 'crate-' + (n++).toString().padStart(4, '0');
 
-test('levels: each level asks a little more XP than the last', () => {
-  assert.deepEqual(levelFor(0), {level: 1, into: 0, need: 200});
-  assert.equal(levelFor(199).level, 1);
-  assert.equal(levelFor(200).level, 2);
-  assert.equal(levelFor(200 + levelNeed(2)).level, 3);
+test('levels: each level asks more XP than the last', () => {
+  assert.deepEqual(levelFor(0), {level: 1, into: 0, need: 600});
+  assert.equal(levelFor(599).level, 1);
+  assert.equal(levelFor(600).level, 2);
+  assert.equal(levelFor(600 + levelNeed(2)).level, 3);
   assert.ok(levelNeed(10) > levelNeed(2));
 });
 
@@ -73,8 +73,8 @@ test('crates: fixed by crate id, never a duplicate, Credit when the collection i
 
 test('crate exclusives: never sold, owned only once found, collection counts them', () => {
   const wallet = emptyWallet(), gold = {partId: 'pro-deck', variantId: 'x-gold-rush'};
-  assert.equal(ownsSelection(wallet, gold), false, 'an exclusive colourway of a free part is not free');
-  assert.equal(ownsSelection(wallet, {partId: 'pro-deck', variantId: 'red'}), true);
+  assert.equal(ownsSelection(wallet, gold), false, 'an exclusive colourway is never owned by default');
+  assert.equal(ownsSelection(wallet, {partId: 'pro-deck', variantId: 'red'}), false, 'Lazer parts are not free outside the starter build');
   assert.ok(!inventoryItems(wallet, 'shop').some(i => i.exclusive), 'the shop never lists crate exclusives');
   wallet.owned.push(ownershipKey(gold));
   assert.ok(inventoryItems(wallet, 'owned').some(i => i.partId === 'pro-deck' && i.variantId === 'x-gold-rush' && i.rarity === 'legendary'));

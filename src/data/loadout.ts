@@ -2,13 +2,13 @@ import {emptyWallet,validWallet,type AlphaWallet} from './credit';
 import {emptyPockets,validPockets,type Pockets} from './items';
 ﻿import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longboardParts";
-import { ownsBoard, ownsSelection, type RideableKind } from "./catalog";
+import { ownershipKey, ownsBoard, ownsSelection, type RideableKind } from "./catalog";
 import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   equipmentRevision?:number;
   wallet:AlphaWallet;
   /** The rider (docs/AVATAR-DESIGN.md §9): a small configuration, never a mesh. */
@@ -77,7 +77,7 @@ function migrateRider(saved:any):AvatarConfig{
 }
 export function loadProfile(): LocalProfile {
   const profile: LocalProfile = {
-    version: 3,
+    version: 4,
     wallet:emptyWallet(),
     avatar: defaultAvatar(),
     pockets:emptyPockets(),
@@ -108,9 +108,10 @@ export function loadProfile(): LocalProfile {
       fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
     },
   };
+  let migrated = false;
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
-    if (!saved || ![1,2,3].includes(saved.version)) return profile;
+    if (!saved || ![1,2,3,4].includes(saved.version)) return profile;
     profile.wallet=validWallet(saved.wallet);
     profile.progress=validProgress(saved.progress);
     profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
@@ -144,6 +145,17 @@ export function loadProfile(): LocalProfile {
       if (part?.variants.some((v) => v.id === s?.variantId && (!v.exclusive || ownsSelection(profile.wallet, s))))
         profile.scooter[slot] = { partId: s.partId, variantId: s.variantId };
     }
+    // Version 4: Lazer parts stopped being free (only a starter build is given).
+    // A save from before keeps the Lazer parts it has on its scooter as that
+    // starter, written back once so the grant is part of the save from now on.
+    if (saved.version < 4 && !profile.wallet.starter) {
+      for (const s of Object.values(profile.scooter)) {
+        const part = PARTS.find((p) => p.id === s.partId), key = ownershipKey(s);
+        if (part?.brandId === "lazer" && !part.variants.find((v) => v.id === s.variantId)?.exclusive && !profile.wallet.owned.includes(key)) profile.wallet.owned.push(key);
+      }
+      profile.wallet.starter = true;
+      migrated = true;
+    }
     profile.longboard = validLongboard(saved.longboard);
     // A board that is not fully owned (a stale or edited save) cannot be ridden.
     if (saved.activeRideable === "longboard" && ownsBoard(profile.wallet, profile.longboard))
@@ -160,6 +172,7 @@ export function loadProfile(): LocalProfile {
     for (const key of ["sound", "mountFlourish"] as const)
       if (typeof saved.settings?.[key] === "boolean")
         profile.settings[key] = saved.settings[key];
+    if (migrated) localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   } catch {
     /* A missing or obsolete local profile falls back to playable defaults. */
   }

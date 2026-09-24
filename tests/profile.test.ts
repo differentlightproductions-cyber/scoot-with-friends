@@ -7,7 +7,7 @@ test('versioned profile migrates old saves and preserves the avatar and settings
  const store=new Map<string,string>();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
  store.set(PROFILE_KEY,JSON.stringify({version:1,riderId:'rider-02',settings:{stance:'goofy',controlStyle:'arcade',sound:false}}));
- const p=loadProfile();assert.equal(p.version,3);assert.deepEqual(p.avatar,defaultAvatar());assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
+ const p=loadProfile();assert.equal(p.version,4);assert.deepEqual(p.avatar,defaultAvatar());assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
  p.avatar={...AVATAR_PRESETS[3].config};p.avatar.bodyType='stocky';p.settings.daylight='night';
  assert.equal(saveProfile(p),true);assert.deepEqual(loadProfile(),p);
  // Anything unknown or out of range falls back per field; the rest of the rider is kept.

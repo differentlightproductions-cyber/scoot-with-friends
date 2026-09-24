@@ -86,7 +86,12 @@ async function boot() {
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
   rider.root.userData.weatherDynamic=true;
-  const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;const earned=profile.wallet.credit-before;if(earned>0)phone.notify('Credit earned','+'+earned+' Credit · '+profile.wallet.credit+' total','star');};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
+  const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;const earned=profile.wallet.credit-before;if(earned>0)creditNote(earned);};
+  // Banked lines pay Credit often: the phone sums it into one note a minute
+  // instead of one per line (missions already show their own sticker).
+  let noteCredit=0,noteAt=-Infinity,noteTimer:ReturnType<typeof setTimeout>|null=null;
+  const creditNote=(earned:number)=>{noteCredit+=earned;if(noteTimer)return;const wait=Math.max(0,noteAt+60000-performance.now());
+    noteTimer=setTimeout(()=>{noteTimer=null;noteAt=performance.now();phone.notify('Credit earned','+'+noteCredit+' Credit · '+profile.wallet.credit+' total','star');noteCredit=0;},wait);};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
   // Missions, XP and crates (data/progress.ts): riding events count toward
   // missions; completions, level-ups and crate openings play on screen.
   const rewards=new RewardFx(economy,()=>profile.progress),missions=new MissionTracker(events,economy);
@@ -561,6 +566,7 @@ async function boot() {
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
+    if(hud.started&&!hud.paused){missions.sample(sim,dt);if(phone.active)missions.first('phone');}
     if(hud.started&&ACTIVE_MAP==='b_hill')missions.hillUpdate(routeProgress(sim.position.x,sim.position.z),B_HILL_LENGTH,sim.speed,!sim.walking&&sim.state!=='Bail');
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };

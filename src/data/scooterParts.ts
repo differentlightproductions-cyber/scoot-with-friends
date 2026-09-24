@@ -46,6 +46,15 @@ export interface ScooterPart {
     permissive: true;
   };
 }
+/**
+ * Lazer is the starter brand, but only the starter build is given away (see
+ * STARTER below); every other Lazer part and colourway costs Credit. Prices
+ * are per colourway and deliberately below Mafioso's. Tune here.
+ */
+export const LAZER_PRICE: Record<Category, number> = {
+  deck: 60, bars: 45, fork: 40, clamp: 25, wheels: 35, bearings: 15,
+  grips: 12, headset: 15, brake: 15, compression: 20, griptape: 12,
+};
 const colors = {
   black: 0x263333,
   red: 0xe65330,
@@ -73,17 +82,18 @@ const make = (
   model: shape,
   material: category==='grips'?'rubber':'metal',
   thumbnail: null,
-  unlocked: true,
+  unlocked: false,
   priceFuture: null,
   variants: variants.map((color) => ({
     id: color,
     name: color[0].toUpperCase() + color.slice(1),
     color: colors[color],
   })),
-  unlockType: "free",
+  unlockType: "credit",
+  creditPrice: LAZER_PRICE[category],
   premium: false,
   priceId: null,
-  owned: true,
+  owned: false,
   compatibility: {
     permissive: true,
     ...(diameter ? { wheelDiameter: diameter } : {}),
@@ -225,6 +235,38 @@ export function defaultScooter(): ScooterLoadout {
       result.rearWheel = { ...selection };
     } else result[category] = selection;
   }
+  return result;
+}
+/**
+ * The one-time starter scooter. A new rider picks one Lazer part and colourway
+ * in each STARTER_PICKS category (wheels go on both ends); the STARTER_INCLUDED
+ * hardware comes with it. Only those parts become owned (credit.ts claimStarter).
+ */
+export const STARTER_PICKS = ["deck", "bars", "fork", "clamp", "wheels", "grips", "griptape"] as const satisfies readonly Category[];
+export const STARTER_INCLUDED = ["bearings", "headset", "brake", "compression"] as const satisfies readonly Category[];
+/** Lazer parts a starter build may use in a category: any stock (non-crate) colourway. */
+export function starterOptions(category: Category) {
+  return PARTS.filter((p) => p.brandId === "lazer" && p.category === category).flatMap((part) =>
+    part.variants.filter((v) => !v.exclusive).map((variant) => ({ part, variant })),
+  );
+}
+/** Checks a starter build: Lazer stock parts only, matching wheels, the included hardware as standard. */
+export function validStarter(build: unknown): ScooterLoadout | null {
+  const b = build as Partial<ScooterLoadout> | null;
+  if (!b || typeof b !== "object") return null;
+  const defaults = defaultScooter(), result = {} as ScooterLoadout;
+  const ok = (s: PartSelection | undefined, category: Category) =>
+    !!s && starterOptions(category).some((o) => o.part.id === s.partId && o.variant.id === s.variantId);
+  for (const category of STARTER_PICKS) {
+    if (category === "wheels") {
+      if (!ok(b.frontWheel, "wheels") || b.rearWheel?.partId !== b.frontWheel!.partId || b.rearWheel?.variantId !== b.frontWheel!.variantId) return null;
+      result.frontWheel = { ...b.frontWheel! }; result.rearWheel = { ...b.frontWheel! };
+    } else {
+      if (!ok(b[category], category)) return null;
+      result[category] = { ...b[category]! };
+    }
+  }
+  for (const category of STARTER_INCLUDED) result[category] = { ...defaults[category] };
   return result;
 }
 export function selectedPart(selection: PartSelection) {

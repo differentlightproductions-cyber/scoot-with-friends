@@ -36,10 +36,16 @@ export interface Progress {
   crates: Crate[];
   /** Maps ridden (for the Explorer chain). */
   visited: string[];
+  /** One-time "firsts" seen while riding (STARTER missions): push, trick:Tailwhip, phone... */
+  firsts: string[];
+  /** STARTER missions completed (and paid). */
+  starter: string[];
+  /** Highest level whose Credit and crate were granted, so a level never pays twice. */
+  topLevel: number;
 }
 
 const zeroStats = () => Object.fromEntries(STATS.map((s) => [s, 0])) as Record<Stat, number>;
-export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [] });
+export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], starter: [], topLevel: 1 });
 
 const int = (v: unknown, max = 1e9) => (Number.isSafeInteger(v) && (v as number) >= 0 ? Math.min(v as number, max) : 0);
 const strings = (v: unknown, max = 200) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === "string" && s.length <= 80))].slice(0, max) : []);
@@ -59,12 +65,26 @@ export function validProgress(value: any): Progress {
     .filter((c: any) => c && typeof c.id === "string" && /^[a-z0-9-]{6,64}$/.test(c.id) && CRATE_TIERS.includes(c.tier))
     .slice(0, 99).map((c: any) => ({ id: c.id, tier: c.tier, source: typeof c.source === "string" ? c.source.slice(0, 60) : "" }));
   p.visited = strings(value.visited, 20);
+  p.firsts = strings(value.firsts, 100).filter((f) => FIRSTS.has(f));
+  p.starter = strings(value.starter, 100).filter((id) => STARTER.some((m) => m.id === id));
+  // Saves from before the level curve changed keep every level they were paid
+  // for (on the old curve), so passing those levels again pays nothing twice.
+  p.topLevel = Math.max(levelFor(p.xp).level, Number.isSafeInteger(value.topLevel) ? Math.min(999, Math.max(1, value.topLevel)) : legacyLevel(p.xp));
   return p;
 }
 
 // ---- Levels -------------------------------------------------------------------
-/** XP to go from `level` to the next: each level asks a little more. */
-export const levelNeed = (level: number) => 200 + 75 * (level - 1);
+/**
+ * XP to go from `level` to the next: each level asks more. Levels come mostly
+ * from missions (bigger missions pay more XP); ordinary riding adds a trickle.
+ */
+export const levelNeed = (level: number) => 600 + 300 * (level - 1);
+/** The level a save had on the first curve (200 + 75 per level), for migration only. */
+function legacyLevel(xp: number) {
+  let level = 1, into = Math.max(0, Math.floor(xp));
+  while (into >= 200 + 75 * (level - 1) && level < 999) { into -= 200 + 75 * (level - 1); level++; }
+  return level;
+}
 export function levelFor(xp: number) {
   let level = 1, into = Math.max(0, Math.floor(xp));
   while (into >= levelNeed(level) && level < 999) { into -= levelNeed(level); level++; }
@@ -73,8 +93,8 @@ export function levelFor(xp: number) {
 /** The crate a level-up grants: bigger every fifth and tenth level. */
 export const levelCrate = (level: number): CrateTier => (level % 10 === 0 ? "legend" : level % 5 === 0 ? "signature" : level % 2 === 0 ? "pro" : "street");
 export const levelCredit = (level: number) => 20 + level * 5;
-/** Riding XP from banked trick points. */
-export const trickXp = (points: number) => Math.max(1, Math.round(points / 40));
+/** Riding XP from one banked line: a trickle, capped, so levels come from missions. */
+export const trickXp = (points: number) => Math.min(15, Math.max(1, Math.round(points / 400)));
 
 // ---- Missions -------------------------------------------------------------------
 export interface Reward { credit: number; xp: number; crate?: CrateTier }
@@ -87,7 +107,7 @@ export const CAREER: CareerChain[] = [
   { id: "combo", stat: "bestLine", goals: [3, 5, 8, 12, 16], title: (n) => `${n}-trick line`, detail: "Link tricks without a bail" },
   { id: "bigline", stat: "bestLinePoints", goals: [1500, 5000, 15000, 40000, 100000], title: (n) => `Bank ${n.toLocaleString("en-US")} in one line`, detail: "Points from a single unbroken line" },
   { id: "whips", stat: "whips", goals: [5, 25, 75, 200], title: (n) => `${n} whips and barspins`, detail: "Tailwhips, barspins, bris and friends" },
-  { id: "flips", stat: "flips", goals: [1, 10, 30, 80], title: (n) => (n === 1 ? "Land a flip" : `Land ${n} flips`), detail: "Backflips and frontflips" },
+  { id: "flips", stat: "flips", goals: [3, 10, 30, 80], title: (n) => `Land ${n} flips`, detail: "Backflips and frontflips (the first one is a Starter mission)" },
   { id: "spins", stat: "spins", goals: [3, 15, 50, 150], title: (n) => `${n} spins of 360+`, detail: "Full rotations, off anything" },
   { id: "bhill", stat: "bhillRuns", goals: [1, 3, 10, 25], title: (n) => (n === 1 ? "Bomb B Hill top to bottom" : `Finish ${n} B Hill runs`), detail: "Start at the top banner, finish at the bottom" },
   { id: "velocity", stat: "bhillTop", goals: [18, 22, 26, 28], title: (n) => `Hit ${Math.round(n * 3.6)} km/h on B Hill`, detail: "Tuck, hold your line, trust it" },
@@ -96,7 +116,7 @@ export const CAREER: CareerChain[] = [
 ];
 export const careerTitle = (chain: CareerChain, stage: number) => `${chain.title(chain.goals[Math.min(stage, chain.goals.length - 1)])} ${ROMAN[stage] ?? ""}`.trim();
 export function careerReward(stage: number): Reward {
-  const credit = [30, 60, 100, 160, 250][stage] ?? 250, xp = [150, 300, 500, 800, 1200][stage] ?? 1200;
+  const credit = [30, 60, 100, 160, 250][stage] ?? 250, xp = [80, 200, 450, 800, 1300][stage] ?? 1300;
   return { credit, xp, crate: stage === 1 ? "street" : stage === 2 ? "pro" : stage >= 3 ? "signature" : undefined };
 }
 
@@ -113,8 +133,54 @@ export const DAILY: DailyMission[] = [
   { id: "d-bhill", stat: "bhillRuns", goal: 1, title: "Finish a B Hill run" },
   { id: "d-banked", stat: "points", goal: 20000, title: "Bank 20,000 points" },
 ];
-export const DAILY_REWARD: Reward = { credit: 40, xp: 250 };
-export const DAILY_BONUS: Reward = { credit: 60, xp: 400, crate: "pro" };
+export const DAILY_REWARD: Reward = { credit: 40, xp: 120 };
+export const DAILY_BONUS: Reward = { credit: 60, xp: 250, crate: "pro" };
+
+// ---- Starter missions -------------------------------------------------------------
+/**
+ * One-time missions that teach the game, each paid once. `first` names the
+ * thing to do once (MissionTracker reports it); rewards come from the tier so
+ * the economy can be tuned in one place. Only tricks the resolver really
+ * names are used (tricks/resolver.ts).
+ */
+export type StarterTier = "intro" | "basic" | "skill" | "big";
+export const STARTER_REWARD: Record<StarterTier, Reward> = {
+  intro: { credit: 15, xp: 40 },
+  basic: { credit: 25, xp: 70 },
+  skill: { credit: 40, xp: 120 },
+  big: { credit: 75, xp: 220 },
+};
+export interface StarterMission { id: string; group: string; title: string; how: string; tier: StarterTier; first: string }
+export const STARTER: StarterMission[] = [
+  { id: "s-push", group: "RIDING", title: "Push off", how: "Push to pick up speed", tier: "intro", first: "push" },
+  { id: "s-speed", group: "RIDING", title: "Hit 20 km/h", how: "Push hard or roll downhill", tier: "intro", first: "speed" },
+  { id: "s-distance", group: "RIDING", title: "Ride 150 metres", how: "Cruise around without bailing", tier: "intro", first: "distance" },
+  { id: "s-tailwhip", group: "TRICKS", title: "Land a Tailwhip", how: "Pop and whip the deck around", tier: "basic", first: "trick:Tailwhip" },
+  { id: "s-barspin", group: "TRICKS", title: "Land a Barspin", how: "Pop and spin the bars round", tier: "basic", first: "trick:Barspin" },
+  { id: "s-180", group: "TRICKS", title: "Land a 180", how: "Pop and turn half way round", tier: "basic", first: "spin:180" },
+  { id: "s-360", group: "TRICKS", title: "Land a 360", how: "Off a ramp, turn all the way round", tier: "skill", first: "spin:360" },
+  { id: "s-manual", group: "TRICKS", title: "Hold a Manual", how: "RS gently down, then balance", tier: "basic", first: "trick:Manual" },
+  { id: "s-nose-manual", group: "TRICKS", title: "Hold a Nose Manual", how: "RS gently up, then balance", tier: "basic", first: "trick:Nose Manual" },
+  { id: "s-quarter", group: "RAMPS", title: "Air a quarter pipe", how: "Ride up a quarter, fly off the lip", tier: "basic", first: "quarterAir" },
+  { id: "s-reentry", group: "RAMPS", title: "Land back into a quarter", how: "Air a quarter, land back in it", tier: "skill", first: "quarterLand" },
+  { id: "s-grind", group: "GRINDS", title: "Lock your first grind", how: "Pop onto a rail or ledge (RT helps)", tier: "basic", first: "grind" },
+  { id: "s-long-grind", group: "GRINDS", title: "Grind 3 metres", how: "Hold one grind for 3 metres", tier: "skill", first: "grindLong" },
+  { id: "s-backflip", group: "BIG TRICKS", title: "Land a Backflip", how: "In the air: LT + RT, LS back", tier: "big", first: "trick:Backflip" },
+  { id: "s-frontflip", group: "BIG TRICKS", title: "Land a Frontflip", how: "In the air: LT + RT, LS forward", tier: "big", first: "trick:Frontflip" },
+  { id: "s-bri", group: "BIG TRICKS", title: "Land a Bri Flip", how: "RS down, round and out to the side", tier: "big", first: "trick:Bri" },
+  { id: "s-decade", group: "BIG TRICKS", title: "Land a Decade", how: "In the air: tap LB", tier: "big", first: "trick:Decade" },
+  { id: "s-clamp", group: "BIG TRICKS", title: "Land a Clamp Grab", how: "In the air: hold RT + RB", tier: "skill", first: "trick:Clamp Grab" },
+  { id: "s-phone", group: "GETTING AROUND", title: "Check your phone", how: "D-pad Down takes it out", tier: "intro", first: "phone" },
+  { id: "s-crate", group: "GETTING AROUND", title: "Open a crate", how: "Open one from MISSIONS", tier: "intro", first: "crate" },
+  { id: "s-customize", group: "GETTING AROUND", title: "Customize your ride", how: "Equip a new part from RIDES", tier: "intro", first: "customize" },
+];
+const FIRSTS = new Set(STARTER.map((m) => m.first));
+/** Tricks that count as a "first", matched against a landed trick's name. */
+export const FIRST_TRICKS: [string, RegExp][] = [
+  ["trick:Tailwhip", /\bTailwhip\b/], ["trick:Barspin", /\bBarspin\b/], ["trick:Manual", /^Manual$/], ["trick:Nose Manual", /^Nose Manual$/],
+  ["trick:Backflip", /\bBackflip\b|^Flair\b/], ["trick:Frontflip", /\bFrontflip\b|^Front Flair\b/], ["trick:Bri", /\bBri\b/],
+  ["trick:Decade", /\bDecade\b/], ["trick:Clamp Grab", /\bClamp Grab\b/],
+];
 
 export const dayKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 /** Three different dailies for a date, the same for everyone that day. */
@@ -139,7 +205,7 @@ export function rollDaily(p: Progress, day = dayKey()) {
  * Adds to a stat (or raises a best), then settles every mission it completes
  * and any level-ups, returning what was earned. `newId` names granted crates.
  */
-export function record(p: Progress, changes: Partial<Record<Stat, number>>, newId: () => string, day = dayKey()): Gains {
+export function record(p: Progress, changes: Partial<Record<Stat, number>>, newId: () => string, day = dayKey(), firsts: string[] = []): Gains {
   const gains = noGains();
   rollDaily(p, day);
   for (const [key, amount] of Object.entries(changes) as [Stat, number][]) {
@@ -153,6 +219,10 @@ export function record(p: Progress, changes: Partial<Record<Stat, number>>, newI
     gains.credit += reward.credit; gains.xp += reward.xp;
     if (reward.crate) gains.crates.push({ id: newId(), tier: reward.crate, source: title });
   };
+  for (const first of firsts) if (FIRSTS.has(first) && !p.firsts.includes(first)) p.firsts.push(first);
+  if (changes.cratesOpened && !p.firsts.includes("crate")) p.firsts.push("crate");
+  for (const mission of STARTER)
+    if (!p.starter.includes(mission.id) && p.firsts.includes(mission.first)) { p.starter.push(mission.id); grant(mission.title, STARTER_REWARD[mission.tier]); }
   for (const chain of CAREER) {
     let stage = p.career[chain.id] ?? 0;
     while (stage < chain.goals.length && p.stats[chain.stat] >= chain.goals[stage]) {
@@ -166,15 +236,15 @@ export function record(p: Progress, changes: Partial<Record<Stat, number>>, newI
     if (!p.daily.done.includes(id) && p.daily.stats[mission.stat] >= mission.goal) { p.daily.done.push(id); grant("Daily: " + mission.title, DAILY_REWARD); }
   }
   if (!p.daily.bonus && p.daily.ids.length === 3 && p.daily.done.length === 3) { p.daily.bonus = true; grant("All three dailies", DAILY_BONUS); }
-  // Level-ups from everything earned above.
-  const before = levelFor(p.xp).level;
+  // Level-ups from everything earned above; each level pays once, ever.
   p.xp += gains.xp;
   const after = levelFor(p.xp).level;
-  for (let level = before + 1; level <= after; level++) {
+  for (let level = p.topLevel + 1; level <= after; level++) {
     gains.levelsUp.push(level);
     gains.credit += levelCredit(level);
     gains.crates.push({ id: newId(), tier: levelCrate(level), source: "Level " + level });
   }
+  p.topLevel = Math.max(p.topLevel, after);
   p.crates.push(...gains.crates);
   return gains;
 }
@@ -191,7 +261,8 @@ export function missionBoard(p: Progress, day = dayKey()) {
     const stage = copy.career[chain.id] ?? 0, complete = stage >= chain.goals.length, goal = chain.goals[Math.min(stage, chain.goals.length - 1)];
     return { id: chain.id, title: complete ? careerTitle(chain, chain.goals.length - 1) : careerTitle(chain, stage), detail: chain.detail, value: Math.min(goal, copy.stats[chain.stat]), goal, stage, stages: chain.goals.length, complete, reward: careerReward(stage) };
   });
-  return { daily, career, bonus: copy.daily.bonus, bonusReward: DAILY_BONUS };
+  const starter = STARTER.map((m) => ({ id: m.id, group: m.group, title: m.title, how: m.how, done: copy.starter.includes(m.id), reward: STARTER_REWARD[m.tier] }));
+  return { daily, career, starter, bonus: copy.daily.bonus, bonusReward: DAILY_BONUS };
 }
 
 // ---- Crates -----------------------------------------------------------------------
