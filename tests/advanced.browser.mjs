@@ -310,7 +310,7 @@ try {
     return g.renderer.domElement.toDataURL("image/png");
   });
   writeFileSync(
-    "public/previews/outdoor.png",
+    "artifacts/outdoor-preview.png",
     Buffer.from(preview.split(",")[1], "base64"),
   );
   await page.evaluate(() => {
