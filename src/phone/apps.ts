@@ -13,7 +13,10 @@ import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type I
 import type { Phone, View } from './phone';
 import type { PhoneMap } from './map';
 import { fictionalNumber, type MessageStore } from './messages';
-import { CRATE_NAME, collection, levelFor, missionBoard } from '../data/progress';
+import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, levelFor, missionBoard } from '../data/progress';
+import { DELIVERY, type CreditEconomy, type Package } from '../data/credit';
+import { dailyDeals, type Deal } from '../data/deals';
+import { inventoryBrands, inventoryItems, type InventoryItem } from '../data/inventory';
 
 /** What the apps reach in the game. Every app is a front end to an existing system. */
 export interface PhoneDeps {
@@ -37,6 +40,8 @@ export interface PhoneDeps {
   map: PhoneMap;
   /** Opens a crate on screen (the phone is put away first). */
   openCrate: (id: string) => void;
+  /** The one economy (data/credit.ts): the SHOP app orders through it. */
+  economy: CreditEconomy;
 }
 
 const time = (s: number) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -346,6 +351,99 @@ function missionsApp(d: PhoneDeps): View {
   };
 }
 
+// ---- SHOP -----------------------------------------------------------------------
+/**
+ * The phone shop: Techno Gravity's stock and today's deals, ordered from
+ * anywhere. An order is paid at once and arrives as a package DELIVERY.seconds
+ * later (main.ts delivers it into your parts); walking into the shop is still
+ * the instant way. Same economy, prices and deals as the shop counter.
+ */
+function shopApp(d: PhoneDeps): View {
+  const shopId = DELIVERY.shopId, fmt = (n: number) => n.toLocaleString('en-US');
+  const wallet = () => d.profile().wallet;
+  const ordered = (s: { partId: string; variantId: string }) => wallet().packages.some(k => k.partId === s.partId && k.variantId === s.variantId);
+  const look = (s: { partId: string; variantId: string }) => collectibles().find(c => c.partId === s.partId && c.variantId === s.variantId);
+  const eta = (k: Package) => time(Math.max(0, (k.arrives - Date.now()) / 1000));
+  const nameOf = (s: { partId: string; variantId: string }) => { const c = look(s); return c ? c.name.replace(/^(Lazer|Mafioso|Sometimes Summer) /, '') + ' / ' + c.variantName : s.partId; };
+  // A box in the part's colour, taped in its rarity.
+  const box = (s: { partId: string; variantId: string }, label: string): Block => ({ type: 'image', height: 118, draw: (g, x, y, w) => {
+    const c = look(s), colour = '#' + (c?.color ?? 0x888888).toString(16).padStart(6, '0'), rarity = RARITY_COLOR[c?.rarity ?? 'common'];
+    g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, w, 112, 14); g.fill();
+    const bx = x + w / 2 - 46, by = y + 22;
+    g.fillStyle = '#c89a5c'; g.beginPath(); g.roundRect(bx, by, 92, 66, 6); g.fill();
+    g.fillStyle = '#a97c45'; g.fillRect(bx, by, 92, 14);
+    g.fillStyle = rarity; g.fillRect(bx + 38, by, 16, 66);
+    g.fillStyle = colour; g.beginPath(); g.arc(bx + 46, by + 42, 15, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = INK; g.lineWidth = 3; g.stroke();
+    g.textAlign = 'center'; g.font = `11px ${DISPLAY}`; g.fillStyle = rarity; g.fillText(label, x + w / 2, y + 106); g.textAlign = 'left';
+  } });
+  let status = '';
+  const done = (k: Package): View => ({ title: 'SHOP', live: true, page: () => {
+    const still = wallet().packages.find(p => p.id === k.id);
+    return { blocks: [
+      { type: 'title', text: still ? 'ORDERED!' : 'DELIVERED!', sub: nameOf(k) },
+      box(k, still ? 'ON ITS WAY · ' + eta(still) : 'IN YOUR PARTS'),
+      { type: 'text', text: still ? 'Paid ' + fmt(k.price) + ' Credit. It lands in your parts when the timer runs out, even if you close the game.' : 'Equip it from RIDES or the pause menu.', muted: true },
+      { type: 'list', rows: [{ id: 'more', label: 'KEEP SHOPPING', action: () => d.phone.back() }] },
+    ] };
+  } });
+  const confirm = (item: InventoryItem, deal?: Deal): View => ({ title: 'SHOP', page: () => {
+    const price = deal?.price ?? item.price, w = wallet(), afford = w.credit + w.testCredit >= price;
+    return { blocks: [
+      { type: 'title', text: item.partName.toUpperCase(), sub: item.brand + ' · ' + item.variantName },
+      box(item, RARITY_LABEL[item.rarity] + (deal ? ' · -' + deal.off + '%' : '')),
+      { type: 'list', rows: [
+        { id: 'order', label: afford ? 'ORDER IT' : 'NOT ENOUGH CREDIT', detail: 'Delivered in ' + DELIVERY.seconds + ' s · you have ' + fmt(w.credit), value: fmt(price) + ' CR', disabled: !afford,
+          action: afford ? async () => {
+            status = 'Ordering...'; d.phone.refresh();
+            const r = await d.economy.order({ partId: item.partId, variantId: item.variantId }, price);
+            if (typeof r === 'string') { status = r; d.phone.refresh(); return; }
+            status = ''; d.phone.notify('Order placed', nameOf(item) + ' · arrives in ' + DELIVERY.seconds + ' s', 'crate'); d.phone.replace(done(r.pkg));
+          } : undefined },
+        { id: 'cancel', label: 'NOT NOW', action: () => d.phone.back() },
+      ] },
+      ...(status ? [{ type: 'text' as const, text: status, muted: true }] : []),
+    ] };
+  } });
+  const row = (item: InventoryItem): Row => {
+    const deal = dailyDeals(shopId).find(x => x.partId === item.partId && x.variantId === item.variantId);
+    return { id: 'item-' + item.partId + ':' + item.variantId, label: item.partName.toUpperCase(), detail: item.variantName + ' · ' + RARITY_LABEL[item.rarity] + (deal ? ' · -' + deal.off + '%' : ''), value: fmt(deal?.price ?? item.price), action: () => { status = ''; d.phone.push(confirm(item, deal)); } };
+  };
+  const category = (brandId: string, brand: string, cat: string): View => ({ title: 'SHOP', page: () => ({ blocks: [
+    { type: 'title', text: cat.toUpperCase(), sub: brand },
+    { type: 'list', rows: inventoryItems(wallet(), 'shop', { shopId, brandId, category: cat }).filter(i => !ordered(i)).map(row) },
+  ] }) });
+  const brand = (brandId: string, name: string): View => ({ title: 'SHOP', page: () => {
+    const items = inventoryItems(wallet(), 'shop', { shopId, brandId }).filter(i => !ordered(i));
+    const cats = [...new Set(items.map(i => i.category))];
+    return { blocks: [
+      { type: 'title', text: name.toUpperCase(), sub: items.length + ' colourways to collect' },
+      { type: 'list', rows: cats.map(c => ({ id: 'cat-' + c, label: c.toUpperCase(), detail: items.filter(i => i.category === c).length + ' for sale', action: () => d.phone.push(category(brandId, name, c)) })) },
+    ] };
+  } });
+  return { title: 'SHOP', live: true, page: () => {
+    const w = wallet(), blocks: Block[] = [
+      { type: 'image', height: 64, draw: (g, x, y, width) => {
+        g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, width, 58, 12); g.fill();
+        g.textAlign = 'left'; g.font = `15px ${DISPLAY}`; g.fillStyle = LIME; g.fillText('PHONE SHOP', x + 14, y + 25);
+        g.font = `700 11px ${BODY}`; g.fillStyle = '#9aa3a9'; g.fillText('Techno Gravity stock · delivered', x + 14, y + 44);
+        g.textAlign = 'right'; g.font = `15px ${DISPLAY}`; g.fillStyle = '#ffd23f'; g.fillText(fmt(w.credit) + ' CR', x + width - 14, y + 34); g.textAlign = 'left';
+      } },
+    ];
+    if (w.packages.length) {
+      blocks.push({ type: 'title', text: 'ON ITS WAY', sub: w.packages.length + ' package' + (w.packages.length > 1 ? 's' : '') });
+      blocks.push({ type: 'list', rows: w.packages.map(k => ({ id: 'pkg-' + k.id, label: nameOf(k).toUpperCase(), detail: 'Paid ' + fmt(k.price) + ' Credit', value: eta(k), action: () => d.phone.push(done(k)) })) });
+    }
+    const deals = dailyDeals(shopId).filter(x => !ordered(x));
+    const dealItems = deals.map(x => inventoryItems(w, 'shop', { shopId }).find(i => i.partId === x.partId && i.variantId === x.variantId)).filter((i): i is InventoryItem => !!i);
+    if (dealItems.length) { blocks.push({ type: 'title', text: "TODAY'S DEALS", sub: 'Same deals as the shop counter' }); blocks.push({ type: 'list', rows: dealItems.map(row) }); }
+    const brands = inventoryBrands(w, 'shop', { shopId });
+    blocks.push({ type: 'title', text: 'BROWSE', sub: brands.length ? 'Every brand Techno Gravity stocks' : 'You own everything they sell' });
+    blocks.push({ type: 'list', rows: brands.map(b => ({ id: 'brand-' + b.brandId, label: b.brand.toUpperCase(), detail: b.count + ' colourways · ' + b.categories.length + ' categories', action: () => d.phone.push(brand(b.brandId, b.brand)) })) });
+    return { blocks };
+  } };
+}
+
 // ---- MESSAGES -----------------------------------------------------------------
 function messagesApp(d: PhoneDeps): View {
   const thread = (id: string, name: string): View => ({
@@ -415,6 +513,7 @@ export function installApps(d: PhoneDeps) {
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
+    ['shop', 'SHOP', 'crate', '#35b6ff', shopApp, () => { const n = d.profile().wallet.packages.length; return n ? String(Math.min(9, n)) : undefined; }],
   ];
   for (const [id, label, ic, color, make, badge] of apps) d.phone.register({ id, label, icon: ic, color, open: () => make(d), badge });
 }

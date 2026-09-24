@@ -460,8 +460,9 @@ export class GameMenu {
         for(const item of items){const on=this.equippedSelection(item),equipped=on.partId===item.partId&&on.variantId===item.variantId;
           const swatch=item.rideable==='scooter'?PARTS.find(p=>p.id===item.partId)?.variants.find(v=>v.id===item.variantId)?.color:undefined;
           const deal=mode==='shop'?dailyDeals(this.activeShop.id).find(d=>d.partId===item.partId&&d.variantId===item.variantId):undefined,price=deal?.price??item.price;
-          cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{this.product=item.partId;this.pendingVariant=item.variantId;this.pendingDeal=deal??null;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
-            mode==='shop'?RARITY_LABEL[item.rarity]+(deal?' · was '+deal.was:''):equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch,
+          const transit=mode==='shop'&&wallet.packages.some(k=>k.partId===item.partId&&k.variantId===item.variantId);
+          cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{if(transit){this.notice='Already on its way from your phone order.';this.render();return;}this.product=item.partId;this.pendingVariant=item.variantId;this.pendingDeal=deal??null;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
+            transit?'On its way (phone order)':mode==='shop'?RARITY_LABEL[item.rarity]+(deal?' · was '+deal.was:''):equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch,
             {rarity:item.rarity,tag:mode==='shop'?String(price):undefined,badge:deal?'-'+deal.off+'%':item.exclusive?'CRATE':undefined,poor:mode==='shop'&&wallet.credit+wallet.testCredit<price});}
         if(!items.length)add(mode==='shop'?'SOLD OUT FOR YOU':'NOTHING OWNED HERE',()=>this.back(),mode==='shop'?'You own every colorway in this category.':'Buy these at Techno Gravity.');
         pager(pages,page,p=>{this.itemPage=p;});

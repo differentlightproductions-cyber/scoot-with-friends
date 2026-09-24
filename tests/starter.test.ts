@@ -78,3 +78,25 @@ test('starter missions pay once each; purposeful ones pay more; levels pay once 
   const level = levelFor(fresh.xp).level;
   assert.ok(level >= 2 && level <= 4, 'every starter mission done is level ' + level);
 });
+
+test('phone shop: an order is paid once, travels as a package and is delivered once', async () => {
+  store.clear();
+  const e = new CreditEconomy();
+  await e.setTestCredit(0, true); await e.reward('bank:phone-1', 20000); // 200 Credit
+  const bars = {partId: 'mafioso-bars-y', variantId: 'mafioso_bars_y_chrome'}, t0 = 1_000_000;
+  const first = await e.order(bars, undefined, t0);
+  assert.equal(typeof first, 'object');
+  const after = loadProfile().wallet, paid = 200 - after.credit;
+  assert.ok(paid > 0 && paid <= 75 && after.packages.length === 1, 'charged at list or deal price, package on its way');
+  assert.equal(owns(after, bars), false, 'not owned until delivered');
+  assert.equal(await e.order(bars, undefined, t0), 'Already on its way');
+  assert.match(await e.buy(bars), /on its way/, 'the counter cannot sell it twice either');
+  assert.equal(await e.order({partId: 'pro-deck', variantId: 'x-gold-rush'}), 'Product unavailable', 'crate exclusives are never sold');
+  assert.equal(await e.deliver(t0 + 10_000), 'none', 'not before it arrives');
+  const arrived = await e.deliver(t0 + 46_000);
+  assert.ok(Array.isArray(arrived) && arrived.length === 1);
+  const w = loadProfile().wallet;
+  assert.ok(owns(w, bars) && w.packages.length === 0);
+  assert.equal(await e.deliver(t0 + 99_000), 'none', 'delivered once');
+  assert.equal(loadProfile().progress.stats.purchases, 1, 'an order counts as a purchase');
+});

@@ -202,6 +202,18 @@ export class RewardFx {
     setTimeout(() => el.classList.add("out"), 2800);
     setTimeout(() => el.remove(), 3300);
   }
+  /** A phone-shop package arriving: a sticker in the same kit as missions. */
+  delivered(name: string) {
+    this.stickers.push(() => {
+      const el = document.createElement("div");
+      el.className = "reward-toast delivered";
+      el.innerHTML = `<span class="rt-label">PACKAGE DELIVERED</span><strong>${esc(name)}</strong><span class="rt-gain">In your parts · equip it from <b>RIDES</b></span>`;
+      this.toasts.append(el); sfx.coin();
+      setTimeout(() => el.classList.add("out"), 2800);
+      setTimeout(() => el.remove(), 3300);
+    });
+    this.pumpStickers();
+  }
   levelUp(level: number, crates: string[]) {
     const el = document.createElement("div");
     el.className = "level-up";

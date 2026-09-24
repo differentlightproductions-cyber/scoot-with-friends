@@ -4,13 +4,21 @@ import {catalogEntry,ownershipKey as catalogKey,ownsSelection,ownsBoard,bundlePr
 import {LONGBOARD_PARTS,type LongboardCategory} from './longboardParts';
 import {dayKey,openCrate,record,type CrateResult,type Gains,type Stat} from './progress';
 import {dailyDeals} from './deals';
+import {SHOPS} from './shops';
+const shopStock=(id:string)=>SHOPS.find(s=>s.id===id)?.stock??[];
 import type {LocalProfile} from './loadout';
 const crateId=()=>'c'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('');
 export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number;
  /** The one-time starter scooter has been claimed (claimStarter). Never resets. */
- starter:boolean}
+ starter:boolean;
+ /** Phone-shop orders on their way: paid for, owned once delivered. */
+ packages:Package[]}
+/** A part ordered from the phone: already paid, delivered into the wallet at `arrives`. */
+export interface Package {id:string;partId:string;variantId:string;price:number;ordered:number;arrives:number}
+/** Phone orders are the same stock and price as the shop, delivered after a short wait. Tune here. */
+export const DELIVERY={seconds:45,shopId:'techno_gravity',maxOpen:12};
 export const CREDIT_POLICY={pointsPerCredit:100,maxBalance:10000000};
-export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0,starter:false});
+export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0,starter:false,packages:[]});
 /** Reward receipts only guard against the same event paying twice, which happens moments apart; the newest are enough. */
 const RECEIPTS_KEPT=500;
 export const ownershipKey=catalogKey;
@@ -20,7 +28,10 @@ export function validWallet(value:any):AlphaWallet{
  for(const k of ['credit','remainder','testCredit'] as const)if(Number.isSafeInteger(value[k])&&value[k]>=0)w[k]=Math.min(value[k],CREDIT_POLICY.maxBalance);
  w.owned=Array.isArray(value.owned)?[...new Set<string>(value.owned.filter((s:any)=>typeof s==='string'))]:[];
  w.receipts=Array.isArray(value.receipts)?[...new Set<string>(value.receipts.filter((s:any)=>typeof s==='string'))].slice(-RECEIPTS_KEPT):[];
- w.starter=value.starter===true;return w;
+ w.starter=value.starter===true;
+ w.packages=(Array.isArray(value.packages)?value.packages:[]).filter((p:any)=>p&&typeof p.id==='string'&&/^[a-z0-9-]{6,64}$/.test(p.id)&&catalogEntry(p.partId)?.variants.some(v=>v.id===p.variantId&&!v.exclusive)&&[p.price,p.ordered,p.arrives].every(n=>Number.isSafeInteger(n)&&n>=0))
+  .slice(0,DELIVERY.maxOpen).map((p:any)=>({id:p.id,partId:p.partId,variantId:p.variantId,price:p.price,ordered:p.ordered,arrives:p.arrives}));
+ return w;
 }
 /** Local alpha entitlement transaction. There is no paid balance or payment path. */
 export class CreditEconomy {
@@ -55,6 +66,28 @@ export class CreditEconomy {
   const scooter=validStarter(build);if(!scooter)return 'Pick one Lazer part for every slot.';
   for(const s of Object.values(scooter)){const key=catalogKey(s);if(!p.wallet.owned.includes(key))p.wallet.owned.push(key);}
   p.wallet.starter=true;p.scooter=scooter;p.activeRideable='scooter';p.equipmentRevision=(p.equipmentRevision??0)+1;return p;});}
+ /**
+  * Orders a part from the phone: charged now (today's deal price applies,
+  * re-derived here), counted as a purchase, and delivered into the wallet
+  * DELIVERY.seconds later by deliver(). Never a second order of the same colourway.
+  */
+ order(s:PartSelection,expected?:number,now=Date.now()){return this.update<{pkg:Package;gains:Gains}>(p=>{
+  const w=p.wallet,part=catalogEntry(s.partId),variant=part?.variants.find(v=>v.id===s.variantId);
+  if(!part||!variant||variant.exclusive||!shopStock(DELIVERY.shopId).includes(s.partId))return 'Product unavailable';
+  if(owns(w,s))return 'Already owned';if(w.packages.some(k=>k.partId===s.partId&&k.variantId===s.variantId))return 'Already on its way';
+  if(w.packages.length>=DELIVERY.maxOpen)return 'Too many packages on the way. Wait for a delivery.';
+  const deal=dailyDeals(DELIVERY.shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId),price=deal?deal.price:part.creditPrice;
+  if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' Credit.';if(w.credit+w.testCredit<price)return 'Not enough Credit';
+  const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;
+  const pkg={id:'pkg-'+crateId().slice(1,19),partId:s.partId,variantId:s.variantId,price,ordered:now,arrives:now+DELIVERY.seconds*1000};w.packages.push(pkg);
+  const gains=record(p.progress,{purchases:1},crateId,dayKey());if(gains.credit)w.credit=Math.min(CREDIT_POLICY.maxBalance,w.credit+gains.credit);
+  return {pkg,gains};}).then(r=>{if(typeof r!=='string'&&(r.gains.completed.length||r.gains.levelsUp.length))this.onGains(r.gains);return r;});}
+ /** Delivers every package whose time has come; returns what arrived (nothing twice). */
+ deliver(now=Date.now()){return this.update<Package[]>(p=>{
+  const due=p.wallet.packages.filter(k=>k.arrives<=now);if(!due.length)return 'none';
+  p.wallet.packages=p.wallet.packages.filter(k=>k.arrives>now);
+  for(const k of due){const key=catalogKey(k);if(!p.wallet.owned.includes(key))p.wallet.owned.push(key);}
+  return due;});}
  /** Opens one crate: never a duplicate, and the crate is gone once opened. */
  openCrate(id:string){return this.update<CrateResult>(p=>{
   const crate=p.progress.crates.find(c=>c.id===id);if(!crate)return 'That crate is already open.';
@@ -82,7 +115,7 @@ export class CreditEconomy {
   * is one of that shop's deals (re-derived here, never taken from the caller);
   * `expected` guards against the price rising between showing it and buying.
   */
- buy(s:PartSelection,shopId?:string,expected?:number){return this.purchase(w=>{const part=catalogEntry(s.partId),variant=part?.variants.find(v=>v.id===s.variantId);if(!part||!variant||variant.exclusive)return 'Product unavailable';if(owns(w,s))return 'Already owned';
+ buy(s:PartSelection,shopId?:string,expected?:number){return this.purchase(w=>{const part=catalogEntry(s.partId),variant=part?.variants.find(v=>v.id===s.variantId);if(!part||!variant||variant.exclusive)return 'Product unavailable';if(owns(w,s))return 'Already owned';if(w.packages.some(k=>k.partId===s.partId&&k.variantId===s.variantId))return 'Already on its way from your phone order';
   const deal=shopId?dailyDeals(shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId):undefined;
   const price=deal?deal.price:part.creditPrice;if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' Credit.';if(w.credit+w.testCredit<price)return 'Not enough Credit';
   const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;w.owned.push(ownershipKey(s));return 1;});}

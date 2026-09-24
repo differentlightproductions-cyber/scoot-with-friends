@@ -49,6 +49,7 @@ import { installApps, homePage, releasePhoneThumbnails, type PhoneDeps } from '.
 import { ownsBoard } from './data/catalog';
 import { MAPS } from './data/maps';
 import { MissionTracker, RewardFx } from './ui/rewards';
+import { collectibles } from './data/progress';
 import { cloud } from './ui/account';
 import { B_HILL_LENGTH, routeProgress } from './park/bhill';
 async function boot() {
@@ -89,7 +90,7 @@ async function boot() {
   const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;const earned=profile.wallet.credit-before;if(earned>0)creditNote(earned);};
   // Banked lines pay Credit often: the phone sums it into one note a minute
   // instead of one per line (missions already show their own sticker).
-  let noteCredit=0,noteAt=-Infinity,noteTimer:ReturnType<typeof setTimeout>|null=null;
+  let noteCredit=0,noteAt=-Infinity,noteTimer:ReturnType<typeof setTimeout>|null=null,deliveryCheck=0;
   const creditNote=(earned:number)=>{noteCredit+=earned;if(noteTimer)return;const wait=Math.max(0,noteAt+60000-performance.now());
     noteTimer=setTimeout(()=>{noteTimer=null;noteAt=performance.now();phone.notify('Credit earned','+'+noteCredit+' Credit · '+profile.wallet.credit+' total','star');noteCredit=0;},wait);};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
   // Missions, XP and crates (data/progress.ts): riding events count toward
@@ -157,7 +158,7 @@ async function boot() {
   /** The phone comes out standing, sitting, or rolling on the ground; never in the air, a trick, a grind or a crash. */
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
-  const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,
+  const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,
     openCrate:id=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,crates);},
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim),
@@ -567,6 +568,8 @@ async function boot() {
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
     if(hud.started&&!hud.paused){missions.sample(sim,dt);if(phone.active)missions.first('phone');}
+    // Phone-shop packages land in your parts when their time comes (also after a reload).
+    deliveryCheck-=dt;if(deliveryCheck<=0){deliveryCheck=1;if(profile.wallet.packages.some(k=>k.arrives<=Date.now()))void economy.deliver().then(arrived=>{if(typeof arrived==='string')return;for(const k of arrived){const c=collectibles().find(x=>x.partId===k.partId&&x.variantId===k.variantId);rewards.delivered(c?c.name.replace(/^(Lazer|Mafioso|Sometimes Summer) /,'')+' / '+c.variantName:k.partId);phone.notify('Package delivered',(c?.name??k.partId)+' is in your parts','crate');}});}
     if(hud.started&&ACTIVE_MAP==='b_hill')missions.hillUpdate(routeProgress(sim.position.x,sim.position.z),B_HILL_LENGTH,sim.speed,!sim.walking&&sim.state!=='Bail');
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };
