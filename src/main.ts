@@ -4,6 +4,9 @@ import * as riding from "./input/riding";
 import { copyText } from "./core/secure";
 import { TouchPad } from "./input/touchpad";
 import { WheelTracks } from "./park/tracks";
+import { WithFriends } from "./social/friends";
+import { VETERANS_LOCALS } from "./social/npcs";
+import type { ThrowableKind } from "./social/playful";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide,capture} from './network/client';
@@ -116,6 +119,20 @@ async function boot() {
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
   // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
   let tracks = new WheelTracks(scene);
+  // "With Friends" (#47): the park's locals and small things to throw; Veterans only for now.
+  let friends: WithFriends | null = null;
+  function makeFriends() {
+    if (ACTIVE_MAP !== "outdoor") return null;
+    const f = new WithFriends(scene, terrainHeight);
+    // Acorns under the lawn's trees, rocks by the paths, a paper ball and cans by the benches and the DIY lot.
+    const scatter: [number, number, ThrowableKind][] = [[-31.5, 1.5, "acorn"], [-29, 5.5, "acorn"], [-32, 4, "pinecone"], [-83, 11, "rock"], [-85.5, 5, "acorn"], [-44.5, -119, "can"], [-47.5, -123, "rock"], [-45, -124.5, "paper"], [30, -42, "acorn"], [33, -38.5, "rock"], [-22, -34, "paper"], [-25.5, -39.5, "can"]];
+    f.populate(VETERANS_LOCALS, capture(sim), profile, scatter);
+    f.local.onHit = (hit) => {
+      const what = hit.item === "paper" ? "A PAPER BALL" : hit.item === "can" ? "A CAN" : hit.item === "rock" ? "A PEBBLE" : hit.item === "pinecone" ? "A PINECONE" : "AN ACORN";
+      hud.feedback(hit.strength === "cosmetic" ? `${what} BOUNCES OFF` : `BONK! ${what}`, "warn");
+    };
+    return f;
+  }
   // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
   const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
   let phoneAir = 0;
@@ -441,6 +458,7 @@ async function boot() {
         m.dispose();
       });
       weather.dispose();
+      friends?.dispose();friends=null;
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -450,7 +468,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);friends=makeFriends();
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -649,7 +667,7 @@ async function boot() {
     camera.phonePitch = raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
     if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
-    interactions.online=!!network.id;interactions.render(rider);
+    interactions.online=!!network.id;interactions.render(rider);friends?.render(dt,sim.elapsed,rider.hands[0]);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     // Placing a build piece: the build camera frames the ghost instead.
@@ -734,6 +752,12 @@ async function boot() {
     if(builder.placement)frame=builder.update(sim,frame,dt);
     else {
       frame = social.update(sim, frame, dt);
+      if(friends){
+        friends.rules.contact=profile.settings.playfulContact;
+        const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
+        const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'?'paper':'can'):null;
+        frame=friends.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
+      }
       frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);
     }
     accumulator += dt;
@@ -831,6 +855,7 @@ async function boot() {
       },
       camera, camcorder, touchPad,
       get tracks() { return tracks; },
+      get friends() { return friends; },
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),

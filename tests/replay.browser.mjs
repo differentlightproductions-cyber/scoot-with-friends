@@ -48,7 +48,8 @@ try {
 
   // Third person, then first person, at the top of the air.
   const views = await page.evaluate(async () => {
-    const g = window.__LAZER, r = g.replay, frames = g.replayBuffer.samples, poses = frames.map((f) => JSON.parse(f.pose));
+    const { decodePoses } = await import('/src/replay/buffer.ts');
+    const g = window.__LAZER, r = g.replay, frames = g.replayBuffer.samples, poses = decodePoses(frames);
     const top = poses.reduce((best, p, i) => (p.position[1] > poses[best].position[1] ? i : best), 0), t = frames[top].t - frames[0].t;
     const place = (view) => { r.setView(view); r.seek(t); for (let i = 0; i < 6; i++) { r.seek(t); r.draw(1 / 30); } const cam = r.player.camera.camera.position, p = poses[top].position; return { view: r.camera, dist: Math.hypot(cam.x - p[0], cam.y - p[1], cam.z - p[2]), first: r.player.camera.firstPersonActive }; };
     const third = place('third'); const thirdShot = g.renderer.domElement.toDataURL('image/jpeg', 0.8);

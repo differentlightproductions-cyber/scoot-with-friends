@@ -656,3 +656,5 @@ body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
 @media (pointer: coarse) and (orientation: portrait) {
   #pause .pause-sheet { top: calc(40px + env(safe-area-inset-top, 0px)); height: auto; max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px)); }
 }
+/* With Friends (#47): the throw / shove / pick-up prompt sits just above the world prompt. */
+.world-prompt.playful-prompt { bottom: calc(19% + 52px); background: var(--ink, #172b2d); color: var(--lime, #c6ff00); }

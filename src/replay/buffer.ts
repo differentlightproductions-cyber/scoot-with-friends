@@ -6,8 +6,12 @@
  * only places the recorded rider, it never steps physics.
  *
  * Each sample is one compact JSON string with numbers rounded to what the eye
- * can see; a 60 s history is about 1,800 of them. Old samples fall off the
- * front as new ones arrive, so memory stays flat however long the session runs.
+ * can see; a 60 s history is about 1,800 of them. Once a second a sample holds
+ * the whole pose (a key frame); in between, only the parts of the pose that
+ * changed since the sample before. Most of a pose (stance, rideable, the trick
+ * states between tricks) holds still for seconds, so this keeps a 60 s history
+ * to a few megabytes. Old samples fall off the front as new ones arrive, so
+ * memory stays flat however long the session runs.
  */
 export const REPLAY_HISTORY = [15, 30, 45, 60] as const;
 export type ReplayHistory = (typeof REPLAY_HISTORY)[number];
@@ -21,6 +25,8 @@ export interface ReplayFrame {
   pose: string;
   /** The camera the player was using then. */
   view: ReplayView;
+  /** A key frame holds the whole pose; any other frame only what changed since the one before. */
+  key?: true;
 }
 /** A captured replay: everything needed to watch it again later on the same map. */
 export interface ReplayClip {
@@ -37,12 +43,34 @@ export interface ReplayClip {
 /** Rounds every number to 4 decimals: millimetres and hundredths of a degree. */
 const compact = (_key: string, value: unknown) => (typeof value === "number" ? Math.round(value * 1e4) / 1e4 : value);
 export const packPose = (pose: unknown) => JSON.stringify(pose, compact);
+/** Key frames per second of history. */
+const KEY_EVERY = REPLAY_RATE;
+
+/**
+ * The full poses of a run of frames, oldest first. The first frame is read
+ * whole; each later one is the pose before it with that frame's changes laid
+ * over. Clips saved before key frames existed hold whole poses in every frame,
+ * which reads the same way.
+ */
+export function decodePoses(frames: ReplayFrame[]): any[] {
+  const out: any[] = [];
+  let prev: any = {};
+  for (const f of frames) {
+    const part = JSON.parse(f.pose);
+    prev = f.key ? part : { ...prev, ...part };
+    out.push(prev);
+  }
+  return out;
+}
 
 export class ReplayBuffer {
   history: ReplayHistory = 30;
   private frames: ReplayFrame[] = [];
   private start = 0;
   private last = -Infinity;
+  /** The last sample's pose, part by part, as packed JSON: what the next sample is compared with. */
+  private parts: Record<string, string> = {};
+  private sinceKey = KEY_EVERY;
 
   /** Offers the current pose; kept when a 30 Hz slot has passed. `pose` is only built when kept. */
   record(t: number, pose: () => unknown, view: ReplayView) {
@@ -50,16 +78,39 @@ export class ReplayBuffer {
     if (t < this.last - 1e-6) this.clear();
     if (t - this.last < 1 / REPLAY_RATE - 1e-4) return false;
     this.last = t;
-    this.frames.push({ t, pose: packPose(pose()), view });
+    const full = pose() as Record<string, unknown>, parts: Record<string, string> = {};
+    for (const k of Object.keys(full)) parts[k] = packPose(full[k]);
+    const key = this.sinceKey >= KEY_EVERY;
+    const changed = key ? Object.keys(parts) : Object.keys(parts).filter((k) => parts[k] !== this.parts[k]);
+    const packed = "{" + changed.map((k) => JSON.stringify(k) + ":" + parts[k]).join(",") + "}";
+    this.frames.push(key ? { t, pose: packed, view, key: true } : { t, pose: packed, view });
+    this.parts = parts;
+    this.sinceKey = key ? 1 : this.sinceKey + 1;
     // Drop what has aged out, in chunks so the array is not shifted every sample.
-    while (this.start < this.frames.length && this.frames[this.start].t < t - this.history - 0.5) this.start++;
+    // Whole seconds at a time: a key frame and the changes after it go together.
+    for (;;) {
+      let next = this.start + 1;
+      while (next < this.frames.length && !this.frames[next].key) next++;
+      if (next >= this.frames.length || this.frames[next].t >= t - this.history - 0.5) break;
+      this.start = next;
+    }
     if (this.start > 256) { this.frames = this.frames.slice(this.start); this.start = 0; }
     return true;
   }
-  /** The recorded history, oldest first (at most the configured seconds). */
-  get samples() {
-    const end = this.frames.at(-1)?.t ?? 0;
-    return this.frames.slice(this.start).filter((f) => f.t >= end - this.history - 1e-6);
+  /**
+   * The recorded history, oldest first (at most the configured seconds). The
+   * first sample is always a key frame: the window rarely starts on one, so the
+   * sample it starts on is rebuilt whole from the key frame before it.
+   */
+  get samples(): ReplayFrame[] {
+    const end = this.frames.at(-1)?.t ?? 0, all = this.frames.slice(this.start);
+    const first = all.findIndex((f) => f.t >= end - this.history - 1e-6);
+    if (first < 0) return [];
+    let key = first;
+    while (key > 0 && !all[key].key) key--;
+    const out = all.slice(first).map((f) => ({ ...f }));
+    if (!out[0].key) out[0] = { ...out[0], pose: packPose(decodePoses(all.slice(key, first + 1)).at(-1)), key: true };
+    return out;
   }
   get duration() {
     const s = this.samples;
@@ -67,7 +118,7 @@ export class ReplayBuffer {
   }
   /** A copy of the current history as a clip; recording carries on untouched. */
   snapshot(meta: Omit<ReplayClip, "version" | "frames">): ReplayClip {
-    return { version: 1, ...meta, frames: this.samples.map((f) => ({ ...f })) };
+    return { version: 1, ...meta, frames: this.samples };
   }
   /** Approximate memory held by the history, in bytes (UTF-16 strings plus per-sample overhead). */
   get bytes() {
@@ -75,7 +126,7 @@ export class ReplayBuffer {
     for (let i = this.start; i < this.frames.length; i++) n += this.frames[i].pose.length * 2 + 48;
     return n;
   }
-  clear() { this.frames = []; this.start = 0; this.last = -Infinity; }
+  clear() { this.frames = []; this.start = 0; this.last = -Infinity; this.parts = {}; this.sinceKey = KEY_EVERY; }
 }
 
 /** The pair of frames around time `t` and how far between them it is (0..1). */

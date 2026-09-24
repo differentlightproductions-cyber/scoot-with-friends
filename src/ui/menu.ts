@@ -531,8 +531,9 @@ export class GameMenu {
         add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
         break;
       case 'settings-gameplay':
-        title='GAMEPLAY';subtitle='SETTINGS / REPLAYS';
+        title='GAMEPLAY';subtitle='SETTINGS / REPLAYS / WITH FRIENDS';
         add('REPLAY HISTORY '+this.profile.settings.replayHistory+' SEC',()=>{const lengths=[15,30,45,60] as const;this.profile.settings.replayHistory=lengths[(lengths.indexOf(this.profile.settings.replayHistory)+1)%lengths.length];this.changed();this.render();},'How much of your riding CAPTURE REPLAY can reach back to: 15, 30, 45 or 60 seconds.');
+        add('PLAYFUL CONTACT '+({full:'FULL',friends:'FRIENDS ONLY',off:'OFF'} as const)[this.profile.settings.playfulContact],()=>{const modes=['full','friends','off'] as const;this.profile.settings.playfulContact=modes[(modes.indexOf(this.profile.settings.playfulContact)+1)%modes.length];this.changed();this.render();},'Whether thrown things and shoves from other people move you. Off: they just bounce off. Friends only: only from friends.');
         break;
       case 'settings-graphics':
         title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';

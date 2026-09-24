@@ -5,7 +5,7 @@ import { blendPose } from "../network/pose-blend";
 import { emptyInput } from "../input/input";
 import type { Simulation } from "../physics/simulation";
 import type { LocalProfile } from "../data/loadout";
-import { frameAt, type ReplayClip, type ReplayView } from "./buffer";
+import { decodePoses, frameAt, type ReplayClip, type ReplayView } from "./buffer";
 
 /**
  * Plays a captured clip back (#41): a second rider model placed from the
@@ -25,7 +25,7 @@ export class ReplayPlayer {
   private idle = emptyInput();
 
   constructor(scene: THREE.Scene, readonly clip: ReplayClip, profile: LocalProfile, private live: () => Simulation, main: ChaseCamera) {
-    this.poses = clip.frames.map((f) => JSON.parse(f.pose));
+    this.poses = decodePoses(clip.frames);
     this.start = clip.frames[0]?.t ?? 0;
     this.end = clip.frames.at(-1)?.t ?? 0;
     this.model = new RiderModel(scene);

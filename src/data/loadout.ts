@@ -40,6 +40,8 @@ export interface LocalProfile {
     liveSky: boolean;
     /** Seconds of play the replay history keeps (#41): 15, 30, 45 or 60. */
     replayHistory: 15|30|45|60;
+    /** PLAYFUL CONTACT (#47): whether other people's pranks move you. */
+    playfulContact: 'full'|'friends'|'off';
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     /** Personal camera; never networked. */
@@ -107,6 +109,7 @@ export function loadProfile(): LocalProfile {
       flashlight: true,
       liveSky: false,
       replayHistory: 30,
+      playfulContact:'full',
       mountFlourish: true,
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
@@ -140,6 +143,7 @@ export function loadProfile(): LocalProfile {
     if(typeof saved.settings?.flashlight==='boolean')profile.settings.flashlight=saved.settings.flashlight;
     if(typeof saved.settings?.liveSky==='boolean')profile.settings.liveSky=saved.settings.liveSky;
     if([15,30,45,60].includes(saved.settings?.replayHistory))profile.settings.replayHistory=saved.settings.replayHistory;
+    if(['full','friends','off'].includes(saved.settings?.playfulContact))profile.settings.playfulContact=saved.settings.playfulContact;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));

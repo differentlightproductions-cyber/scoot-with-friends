@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ReplayBuffer, REPLAY_HISTORY, frameAt, packPose } from '../src/replay/buffer';
+import { ReplayBuffer, REPLAY_HISTORY, decodePoses, frameAt, packPose } from '../src/replay/buffer';
 
 // The replay history (#41): 15/30/45/60 s of rider state at 30 Hz, flat memory.
 const pose = (t: number) => ({ position: [t * 3.123456789, 0.5, -t], yaw: t * 0.1, tricks: { bri: { angle: t } } });
@@ -40,4 +40,21 @@ test('numbers are packed to 4 decimals; frames interpolate by time', () => {
   const at = frameAt(frames, 1.25)!;
   assert.equal(at.a.t, 1); assert.equal(at.b.t, 2); assert.ok(Math.abs(at.k - 0.25) < 1e-9);
   assert.equal(frameAt(frames, -1)!.a.t, 0); assert.equal(frameAt(frames, 9)!.a.t, 2);
+});
+
+test('key frames once a second, changes in between: decoding gives back every pose', () => {
+  // A pose with parts that hold still (stance, rideable) and parts that move.
+  const rich = (t: number) => ({ position: [t, 0.1, -t], yaw: Math.floor(t * 2) / 2, rideable: 'scooter', tricks: { stance: 'regular', bri: { angle: t > 3 ? 1 : 0 } }, walking: false });
+  const b = new ReplayBuffer(); b.history = 15;
+  const truth = new Map<number, string>();
+  for (let i = 0; i <= 20 * 60 + 7; i++) { const t = i / 60; if (b.record(t, () => rich(t), 'third')) truth.set(t, packPose(rich(t))); }
+  const samples = b.samples, poses = decodePoses(samples);
+  assert.ok(samples[0].key, 'the window starts on a whole pose');
+  samples.forEach((f, i) => assert.equal(packPose(poses[i]), truth.get(f.t), `t=${f.t}`));
+  // Most samples carry only what moved: much smaller than whole poses.
+  const whole = samples.reduce((n, f) => n + (truth.get(f.t)?.length ?? 0), 0), packed = samples.reduce((n, f) => n + f.pose.length, 0);
+  assert.ok(packed < whole * 0.6, `${packed} vs ${whole}`);
+  // Clips saved before key frames (every frame whole, no key flags) still read.
+  const old = [0, 1].map((t) => ({ t, pose: packPose(rich(t)), view: 'third' as const }));
+  assert.deepEqual(decodePoses(old).map((p) => packPose(p)), old.map((f) => f.pose));
 });
