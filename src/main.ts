@@ -152,7 +152,10 @@ async function boot() {
   /** The rolling replay history (#41); a new map starts a new one. */
   const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
-  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  const syncRoomBuilds=()=>builder.setShared(network.status==='Connected'&&network.map==='warehouse'&&ACTIVE_MAP==='warehouse',network.id,m=>network.send({type:'build',generation:network.generation,...m}));
+  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();};
+  network.onBuilds=pieces=>builder.applySharedSnapshot(pieces);
+  network.onBuild=message=>builder.applySharedChange(message);
   events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
   network.onChat=(name,message)=>{messages.add('room',name,message,false);if(!(phone.ready&&phone.view?.title==='MESSAGES'))phone.notify('New message',name+': '+message,'messages');};
   messages.onChange=()=>phone.refresh();
@@ -161,14 +164,14 @@ async function boot() {
   void cloud.start();
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
-    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'Both players need this Windows release. Host LAN on one PC; Join LAN on the other. Two players per room.':network.lastError,action:()=>{}},
+    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':network.lastError,action:()=>{}},
     ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void copyText(network.code)}]:[]),
     ...(network.id?[{label:'COPY INVITE',action:()=>void copyText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
-  network.onChange=()=>{if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  network.onChange=()=>{syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   const mapFeatures=():MapFeature[]=>{
     const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
     for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
@@ -264,9 +267,11 @@ async function boot() {
     }
   }
   void latestPark();
-  let destinationLoading=false;
+  let destinationLoading:Promise<void>|null=null;
   const loadDestination = async (id:MapId) => {
-    if(destinationLoading)return;destinationLoading=true;input.clear();
+    // Callers must await a real load, never receive a false "ready" while another map loads.
+    while(destinationLoading)await destinationLoading;
+    const loading=(async()=>{input.clear();
     try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B\u00a0Hill":id==="church"?"Heading to the Church":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if(id==="church"){const church=await import("./park/church");church.installChurch();}
@@ -283,7 +288,10 @@ async function boot() {
     await loadingStage("Preparing the view",80);
     await renderer.compileAsync(scene,camera.camera);
     await loadingStage("Ready to ride",100);finishLoading();
-    }catch(error){loadingFailed();throw error;}finally{destinationLoading=false;input.clear();pending=emptyInput();accumulator=0;}
+    }catch(error){loadingFailed();throw error;}finally{input.clear();pending=emptyInput();accumulator=0;}
+    })();
+    destinationLoading=loading;
+    try{await loading;}finally{if(destinationLoading===loading)destinationLoading=null;}
   };
   network.loadMap=async id=>{await loadDestination(id as MapId);};
   menu.onRide=async id=>{if(network.id){await network.changeMap(id);return;}await loadDestination(id);};

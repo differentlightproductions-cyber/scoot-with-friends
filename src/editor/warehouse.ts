@@ -17,6 +17,7 @@ export const SNAP_MODES = [
 const LEGACY_KEY = 'swf-warehouse-v1';
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+export type RoomBuildPiece = { id: string; owner: string; asset: string; x: number; z: number; rotation: number };
 
 /** A layout object for a catalog piece: the same object the layout editor and asset factory use. */
 export function pieceObject(a: BuildAsset, x: number, z: number, rotation: number, id?: string): ParkObject {
@@ -73,6 +74,11 @@ export class WarehouseBuilder {
   /** Why the ghost cannot be placed where it is ('' when it can). */
   reason = '';
   private history: LayoutHistory;
+  private shared = false;
+  private sharedOwner = '';
+  private sharedPieces = new Map<string, RoomBuildPiece>();
+  private sendBuild: (message: Record<string, unknown>) => void = () => {};
+  otherBuilds: 'solid' | 'ghost' = 'solid';
   private built = new Map<string, { group: THREE.Group; handles: number[]; json: string }>();
   private ghost: THREE.Group | null = null;
   private ghostMaterial: THREE.MeshStandardMaterial | null = null;
@@ -91,6 +97,7 @@ export class WarehouseBuilder {
     this.prompt.hidden = true;
     document.body.append(this.prompt);
     this.history = new LayoutHistory(blankLayout());
+    try { if (localStorage.getItem('swf-other-builds') === 'ghost') this.otherBuilds = 'ghost'; } catch {}
     if (ACTIVE_MAP !== 'warehouse') return;
     const stored = this.profile()?.builds?.warehouse, saved = stored ?? this.legacy();
     this.history = new LayoutHistory(this.fromSaved(saved));
@@ -102,10 +109,61 @@ export class WarehouseBuilder {
   }
   dispose() { this.cancel(); this.prompt.remove(); }
 
+  /** A room uses an ephemeral server-owned layout; the personal saved build stays untouched. */
+  setShared(active: boolean, owner = '', send: (message: Record<string, unknown>) => void = () => {}) {
+    if (ACTIVE_MAP !== 'warehouse') active = false;
+    if (this.shared === active && (!active || this.sharedOwner === owner)) { this.sendBuild = send; return; }
+    this.cancel();
+    this.shared = active;
+    this.sharedOwner = owner;
+    this.sendBuild = send;
+    this.sharedPieces.clear();
+    this.layout = active ? blankLayout() : this.history.layout;
+    setActiveLayout(this.layout);
+    this.sync();
+    this.onChange?.();
+  }
+  get isShared() { return this.shared; }
+  ownerOf(id: string) { return this.sharedPieces.get(id)?.owner; }
+  canEdit(id: string) { return !this.shared || this.ownerOf(id) === this.sharedOwner; }
+  setOtherBuilds(mode: 'solid' | 'ghost') {
+    this.otherBuilds = mode;
+    try { localStorage.setItem('swf-other-builds', mode); } catch {}
+    if (this.shared) this.refreshShared();
+  }
+  private validRoomPiece(value: unknown): value is RoomBuildPiece {
+    const p = value as RoomBuildPiece;
+    return !!p && typeof p.id === 'string' && p.id.length <= 100 && typeof p.owner === 'string' && p.owner.length <= 100 &&
+      typeof p.asset === 'string' && !!buildAsset(p.asset) && [p.x, p.z, p.rotation].every(Number.isFinite) &&
+      Math.abs(p.x) <= BUILD_BOUNDS.x && Math.abs(p.z) <= BUILD_BOUNDS.z;
+  }
+  applySharedSnapshot(pieces: unknown) {
+    if (!this.shared || !Array.isArray(pieces)) return;
+    this.sharedPieces = new Map(pieces.filter((p) => this.validRoomPiece(p)).slice(0, BUILD_LIMITS.pieces).map((p: RoomBuildPiece) => [p.id, p]));
+    this.refreshShared();
+  }
+  applySharedChange(message: { action?: string; piece?: unknown; id?: string }) {
+    if (!this.shared) return;
+    if (message.action === 'upsert' && this.validRoomPiece(message.piece)) this.sharedPieces.set(message.piece.id, message.piece);
+    else if (message.action === 'delete' && typeof message.id === 'string') this.sharedPieces.delete(message.id);
+    else return;
+    this.refreshShared();
+  }
+  private refreshShared() {
+    this.layout.objects = [...this.sharedPieces.values()].map((p) => {
+      const o = pieceObject(buildAsset(p.asset)!, p.x, p.z, p.rotation, p.id);
+      if (this.otherBuilds === 'ghost' && p.owner !== this.sharedOwner) o.nonSolid = true;
+      return o;
+    });
+    setActiveLayout(this.layout);
+    this.sync();
+    this.onChange?.();
+  }
+
   // ---- Catalog, budget and saved form --------------------------------------
   get used() { return this.layout.objects.reduce((sum, o) => sum + (matchAsset(o)?.cost ?? 0), 0); }
-  get canUndo() { return this.history.past.length > 0; }
-  get canRedo() { return this.history.future.length > 0; }
+  get canUndo() { return !this.shared && this.history.past.length > 0; }
+  get canRedo() { return !this.shared && this.history.future.length > 0; }
   /** Add a catalog piece a few metres ahead of the rider. */
   add(a: BuildAsset, s: Simulation) {
     const d = 3 + a.length / 2, x = s.position.x + Math.sin(s.yaw) * d, z = s.position.z + Math.cos(s.yaw) * d;
@@ -138,7 +196,7 @@ export class WarehouseBuilder {
     return ok;
   }
   /** SAVE BUILD: every edit already saves; this confirms it for the player. */
-  save() { const ok = this.persist(); this.notice = ok ? 'BUILD SAVED · ' + this.layout.objects.length + ' PIECES' : this.saveError; return ok; }
+  save() { if (this.shared) { this.notice = 'ROOM BUILD LASTS UNTIL THE ROOM ENDS'; return false; } const ok = this.persist(); this.notice = ok ? 'BUILD SAVED · ' + this.layout.objects.length + ' PIECES' : this.saveError; return ok; }
 
   // ---- Layout changes (undoable) --------------------------------------------
   private commit(change: (l: ParkLayout) => void) {
@@ -150,18 +208,18 @@ export class WarehouseBuilder {
   undo() { if (!this.canUndo) return; this.history.undo(); this.apply(); this.notice = 'UNDONE'; }
   redo() { if (!this.canRedo) return; this.history.redo(); this.apply(); this.notice = 'REDONE'; }
   /** CLEAR BUILD (after the app's confirmation): the warehouse back to empty; UNDO still restores it. */
-  reset() { this.cancel(); if (this.layout.objects.length) this.commit((l) => { l.objects = []; }); this.notice = 'WAREHOUSE CLEARED'; }
-  deletePiece(id: string) { this.commit((l) => { l.objects = l.objects.filter((o) => o.id !== id); }); this.notice = 'PIECE DELETED'; }
+  reset() { this.cancel(); if (this.shared) { this.sendBuild({ action: 'clear' }); this.notice = 'YOUR ROOM PIECES CLEARED'; return; } if (this.layout.objects.length) this.commit((l) => { l.objects = []; }); this.notice = 'WAREHOUSE CLEARED'; }
+  deletePiece(id: string) { if (!this.canEdit(id)) return; if (this.shared) this.sendBuild({ action: 'delete', id }); else this.commit((l) => { l.objects = l.objects.filter((o) => o.id !== id); }); this.notice = 'PIECE DELETED'; }
   move(id: string) {
     const o = this.layout.objects.find((v) => v.id === id);
-    if (!o) return;
+    if (!o || !this.canEdit(id)) return;
     const b = this.built.get(id);
     if (b) b.group.visible = false;
     this.begin(structuredClone(o), id);
   }
   duplicate(id: string) {
     const o = this.layout.objects.find((v) => v.id === id);
-    if (!o) return;
+    if (!o || !this.canEdit(id)) return;
     const copy = structuredClone(o);
     copy.id = makeObject(o.type).id;
     copy.x += Math.cos(o.rotation) * (o.width + 0.5);
@@ -189,16 +247,24 @@ export class WarehouseBuilder {
   // ---- Built pieces ------------------------------------------------------------
   /** Make the world match the layout: rebuild what changed, remove what went. */
   private sync() {
-    const want = new Map(this.layout.objects.map((o) => [o.id, JSON.stringify(o)]));
+    const want = new Map(this.layout.objects.map((o) => [o.id, JSON.stringify(o) + (this.shared && this.otherBuilds === 'ghost' && !this.canEdit(o.id) ? ':ghost' : ':solid')]));
     for (const [id, b] of [...this.built]) if (want.get(id) !== b.json) this.remove(id);
-    for (const o of this.layout.objects) if (!this.built.has(o.id)) this.build(o, want.get(o.id)!);
+    for (const o of this.layout.objects) if (!this.built.has(o.id)) this.build(o, want.get(o.id)!, this.shared && this.otherBuilds === 'ghost' && !this.canEdit(o.id));
     this.park.world.step();
   }
-  private build(o: ParkObject, json: string) {
+  private build(o: ParkObject, json: string, ghost = false) {
     const before = new Set<number>();
     this.park.world.forEachCollider((c) => before.add(c.handle));
     const group = buildObject(this.park, o), handles: number[] = [];
     this.park.world.forEachCollider((c) => { if (!before.has(c.handle)) handles.push(c.handle); });
+    if (ghost) {
+      for (const handle of handles) { const c = this.park.world.getCollider(handle); if (c) this.park.world.removeCollider(c, true); this.park.railHandles.delete(handle); }
+      this.park.rails = this.park.rails.filter((r) => !handles.includes(r.colliderHandle ?? -1));
+      this.park.benches = this.park.benches.filter((v) => v.id !== o.id && !v.id.startsWith(o.id));
+      const objects = new Set<THREE.Object3D>(); group.traverse((v) => objects.add(v));
+      this.park.solids = this.park.solids.filter((v) => !objects.has(v));
+      group.traverse((v) => { if (v instanceof THREE.Mesh) { const original = Array.isArray(v.material) ? v.material : [v.material]; const faded = original.map((m) => { const copy = m.clone(); copy.transparent = true; copy.opacity = 0.35; copy.depthWrite = false; if (!m.userData.shared) m.dispose(); return copy; }); v.material = Array.isArray(v.material) ? faded : faded[0]; v.castShadow = false; } });
+    }
     this.built.set(o.id, { group, handles, json });
   }
   private remove(id: string) {
@@ -373,7 +439,11 @@ export class WarehouseBuilder {
     else if ((f.pressed.hop || f.pressed.pushDeck) && valid) {
       const piece = structuredClone(o), again = f.pressed.pushDeck, editing = this.editing;
       if (editing) { const b = this.built.get(editing); if (b) b.group.visible = true; }
-      this.commit((l) => { const i = l.objects.findIndex((v) => v.id === piece.id); if (i >= 0) l.objects[i] = piece; else l.objects.push(piece); });
+      if (this.shared) {
+        const data = { x: piece.x, z: piece.z, rotation: piece.rotation };
+        if (editing) this.sendBuild({ action: 'move', id: editing, ...data });
+        else this.sendBuild({ action: 'create', asset: piece.asset, ...data });
+      } else this.commit((l) => { const i = l.objects.findIndex((v) => v.id === piece.id); if (i >= 0) l.objects[i] = piece; else l.objects.push(piece); });
       this.notice = (editing ? 'MOVED ' : 'PLACED ') + name;
       this.editing = null;
       if (again) {

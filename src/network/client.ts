@@ -19,16 +19,16 @@ export function capture(s:Simulation){
 type Remote={model:RiderModel;name:string;label:HTMLDivElement;samples:{at:number;state:any}[];appearance:string;chat:string;chatUntil:number};
 export class FreeRide {
  badge=document.createElement('div');ws:WebSocket|null=null;id='';code='';secret='';generation='';owner='';locked=false;status='Solo';lastError='';roster:any[]=[];remotes=new Map<string,Remote>();muted=new Set<string>();
- map='outdoor';loadMap=async(_map:string)=>{};prepare=async()=>{};onChange=()=>{};onChat=(_name:string,_message:string)=>{};onLost=()=>{};onJoined=()=>{};seq=0;private timer:number;private intentional=false;private retryUntil=0;
+ map='outdoor';loadMap=async(_map:string)=>{};prepare=async()=>{};onChange=()=>{};onChat=(_name:string,_message:string)=>{};onLost=()=>{};onJoined=()=>{};onBuilds=(_pieces:unknown)=>{};onBuild=(_message:any)=>{};seq=0;private timer:number;private intentional=false;private retryUntil=0;private mapLoad:Promise<void>=Promise.resolve();private localMap:{map:string;revision:string}|null=null;
  constructor(private scene:THREE.Scene,private profile:LocalProfile,private sim:()=>Simulation){this.badge.className='network-status';this.badge.hidden=true;document.body.append(this.badge);try{const saved=JSON.parse(sessionStorage.getItem('swf-room-resume')||'null');if(saved?.endpoint===this.endpoint){this.secret=saved.secret;this.code=saved.code;}}catch{}this.timer=window.setInterval(()=>{if(this.status==='Connected'&&!document.hidden)this.send({type:'pose',seq:++this.seq,generation:this.generation,pose:capture(this.sim())});},50);}
  get lan(){return ['127.0.0.1','localhost'].includes(location.hostname)&&(window as any).__SWF_LAN__===true;}
  get endpoint(){return this.lan?'ws://'+location.host+'/lan-room':import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
  send(value:any){if(this.ws?.readyState===WebSocket.OPEN&&this.ws.bufferedAmount<65536)this.ws.send(JSON.stringify(value));}
- private revision(){return sha256Hex(JSON.stringify(activeLayout??null));}
- async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill','church'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
- private async receiveMap(m:any){this.status='Loading';this.generation=m.generation;this.map=m.map;this.clear();this.onLost();try{await this.loadMap(m.map);this.send({type:'ready',generation:m.generation,mapRevision:await this.revision()});}catch{this.lastError='Could not load the room destination. Leave and retry.';this.onChange();}}
+ private revision(){return sha256Hex(this.map==='warehouse'?'warehouse':JSON.stringify(activeLayout??null));}
+ async changeMap(map:string){if(this.status==='Loading')return;if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill','church','warehouse'].includes(map)){this.lastError='Unsupported room destination.';this.onChange();return;}this.status='Loading';this.onLost();await this.mapLoad;await this.loadMap(map);this.map=map;const revision=await this.revision();this.localMap={map,revision};this.send({type:'map',map,mapRevision:revision});}
+ private receiveMap(m:any){this.status='Loading';this.generation=m.generation;this.map=m.map;this.clear();this.onLost();this.mapLoad=this.mapLoad.then(async()=>{if(m.generation!==this.generation)return;try{if(this.localMap?.map===m.map&&this.localMap?.revision===m.mapRevision)this.localMap=null;else await this.loadMap(m.map);if(m.generation===this.generation)this.send({type:'ready',generation:m.generation,mapRevision:await this.revision()});}catch{this.lastError='Could not load the room destination. Leave and retry.';this.onChange();}});}
  async connect(mode:'create'|'join'|'resume',name='Rider',code=''){
-  if(mode!=='resume')await this.prepare();
+  if(mode!=='resume'){await this.prepare();this.map='outdoor';}
   const mapRevision=await this.revision();
   if(!this.endpoint){this.status='Online server not configured. Solo is available.';this.onChange();return;}
   this.intentional=false;this.status=mode==='resume'?'Reconnecting':'Connecting';this.onChange();const ws=this.ws=new WebSocket(this.endpoint);
@@ -37,6 +37,8 @@ export class FreeRide {
    if(m.type==='welcome'){this.id=m.id;this.secret=m.secret;this.code=m.code;this.generation=m.generation;this.status='Connected';this.retryUntil=0;try{sessionStorage.setItem('swf-room-resume',JSON.stringify({endpoint:this.endpoint,secret:this.secret,code:this.code}));}catch{}if(m.map!=='outdoor'||this.map!==m.map){void this.receiveMap(m);}else this.onJoined();}
    if(m.type==='map')void this.receiveMap(m);
    if(m.type==='ready'&&m.generation===this.generation){this.status='Connected';this.onJoined();}
+   if(m.type==='builds'&&m.generation===this.generation)this.onBuilds(m.pieces);
+   if(m.type==='build'&&m.generation===this.generation)this.onBuild(m);
    if(m.type==='error'){this.lastError=m.message;if(!this.id)this.status=m.message;this.onChange();return;}
    if(m.type==='roster'){this.owner=m.owner;this.locked=m.locked;this.roster=m.players;for(const info of m.players){if(info.id===this.id)continue;let remote=this.remotes.get(info.id);if(!remote){const model=new RiderModel(this.scene),label=document.createElement('div');label.className='remote-name';document.body.append(label);remote={model,name:info.name,label,samples:[],appearance:'',chat:'',chatUntil:0};this.remotes.set(info.id,remote);}const key=JSON.stringify(info.appearance);if(remote.appearance!==key){remote.model.applyProfile({...structuredClone(this.profile),...info.appearance,activeRideable:info.appearance.rideable??'scooter',longboard:info.appearance.longboard??structuredClone(this.profile.longboard)});remote.appearance=key;}}
     for(const [id]of this.remotes)if(!m.players.some((p:any)=>p.id===id))this.remove(id);

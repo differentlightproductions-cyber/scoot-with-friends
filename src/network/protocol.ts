@@ -1,7 +1,7 @@
 import {PARTS,CATEGORIES} from '../data/scooterParts';
 import {sanitizeAvatar} from '../avatar/config';
 import {validLongboard} from '../data/longboardParts';
-export const PROTOCOL=1,CONTENT='swf-2026-09-avatar-1';
+export const PROTOCOL=2,CONTENT='swf-2026-09-room-build-2';
 export function appearance(value:any){
  if(!value||typeof value!=='object')return null;
  // The rider is only a small configuration; anything unknown falls back to the default rider.
@@ -12,7 +12,7 @@ export function appearance(value:any){
  return {avatar,scooter,rideable,longboard:validLongboard(value.longboard)};
 }
 // Render state only. No wallet, ownership, scripts, URLs or claimed sender ID.
-export const POSE_KEYS=['airWeight','board','rideable','bodyFlip','charge','compression','crash','dropIn','elapsed','emote','fastplant','getUpTimer','grounded','heldItem','landTimer','landingCompression','manual','pitch','popTimer','position','pushTimer','rampLean','roll','running','sitting','speed','state','steer','tricks','walking','yaw'] as const;
+export const POSE_KEYS=['airWeight','board','rideable','bodyFlip','charge','compression','crash','diveFlip','dropIn','elapsed','emote','fastplant','flipRoll0','flipYaw0','getUpTimer','grinding','grounded','heldItem','jumpOn','landTimer','landingCompression','mantle','manual','pitch','popTimer','position','pushTimer','rampLean','roll','running','sitting','speed','state','steer','swim','tricks','walking','yaw'] as const;
 export function pose(value:any){
  if(!value||typeof value!=='object'||!Array.isArray(value.position)||value.position.length!==3)return null;
  let count=0;const valid=(v:any,depth=0):boolean=>{if(++count>600||depth>6)return false;if(v===null||typeof v==='boolean')return true;if(typeof v==='number')return Number.isFinite(v)&&Math.abs(v)<=100000;if(typeof v==='string')return v.length<=64;if(Array.isArray(v))return v.length<=20&&v.every(x=>valid(x,depth+1));if(typeof v==='object')return Object.keys(v).length<=40&&Object.entries(v).every(([k,x])=>!['__proto__','constructor','prototype'].includes(k)&&valid(x,depth+1));return false;};
@@ -27,6 +27,10 @@ export function pose(value:any){
  if(value.emote&&!numeric(value.emote,['time','duration']))return null;
  if(value.emote&&!['wave','nod','shake','point','clap','celebrate','sit','laugh','facepalm','drink','eat','drink-fountain','vend','place'].includes(value.emote.id))return null;
  if(value.crash&&(!numeric(value.crash,['age','rest'])||!['rider','scooter'].every(k=>numeric(value.crash[k]?.position,['x','y','z'])&&numeric(value.crash[k]?.rotation,['x','y','z','w']))))return null;
+ if(value.flipYaw0!==undefined&&typeof value.flipYaw0!=='number'||value.flipRoll0!==undefined&&typeof value.flipRoll0!=='number'||value.jumpOn!==undefined&&typeof value.jumpOn!=='boolean'||value.grinding!==undefined&&typeof value.grinding!=='boolean')return null;
+ if(value.swim&&(!numeric(value.swim,['time','stroke','speed'])||(value.swim.out!==null&&value.swim.out!==undefined)))return null;
+ if(value.diveFlip&&(!numeric(value.diveFlip,['angle','side','twist','dir','sideDir','twistDir'])||!['dir','sideDir','twistDir'].every(k=>[-1,0,1].includes(value.diveFlip[k]))))return null;
+ if(value.mantle&&(!['vault','mantle','climb'].includes(value.mantle.kind)||!numeric(value.mantle,['time','duration'])||!['edge','forward'].every(k=>Array.isArray(value.mantle[k])&&value.mantle[k].length===3&&value.mantle[k].every((n:any)=>typeof n==='number'&&Number.isFinite(n)))))return null;
  if(!valid(value)||!value.position.every((n:any)=>typeof n==='number'&&Number.isFinite(n)))return null;
  if(!['Grounded','Airborne','Walking','Bail','Manual','Grinding','Fakie','Stall','Riding','Pushing','Charging','Preloading','NoseManual','Landing','SketchyLanding','Sitting','DropInReady','DropInCommit'].includes(value.state))return null;
  return Object.fromEntries(POSE_KEYS.filter(k=>k in value).map(k=>[k,value[k]]));

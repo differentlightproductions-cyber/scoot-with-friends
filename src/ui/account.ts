@@ -7,6 +7,7 @@ export class AccountPanel {
   private mode = 'login'; private busy = false; private cooldown = 0;
   private account: { username: string } | null = null;
   private recovery = '';
+  private unavailable = false;
   /** A pending choice between this device's progress and the account's. */
   private choice: { device: { level: number; credit: number; parts: number }; cloud: { level: number; credit: number; parts: number; updated: number }; resolve: (c: 'cloud' | 'device') => void } | null = null;
   constructor() {
@@ -22,12 +23,19 @@ export class AccountPanel {
   private status(message: string) { const el = this.dialog.querySelector('[role=status]'); if (el) el.textContent = message; }
   private async refresh() {
     if (this.busy) return; this.busy = true; this.status('Checking your account…');
-    try { const result = await this.request('session'); this.account = result.account; this.render(); this.status(this.account ? 'Signed in.' : 'Sign in or create a game account.'); if (this.account) { this.busy = false; await cloud.signedIn(result.account); this.status(cloud.status); } }
-    catch (e) { this.status((e as Error).message); } finally { this.busy = false; }
+    try { const result = await this.request('session'); this.unavailable = false; this.account = result.account; this.render(); this.status(this.account ? 'Signed in.' : 'Sign in or create a game account.'); if (this.account) { this.busy = false; await cloud.signedIn(result.account); this.status(cloud.status); } }
+    catch (e) { this.unavailable = (e as { code?: string }).code === 'ACCOUNT_UNAVAILABLE'; this.render(); this.status((e as Error).message); } finally { this.busy = false; }
   }
   private render() {
     const signed = !!this.account, register = this.mode === 'register', recover = this.mode === 'recover';
     if (this.choice) { this.renderChoice(); return; }
+    if (this.unavailable) {
+      this.dialog.innerHTML = `<h2>YOUR ACCOUNT</h2><p>Sign-in is not connected on this website yet. You can sign in, create an account and play on the existing account-enabled version.</p><p>Device-only progress stays with this website. Opening the other version does not automatically transfer it.</p><button type="button" data-account-site>Open account-enabled game</button><button type="button" data-retry>Retry connection</button><p role="status" aria-live="polite"></p><button type="button" data-close>Back to game</button>`;
+      this.dialog.querySelector<HTMLButtonElement>('[data-account-site]')!.onclick = () => location.assign('https://scoot-with-friends.nicsoundcloud22.chatgpt.site/');
+      this.dialog.querySelector<HTMLButtonElement>('[data-retry]')!.onclick = () => { void this.refresh(); };
+      this.dialog.querySelector<HTMLButtonElement>('[data-close]')!.onclick = () => this.dialog.close();
+      return;
+    }
     this.dialog.innerHTML = `<h2>YOUR ACCOUNT</h2><p class="account-identity"></p><p>${signed ? 'Your Credit, parts, level, missions, crates and rider save to your account and follow you to any device. They stay on this device too.' : 'Sign in to keep your progress (Credit, parts, level, missions and crates) in the cloud and play it on any device. Without an account it saves on this device only.'} Game accounts are separate from ChatGPT.</p><form><label>Username<input name="username" autocomplete="username" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" autocapitalize="none" spellcheck="false"></label>${recover ? '<label>Recovery code<input name="recovery" autocomplete="off" required maxlength="64"></label>' : ''}<label>${recover ? 'New password' : 'Password'}<input name="password" type="password" autocomplete="${register || recover ? 'new-password' : 'current-password'}" required minlength="12" maxlength="128"></label><small>At least 12 characters. Use a password unique to this game.</small><button type="submit">${register ? 'Create account' : recover ? 'Reset password' : 'Sign in'}</button></form><div class="account-actions"></div><p role="status" aria-live="polite"></p><section class="recovery-code" hidden><strong>Save your recovery code</strong><p>This code is shown once. Keep it in your password manager. You will need it if you forget your password.</p><textarea readonly aria-label="Recovery code"></textarea><button type="button" data-saved>I saved my recovery code</button></section><button type="button" data-close>Back to game</button>`;
     this.dialog.querySelector('.account-identity')!.textContent = signed ? `Signed in as ${this.account!.username}` : 'Sign in / Create account';
     const form = this.dialog.querySelector('form')!; form.hidden = signed;

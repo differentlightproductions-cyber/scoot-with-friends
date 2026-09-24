@@ -49,6 +49,8 @@ export interface ParkObject {
   points?: [number, number][];
   /** The build catalog piece it was placed from (data/builds.ts), in build mode. */
   asset?: string;
+  /** A visible remote room piece excluded from local height support. */
+  nonSolid?: boolean;
 }
 export interface Brush {
   x: number;
@@ -321,6 +323,7 @@ export function surface(o: ParkObject, x: number, z: number): number | null {
 export function objectHeight(x: number, z: number, base: number) {
   let h = base;
   for (const o of activeLayout?.objects ?? []) {
+    if (o.nonSolid) continue;
     const p = localXZ(o, x, z),
       v = surface(o, p.x, p.z);
     if (v !== null) h = Math.max(h, o.y + v);
