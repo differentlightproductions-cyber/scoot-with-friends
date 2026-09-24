@@ -1,6 +1,6 @@
 # Private alpha development
 
-GitHub is the source of truth: https://github.com/differentlightproductions-cyber/scoot-with-friends (PRIVATE).
+GitHub is the source of truth: https://github.com/differentlightproductions-cyber/scoot-with-friends (public since 2026-09-24; pushes to `main` deploy to GitHub Pages, see DEPLOYMENT.md).
 Use Node 22 and npm. Install exactly the lockfile with `npm ci`.
 
 ## Everyday commands
@@ -42,4 +42,4 @@ Never commit `.env*`, the owner publisher configuration, tokens, keys, or owner 
 
 ## Main protection
 
-GitHub Settings → Branches → Add branch protection rule → pattern `main`: require a pull request, require status check **Build and unit tests**, require branch up to date before merge, disable force pushes, disable deletions. Use one approving review when another collaborator is available. If private-repository branch protection requires a plan upgrade, enforce these rules through review until upgraded. No workflow deploys or changes DNS.
+GitHub Settings → Branches → Add branch protection rule → pattern `main`: require a pull request, require status check **Build and unit tests**, require branch up to date before merge, disable force pushes, disable deletions. Use one approving review when another collaborator is available. Because every push to `main` goes live, merge only tested work. Only `deploy-pages.yml` deploys (tested `main` to GitHub Pages); no workflow changes DNS.

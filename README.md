@@ -2,7 +2,7 @@
 
 **ALPHA 0.9.0-alpha.2 — PUBLIC TEST BUILD, NOT A FINISHED COMMERCIAL RELEASE**
 
-A browser-based 3D freestyle scooter game built with TypeScript, Vite, Three.js and Rapier. This repository is PRIVATE alpha source. An existing public test build remains available with the owner's authorization; it is not a finished commercial release. Solo freestyle only; multiplayer is not implemented. First scooter parts brand: **Lazer**.
+A browser-based 3D freestyle scooter game built with TypeScript, Vite, Three.js and Rapier. This repository is public alpha source. The public test build is at scootwithfriends.online (GitHub Pages, deployed from `main`); it is not a finished commercial release. Solo freestyle only; multiplayer is not implemented. First scooter parts brand: **Lazer**.
 
 ## Start
 
@@ -43,7 +43,7 @@ The local `releases/Scoot-with-Friends-Windows.zip` contains the player build, l
 
 ## Collaboration
 
-Read [DEVELOPMENT.md](DEVELOPMENT.md), [SYSTEMS.md](SYSTEMS.md), [AGENTS.md](AGENTS.md) and [DEPLOYMENT.md](DEPLOYMENT.md). Use separate clones/task branches for Codex and Claude Code. `main` is tested alpha, `develop` is integration. GitHub Actions only builds/tests; no automatic public deployment or DNS changes. The source remains private.
+Read [DEVELOPMENT.md](DEVELOPMENT.md), [SYSTEMS.md](SYSTEMS.md), [AGENTS.md](AGENTS.md) and [DEPLOYMENT.md](DEPLOYMENT.md). Use separate clones/task branches for Codex and Claude Code. `main` is tested alpha, `develop` is integration. GitHub Actions builds/tests every push and deploys tested `main` to GitHub Pages at scootwithfriends.online; no DNS changes. The source is public.
 
 ## License
 

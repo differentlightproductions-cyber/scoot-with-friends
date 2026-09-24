@@ -14,10 +14,10 @@
 
 # Private alpha workflow
 
-- GitHub source of truth: `https://github.com/differentlightproductions-cyber/scoot-with-friends` (PRIVATE). Never change visibility to public.
+- GitHub source of truth: `https://github.com/differentlightproductions-cyber/scoot-with-friends` (PUBLIC since 2026-09-24, the owner's choice so GitHub Pages works without Pro; see DEPLOYMENT.md). All history is public, so never commit secrets.
 - `main` is tested alpha; `develop` is integration. Use task branches for larger work. Separate clones/worktrees for Codex and Claude; never concurrent edits in one checkout.
 - Preserve working physics, RS contexts, stance, Pro/Arcade mapping and browser performance unless explicitly targeted. Do not rewrite functioning systems for cleanup.
 - Read DEVELOPMENT.md and SYSTEMS.md for architecture, commands and known pending features. Inspect status/diff, preserve uncommitted user work, and run `npm test` and `npm run build` before completion.
 - Never commit credentials, `.env`, owner-private.json, or owner ZIPs. Keep environment examples placeholder-only.
-- The owner corrected the repository brief: public updates to the EXISTING game are authorized after tests. Do not enable automatic production deployment, create a second Sites project, or change domain/DNS without explicit authorization. GitHub remains private.
+- The owner corrected the repository brief: public updates to the EXISTING game are authorized after tests. The owner approved `.github/workflows/deploy-pages.yml`, which deploys every tested push to `main` to scootwithfriends.online (GitHub Pages; see DEPLOYMENT.md). Do not add other automatic production deployment, create a second Sites project, or change domain/DNS without explicit authorization.
 - Latest owner rule: NEVER push to GitHub unless the user asks for that push and explicitly answers yes first. Earlier push approval does not authorize future pushes. Keep the latest tested version active on the existing public website and refresh playable copies; Sites publishing is separate from GitHub synchronization.
