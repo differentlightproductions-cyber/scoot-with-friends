@@ -15,7 +15,7 @@ import { surfaceTexture } from "./art";
 const CONTROL: [number, number][] = [
   [0, -95], [0, -40], [0, 40], [18, 120], [58, 190], [62, 260], [22, 320], [-48, 356], [-96, 420],
   [-100, 492], [-62, 548], [-4, 576], [52, 626], [70, 700], [44, 772], [-8, 812], [-40, 866],
-  [-34, 940], [-6, 1000], [0, 1060], [0, 1130],
+  [-34, 940], [-6, 1000], [0, 1060], [0, 1130], [0, 1230],
 ];
 export const ROAD_HALF_WIDTH = 4.6;
 const SHOULDER = 2.2;
@@ -35,17 +35,28 @@ const ROUTE: Sample[] = (() => {
     if (i > 0) s += points[i].distanceTo(points[i - 1]);
     samples.push({ x: points[i].x, z: points[i].z, s, y: 0, tx: 0, tz: 1 });
   }
-  // Elevation: a flat staging area, a gentle roll-in, a long 6-9% body with a
-  // steeper middle, easing to flat and a slight rise in the runout so riders stop.
+  // Elevation: the grade is keyed along the route. A short flat staging pad
+  // behind the spawn, then the road tips over straight away, and each section
+  // after that is steeper than the last, with brief easings before the tight
+  // corners so a rider can set up. Speed comes from this slope and gravity
+  // alone: nothing pushes the rider down the hill.
   const total = s;
+  const KEYS: [number, number][] = [
+    [34, 0], [74, 0.11], [180, 0.105], // TOP: steep but manageable
+    [230, 0.08], [290, 0.12], [400, 0.125], // EARLY DESCENT: serious speed
+    [450, 0.09], [520, 0.13], [640, 0.135], // MID: turns need planning
+    [700, 0.1], [760, 0.145], [900, 0.15], // LOWER: small corrections matter
+    [980, 0.12], [1060, 0.16], [1250, 0.165], // FINAL FAST SECTIONS
+    [1300, 0.12], [total - 190, 0.05], [total - 140, 0], [total - 90, -0.07], // runout climbs to stop riders
+  ];
   const grade = (d: number) => {
-    const u = d / total;
-    if (d < 105) return 0;
-    if (d < 175) return THREE.MathUtils.smoothstep(d, 105, 175) * 0.06;
-    if (u < 0.45) return 0.06 + 0.03 * Math.sin(((u - 0.1) / 0.35) * Math.PI * 0.5);
-    if (u < 0.82) return 0.09 - 0.03 * THREE.MathUtils.smoothstep(u, 0.45, 0.82);
-    if (d < total - 90) return 0.06 * (1 - THREE.MathUtils.smoothstep(d, total * 0.82, total - 90));
-    return -0.025 * THREE.MathUtils.smoothstep(d, total - 90, total - 40);
+    if (d <= KEYS[0][0]) return 0;
+    for (let k = 1; k < KEYS.length; k++)
+      if (d < KEYS[k][0]) {
+        const [s0, g0] = KEYS[k - 1], [s1, g1] = KEYS[k];
+        return g0 + (g1 - g0) * THREE.MathUtils.smoothstep(d, s0, s1);
+      }
+    return KEYS[KEYS.length - 1][1];
   };
   let y = 0;
   for (let i = 1; i < samples.length; i++) {
@@ -96,17 +107,34 @@ function crossSection(offset: number, s: number) {
   const crown = -0.012 * Math.min(1, d / ROAD_HALF_WIDTH) ** 2 * ROAD_HALF_WIDTH;
   // Behind the staging area the road ends in a rising bank, never a drop.
   const backstop = s < 30 ? ((30 - s) / 30) ** 2 * 6 : 0;
-  if (d <= ROAD_HALF_WIDTH + SHOULDER) return crown + backstop;
+  // Past the runout the road ends in the same kind of bank.
+  const endstop = s > B_HILL_LENGTH - 25 ? ((s - B_HILL_LENGTH + 25) / 25) ** 2 * 5 : 0;
+  if (d <= ROAD_HALF_WIDTH + SHOULDER) return crown + backstop + endstop;
   const out = d - ROAD_HALF_WIDTH - SHOULDER;
   const side = Math.sign(offset) || 1;
   const uphill = side * Math.sin(s * 0.011) > 0 ? 1 : 0.55;
-  return crown + backstop + (out * 0.22 + out * out * 0.012) * uphill + Math.sin(s * 0.07 + offset * 0.3) * Math.min(1, out / 6) * 0.35;
+  return crown + backstop + endstop + (out * 0.22 + out * out * 0.012) * uphill + Math.sin(s * 0.07 + offset * 0.3) * Math.min(1, out / 6) * 0.35;
 }
 
 /** Walkable/rideable ground height anywhere in the B Hill corridor. */
 export function bHillHeight(x: number, z: number) {
   const n = nearest(x, z);
   return n.y + crossSection(n.offset, n.s);
+}
+
+/**
+ * What the wheels are on at a position: the paved road, its flush shoulder or
+ * the rough hillside beyond. The simulation reads this for high-speed stability.
+ */
+export function bHillSurface(x: number, z: number): "road" | "shoulder" | "dirt" {
+  const d = Math.abs(nearest(x, z).offset);
+  return d <= ROAD_HALF_WIDTH ? "road" : d <= ROAD_HALF_WIDTH + SHOULDER ? "shoulder" : "dirt";
+}
+
+/** Downhill grade (rise over run, positive = falling) at a distance along the route. */
+export function bHillGrade(s: number) {
+  const i = THREE.MathUtils.clamp(Math.round(s), 1, ROUTE.length - 2);
+  return (ROUTE[i - 1].y - ROUTE[i + 1].y) / Math.max(1e-6, ROUTE[i + 1].s - ROUTE[i - 1].s);
 }
 
 /** Pose on the route at a distance along it (for spawns, recovery and checkpoints). */

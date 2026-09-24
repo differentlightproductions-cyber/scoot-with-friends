@@ -141,12 +141,16 @@ export class ChaseCamera {
       );
       this.elevation = damp(this.elevation, 0.2, 4, dt);
     }
-    const distance = 4.7 + Math.min(s.speed * 0.055, 0.7);
+    // Bombing a hill past pushing speed the view eases back and looks further
+    // down the road, so the next corner is on screen in time. Park riding never
+    // reaches this range, so its framing is unchanged.
+    const bomb = clamp((s.speed - TUNE.pushMaxSpeed) / 14, 0, 1) * (s.walking ? 0 : 1);
+    const distance = 4.7 + Math.min(s.speed * 0.055, 0.7) + bomb * 1.1;
     const a = this.heading + this.orbit;
     const look = p
       .clone()
-      .add(new THREE.Vector3(0, 0.9, 0))
-      .addScaledVector(s.velocity.clone().setY(0), 0.11);
+      .add(new THREE.Vector3(0, 0.9 - bomb * 0.2, 0))
+      .addScaledVector(s.velocity.clone().setY(0), 0.11 + bomb * 0.1);
     // Leading the rider up a steep ramp put the look point inside the ramp, so the
     // obstruction ray started blocked and the camera snapped in about a metre.
     look.y = Math.max(look.y, terrainHeight(look.x, look.z) + 0.6);
@@ -191,7 +195,7 @@ export class ChaseCamera {
     this.camera.lookAt(this.target);
     this.camera.fov = damp(
       this.camera.fov,
-      thirdPersonVertical(this.thirdPersonFov) + Math.min(s.speed * 0.38, 5),
+      thirdPersonVertical(this.thirdPersonFov) + Math.min(s.speed * 0.38, 5) + bomb * 5,
       3,
       dt,
     );

@@ -10,6 +10,8 @@
 
 Veterans Memorial Park is the flagship outdoor environment. `src/park/outdoor.ts` defines wood transitions; `memorial.ts` defines grounds, metal park and BMX areas. Small box stays x=-4..1, big box left, spine right. Preserve the wood layout. Y toggles walking/riding, LS click runs carrying the scooter. Markers are contextual and support drop-in positions. Deep water splashes/bails then recovers to safe shore. Benches support sitting and grindable/rideable surfaces. `src/editor` is explicitly IN TESTING.
 
+B Hill (`src/park/bhill.ts`) is one centreline driving road, collision and heights. Its grade is keyed per section (10% top rising to 16.5% in the final fast sections, with easings before tight corners) and the runout climbs. Speed comes only from slope: past `pushMaxSpeed` the scooter meets air drag (`scooterAero`), a tyre grip ceiling (`scooterGripAccel`, holding full lock washes the front out) and a shared speed wobble fed by quick outward steering, tyre slip and loose ground (`terrainSurface`). None of these act at or below pushing speed, so park riding is unchanged. The longboard keeps its own lean/carve/aero model and shares the wobble. `tests/bhill.browser.mjs` runs controlled and aggressive descents for both rides.
+
 Racks, persistent consumables, fountain drinking, and day/night controls are integrated. Warehouse has its existing quick builder. Techno Gravity is a separate lazy-loaded walkable shop and DIY spot; physical displays open the shared catalog and atomic Credit transaction flow.
 
 ## Social

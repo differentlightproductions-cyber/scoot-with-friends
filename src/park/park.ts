@@ -8,7 +8,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns } from "./outdoor";
-import { buildBHill, bHillHeight, B_HILL_SPAWNS } from "./bhill";
+import { buildBHill, bHillHeight, bHillSurface, B_HILL_SPAWNS } from "./bhill";
 export let OUTDOOR =
   typeof window !== "undefined" &&
   !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity","b_hill"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
@@ -38,6 +38,10 @@ export function terrainHeight(x: number, z: number): number {
   if (ACTIVE_MAP === "b_hill") return bHillHeight(x, z);
   if (editedHeightQuery) return editedHeightQuery(x, z);
   return objectHeight(x, z, brushHeight(x, z, baseTerrainHeight(x, z)));
+}
+/** What the wheels roll on: pavement everywhere except B Hill's shoulders and hillside. */
+export function terrainSurface(x: number, z: number): "road" | "shoulder" | "dirt" {
+  return ACTIVE_MAP === "b_hill" ? bHillSurface(x, z) : "road";
 }
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);

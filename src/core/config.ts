@@ -171,7 +171,7 @@ export const TUNE = {
   boardGrip: 10,
   boardRollingDrag: 0.05,
   boardAero: 0.0055, // standing: on a 6% grade air alone settles near 13 m/s
-  boardTuckAero: 0.0036,
+  boardTuckAero: 0.0029, // tucked: on B Hill's 16% sections air settles near 29 m/s
   boardFootBrake: 3.4,
   // Stamping the foot down above this speed throws the rider forward and the board runs on.
   boardFootBrakeCrashSpeed: 14,
@@ -205,6 +205,19 @@ export const TUNE = {
   copingStallSettleSpeed: 2.7,
   steering: 2.7,
   carveGrip: 8,
+  // Bombing a hill. None of these act at or below pushMaxSpeed, so riding a
+  // park is unchanged; they only matter where gravity carries a rider past it.
+  scooterAero: 0.0032, // air drag on the speed above pushMaxSpeed; a crouch trims it
+  scooterGripAccel: 19, // sideways acceleration the tyres hold at bombing speed
+  washOutSlip: 0.3, // slip angle (rad) at speed where the front can no longer be saved
+  wobbleSpeed: 15, // below this no speed wobble builds
+  wobbleFullSpeed: 26,
+  wobbleSteerRate: 3, // steering change per second that counts as a jerk
+  wobbleGain: 0.8, // wobble per unit of outward steering jerk at full speed
+  wobbleSlipGain: 3, // per second, per radian of tyre slip beyond a normal carve
+  wobbleRoughGain: 0.55, // per second on loose ground at full speed
+  wobbleDamping: 1.5, // how fast a wobble settles when the rider rides smoothly
+  dirtDrag: 1.4, // extra rolling resistance off the pavement
   steeringResponse: 8,
   airAcceleration: 23,
   airMaxSpin: 11.4,

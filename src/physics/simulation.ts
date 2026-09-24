@@ -16,6 +16,7 @@ import {
   terrainNormal,
   OUTDOOR,
   ACTIVE_MAP,
+  terrainSurface,
 } from "../park/park";
 import { Tricks } from "../tricks/tricks";
 import { ManualBalance } from "../player/manual";
@@ -187,6 +188,43 @@ export class Simulation {
     if (Math.abs(w.balance) > 1) {
       w.balance = w.rate = 0;
       this.bail("Fakie speed wobble");
+    }
+  }
+  /**
+   * High-speed instability, for scooter and longboard alike. Nothing here is a
+   * speed limit: clean riding at any speed lets it settle. It is fed by jerky
+   * steering (quick left/right corrections), tyres sliding beyond a carve and
+   * loose ground, all weighted by how far past pushing speed the rider is, and
+   * it settles more slowly the faster they go. It shows as a shimmy through the
+   * bars and deck; past 1 the rider goes down.
+   */
+  speedWobble = { amount: 0, phase: 0, steer: 0, side: 0, sideAge: 9 };
+  private stepSpeedWobble(dt: number, steer: number, slip: number, calm = 1) {
+    const w = this.speedWobble, speed = this.speed;
+    // Only steering away from centre counts (a turn-in or a correction), and
+    // doubly when it throws the bars across to the side just left: a quick
+    // left-right-left is what shakes a rider loose, not letting go of a turn.
+    const change = steer - w.steer, outward = Math.sign(change) === Math.sign(steer) && Math.abs(steer) > 0.05;
+    const reversal = outward && w.side !== 0 && Math.sign(steer) === -w.side && w.sideAge < 0.8;
+    const rate = outward ? (Math.abs(change) / dt) * (reversal ? 2 : 1) : 0;
+    w.steer = steer;
+    w.sideAge += dt;
+    if (Math.abs(steer) > 0.35) { if (Math.sign(steer) !== w.side) w.side = Math.sign(steer); w.sideAge = 0; }
+    const f = clamp((speed - TUNE.wobbleSpeed) / (TUNE.wobbleFullSpeed - TUNE.wobbleSpeed), 0, 1.3);
+    if (f <= 0 && w.amount < 1e-3) { w.amount = 0; return; }
+    const surface = terrainSurface(this.position.x, this.position.z);
+    const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : 0;
+    const feed = f * f * (Math.max(0, rate - TUNE.wobbleSteerRate) * TUNE.wobbleGain * calm +
+      Math.max(0, slip - 0.08) * TUNE.wobbleSlipGain + rough * TUNE.wobbleRoughGain);
+    const settle = TUNE.wobbleDamping * (1 - 0.45 * Math.min(1, f));
+    w.amount = Math.max(0, w.amount + (feed - settle * w.amount) * dt);
+    w.phase += dt * Math.PI * 2 * (4.5 + 3 * Math.min(1, f));
+    // The shimmy: bars and deck oscillate; the heading barely moves.
+    this.roll += Math.sin(w.phase) * 0.16 * Math.min(1, w.amount);
+    this.yaw += Math.cos(w.phase) * 0.9 * Math.min(1, w.amount) * dt;
+    if (w.amount > 1) {
+      w.amount = 0;
+      this.bail("Speed wobble", true);
     }
   }
   /** Rewrites yaw, pitch and roll from the flip orientation for landing checks. */
@@ -510,6 +548,7 @@ export class Simulation {
     this.launch = null;
     this.poppedEdge = [];
     this.board.reset();
+    this.speedWobble.amount = this.speedWobble.steer = this.speedWobble.side = 0;
     this.hopRail = null;
     this.copingDrop = null;
     this.copingDropHeld = 0;
@@ -1050,6 +1089,7 @@ export class Simulation {
     this.riderIntangible = false;
     this.guardClear = false;
     this.fakie.reset();
+    this.speedWobble.amount = 0;
     this.tricks.finish("failed");
     this.tricks.reset();
     this.charge = 0;
@@ -1998,7 +2038,7 @@ export class Simulation {
         this.position.lengthSq() + this.velocity.lengthSq() + this.yaw,
       ) ||
       (ACTIVE_MAP === "b_hill"
-        ? Math.abs(this.position.x) > 280 || this.position.z < -120 || this.position.z > 1260 || this.position.y < -20 || this.position.y > 220
+        ? Math.abs(this.position.x) > 280 || this.position.z < -120 || this.position.z > 1360 || this.position.y < -20 || this.position.y > 220
         : Math.abs(this.position.x) > (OUTDOOR ? 113 : 34) ||
           (OUTDOOR
             ? this.position.z < -166 || this.position.z > 78
@@ -2580,6 +2620,12 @@ export class Simulation {
         ? Math.sin(this.elapsed * 25) * 0.1 * this.recovery + ride.roll
         : damp(this.roll, ride.roll, 10, dt);
       if (ride.pushed) this.events.emit({ type: "push" });
+      // Loose ground off the pavement drags at the wheels.
+      if (terrainSurface(this.position.x, this.position.z) === "dirt" && this.speed > 0.5)
+        this.velocity.multiplyScalar(Math.max(0, this.speed - TUNE.dirtDrag * dt) / this.speed);
+      // A committed tuck steadies the board a little; a slide is steered on purpose.
+      this.stepSpeedWobble(dt, this.board.lean * (1 - this.board.slide), 0, 1 - 0.3 * this.board.tuck);
+      if ((this.state as RideState) === "Bail") return;
       this.rampLean = damp(this.rampLean, 0, 6, dt);
       this.pitch = damp(
         this.pitch,
@@ -2679,8 +2725,7 @@ export class Simulation {
         .clone()
         .addScaledVector(tangent, -along)
         .projectOnPlane(this.normal);
-      this.velocity.addScaledVector(
-        side,
+      const hold = side.clone().multiplyScalar(
         -Math.min(
           1,
           TUNE.carveGrip *
@@ -2688,6 +2733,19 @@ export class Simulation {
             (revert.reverting ? 0 : this.recovery > 0 ? 0.35 : 1),
         ),
       );
+      // Past pushing speed the tyres hold only so much sideways acceleration:
+      // steer harder than that and the front slides wide instead of turning.
+      if (speed > TUNE.pushMaxSpeed && hold.length() > TUNE.scooterGripAccel * dt)
+        hold.setLength(TUNE.scooterGripAccel * dt);
+      this.velocity.add(hold);
+      const slip = speed > 1 && !revert.reverting && along > 0 ? side.length() / speed : 0;
+      // Held too long, the slide becomes a lowside.
+      if (slip > TUNE.washOutSlip && speed > TUNE.wobbleSpeed && !this.manual.active) {
+        this.bail("Front washed out at speed", true);
+        return;
+      }
+      if (!this.manual.active) this.stepSpeedWobble(dt, this.steer, slip);
+      if ((this.state as RideState) === "Bail") return;
       this.velocity.addScaledVector(
         new THREE.Vector3(0, -TUNE.gravity, 0).projectOnPlane(this.normal),
         dt,
@@ -2698,7 +2756,12 @@ export class Simulation {
       const rollingDrag = (crouching && speed > 4
         ? TUNE.rollingDrag * TUNE.crouchFastDragMultiplier
         : TUNE.rollingDrag) + (along < -0.3 ? TUNE.fakieRollingDrag : 0);
-      const loss = (rollingDrag + brake * TUNE.brake) * dt;
+      // Air only matters past pushing speed; a crouch trims it.
+      const aero = speed > TUNE.pushMaxSpeed
+        ? TUNE.scooterAero * (crouching ? TUNE.crouchFastDragMultiplier : 1) * (speed * speed - TUNE.pushMaxSpeed ** 2)
+        : 0;
+      const dirt = terrainSurface(this.position.x, this.position.z) === "dirt" ? TUNE.dirtDrag : 0;
+      const loss = (rollingDrag + aero + dirt + brake * TUNE.brake) * dt;
       const current = this.velocity.length();
       if (current > 0)
         this.velocity.multiplyScalar(Math.max(0, current - loss) / current);
