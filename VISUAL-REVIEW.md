@@ -1,5 +1,7 @@
 # Ramp visual review
 
+> Resolved 2026-09-24: the imported Tripo ramp skins, their finish shader and the substrate strips are gone. The wood park ramps are now built from the physics profiles in `src/park/wood-ramps.ts` (plywood sheets, sheathed sides with fascia, steel kick plates on every transition, steel coping). The notes below describe the retired assets.
+
 Reviewed the current gameplay captures in `artifacts/ramp-review`, the source inspection renders, `ART-DIRECTION.md`, `PARK-COLOR-BIBLE.md`, and the imported-ramp loading/finish code. The latest captures do not yet meet the requested realistic HD wood finish.
 
 ## What is causing the look

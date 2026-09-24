@@ -1,12 +1,11 @@
 import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
-import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
-import { applyCleanRampFinish } from "./cleanRampFinish";
+import { buildWoodRamp, woodRampMaterials } from "./wood-ramps";
 import { loadNatureAsset, CLOUD_URL, trackAssetLoad } from "./nature";
 import {
   buildMemorialGrounds,
@@ -14,9 +13,6 @@ import {
   metalQuarters,
 } from "./memorial";
 
-function loadDetailed(scene: THREE.Scene, url: string, onLoad: (gltf: GLTF) => void) {
-  trackAssetLoad(scene, new GLTFLoader().loadAsync(url).then(onLoad));
-}
 export const outdoorSpawns = [
   { name: "WOOD PARK / RUNWAY", x: -10, z: -19, yaw: 0 },
   { name: "SMALL BOX", x: -1.5, z: 13, yaw: Math.PI },
@@ -267,7 +263,7 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
 const EDGE_MARGIN = 0.125;
 const sharedEdge = (m: RampModule, x: number) =>
   modules.some(o => o !== m && (Math.abs(o.x0 - x) < 1e-6 || Math.abs(o.x1 - x) < 1e-6) && o.z0 < m.z1 && o.z1 > m.z0);
-const surfaceSpan = modules.map(m => [
+export const surfaceSpan = modules.map(m => [
   m.x0 - (sharedEdge(m, m.x0) ? 0 : EDGE_MARGIN),
   m.x1 + (sharedEdge(m, m.x1) ? 0 : EDGE_MARGIN),
 ]);
@@ -361,72 +357,18 @@ export function buildOutdoor(park: Park) {
     park.box(new THREE.Vector3(x, y, z), new THREE.Vector3(w, h, d), c, solid);
   box(0, -0.15, 0, 230, 0.2, 230, 0x719253);
   buildMemorialGrounds(park);
-  // Dark sheet-metal sides follow each curved profile rather than solid blocks.
-  const quarterFallbacks = new Map<string, THREE.Object3D[]>();
+  // Built wooden ramps: plywood, framing, kick plates and coping, generated
+  // from the same profiles the rider rides (see wood-ramps.ts).
+  const trim = woodRampMaterials().trim;
+  modules.forEach((m, i) => {
+    // A side shared with a neighbour is closed only where it stands above it.
+    const floor = (x: number) => {
+      const o = modules.find((o) => o !== m && (Math.abs(o.x0 - x) < 1e-6 || Math.abs(o.x1 - x) < 1e-6) && o.z0 < m.z1 && o.z1 > m.z0);
+      return o ? (z: number) => profile(o, z) + 0.012 : () => 0;
+    };
+    buildWoodRamp(scene, m, (z) => profile(m, z), [surfaceSpan[i][0], surfaceSpan[i][1]], [floor(m.x0), floor(m.x1)]);
+  });
   for (const m of modules) {
-    // A concrete pad masks the grass beneath imported shells and their edge fringe.
-    box((m.x0 + m.x1) / 2, -0.035, (m.z0 + m.z1) / 2, m.x1 - m.x0 + 0.25, 0.03, m.z1 - m.z0 + 0.25, 0xb7bab4);
-    const visualStart = new Set(scene.children);
-    for (const x of [m.x0, m.x1]) {
-      const vertices: number[] = [],
-        indices: number[] = [];
-      for (let i = 0; i <= 72; i++) {
-        const z = m.z0 + ((m.z1 - m.z0) * i) / 72;
-        // Cladding covers only the upper slope near the coping, not the full drop to the ground.
-        vertices.push(x, profile(m, z) * 0.45, z, x, profile(m, z), z);
-        if (i < 72) {
-          const a = i * 2;
-          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-        }
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(vertices, 3),
-      );
-      geo.setIndex(indices);
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(
-        geo,
-        new THREE.MeshStandardMaterial({
-          color: 0x303735,
-          side: THREE.DoubleSide,
-          roughness: 0.85,
-        }),
-      );
-      mesh.name = `${m.id} structural side`;
-      mesh.castShadow = true;
-      scene.add(mesh);
-    }
-    // Plywood panel joints, a thin steel apron, and coping across the lip.
-    for (let x = m.x0 + 1.2; x < m.x1; x += 1.2) {
-      const points = [];
-      for (let i = 0; i <= 64; i++) {
-        const z = m.z0 + ((m.z1 - m.z0) * i) / 64;
-        points.push(new THREE.Vector3(x, profile(m, z) + 0.009, z));
-      }
-      scene.add(
-        new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(points),
-          new THREE.LineBasicMaterial({
-            color: 0x8f724d,
-            transparent: true,
-            opacity: 0.4,
-          }),
-        ),
-      );
-    }
-    box(
-      (m.x0 + m.x1) / 2,
-      0.006,
-      m.reverse ? m.z1 : m.z0,
-      m.x1 - m.x0,
-      0.012,
-      0.3,
-      0x606b6b,
-    );
-    if (m.kind === "quarter" || m.kind === "spine" || m.id === "small-box" || m.id === "large-transfer")
-      quarterFallbacks.set(m.id, scene.children.filter((child) => !visualStart.has(child)));
     if (m.kind === "spine")
       rampLips(m).forEach((lip, i) =>
         park.rail(
@@ -439,7 +381,6 @@ export function buildOutdoor(park: Park) {
         ),
       );
     if (m.kind === "box") {
-      const boxVisualStart = new Set(scene.children);
       const lip = rampLips(m)[0];
       box(
         (m.x0 + m.x1) / 2,
@@ -463,12 +404,9 @@ export function buildOutdoor(park: Park) {
         true,
         new THREE.Vector3(0, 0, -1),
       );
-      if (m.id === "small-box" || m.id === "large-transfer")
-        quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !boxVisualStart.has(child)));
     }
     if (m.kind === "quarter") {
       const lip = rampLips(m)[0];
-      const copingStart = new Set(scene.children);
       park.rail(
         "Quarter coping",
         new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
@@ -477,15 +415,15 @@ export function buildOutdoor(park: Park) {
         true,
         new THREE.Vector3(0, 0, m.reverse ? -1 : 1),
       );
-      quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !copingStart.has(child)));
       const back = m.reverse ? m.z0 : m.z1;
       // Back guardrail spans the whole deck; nothing arrives from behind now.
-      const guardStart = new Set(scene.children);
+      const rail: THREE.Mesh[] = [];
       for (let x = m.x0; x <= m.x1 + 0.01; x += 2.6)
-        box(x, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
-      box(m.x1, m.h + 0.65, back, 0.15, 1.3, 0.15, 0x9f764c, true);
+        rail.push(box(x, m.h + 0.65, back, 0.09, 1.3, 0.09, 0xffffff, true));
+      rail.push(box(m.x1, m.h + 0.65, back, 0.09, 1.3, 0.09, 0xffffff, true));
       for (const h of [0.45, 1.1])
-        box((m.x0 + m.x1) / 2, m.h + h, back, m.x1 - m.x0, 0.11, 0.12, 0xae8754, true);
+        rail.push(box((m.x0 + m.x1) / 2, m.h + h, back, m.x1 - m.x0, 0.09, 0.04, 0xffffff, true));
+      for (const r of rail) r.material = trim;
       // The imported Tripo fence also returns along both deck sides. Thin full
       // fence-envelope colliders prevent the rider/scooter slipping between
       // decorative bars while following the visible back and side rails.
@@ -503,7 +441,6 @@ export function buildOutdoor(park: Park) {
             .setFriction(.8)
             .setCollisionGroups(GROUPS.surface),
         );
-      quarterFallbacks.get(m.id)?.push(...scene.children.filter((child) => !guardStart.has(child)));
     }
   }
   // The small box hub ledge (a hubba): an up-ledge along the bank, a level run
@@ -512,17 +449,15 @@ export function buildOutdoor(park: Park) {
   // and bent 48 degrees over the lip - a kink no grind can follow, so every
   // grind dropped off there. Three long straight pieces read as one built ledge,
   // and their edges join end to end so a grind carries along the whole run.
-  const hubVisualStart = new Set(scene.children);
   {
     const box3 = modules.find((m) => m.id === "small-box")!;
     const { line, width, thick } = smallBoxLedge(),
       x = line[0].x;
     const ground = (z: number) => (z > box3.z1 ? 0 : profile(box3, z));
-    const skirtMaterial = new THREE.MeshStandardMaterial({
-      color: 0x8f918a,
-      roughness: 0.9,
-      side: THREE.DoubleSide,
-    });
+    // The hubba is built like the ramps: a 2x lumber top on plywood sheathing,
+    // with steel angle along both grind edges.
+    const skirtMaterial = woodRampMaterials().side.clone();
+    skirtMaterial.side = THREE.DoubleSide;
     for (let i = 0; i < line.length - 1; i++) {
       const a = line[i],
         b = line[i + 1],
@@ -533,7 +468,8 @@ export function buildOutdoor(park: Park) {
           new THREE.Vector3(1, 0, 0),
           -Math.atan2(run.y, run.z),
         );
-      const slab = box(mid.x, mid.y, mid.z, width, thick, length + 0.02, 0xb08a5f);
+      const slab = box(mid.x, mid.y, mid.z, width, thick, length + 0.02, 0xffffff);
+      slab.material = trim;
       slab.quaternion.copy(tilt);
       // The collider reaches well below the slab so a rider rolling into the
       // side meets the ledge, not a gap beneath a floating top.
@@ -584,6 +520,7 @@ export function buildOutdoor(park: Park) {
       }
       const skirt = new THREE.BufferGeometry();
       skirt.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      skirt.setAttribute("uv", new THREE.Float32BufferAttribute(vertices.flatMap((_, k) => k % 3 === 2 ? [vertices[k] / 2.44, vertices[k - 1] / 1.22] : []), 2));
       skirt.setIndex(indices);
       skirt.computeVertexNormals();
       const skirtMesh = new THREE.Mesh(skirt, skirtMaterial);
@@ -602,8 +539,10 @@ export function buildOutdoor(park: Park) {
           false,
           new THREE.Vector3(-side, 0, 0),
         );
+    const angle = new THREE.MeshStandardMaterial({ color: 0xa9afb1, metalness: 0.75, roughness: 0.38, name: "Steel ledge angle" });
+    for (const o of scene.children)
+      if (o instanceof THREE.Mesh && /^Small box ledge -?1 \d/.test(o.name)) o.material = angle;
   }
-  const hubFallback = scene.children.filter((child) => !hubVisualStart.has(child));
   park.rail(
     "Wood park flat rail",
     new THREE.Vector3(15, 0.62, -3),
@@ -630,191 +569,5 @@ export function buildOutdoor(park: Park) {
   apron.position.y = .001;
   apron.receiveShadow = true;
   scene.add(apron);
-  const parkGeneration = scene.userData.parkGeneration;
-  const stale = () => scene.userData.parkGeneration !== parkGeneration;
-  const disposeModel = (root: THREE.Object3D) => root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    object.geometry.dispose();
-    for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
-  });
-  if (new URLSearchParams(location.search).get("tripoQuarter") !== "0")
-    loadDetailed(scene, "/models/park/wooden-quarter.glb?v=4", ({ scene: source }) => {
-    if (stale()) { disposeModel(source); return; }
-    for (const m of modules.filter((module) => module.kind === "quarter")) {
-      const name = `Detailed ${m.id}`;
-      if (scene.getObjectByName(name)) continue;
-      const model = source.clone(true);
-      model.position.set(0, 0, (m.z0 + m.z1) / 2);
-      // Blender's glTF export changes the fitted Z-forward sign.
-      model.rotation.y = m.reverse ? 0 : Math.PI;
-      model.name = name;
-      model.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
-        object.castShadow = true;
-        object.receiveShadow = true;
-        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-          const textured = material as THREE.MeshStandardMaterial;
-          if (textured.map) textured.map.anisotropy = 8;
-          if (object.name.startsWith("Quarter_side_cap")) {
-            textured.color.setHex(0x765838);
-            textured.depthTest = true;
-          }
-          textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
-          textured.metalness = Math.min(0.05, textured.metalness ?? 0);
-          if (textured.normalScale) textured.normalScale.set(Math.sign(textured.normalScale.x) * 0.4, Math.sign(textured.normalScale.y) * 0.4);
-        }
-      });
-      applyCleanRampFinish(model);
-      scene.add(model);
-      quarterFallbacks.get(m.id)?.forEach((object) => { object.visible = false; });
-      // The authored skin is open below its riding sheet. Close that silhouette
-      // just outside the imported trim, from the ground to the full profile.
-      for (const x of [m.x0 - 0.04, m.x1 + 0.04]) {
-        const vertices: number[] = [], indices: number[] = [];
-        for (let i = 0; i <= 72; i++) {
-          const z = m.z0 + ((m.z1 - m.z0) * i) / 72;
-          vertices.push(x, 0.006, z, x, profile(m, z), z);
-          if (i < 72) {
-            const a = i * 2;
-            indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
-          }
-        }
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-        geometry.setIndex(indices);
-        geometry.computeVertexNormals();
-        const side = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
-          color: 0x4f3420, roughness: 0.92, side: THREE.DoubleSide,
-        }));
-        side.name = `${m.id} detailed side closure`;
-        side.castShadow = side.receiveShadow = true;
-        scene.add(side);
-      }
-    }
-    park.showDetailedQuarters();
-    });
-  loadDetailed(scene, "/models/park/small-box.glb?v=4", ({ scene: model }) => {
-    if (stale()) { disposeModel(model); return; }
-    if (scene.getObjectByName("Detailed small-box")) { disposeModel(model); return; }
-    model.name = "Detailed small-box";
-    // The hub skin is 0.62 m wide at x=-0.01..0.61. Keep the small-box skin
-    // anchored to the large transfer at x=-4 and end it at that hub side wall,
-    // instead of leaving its original 0.39 m tongue exposed toward the spine.
-    model.scale.x = 4.61 / 5;
-    model.position.set((-4 + 0.61) / 2, 0, -1);
-    model.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      object.castShadow = object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        const textured = material as THREE.MeshStandardMaterial;
-        if (textured.map) textured.map.anisotropy = 8;
-        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
-        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
-      }
-    });
-    applyCleanRampFinish(model);
-    scene.add(model);
-    quarterFallbacks.get("small-box")?.forEach((object) => { object.visible = false; });
-    park.showDetailedSmallBox();
-  });
-  loadDetailed(scene, "/models/park/large-box.glb?v=4", ({ scene: model }) => {
-    if (stale()) { disposeModel(model); return; }
-    if (scene.getObjectByName("Detailed large-box")) { disposeModel(model); return; }
-    model.name = "Detailed large-box";
-    model.position.set(-10, 0, -0.5);
-    model.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      object.castShadow = object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        const textured = material as THREE.MeshStandardMaterial;
-        if (textured.map) textured.map.anisotropy = 8;
-        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
-        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
-      }
-    });
-    applyCleanRampFinish(model);
-    scene.add(model);
-    quarterFallbacks.get("large-transfer")?.forEach((object) => { object.visible = false; });
-    park.showDetailedLargeBox();
-  });
-  loadDetailed(scene, "/models/park/wood-hub.glb?v=4", ({ scene: model }) => {
-    if (stale()) { disposeModel(model); return; }
-    if (scene.getObjectByName("Detailed wood-hub")) { disposeModel(model); return; }
-    model.name = "Detailed wood-hub";
-    model.position.set(0.3, 0, -0.15);
-    model.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      object.castShadow = object.receiveShadow = true;
-      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-        const textured = material as THREE.MeshStandardMaterial;
-        if (textured.map) textured.map.anisotropy = 8;
-        textured.roughness = Math.max(0.82, textured.roughness ?? 0.82);
-        textured.metalness = Math.min(0.05, textured.metalness ?? 0);
-      }
-    });
-    applyCleanRampFinish(model);
-    scene.add(model);
-    hubFallback.forEach((object) => { object.visible = false; });
-  });
-  loadDetailed(scene, "/models/park/spine.glb?v=7", ({ scene: model }) => {
-    if (stale()) { disposeModel(model); return; }
-    if (scene.getObjectByName("Detailed spine")) { disposeModel(model); return; }
-    model.name = "Detailed spine";
-    // Meet the hub's right wall at x=.61 while retaining the authored far edge
-    // at x=8. The module above uses the same bounds for terrain and collision.
-    model.scale.x = 1;
-    model.position.set((0.61 + 8) / 2, 0, 0.5);
-    model.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      object.castShadow = object.receiveShadow = true;
-      if (object.name.startsWith("Spine entry plate")) {
-        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-          if (material instanceof THREE.MeshStandardMaterial) {
-            material.color.setHex(0x606b6b);
-            material.metalness = .72;
-            material.roughness = .46;
-          }
-        }
-      }
-    });
-    applyCleanRampFinish(model);
-    // The source metalness map flags "clean steel" well past the actual coping
-    // trim, reading as a second silver band reaching too far down the ramp
-    // face. Bake each vertex's height fraction and gate the steel
-    // classification on it, so only the top of the ramp (near the coping)
-    // keeps the brushed-metal look and the bottom 45% renders as plain wood.
-    model.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return;
-      const materials = Array.isArray(object.material) ? object.material : [object.material];
-      for (const material of materials) {
-        if (!(material instanceof THREE.MeshStandardMaterial) || !material.map) continue;
-        object.geometry.computeBoundingBox();
-        const top = object.geometry.boundingBox!.max.y || 1;
-        const position = object.geometry.getAttribute("position");
-        const mask = new Float32Array(position.count);
-        for (let i = 0; i < position.count; i++) mask[i] = position.getY(i) / top > 0.75 ? 1 : 0;
-        object.geometry.setAttribute("steelHeightMask", new THREE.BufferAttribute(mask, 1));
-        const previous = material.onBeforeCompile;
-        material.onBeforeCompile = (shader, renderer) => {
-          previous.call(material, shader, renderer);
-          shader.vertexShader = "attribute float steelHeightMask;\nvarying float vSteelHeightMask;\n" + shader.vertexShader.replace(
-            "#include <begin_vertex>",
-            "#include <begin_vertex>\nvSteelHeightMask = steelHeightMask;",
-          );
-          shader.fragmentShader = "varying float vSteelHeightMask;\n" + shader.fragmentShader.replace(
-            "cleanSteel = smoothstep(.35, .72, sourceMetal);",
-            "cleanSteel = smoothstep(.35, .72, sourceMetal) * vSteelHeightMask;",
-          );
-        };
-        const cache = material.customProgramCacheKey.bind(material);
-        const key = cache();
-        material.customProgramCacheKey = () => key + "|spine-steel-height-cut-1";
-        material.needsUpdate = true;
-      }
-    });
-    scene.add(model);
-    quarterFallbacks.get("spine")?.forEach((object) => { object.visible = false; });
-    park.showDetailedSpine();
-  });
 }
 

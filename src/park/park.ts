@@ -7,7 +7,7 @@ import { lathe } from '../scooter/surfaces';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
-import { buildOutdoor, outdoorHeight, outdoorSpawns } from "./outdoor";
+import { buildOutdoor, outdoorHeight, outdoorSpawns, modules, surfaceSpan } from "./outdoor";
 import { buildBHill, bHillHeight, bHillSurface, B_HILL_SPAWNS } from "./bhill";
 export let OUTDOOR =
   typeof window !== "undefined" &&
@@ -146,14 +146,6 @@ export function selectPark(id: string) {
   SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:id==="b_hill"?B_HILL_SPAWNS:warehouseSpawns;
 }
 export class Park {
-  private detailedQuarterMask = { value: 0 };
-  private detailedSpineMask = { value: 0 };
-  showDetailedSpine() { this.detailedSpineMask.value = 1; }
-  private detailedSmallBoxMask = { value: 0 };
-  private detailedLargeBoxMask = { value: 0 };
-  showDetailedQuarters() { this.detailedQuarterMask.value = 1; }
-  showDetailedSmallBox() { this.detailedSmallBoxMask.value = 1; }
-  showDetailedLargeBox() { this.detailedLargeBoxMask.value = 1; }
   benches: {
     id: string;
     x: number;
@@ -392,12 +384,18 @@ export class Park {
     terrainMaterial.onBeforeCompile=shader=>{
       shader.uniforms.woodGrain={value:surfaceTexture('wood')};
       shader.uniforms.lawnGrain={value:lawnTexture(1,1)};
-      shader.uniforms.detailedQuarterMask=this.detailedQuarterMask;
-      shader.uniforms.detailedSmallBoxMask=this.detailedSmallBoxMask;
-      shader.uniforms.detailedSpineMask=this.detailedSpineMask;
-      shader.uniforms.detailedLargeBoxMask=this.detailedLargeBoxMask;
-      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform sampler2D lawnGrain;\nuniform float detailedSpineMask;\nuniform float detailedQuarterMask;\nuniform float detailedSmallBoxMask;\nuniform float detailedLargeBoxMask;\n'+shader.fragmentShader;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>\nif((detailedSpineMask>.5 && vMapUv.x>=.36 && vMapUv.x<=8.50 && vMapUv.y>=-2.765 && vMapUv.y<=3.765) || (detailedQuarterMask>.5 && abs(vMapUv.x)<=13.26 && ((vMapUv.y>=22.0&&vMapUv.y<=30.0)||(vMapUv.y>=-30.0&&vMapUv.y<=-22.0))) || (detailedSmallBoxMask>.5&&vMapUv.x>=-4.26&&vMapUv.x<=1.26&&vMapUv.y>=-7.76&&vMapUv.y<=5.76) || (detailedLargeBoxMask>.5&&vMapUv.x>=-16.26&&vMapUv.x<=-3.74&&vMapUv.y>=-9.26&&vMapUv.y<=8.26)) discard;`);
+      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform sampler2D lawnGrain;\nvarying float vTerrainY;\n'+shader.fragmentShader;
+      shader.vertexShader='varying float vTerrainY;\n'+shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvTerrainY=transformed.y;');
+      // The wood park's built ramps draw themselves (wood-ramps.ts). Under each
+      // one the ground is hidden, and so is any ground raised by the ramp's
+      // height just outside it - the grid cell that stepped from deck height
+      // down to the ground drew a slanted skirt around every ramp.
+      if(OUTDOOR){
+        const f=(v:number)=>v.toFixed(3);
+        const hide=modules.map((m,i)=>{const [x0,x1]=surfaceSpan[i],pad=.14;
+          return `(vMapUv.x>=${f(x0-pad)}&&vMapUv.x<=${f(x1+pad)}&&vMapUv.y>=${f(m.z0-pad)}&&vMapUv.y<=${f(m.z1+pad)}&&(vTerrainY>.004||(vMapUv.x>=${f(x0)}&&vMapUv.x<=${f(x1)}&&vMapUv.y>=${f(m.z0)}&&vMapUv.y<=${f(m.z1)})))`;}).join('||');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>\nif(${hide}) discard;`);
+      }
       shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\nelse if(vColor.g>vColor.r*1.1 && vColor.g>vColor.b*1.25)groundSample=vec4(texture2D(lawnGrain,vMapUv*.33).rgb/max(vColor.rgb,vec3(.05))*.92,1.0);\n#endif\ndiffuseColor*=groundSample;`);
     };
     const mesh = new THREE.Mesh(g,terrainMaterial);
