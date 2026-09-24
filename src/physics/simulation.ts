@@ -190,11 +190,20 @@ export class Simulation {
     }
   }
   /** Rewrites yaw, pitch and roll from the flip orientation for landing checks. */
-  private settleFlipOrientation() {
+  private settleFlipOrientation(normal?: THREE.Vector3) {
     if (!this.bodyFlip.active) return;
     const q = this.flipOrientation();
     const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    // Heading from the deck's line on the landing surface: the heading whose
+    // surface axis runs along the body's forward. On a steep wall the forward
+    // points mostly down the wall, so its bare horizontal shadow is short and
+    // swings with any pitch error; an angled Front Flair then read as ~70
+    // degrees off the wall instead of the ~27 it really was, and bailed.
+    if (normal && normal.y > 0.2) {
+      const along = forward.clone().projectOnPlane(normal);
+      if (along.lengthSq() > 0.04) forward.copy(along).addScaledVector(normal, -along.y / normal.y);
+    }
     let yaw = this.yaw;
     if (Math.hypot(forward.x, forward.z) > 0.2) yaw = this.yaw + wrap(Math.atan2(forward.x, forward.z) - this.yaw);
     const shift = yaw - this.yaw;
@@ -1823,7 +1832,7 @@ export class Simulation {
     normal: THREE.Vector3;
     centre: number;
   }) {
-    this.settleFlipOrientation();
+    this.settleFlipOrientation(support.normal);
     const impact = Math.max(0, -this.velocity.dot(support.normal));
     const slopePitch = -Math.atan2(
       support.normal

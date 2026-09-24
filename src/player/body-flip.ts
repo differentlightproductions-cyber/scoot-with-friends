@@ -84,10 +84,19 @@ export class BodyFlipControl {
    const finish=Math.max(.12,time-TUNE.flipFinishLead);
    desired=clamp(remaining/finish,TUNE.flipGuideMinRate,TUNE.flipMaxRate);
    // Close to the upright, slow into it rather than stopping abruptly.
-   desired=Math.min(desired,Math.sqrt(2*TUNE.flipOpenAcceleration*remaining));
+   const ease=Math.sqrt(2*TUNE.flipOpenAcceleration*remaining);
+   // Only while that ease-in still ends before contact. With less air left it
+   // would brake a fast flip early and land it short even though the rotation
+   // had the pace to finish, so instead keep the rate that arrives on the
+   // upright at contact while still opening out.
+   const arrive=remaining/Math.max(.05,time)+TUNE.flipOpenAcceleration*time/2;
+   desired=ease/TUNE.flipOpenAcceleration>time?Math.min(desired,Math.max(ease,arrive),TUNE.flipMaxRate):Math.min(desired,ease);
   }
   let next:number;
-  if(desired<current)next=Math.max(desired,current-TUNE.flipOpenAcceleration*dt);
+  // Opening out slows the turn; a flip driven fast right up to its finish opens
+  // out harder (up to the brake rate) rather than sailing past the upright.
+  const opening=remaining>0?clamp(current*current/(2*remaining),TUNE.flipOpenAcceleration,TUNE.flipBrakeAcceleration):TUNE.flipOpenAcceleration;
+  if(desired<current)next=Math.max(desired,current-opening*dt);
   else{next=Math.min(desired,current+TUNE.flipGuideAcceleration*dt);this.assistUsed+=next-current;}
   this.velocity=direction*next;
   this.assisting=true;

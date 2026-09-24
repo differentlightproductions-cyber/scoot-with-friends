@@ -80,7 +80,13 @@ export class ChaseCamera {
     if (!this.initialized)
       this.heading =
         s.speed > TUNE.stationaryCameraFollowThreshold ? velocityYaw : s.yaw;
-    const follow = s.walking
+    // In the air the view holds the heading it took off with. Flight is
+    // ballistic, so off a jump that is still the travel direction; off a
+    // quarter it keeps the wall (where the rider is coming back to) in view
+    // instead of swinging round after sideways travel along the coping while
+    // the body flips and spins inside the frame.
+    const airborne = !s.grounded && !s.grind && !s.walking && !s.sitting && s.state !== "Bail" && !s.dropIn.phase;
+    const follow = s.walking || airborne
       ? 0
       : clamp(
           (s.speed - TUNE.stationaryCameraFollowThreshold) /

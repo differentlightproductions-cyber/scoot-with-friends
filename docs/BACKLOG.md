@@ -97,7 +97,7 @@ Still open:
 
 Also done in dc855cb: rider leans with the scooter at steep pitch (hands stay on the bars, Bri catch pop gone); realistic snowfall (world-space flakes, terminal fall speed, wind/gusts/eddies, flutter), patchy slope-aware cover, wheel/landing powder, snowfall fog; http-safe startup (randomId / SHA-256 / clipboard fallbacks) for phones on the home network.
 
-1. TODO First-person camera (do FIRST):
+1. DONE (58eb6ce; tests/first-person-view) First-person camera (do FIRST): heads-up tilt -0.80 from the head with the eye 4 cm behind it (bars, hands and the front of the deck in frame, line ahead across the top), charge tilt while RS is held down, trick focus on the whole scooter in the air then an ease back after the catch, flip rotation unchanged, FOV 100-150 (default 135, old saves at or below 110 migrate). Re-check the deck framing with the new avatar (Christian's hips hid part of the deck).
    - The 70 FOV setting is WAY too close; you can't see anything useful.
    - The 110 FOV setting is not far enough; it should show much more.
    - The angle changed from the previous version, which the owner liked better: now the deck can't be seen at all and the bars are barely visible. Restore a view that shows the bars and the deck.
@@ -107,3 +107,11 @@ Also done in dc855cb: rider leans with the scooter at steep pitch (hands stay on
 2. TODO Find or make new, better textures for the concrete, the sky backgrounds and other surfaces (credit any third-party assets in THIRD_PARTY_NOTICES.md).
 3. TODO New character: the owner is done with the Christian model. Build a brand-new character designed around the existing physics and IK: one boy and one girl, Wii Mii-like (stylised, funny, fun) against the realistic scooter and park. Customisable: head size, eyebrows, eyes, hair, colours, "everything like that". Must hold the bars, stand on the deck, push, grab and flip correctly with the current physics.
 4. TODO (carried over) "Play on Phone" launcher in the Windows package: serve the game on the home network, show the address and a QR code, so phones can open the browser version with the existing touch controls. The http-safe startup is already done.
+
+## I. Cloud session 2026-09-24 (branch `claude/relaxed-pasteur-g89vqc`)
+
+- DONE #19 Frontflip + spin off quarters (tests/flip-spin-quarter, physics acceptance 53/53, flip-landings, fit-camera, riding-focus). Root causes: (1) the flip guidance capped its rate at a smooth-stop curve even when that stop could not finish before contact, so a fast flip braked early and landed ~0.5 rad short; now it keeps the pace that arrives on the upright at contact and opens out harder (up to the brake rate) instead of sailing past; (2) at touchdown the flip orientation was turned back into yaw/pitch from the forward axis's horizontal shadow, which on a steep wall swings with any pitch error (an angled Front Flair read 1.27 rad off the wall instead of 0.47 and bailed); the heading now comes from the deck's line on the landing surface; (3) the third-person camera chased the travel direction in the air, which on an angled quarter air runs along the coping, so it orbited ~70-110 degrees while the rider flipped and spun; it now holds its takeoff heading in the air (world up, rider position still followed). Flight stays ballistic (no velocity change from body rotation) and flip + spin was already one composed orientation.
+- TODO Avatar Part 1: replace the realistic rider completely with an original Mii-style avatar (remove the old model code and assets).
+- TODO Avatar Part 2: creator UI (controller-first, live preview, categories, presets, randomize, save/load).
+- TODO H2 textures, H4 Play on Phone.
+- TODO #20 B Hill speed/steepness/downhill difficulty + environment cleanup.
