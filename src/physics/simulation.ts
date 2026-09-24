@@ -227,7 +227,7 @@ export class Simulation {
     const f = clamp((speed - TUNE.wobbleSpeed) / (TUNE.wobbleFullSpeed - TUNE.wobbleSpeed), 0, 1.3);
     if (f <= 0 && w.amount < 1e-3) { w.amount = 0; this.roll -= w.rollOffset; w.rollOffset = 0; return; }
     const surface = terrainSurface(this.position.x, this.position.z);
-    const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : 0;
+    const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : this.position.y < TUNE.groundSurfaceHeight ? (surface === "sand" ? 0.6 : surface === "grass" ? 0.4 : 0) : 0;
     const feed = f * f * (Math.max(0, rate - TUNE.wobbleSteerRate) * TUNE.wobbleGain * calm +
       Math.max(0, slip - 0.08) * TUNE.wobbleSlipGain + rough * TUNE.wobbleRoughGain);
     const settle = TUNE.wobbleDamping * (1 - 0.45 * Math.min(1, f));
@@ -944,6 +944,17 @@ export class Simulation {
     );
     this.velocity.y = planeSpeed * Math.sqrt(Math.max(0, 1 - ratio * ratio));
     this.diagnostics.assist(this.elapsed, "quarter rollout", { outwardRatio: +ratio.toFixed(3), outwardChange_mps: +(planeSpeed * ratio - outwardBefore).toFixed(2), planeSpeed: +planeSpeed.toFixed(2) });
+  }
+  /**
+   * Extra rolling drag from the ground under the wheels: B Hill's loose dirt,
+   * and a map's lawns and ballfield sand (#46). Lawns and sand only count at
+   * ground level, never on top of a pad, ledge or ramp built over them.
+   */
+  private groundDrag() {
+    const surface = terrainSurface(this.position.x, this.position.z);
+    if (surface === "dirt") return TUNE.dirtDrag;
+    if (this.position.y >= TUNE.groundSurfaceHeight) return 0;
+    return surface === "grass" ? TUNE.grassDrag : surface === "sand" ? TUNE.sandDrag : 0;
   }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
     const replacing = !this.grounded && !this.grind && this.launch;
@@ -2947,8 +2958,9 @@ export class Simulation {
         : damp(this.roll, ride.roll, 10, dt);
       if (ride.pushed) this.events.emit({ type: "push" });
       // Loose ground off the pavement drags at the wheels.
-      if (terrainSurface(this.position.x, this.position.z) === "dirt" && this.speed > 0.5)
-        this.velocity.multiplyScalar(Math.max(0, this.speed - TUNE.dirtDrag * dt) / this.speed);
+      const groundDrag = this.groundDrag();
+      if (groundDrag && this.speed > 0.5)
+        this.velocity.multiplyScalar(Math.max(0, this.speed - groundDrag * dt) / this.speed);
       // A committed tuck steadies the board a little; a slide is steered on purpose.
       this.stepSpeedWobble(dt, this.board.lean * (1 - this.board.slide), 0, 1 - 0.3 * this.board.tuck);
       if ((this.state as RideState) === "Bail") return;
@@ -3086,7 +3098,7 @@ export class Simulation {
       const aero = speed > TUNE.pushMaxSpeed
         ? TUNE.scooterAero * (crouching ? TUNE.crouchFastDragMultiplier : 1) * (speed * speed - TUNE.pushMaxSpeed ** 2)
         : 0;
-      const dirt = terrainSurface(this.position.x, this.position.z) === "dirt" ? TUNE.dirtDrag : 0;
+      const dirt = this.groundDrag();
       const loss = (rollingDrag + aero + dirt + brake * TUNE.brake) * dt;
       const current = this.velocity.length();
       if (current > 0)

@@ -222,6 +222,9 @@ export const TUNE = {
   wobbleRoughGain: 0.55, // per second on loose ground at full speed
   wobbleDamping: 1.5, // how fast a wobble settles when the rider rides smoothly
   dirtDrag: 1.4, // extra rolling resistance off the pavement
+  grassDrag: 1.1, // extra rolling resistance on a lawn (#46)
+  sandDrag: 2.4, // extra rolling resistance in a ballfield's infield sand (#46)
+  groundSurfaceHeight: 0.15, // lawns and infields only drag at ground level, not on a pad or ledge over them
   steeringResponse: 8,
   airAcceleration: 23,
   airMaxSpin: 11.4,

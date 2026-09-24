@@ -66,6 +66,8 @@ const LEAF_COLORS=[0xd9861f,0xc4521c,0xa8341a,0xe0b233,0x9a6a2e,0xcf6f22];
 export class Weather {
  private group=new THREE.Group();private flakes?:THREE.Points;private spray?:THREE.Points;private disc=softDisc();
  private quality:Fidelity='high';private mode:WeatherMode='sunny';private coverage={value:0};
+ /** How settled the snow is on the ground, 0-1 (wheel tracks press into it). */
+ get snowDepth(){return THREE.MathUtils.smoothstep(this.coverage.value,.35,.8);}
  // Rain: wet ground (0..1) builds while it rains and dries slowly after; fall: leaf litter.
  private wet={value:0};private litter={value:0};
  private drops?:THREE.LineSegments;private dropFall=new Float32Array(0);private leaves?:THREE.Points;private leafSpin=new Float32Array(0);private leafTumble=new Float32Array(0);private leafPhase=new Float32Array(0);private leafTex=leafSprite();

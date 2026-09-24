@@ -1,4 +1,5 @@
 import { OUTDOOR } from './park';
+import { surfaceRect } from "./surfaces";
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
 import { buildDesert, scatterDesert } from "../art/desert";
@@ -548,6 +549,7 @@ export function buildOutdoor(park: Park) {
   // sole physics authority; procedural sides stay visible until loading succeeds.
   const apron = new THREE.Mesh(new THREE.PlaneGeometry(48, 66), new THREE.MeshStandardMaterial({ color: 0xb6b8ad, roughness: .91 }));
   apron.name = "Wood park concrete substrate";
+  surfaceRect("road", -24, 24, -33, 33);
   apron.rotation.x = -Math.PI / 2;
   apron.position.y = .001;
   apron.receiveShadow = true;

@@ -386,6 +386,7 @@ export class ReplayEditor {
         <div class="re-actions">${ReplayEditor.ACTIONS.map((a, c) => `<button data-library="${a}" data-row="${i}" class="${i === this.row && c === this.column ? "focus" : ""}">${a}</button>`).join("")}</div>
       </li>`).join("");
     return `<div class="re-library"><div class="re-head"><span class="re-eyebrow">REPLAYS</span><h2>SAVED REPLAYS</h2><small>${this.library.length} SAVED · WATCH, EDIT, RENAME OR DELETE</small></div>
+      <button class="re-library-back" data-library-back>◀ BACK</button>
       ${this.library.length ? `<ul>${rows}</ul>` : `<p class="re-empty">No replays yet. Ride a line, then CAPTURE REPLAY from the phone's REPLAYS app or the Sesh menu.</p>`}
       <p class="re-legend">LS / D-PAD PICK · A SELECT · B BACK</p><div class="re-notice${this.notice && this.noticeAge < 3 ? " on" : ""}">${esc(this.notice)}</div></div>`;
   }
@@ -396,8 +397,9 @@ export class ReplayEditor {
     return `<div class="re-dialog"><section><b>DELETE "${esc(d.target.name)}"?</b><p>This cannot be undone.</p><div><button data-dialog="ok" class="primary">DELETE</button><button data-dialog="cancel">KEEP IT</button></div><small>A DELETES · B KEEPS</small></section></div>`;
   }
   private click(e: MouseEvent) {
-    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-button],[data-library],[data-dialog]");
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-button],[data-library],[data-dialog],[data-library-back]");
     if (!el) return;
+    if (el.dataset.libraryBack !== undefined) { this.back(); return; }
     if (el.dataset.dialog) { if (el.dataset.dialog === "ok") this.confirmDialog(); else { this.dialog = null; this.render(); } return; }
     if (el.dataset.library) { this.row = Number(el.dataset.row); this.libraryAction(this.library[this.row], el.dataset.library as never); return; }
     const shown = this.visibleButtons(), i = shown.findIndex((b) => b.id === el.dataset.button);

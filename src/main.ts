@@ -3,6 +3,7 @@ import { version } from "../package.json";
 import * as riding from "./input/riding";
 import { copyText } from "./core/secure";
 import { TouchPad } from "./input/touchpad";
+import { WheelTracks } from "./park/tracks";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide,capture} from './network/client';
@@ -113,6 +114,8 @@ async function boot() {
   /** Weather for the loaded map; its lightning schedules thunder in the audio engine. */
   function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength) => audio.thunder(delay, strength); return w; }
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
+  // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
+  let tracks = new WheelTracks(scene);
   // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
   const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
   let phoneAir = 0;
@@ -198,7 +201,9 @@ async function boot() {
     items:()=>interactions,builder:()=>builder,
     compose:()=>social.openChat(),
     network:()=>network,
-    replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory}};
+    replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory},
+    // Fast travel (#43): the spot's district loads if it is not this one, then the rider is placed at the spot.
+    fastTravel:async spot=>{if(ACTIVE_MAP!==spot.map)await menu.onRide(spot.map);if(ACTIVE_MAP!==spot.map)return;sim.spawnIndex=Math.min(spot.spawn,SPAWNS.length-1);reset();}};
   installApps(phoneDeps);
   phone.homePage=()=>homePage(phoneDeps);
   // First person: taps land on the 3D phone's screen.
@@ -445,7 +450,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -627,6 +632,7 @@ async function boot() {
     const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
     daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal});
     weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
+    tracks.update(dt,sim,weather.snowDepth);
     audio.weather(weather.rain);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
@@ -634,7 +640,7 @@ async function boot() {
     camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
     // Phone: arm and head follow its raise; in first person the hand is placed from the eye below.
     phone.tick(dt);
-    hud.phoneHint = phone.active ? 'PHONE · LS / D-PAD MOVE · A SELECT · B BACK · Y HOME · HOLD D-PAD DOWN PUT AWAY' : '';
+    hud.phoneHint = phone.active ? 'PHONE · LS MOVE · A SELECT · B BACK · Y HOME · HOLD D-PAD DOWN PUT AWAY' : '';
     const phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0, raise = phone.raise * phone.raise * (3 - 2 * phone.raise);
     const firstPersonPhone = camera.view === 'first' && camera.firstPersonActive && raise > 0;
     phone.firstPerson = firstPersonPhone;
@@ -824,6 +830,7 @@ async function boot() {
         return park;
       },
       camera, camcorder, touchPad,
+      get tracks() { return tracks; },
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),

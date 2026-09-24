@@ -18,6 +18,7 @@ import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, level
 import { DELIVERY, type CreditEconomy, type Package } from '../data/credit';
 import { dailyDeals, type Deal } from '../data/deals';
 import { inventoryBrands, inventoryItems, type InventoryItem } from '../data/inventory';
+import { BUCHANAN, DISTRICTS, PUEBLO, SPOTS, districtOf, type DistrictId, type Spot } from '../data/world';
 
 /** What the apps reach in the game. Every app is a front end to an existing system. */
 export interface PhoneDeps {
@@ -45,6 +46,8 @@ export interface PhoneDeps {
   economy: CreditEconomy;
   /** Replays (#41): capture the rolling history into the editor, or open the saved ones. */
   replays: { capture: () => boolean; library: () => void; seconds: () => number };
+  /** Loads a spot's district (if it is not the current one) and puts the rider at the spot. */
+  fastTravel: (spot: Spot) => Promise<void>;
 }
 
 const time = (s: number) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -251,6 +254,58 @@ function mapApp(d: PhoneDeps): View {
       { type: 'image', height: 470, draw: (g, x, y, w, h) => d.map.draw(g, x, y, w, h, d.mapId(), d.mapName()) },
       { type: 'text', text: 'LS pan · LB/RB zoom · A centre on you · ★ starts · V vending · $ shop · W water · R rack', muted: true },
     ] }),
+  };
+}
+
+// ---- SPOTS (fast travel) -------------------------------------------------------
+// Boulder City as one world (data/world.ts): the districts where they sit on the
+// city's streets, and the named spots to fast travel to.
+const DISTRICT_COLOR: Record<DistrictId, string> = { veterans: LIME, church: ORANGE, b_hill: TEAL };
+function drawCity(g: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, here: DistrictId | null) {
+  g.save();
+  g.fillStyle = '#2b2620'; g.beginPath(); g.roundRect(x, y, w, h, 14); g.fill(); g.clip();
+  // World bounds with a margin, fitted into the panel with north up.
+  const x0 = -820, x1 = 180, z0 = -820, z1 = 190, k = Math.min((w - 24) / (x1 - x0), (h - 24) / (z1 - z0));
+  const ox = x + (w - (x1 - x0) * k) / 2, oy = y + (h - (z1 - z0) * k) / 2;
+  const at = (wx: number, wz: number) => [ox + (wx - x0) * k, oy + (wz - z0) * k] as const;
+  const road = (pts: [number, number][], width: number, color: string) => {
+    g.beginPath(); pts.forEach(([px, pz], i) => { const [sx, sy] = at(px, pz); if (i) g.lineTo(sx, sy); else g.moveTo(sx, sy); });
+    g.lineWidth = width; g.strokeStyle = color; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
+  };
+  road(PUEBLO, 5, '#8a7d69'); road(BUCHANAN, 8, '#cfc3ad');
+  g.save(); const [bx, by] = at(BUCHANAN[1][0], -250); g.translate(bx + 10, by); g.rotate(-Math.PI / 2);
+  g.font = `800 9px ${BODY}`; g.fillStyle = '#cfc3ad'; g.textAlign = 'center'; g.fillText('BUCHANAN BLVD', 0, 0); g.restore();
+  for (const dist of DISTRICTS) {
+    const [cx, cy] = at(dist.origin.x, dist.origin.z), dw = Math.max(26, dist.size[0] * k), dh = Math.max(22, dist.size[1] * k);
+    g.fillStyle = DISTRICT_COLOR[dist.id]; g.strokeStyle = INK; g.lineWidth = 3;
+    g.beginPath(); g.roundRect(cx - dw / 2, cy - dh / 2, dw, dh, 6); g.fill(); g.stroke();
+    if (dist.id === here) { g.strokeStyle = PAPER; g.lineWidth = 3; g.setLineDash([5, 4]); g.beginPath(); g.roundRect(cx - dw / 2 - 6, cy - dh / 2 - 6, dw + 12, dh + 12, 9); g.stroke(); g.setLineDash([]); }
+    g.font = `13px ${DISPLAY}`; g.textAlign = dist.origin.x < -200 ? 'left' : 'right'; g.fillStyle = PAPER;
+    const lx = dist.origin.x < -200 ? cx - dw / 2 : cx - dw / 2 - 8, ly = dist.origin.x < -200 ? cy + dh / 2 + 16 : cy + 4;
+    g.fillText(dist.name.toUpperCase().replace('THE ', ''), lx, ly);
+    if (dist.id === here) { g.font = `800 10px ${BODY}`; g.fillStyle = LIME; g.fillText('YOU ARE HERE', lx, ly + 13); }
+  }
+  // North arrow.
+  g.fillStyle = PAPER; g.font = `12px ${DISPLAY}`; g.textAlign = 'center'; g.fillText('N', x + w - 20, y + 20);
+  g.beginPath(); g.moveTo(x + w - 20, y + 25); g.lineTo(x + w - 25, y + 36); g.lineTo(x + w - 15, y + 36); g.closePath(); g.fill();
+  g.font = `800 10px ${BODY}`; g.textAlign = 'left'; g.fillStyle = '#cfc3ad'; g.fillText('BOULDER CITY, NV', x + 12, y + 20);
+  g.restore();
+}
+function spotsApp(d: PhoneDeps): View {
+  return {
+    title: 'SPOTS',
+    page: () => {
+      const here = districtOf(d.mapId());
+      return { blocks: [
+        { type: 'image', height: 236, draw: (g, x, y, w, h) => drawCity(g, x, y, w, h, here?.id ?? null) },
+        { type: 'title', text: 'FAST TRAVEL', sub: 'Pick a spot · your ride, rider and music come too' },
+        { type: 'list', rows: SPOTS.map(s => ({
+          id: 'spot-' + s.id, label: s.label, detail: s.detail + (s.map === d.mapId() ? ' · this district' : ''), value: 'GO',
+          action: () => d.phone.sheet(s.label, [{ label: 'FAST TRAVEL', action: () => d.phone.close(() => void d.fastTravel(s)) }, { label: 'CANCEL', action: () => {} }], s.detail),
+        })) },
+        { type: 'text', text: 'One Boulder City: riding the streets between districts is on the way. For now each spot loads its district.', muted: true },
+      ] };
+    },
   };
 }
 
@@ -573,6 +628,7 @@ export function installApps(d: PhoneDeps) {
     ['rides', 'RIDES', 'ride', TEAL, ridesApp],
     ['rider', 'RIDER', 'rider', '#ffd23f', riderApp],
     ['map', 'MAP', 'map', '#7fd46b', mapApp],
+    ['spots', 'SPOTS', 'star', '#ffd23f', spotsApp],
     ['items', 'ITEMS', 'items', '#ff7ab8', itemsApp],
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],

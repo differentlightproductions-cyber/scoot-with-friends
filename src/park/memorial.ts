@@ -1,4 +1,5 @@
 import { activeLayout, brushHeight } from "../editor/layout";
+import { addSurface, surfaceDisk, surfaceRect } from "./surfaces";
 import * as THREE from "three";
 import { addParkPeople } from "./people";
 import { aleppoPine, boulder, bursage, plant, yucca, type Placement } from '../art/flora';
@@ -95,8 +96,32 @@ export function bmxHeight(x: number, z: number) {
   ) * 1.55;
   return edge * (roller * (lane % 2 ? 0.85 : 1.25) + berm);
 }
+/**
+ * The ballfield DIY lot (#46): the patch of ground west of the west ballfield
+ * that riders took over. A poured slab with their own concrete: two kickers
+ * facing each other, a long bank against the west edge, a pyramid hip and a
+ * waxed manual pad. Heights are terrain, like the metal plaza's, so every
+ * feature rides with the same physics; grinds are the park's rails and benches.
+ */
+export const DIY = { x0: -88, x1: -34, z0: -146, z1: -104 };
+export const DIY_PAD = { x0: -50, x1: -44, z0: -113.5, z1: -111.5, h: 0.3 };
+export function diyHeight(x: number, z: number) {
+  if (x < DIY.x0 || x > DIY.x1 || z < DIY.z0 || z > DIY.z1) return 0;
+  let h = 0;
+  // Kickers: 0.55 m over 1.8 m, one launching south (+z), one north.
+  if (x >= -84 && x <= -81.6 && z >= -121 && z <= -119.2) h = Math.max(h, 0.55 * (z + 121) / 1.8);
+  if (x >= -70 && x <= -67.6 && z >= -130.8 && z <= -129) h = Math.max(h, 0.55 * (-129 - z) / 1.8);
+  // Bank: rises 0.9 m over 3 m to the lot's west edge.
+  if (x <= -85 && z >= -140 && z <= -110) h = Math.max(h, 0.9 * clamp((-85 - x) / 3, 0, 1) * clamp(Math.min(z + 140, -110 - z) / 1.5, 0, 1));
+  // Pyramid hip: 0.8 m, 7 m square, a 2 m flat top.
+  const px = 3.5 - Math.abs(x + 60), pz = 3.5 - Math.abs(z + 125);
+  if (px > 0 && pz > 0) h = Math.max(h, 0.8 * clamp(Math.min(px, pz) / 2.5, 0, 1));
+  // Manual pad.
+  if (x >= DIY_PAD.x0 && x <= DIY_PAD.x1 && z >= DIY_PAD.z0 && z <= DIY_PAD.z1) h = Math.max(h, DIY_PAD.h);
+  return h;
+}
 export function extensionHeight(x: number, z: number) {
-  return Math.max(metalHeight(x, z), bmxHeight(x, z));
+  return Math.max(metalHeight(x, z), bmxHeight(x, z), diyHeight(x, z));
 }
 
 export function buildMemorialGrounds(park: Park) {
@@ -156,6 +181,11 @@ export function buildMemorialGrounds(park: Park) {
   box(5, -0.014, 18, 195, 0.012, 82, 0x7f9b55);
   box(mx(65), 0.001, mz(0), 46, 0.008, 48, 0xb8bab3).name = "Metal street park base";
   box(65, -0.005, 0, 42, 0.008, 48, 0xc3a16f).name = "Dirt riding track base";
+  // What the wheels feel (#46): the lawn drags; the plaza and the BMX track's
+  // packed dirt ride like they always have.
+  surfaceRect("grass", 5 - 97.5, 5 + 97.5, 18 - 41, 18 + 41);
+  surfaceRect("road", mx(65) - 23, mx(65) + 23, mz(0) - 24, mz(0) + 24);
+  surfaceRect("road", 65 - 21, 65 + 21, -24, 24);
   const patch = (
     x0: number,
     x1: number,
@@ -343,6 +373,7 @@ export function buildMemorialGrounds(park: Park) {
         dx = b[0] - a[0],
         dz = b[1] - a[1];
       pathClearance.push({a,b,width});
+      addSurface("road", { kind: "segment", a: [a[0], a[1]], b: [b[0], b[1]], width: width + 0.3 });
       const mesh = box(
         (a[0] + b[0]) / 2,
         0.006,
@@ -437,6 +468,7 @@ export function buildMemorialGrounds(park: Park) {
   ];
   // Parking apron, clear ride-through aisles and planted islands.
   box(27, -0.005, -68, 130, 0.015, 44, 0x62696c);
+  surfaceRect("road", 27 - 65, 27 + 65, -68 - 22, -68 + 22);
   path(
     [
       [-38, -47],
@@ -536,6 +568,7 @@ export function buildMemorialGrounds(park: Park) {
   buildDiveDock(park);
   const pavilion = (x: number, z: number) => {
     buildPavilion(park, x, z);
+    surfaceRect("road", x - 3.5, x + 3.5, z - 3.5, z + 3.5);
     park.bench("Shelter bench " + x + " " + z, x - 1.7, 0, z, 0.85, 3);
   };
   for (const [x, z] of [
@@ -581,6 +614,8 @@ export function buildMemorialGrounds(park: Park) {
     };
     disk(25, 0.012, 0x718d46);
     disk(11, 0.022, 0xbc8f63);
+    surfaceDisk("grass", x, -123, 25);
+    surfaceDisk("sand", x, -123, 11);
     for (const [dx, dz] of [
       [0, 7],
       [-6, 0],
@@ -610,6 +645,50 @@ export function buildMemorialGrounds(park: Park) {
     park.bench("Ballfield bench " + x, x + 19, 0, -107, 1, 4);
   }
   pavilion(27, -113);
+  // ---- Ballfield DIY lot (#46) ----
+  // A cracked poured slab, the riders' concrete, and a painted tag.
+  const slab = box((DIY.x0 + DIY.x1) / 2, 0.002, (DIY.z0 + DIY.z1) / 2, DIY.x1 - DIY.x0, 0.004, DIY.z1 - DIY.z0, 0xa29c8e);
+  slab.name = "Ballfield DIY slab";
+  surfaceRect("road", DIY.x0, DIY.x1, DIY.z0, DIY.z1);
+  for (let i = 0; i < 9; i++) {
+    const crack = box(DIY.x0 + 4 + i * 5.8, 0.0055, -125 + Math.sin(i * 2.1) * 12, 0.03, 0.002, 6 + (i % 3) * 3, 0x6f6a61);
+    crack.rotation.y = Math.sin(i * 1.7) * 0.9;
+  }
+  patch(-84.25, -81.35, -121.25, -118.95, 0.125, diyHeight, 0x8f8a7e);
+  patch(-70.25, -67.35, -131.05, -128.75, 0.125, diyHeight, 0x8f8a7e);
+  patch(-88.25, -84.75, -140.25, -109.75, 0.125, diyHeight, 0x8f8a7e);
+  patch(-63.75, -56.25, -128.75, -121.25, 0.125, diyHeight, 0x8f8a7e);
+  patch(DIY_PAD.x0 - 0.25, DIY_PAD.x1 + 0.25, DIY_PAD.z0 - 0.25, DIY_PAD.z1 + 0.25, 0.125, diyHeight, 0x8f8a7e);
+  // The pad's waxed edges grind on both long sides and both ends.
+  const padY = DIY_PAD.h + 0.012;
+  for (const [a, b] of [
+    [[DIY_PAD.x0, DIY_PAD.z0 + 0.025], [DIY_PAD.x1, DIY_PAD.z0 + 0.025]],
+    [[DIY_PAD.x0, DIY_PAD.z1 - 0.025], [DIY_PAD.x1, DIY_PAD.z1 - 0.025]],
+  ])
+    metalRail("Ballfield DIY manual pad edge", v(a[0], padY, a[1]), v(b[0], padY, b[1]), "ledge");
+  // Flat bars on welded legs: a low one for learning, a taller one beside the hip.
+  const flatBar = (name: string, x0: number, x1: number, z: number, y: number) => {
+    metalRail(name, v(x0, y, z), v(x1, y, z));
+    for (const x of [x0 + 0.4, (x0 + x1) / 2, x1 - 0.4]) box(x, y / 2, z, 0.06, y, 0.06, 0x5d6468);
+    for (const x of [x0 + 0.4, x1 - 0.4]) box(x, 0.012, z, 0.5, 0.02, 0.5, 0x5d6468);
+  };
+  flatBar("Ballfield DIY low flat bar", -52, -40, -135, 0.35);
+  flatBar("Ballfield DIY flat bar", -75, -65, -140, 0.55);
+  // Benches dragged over from the dugouts, waxed and grindable.
+  park.bench("Ballfield DIY bench north", -40, 0, -118, 1, 4);
+  park.bench("Ballfield DIY bench south", -40, 0, -127, 1, 4);
+  park.bench("Ballfield DIY bench west", -76, 0, -108, 1, 4);
+  // The tag, sprayed on the slab.
+  const tag = document.createElement("canvas"); tag.width = 512; tag.height = 192;
+  const t = tag.getContext("2d")!;
+  t.font = "900 118px Impact, sans-serif"; t.textAlign = "center"; t.textBaseline = "middle";
+  t.lineWidth = 14; t.strokeStyle = "rgba(20,20,20,.75)"; t.strokeText("DIY", 256, 100);
+  t.fillStyle = "rgba(255,90,31,.9)"; t.fillText("DIY", 256, 100);
+  t.font = "700 30px Impact, sans-serif"; t.fillStyle = "rgba(240,240,230,.85)"; t.fillText("BALLFIELD CREW", 256, 170);
+  const tagTexture = new THREE.CanvasTexture(tag); tagTexture.colorSpace = THREE.SRGBColorSpace;
+  const tagMesh = new THREE.Mesh(new THREE.PlaneGeometry(6, 2.25), new THREE.MeshStandardMaterial({ map: tagTexture, transparent: true, roughness: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetUnits: -50 }));
+  tagMesh.rotation.x = -Math.PI / 2; tagMesh.position.set(-60, 0.008, -110); tagMesh.name = "Ballfield DIY tag"; tagMesh.receiveShadow = true;
+  scene.add(tagMesh);
   // Instancing keeps the larger reference landscape light enough for normal play.
   const trees: number[][] = [];
   const clearPlant=(x:number,z:number,r:number)=>!pathClearance.some(({a,b,width})=>{const dx=b[0]-a[0],dz=b[1]-a[1],t=clamp(((x-a[0])*dx+(z-a[1])*dz)/(dx*dx+dz*dz),0,1);return Math.hypot(x-a[0]-dx*t,z-a[1]-dz*t)<width/2+r;})&&!(x>19&&x<37&&Math.abs(z+44)<5)&&!(x>57&&x<73&&z>-30&&z<-20)&&!park.benches.some(b=>Math.hypot(x-b.x,z-b.z)<b.length/2+r+1)&&![[22,-34],[-42,-20],[52,-28]].some(([a,b])=>Math.hypot(x-a,z-b)<5+r);

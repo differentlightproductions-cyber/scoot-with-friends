@@ -1,4 +1,5 @@
 import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
+import { clearSurfaces, surfaceAt, type Surface } from "./surfaces";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { grainTexture } from "./materials";
@@ -40,9 +41,12 @@ export function terrainHeight(x: number, z: number): number {
   if (editedHeightQuery) return editedHeightQuery(x, z);
   return objectHeight(x, z, brushHeight(x, z, baseTerrainHeight(x, z)));
 }
-/** What the wheels roll on: pavement everywhere except B Hill's shoulders and hillside. */
-export function terrainSurface(x: number, z: number): "road" | "shoulder" | "dirt" {
-  return ACTIVE_MAP === "b_hill" ? bHillSurface(x, z) : "road";
+/**
+ * What the wheels roll on at ground level: B Hill's road, shoulders and
+ * hillside, and the lawns, infields and pads a map registered (surfaces.ts).
+ */
+export function terrainSurface(x: number, z: number): Surface {
+  return ACTIVE_MAP === "b_hill" ? bHillSurface(x, z) : surfaceAt(x, z) ?? "road";
 }
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
@@ -224,6 +228,7 @@ export class Park {
   ) {
     scene.userData.parkGeneration = (scene.userData.parkGeneration ?? 0) + 1;
     scene.userData.assetLoads = [];
+    clearSurfaces();
     // B Hill builds its own continuous road and hillside collision.
     if (ACTIVE_MAP === "b_hill") {
       buildBHill(this);
