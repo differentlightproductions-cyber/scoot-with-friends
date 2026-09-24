@@ -22,7 +22,8 @@ export class RotationChannel {
   segmentEnd = 0;
   originalDirection = 0;
   reversalAge = 99;
-  static rewindWindow = [0.65, 0.9];
+  // A rewind can be thrown for most of the whip (it used to be 65-90%, too thin a margin to hit).
+  static rewindWindow = [0.3, 0.95];
   get progress() {
     return Math.abs(this.segmentEnd - this.segmentStart) > 0.1
       ? Math.abs(
@@ -155,6 +156,8 @@ export function trickName(
   }).name;
 }
 export class Tricks {
+  /** A rewind bumper pressed a touch before the window opened, held for TUNE.rewindBuffer s. */
+  private bumperBuffer: { action: "leftModifier" | "rightModifier"; age: number } | null = null;
   pendingBumper: {
     action: "leftModifier" | "rightModifier";
     side: string;
@@ -332,11 +335,24 @@ export class Tricks {
         : this.bars.canRewind
           ? "bar-rewind"
           : "air";
+    // Rewinds and Kickless belong to a whip already in the air: with no whip
+    // spinning, LB and RB are Decade and the poses, never a rewind.
+    const whipActive = busy.whip;
+    if (!whipActive) this.bumperBuffer = null;
+    const whipDirection = Math.sign(this.deck.segmentEnd - this.deck.segmentStart);
     for (const [action, side, requested] of [
       ["leftModifier", "left", -1],
       ["rightModifier", "right", 1],
     ] as const) {
-      if (!input.pressed[action] || this.pendingBumper) continue;
+      const buffered = this.bumperBuffer?.action === action && this.deck.canRewind;
+      if ((!input.pressed[action] && !buffered) || this.pendingBumper) continue;
+      if (buffered) this.bumperBuffer = null;
+      // Pressed a moment before the rewind window: kept until it opens.
+      if (whipActive && !this.deck.canRewind && !this.bars.canRewind && requested === -whipDirection) {
+        this.bumperBuffer = { action, age: 0 };
+        this.consumedBumpers.add(action);
+        continue;
+      }
       const lastReversal = this.deck.reversals.at(-1);
       if (this.deck.canRewind && lastReversal?.performed !== false) {
         const current = Math.sign(
@@ -357,6 +373,7 @@ export class Tricks {
         this.consumedBumpers.add(action);
       }
     }
+    if (this.bumperBuffer && (this.bumperBuffer.age += dt) > TUNE.rewindBuffer) this.bumperBuffer = null;
     const pending = this.pendingBumper;
     if (pending) {
       pending.elapsed += dt;
@@ -383,7 +400,7 @@ export class Tricks {
     // style. LB is also the left rewind and the Can Can / No Foot / Tuck
     // No-hander modifier, so the Decade starts on the release, and only when LB
     // was used for nothing else while it was down.
-    if (input.pressed.leftModifier && this.airborne) this.decadeTap = { time: 0, spoiled: false };
+    if (input.pressed.leftModifier && this.airborne && !whipActive) this.decadeTap = { time: 0, spoiled: false };
     const tap = this.decadeTap;
     if (tap) {
       tap.time += dt;
@@ -467,7 +484,7 @@ export class Tricks {
       const gesture = this.gesture.step(dt, input.rx, input.ry);
       // No Bri / Inward in an air that already has a Decade (see startDecade).
       if (gesture?.kind === "bri" && !clampWanted && this.decade.target === 0) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
-      if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=.16;
+      if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=TUNE.rewindBuffer;
       this.kicklessBuffer=Math.max(0,this.kicklessBuffer-dt);
       if(this.kicklessBuffer>0&&(this.deck.canRewind||this.pendingBumper)&&Math.abs(this.kickless.velocity)<1){
         const direction=Math.sign(this.deck.segmentEnd-this.deck.segmentStart);

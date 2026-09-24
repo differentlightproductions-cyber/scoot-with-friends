@@ -486,6 +486,14 @@ body.ui-open #minimap, body.editing #minimap { visibility: hidden; }
 #feedback { font-family: var(--display); letter-spacing: 0.5px; background: #0b0c0dcc; border: 2px solid var(--ink); color: var(--paper); }
 #line-label { font: 11px/1 var(--display); letter-spacing: 1.5px; color: var(--lime); }
 #line-text { font-family: var(--display); letter-spacing: 0; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
+/* Trick line (#42): count, multiplier and points, with the 3 s window draining. */
+#line-meter { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 2px 12px; margin-top: 6px; width: max-content; max-width: 100%; }
+#line-meter[hidden] { display: none; }
+#line-meter .lm-count { font: 11px/1.1 var(--display); letter-spacing: 1px; color: var(--ink); background: var(--lime); padding: 3px 7px 2px; border: 2px solid var(--ink); border-radius: 6px; }
+#line-meter .lm-points { font: 20px/1 var(--display); color: #fff; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
+#line-meter .lm-timer { grid-column: 1 / -1; display: block; height: 6px; border: 2px solid var(--ink); border-radius: 4px; background: #10121a99; overflow: hidden; }
+#line-meter .lm-timer b { display: block; height: 100%; background: var(--lime); transform-origin: left; }
+#line-meter.closing .lm-timer b { background: var(--orange); }
 .network-status { font-family: var(--display); letter-spacing: 1px; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
 #loading { font-family: var(--display); letter-spacing: 1px; }
 
@@ -577,6 +585,12 @@ footer .footer-right { padding: 5px 9px 4px; font-family: var(--display); color:
 #now-playing small { font: 600 11px/1.2 var(--body); color: #f4f1e8b3; }
 #now-playing u { position: absolute; left: 8px; right: 8px; bottom: 2px; height: 2px; margin: 0; }
 body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
+/* Hold D-pad Down: the ring fills over the hold (src/phone/hold.ts), a phone in the middle. */
+#phone-hold { position: fixed; left: 50%; top: 64%; z-index: 40; display: grid; place-items: center; width: 52px; height: 52px; margin-left: -26px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(var(--lime) calc(var(--p, 0) * 360deg), #10121a99 0); box-shadow: 0 0 0 3px var(--ink), 3px 3px 0 3px #0006; }
+#phone-hold[hidden] { display: none; }
+#phone-hold::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--ink); }
+#phone-hold i { position: relative; width: 14px; height: 22px; border: 2.5px solid var(--paper, #f4f1e8); border-radius: 4px; box-sizing: border-box; }
 
 /* ---- Rides: a build saved ---------------------------------------------------------------- */
 .preset-stamp {

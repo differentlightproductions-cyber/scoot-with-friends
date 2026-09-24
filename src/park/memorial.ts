@@ -6,6 +6,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
 import { WATER, buildShoreline, dressLake } from "./water";
+import { floodlight, monumentSign, pavilion as buildPavilion, veteransPanel } from "./props";
 import { buildDiveDock } from "./dive-dock";
 import { surfaceMaterial } from "./art";
 const clamp = THREE.MathUtils.clamp;
@@ -534,17 +535,7 @@ export function buildMemorialGrounds(park: Park) {
   buildShoreline(scene, shoreline);
   buildDiveDock(park);
   const pavilion = (x: number, z: number) => {
-    box(x, 0.02, z, 7, 0.04, 7, 0xc2b9a0);
-    for (const dx of [-2.6, 2.6])
-      for (const dz of [-2.6, 2.6])
-        box(x + dx, 1.6, z + dz, 0.16, 3.2, 0.16, 0x745a3d, true);
-    const roof = new THREE.Mesh(
-      new THREE.ConeGeometry(5.3, 1.4, 4),
-      new THREE.MeshStandardMaterial({ color: 0xb55f39, roughness: 0.9 }),
-    );
-    roof.rotation.y = Math.PI / 4;
-    roof.position.set(x, 3.6, z);
-    scene.add(roof);
+    buildPavilion(park, x, z);
     park.bench("Shelter bench " + x + " " + z, x - 1.7, 0, z, 0.85, 3);
   };
   for (const [x, z] of [
@@ -721,44 +712,9 @@ export function buildMemorialGrounds(park: Park) {
     [-86, -35],
     [-86, 36],
   ]) {
-    box(x, 4.2, z, 0.12, 8.4, 0.12, 0x737e80, true);
-    box(x + 0.6, 8.4, z, 1.3, 0.16, 0.55, 0x303c40);
+    floodlight(park, new THREE.Vector3(x, 0, z));
   }
-  // No city/state text in the game signage.
-  const canvas = document.createElement("canvas");
-  canvas.width = 1536;
-  canvas.height = 256;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#283e36";
-  ctx.fillRect(0, 0, 1536, 256);
-  ctx.fillStyle = "#f0e9d1";
-  ctx.textAlign = "center";
-  let font=92;while(font>30){ctx.font=`bold ${font}px sans-serif`;if(ctx.measureText('VETERANS MEMORIAL PARK').width<1376)break;font--;}
-  ctx.fillText("VETERANS MEMORIAL PARK", 768, 110);
-  ctx.font = "36px sans-serif";
-  ctx.fillText("WOOD PARK  ·  METAL STREET PARK  ·  LAKESIDE TRAIL", 768, 193);
-  const sign = new THREE.Mesh(
-    new THREE.PlaneGeometry(14, 2.34),
-    new THREE.MeshBasicMaterial({
-      map: new THREE.CanvasTexture(canvas),
-      side: THREE.FrontSide,
-    }),
-  );
-  sign.position.set(28, 2, -43.94);sign.name='Veterans Memorial Park sign / front';
-  scene.add(sign);
-  box(28,2,-44,14.2,2.48,.10,0x47564b,true);
-  // The back face is a second single-sided plane turned to face the other way.
-  // Turning the plane already makes its lettering read left to right from that
-  // side; flipping the texture as well mirrored it (confirmed in a screenshot).
-  const back=sign.clone();
-  back.material=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas),side:THREE.FrontSide});
-  back.position.z=-44.06;back.rotation.y=Math.PI;back.name='Veterans Memorial Park sign / back';scene.add(back);
-  // Posts carry the sign from behind its frame. They used to sit at the board's
-  // own z with enough depth to poke through both printed faces, which is why a
-  // dark bar ran down the lettering from either approach.
-  for (const x of [22, 34]) {
-    box(x, 1.3, -44.28, 0.18, 2.6, 0.18, 0x4a5746, true);
-    box(x, 0.06, -44.28, 0.42, 0.12, 0.42, 0x6d7a6c, true);
-    box(x, 2.0, -44.17, 0.14, 1.9, 0.14, 0x47564b, false);
-  }
+  // No city/state text in the game signage. The monument (props.ts) stands where
+  // the old board sign stood, lettered on both faces.
+  monumentSign(park, 28, -44, veteransPanel());
 }

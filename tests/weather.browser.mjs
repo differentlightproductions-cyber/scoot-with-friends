@@ -1,21 +1,90 @@
+// Time of day and weather are separate settings (#40): Sunny, Fall, Snow and
+// Rain at any time of day. Rain soaks the ground, clouds the sky, dims the sun
+// and brings lightning with thunder after it; Fall drops leaves, gathers litter
+// and turns the canopies. Old saves with snow as a time of day migrate.
+//   LAZER_URL=http://127.0.0.1:5195 BROWSER_EXECUTABLE=... OUT=artifacts/weather node tests/weather.browser.mjs
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
-const url=process.env.LAZER_URL||'http://127.0.0.1:5186',out='artifacts/weather';mkdirSync(out,{recursive:true});
-const browser=await chromium.launch({executablePath:process.env.BROWSER_EXECUTABLE||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-const page=await browser.newPage({viewport:{width:1280,height:720}}),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
-const check=(label,ok,detail='')=>{console.log(`${ok?'PASS':'FAIL'} ${label}`,ok?'':detail);if(!ok)process.exitCode=1;};
-await page.goto(url+'/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.weather,{timeout:90000});
-await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);g.advance(.5,{},false);});await page.waitForTimeout(4000);
-for(const mode of ['day','night','snow']){
- await page.evaluate(mode=>{const g=window.__LAZER;g.profile.settings.daylight=mode;for(let i=0;i<90;i++){g.daylight.update(.5,mode==='snow'?'day':mode,g.sim.position);g.weather.update(.5,mode,g.sim.position,g.profile.settings.fidelity);}g.camera.camera.position.set(22,12,9);g.camera.camera.lookAt(0,2,26);g.renderer.render(g.park.scene,g.camera.camera);},mode);
- await page.screenshot({path:`${out}/${mode}.png`});
+const url = process.env.LAZER_URL || 'http://127.0.0.1:5186', out = process.env.OUT || 'artifacts/weather';
+mkdirSync(out, { recursive: true });
+const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const results = [];
+const check = (label, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${label} ${ok ? '' : JSON.stringify(detail)}`); };
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } }), errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(url + '/?map=outdoor');
+  await page.waitForFunction(() => window.__LAZER?.weather, null, { timeout: 900000 });
+  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.advance(0.5, {}, false); });
+
+  // Run `seconds` of weather and daylight for a setting, then draw one frame from a fixed camera.
+  const scene = (weather, time, seconds, name) => page.evaluate(async ({ weather, time, seconds, name }) => {
+    const g = window.__LAZER, s = g.sim;
+    g.profile.settings.weather = weather; g.profile.settings.daylight = time;
+    for (let i = 0; i < seconds * 10; i++) { g.daylight.update(0.1, time, s.position); g.weather.update(0.1, weather, s.position, g.profile.settings.fidelity, { camera: g.camera.camera.position }); }
+    const sun = []; g.park.scene.traverse((o) => { if (o.isDirectionalLight) sun.push(o.intensity); });
+    const w = g.weather, grp = g.park.scene.getObjectByName('Visual weather');
+    const info = { rain: w.rain, autumn: w.autumn, wet: w.wet.value, litter: w.litter.value, snow: w.coverage.value, overcast: g.park.scene.userData.overcast, storm: g.park.scene.userData.storm, sun: sun[0],
+      drops: !!grp?.getObjectByName('Rain')?.visible, leaves: !!grp?.getObjectByName('Falling leaves')?.visible };
+    if (name) { g.camera.camera.position.set(-18, 7, -52); g.camera.camera.lookAt(0, 1, -20); g.camera.camera.updateMatrixWorld(); g.renderer.render(g.park.scene, g.camera.camera); }
+    return info;
+  }, { weather, time, seconds, name });
+  const shot = (name) => page.screenshot({ path: `${out}/${name}.png`, timeout: 180000 });
+
+  const sunny = await scene('sunny', 'day', 30, 'sunny-day'); await shot('sunny-day');
+  check('Sunny: clear sky, dry ground, nothing falling', sunny.overcast < 0.01 && sunny.wet < 0.01 && !sunny.drops && !sunny.leaves, sunny);
+
+  // Rain: count strikes and thunder while it rains.
+  await page.evaluate(() => { const w = window.__LAZER.weather; window.__thunder = []; const prev = w.onThunder; w.onThunder = (d, s) => { window.__thunder.push({ d, s }); prev?.(d, s); }; });
+  const rain = await scene('rain', 'day', 40, 'rain-day'); await shot('rain-day');
+  const thunder = await page.evaluate(() => window.__thunder);
+  check('Rain: streaks fall and the ground soaks through', rain.drops && rain.rain > 0.99 && rain.wet > 0.9, rain);
+  check('Rain: storm clouds grey and darken the sky; the sun dims', rain.overcast > 0.99 && rain.storm > 0.99 && rain.sun < sunny.sun * 0.5, { rain: rain.sun, sunny: sunny.sun });
+  check('Rain: lightning strikes, thunder follows 1-4 s later', thunder.length >= 1 && thunder.every((t) => t.d >= 0.9 && t.d <= 4 && t.s > 0.3 && t.s <= 1), thunder);
+  // The flash lights the scene through the park's ambient light; no extra light joins every shader.
+  await page.evaluate(() => { const g = window.__LAZER; let hemi = null; g.park.scene.traverse((o) => { if (!hemi && o.isHemisphereLight) hemi = o; }); window.__ambient = () => hemi.intensity / 4.2; for (let i = 0; i < 30; i++) g.daylight.update(0.1, 'day', g.sim.position); window.__ambientBase = window.__ambient(); });
+  const lights = await page.evaluate(() => { let n = 0; window.__LAZER.park.scene.traverse((o) => { if (o.isLight) n++; }); return n; });
+  check('Rain adds no lights: the park keeps its light count (every shader pays for each light)', lights <= 3, lights);
+  const flash = await page.evaluate(() => { const g = window.__LAZER, w = g.weather, s = g.sim; w.nextBolt = 0.05; let peak = 0; for (let i = 0; i < 20; i++) { w.update(0.02, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.02, 'day', s.position); peak = Math.max(peak, Math.min(g.park.scene.userData.lightning, window.__ambient() - window.__ambientBase)); } return peak; });
+  check('Rain: a strike flashes the scene and the cloud deck', flash > 0.9, flash);
+  const rainNight = await scene('rain', 'night', 20, 'rain-night'); await shot('rain-night');
+  check('Rain works at night too', rainNight.drops && rainNight.wet > 0.9, rainNight);
+
+  const fall = await scene('fall', 'day', 30, 'fall-day'); await shot('fall-day');
+  check('Fall: leaves drift down and litter gathers; the rain dries off', fall.leaves && fall.autumn > 0.99 && fall.litter > 0.9 && !fall.drops && fall.wet < rain.wet, fall);
+  const foliage = await page.evaluate(() => { let key = null; window.__LAZER.park.scene.traverse((o) => { const m = o.material; if (!key && m?.name?.includes('foliage') && m.customProgramCacheKey) key = m.customProgramCacheKey(); }); return key; });
+  check('Fall: tree and plant foliage takes the autumn shading', /swf-weather-v4-foliage/.test(foliage ?? ''), foliage);
+  await scene('fall', 'sunset', 10, 'fall-sunset'); await shot('fall-sunset');
+
+  const snow = await scene('snow', 'day', 60, 'snow-day'); await shot('snow-day');
+  check('Snow: still snows and settles as before', snow.snow > 0.9 && !snow.leaves && snow.overcast > 0.99, snow);
+  const clear = await scene('sunny', 'day', 20);
+  check('Back to Sunny: the storm and snow clear away', clear.overcast < 0.01 && clear.storm < 0.01 && !clear.drops && !clear.leaves, clear);
+
+  // The real settings controls: separate TIME OF DAY and WEATHER rows, saved and restored on reload.
+  await page.evaluate(() => { const g = window.__LAZER; g.profile.settings.weather = 'sunny'; g.profile.settings.daylight = 'day'; g.menu.openSesh('settings-time', 'outdoor'); });
+  await page.waitForSelector('.game-menu');
+  const labels = [];
+  for (let i = 0; i < 3; i++) { await page.locator('button', { hasText: 'WEATHER' }).first().click(); labels.push(await page.locator('button', { hasText: 'WEATHER' }).first().textContent()); }
+  await page.locator('button', { hasText: 'TIME OF DAY' }).first().click();
+  const time = await page.locator('button', { hasText: 'TIME OF DAY' }).first().textContent();
+  check('Settings: WEATHER cycles Fall, Snow, Rain; TIME OF DAY is its own row', /FALL/.test(labels[0]) && /SNOW/.test(labels[1]) && /RAIN/.test(labels[2]) && /SUNSET/.test(time ?? ''), { labels, time });
+  await page.locator('button', { hasText: 'APPLY / SAVE CHANGES' }).first().click();
+  await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
+  const saved = await page.evaluate(() => window.__LAZER.profile.settings);
+  check('Rain at sunset persists after reload', saved.weather === 'rain' && saved.daylight === 'sunset', { weather: saved.weather, daylight: saved.daylight });
+
+  // An old save with snow as the time of day opens as snowy weather in the daytime.
+  await page.evaluate(async () => { const { PROFILE_KEY } = await import('/src/data/loadout.ts'); const raw = JSON.parse(localStorage.getItem(PROFILE_KEY)); raw.settings.daylight = 'snow'; delete raw.settings.weather; localStorage.setItem(PROFILE_KEY, JSON.stringify(raw)); });
+  await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
+  const migrated = await page.evaluate(() => window.__LAZER.profile.settings);
+  check('An old "snow" time of day becomes Snow weather by day', migrated.daylight === 'day' && migrated.weather === 'snow', { weather: migrated.weather, daylight: migrated.daylight });
+
+  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('techno_gravity', true); for (let i = 0; i < 20; i++) g.weather.update(0.2, 'rain', g.sim.position, g.profile.settings.fidelity); });
+  check('Indoors (the shop) stays dry and clear', await page.evaluate(() => !window.__LAZER.park.scene.getObjectByName('Visual weather')?.visible && !(window.__LAZER.park.scene.userData.storm > 0)));
+  check('No page errors', errors.length === 0, errors.slice(0, 3));
+} finally {
+  await browser.close();
 }
-const state=await page.evaluate(()=>{const g=window.__LAZER,terrain=g.park.scene.getObjectByName('Terrain surface'),snow=g.park.scene.getObjectByName('Visual weather');return{mode:g.profile.settings.daylight,coverage:g.weather.coverage.value,flakes:snow?.children[0]?.geometry?.attributes?.position?.count,terrainHook:terrain?.material?.customProgramCacheKey?.().includes('swf-snow-v1'),snowVisible:snow?.visible};});
-check('snow accumulates through the existing terrain shader',state.coverage>.2&&state.terrainHook,state);check('fidelity-scaled falling snow is visible',state.snowVisible&&state.flakes>=100,state);check('render has no page errors',errors.length===0,errors);
-await page.evaluate(()=>{const g=window.__LAZER;g.menu.openSesh('settings','outdoor');});await page.waitForSelector('.game-menu');
-for(let i=0;i<5;i++)await page.locator('button',{hasText:'TIME OF DAY'}).first().click();
-let label=await page.locator('button',{hasText:'TIME OF DAY'}).first().textContent();check('settings cycles to Snow through the real control',label?.includes('SNOW'),label);await page.locator('button',{hasText:'APPLY / SAVE CHANGES'}).click();
-await page.reload();await page.waitForFunction(()=>window.__LAZER?.profile);check('Snow setting persists after reload',(await page.evaluate(()=>window.__LAZER.profile.settings.daylight))==='snow');
-await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('techno_gravity',true);g.weather.update(1,'snow',g.sim.position,g.profile.settings.fidelity);});
-check('shop remains clear when Snow is selected',await page.evaluate(()=>!window.__LAZER.park.scene.getObjectByName('Visual weather')?.visible));
-await browser.close();
+console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
+process.exit(results.every(Boolean) ? 0 : 1);

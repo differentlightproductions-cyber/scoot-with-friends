@@ -115,8 +115,13 @@ export class PhoneMap {
     cam.updateMatrixWorld();
     const target = new THREE.WebGLRenderTarget(res, res, { colorSpace: THREE.SRGBColorSpace });
     const restore = this.source.hide();
-    const fog = scene.fog, background = scene.background, previous = renderer.getRenderTarget(), clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
-    scene.fog = null;
+    const background = scene.background, previous = renderer.getRenderTarget(), clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
+    // The photo has no haze. The fog is pushed out of range rather than removed:
+    // removing it recompiles every material's shader for a fogless variant,
+    // which took 82 s under a software renderer and hitches on real GPUs.
+    const fog = scene.fog, range = fog instanceof THREE.Fog ? [fog.near, fog.far] : fog instanceof THREE.FogExp2 ? [fog.density] : null;
+    if (fog instanceof THREE.Fog) { fog.near = 1e6; fog.far = 2e6; }
+    else if (fog instanceof THREE.FogExp2) fog.density = 0;
     scene.background = new THREE.Color(0xd8c9ad);
     try {
       renderer.setRenderTarget(target);
@@ -145,7 +150,8 @@ export class PhoneMap {
     } finally {
       renderer.setRenderTarget(previous);
       renderer.setClearColor(clear, alpha);
-      scene.fog = fog;
+      if (fog instanceof THREE.Fog && range) { fog.near = range[0]; fog.far = range[1]; }
+      else if (fog instanceof THREE.FogExp2 && range) fog.density = range[0];
       scene.background = background;
       restore();
       target.dispose();

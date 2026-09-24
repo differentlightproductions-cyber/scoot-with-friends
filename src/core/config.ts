@@ -405,6 +405,8 @@ export const TUNE = {
   runMountBoost: 0.9,
   trickHoldDelay: 0.18,
   bumperHoldThreshold: 0.18,
+  /** A rewind bumper or Kickless flick a touch early in a whip is kept this long (s) for the window to open. */
+  rewindBuffer: 0.3,
   walkAcceleration: 9,
   walkTurnResponse: 10,
   pumpGain: 1.5,

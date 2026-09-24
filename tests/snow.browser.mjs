@@ -20,7 +20,7 @@ try{
   const g=window.__LAZER,s=g.sim,w=g.weather;
   const {terrainHeight}=await import('/src/park/park.ts');
   const fog=g.park.scene.fog,fogBefore={near:fog.near,far:fog.far};
-  g.profile.settings.daylight='snow';
+  g.profile.settings.weather='snow';
   s.reset(0,true);s.position.set(0,terrainHeight(0,-12)+.22,-12);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.yaw=s.previousYaw=0;
   // Six seconds of weather time (rendering every frame in software is slow), then a few rendered frames.
   for(let i=0;i<360;i++)w.update(1/60,'snow',s.position,g.profile.settings.fidelity,{camera:g.camera.camera.position});
@@ -50,7 +50,7 @@ try{
  await shot('light-cover');
  await page.evaluate(async()=>{const g=window.__LAZER;g.weather.coverage.value=1;for(let i=0;i<30;i++)g.advance(1/60,{},true);});
  await shot('full-cover');
- const after=await page.evaluate(async()=>{const g=window.__LAZER,s=g.sim;g.profile.settings.daylight='day';for(let i=0;i<400;i++)g.weather.update(1/60,'day',s.position,g.profile.settings.fidelity,{});g.advance(1/60,{},true);const f=g.park.scene.fog;return {near:f.near,far:f.far,coverage:g.weather.coverage.value,visible:g.weather.group.visible};});
+ const after=await page.evaluate(async()=>{const g=window.__LAZER,s=g.sim;g.profile.settings.weather='sunny';for(let i=0;i<400;i++)g.weather.update(1/60,'sunny',s.position,g.profile.settings.fidelity,{});g.advance(1/60,{},true);const f=g.park.scene.fog;return {near:f.near,far:f.far,coverage:g.weather.coverage.value,visible:g.weather.group.visible};});
  console.log(JSON.stringify({...result,after},null,1));
  writeFileSync('artifacts/snow/results.json',JSON.stringify({result,after,errors},null,1));
  assert.ok(result.fallMean>.75&&result.fallMean<1.25,`flakes fall at snow's terminal velocity (${result.fallMean.toFixed(2)} m/s)`);

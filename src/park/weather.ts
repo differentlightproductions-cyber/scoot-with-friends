@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Fidelity } from '../render/fidelity';
 import { ACTIVE_MAP, terrainHeight } from './park';
-export type WeatherMode='day'|'sunset'|'night'|'sunrise'|'snow';
+export type WeatherMode='sunny'|'fall'|'snow'|'rain';
 type Hook={compile:THREE.Material['onBeforeCompile'];cache:()=>string};
 /** What the weather needs to know about the rider this frame (all optional). */
 export interface WeatherRider{camera?:THREE.Vector3;velocity?:THREE.Vector3;yaw?:number;riding?:boolean;grounded?:boolean;landing?:number}
@@ -35,10 +35,45 @@ function flakeMaterial(map:THREE.Texture,size:number,opacity:number){
  };
  m.customProgramCacheKey=()=>'swf-flake-v2';return m;
 }
+/** A leaf silhouette (white, tinted per leaf by vertex colour): pointed ends and a midrib. */
+function leafSprite(){
+ const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d')!;
+ g.fillStyle='#fff';g.beginPath();g.moveTo(32,4);g.bezierCurveTo(54,18,52,44,32,60);g.bezierCurveTo(12,44,10,18,32,4);g.fill();
+ g.globalCompositeOperation='destination-out';g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=2;g.beginPath();g.moveTo(32,8);g.lineTo(32,58);g.stroke();
+ const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
+}
+/** Falling leaves: a point per leaf, spun (aRot) and tumbled (aFlip squashes it edge-on) in the fragment shader. */
+function leafMaterial(map:THREE.Texture,size:number){
+ const m=new THREE.PointsMaterial({size,map,vertexColors:true,transparent:true,alphaTest:.35,depthWrite:false});
+ m.onBeforeCompile=shader=>{
+  shader.vertexShader=shader.vertexShader.replace('uniform float size;','uniform float size;\nattribute float aScale;\nattribute float aAlpha;\nattribute float aRot;\nattribute float aFlip;\nvarying float vLeafAlpha;\nvarying float vLeafRot;\nvarying float vLeafFlip;')
+   .replace('gl_PointSize = size;','gl_PointSize = size * aScale;\n\tvLeafAlpha = aAlpha * smoothstep( 0.35, 1.1, - mvPosition.z );\n\tvLeafRot = aRot;\n\tvLeafFlip = aFlip;');
+  shader.fragmentShader=shader.fragmentShader.replace('void main() {','varying float vLeafAlpha;\nvarying float vLeafRot;\nvarying float vLeafFlip;\nvoid main() {')
+   .replace('#include <map_particle_fragment>',`vec2 leafP = gl_PointCoord - 0.5;
+float leafC = cos(vLeafRot), leafS = sin(vLeafRot);
+leafP = mat2(leafC, -leafS, leafS, leafC) * leafP;
+leafP.x /= max(0.18, abs(vLeafFlip));
+vec2 leafUv = leafP + 0.5;
+if (leafUv.x < 0.0 || leafUv.x > 1.0 || leafUv.y < 0.0 || leafUv.y > 1.0) discard;
+diffuseColor *= texture2D(map, leafUv);
+diffuseColor.rgb *= 0.78 + 0.22 * abs(vLeafFlip);`)
+   .replace('#include <alphatest_fragment>','diffuseColor.a *= vLeafAlpha;\n#include <alphatest_fragment>');
+ };
+ m.customProgramCacheKey=()=>'swf-leaf-v1';return m;
+}
+const LEAF_COLORS=[0xd9861f,0xc4521c,0xa8341a,0xe0b233,0x9a6a2e,0xcf6f22];
 /** Visual-only weather: shader coverage, snowfall and kicked-up snow, never collision geometry. */
 export class Weather {
  private group=new THREE.Group();private flakes?:THREE.Points;private spray?:THREE.Points;private disc=softDisc();
- private quality:Fidelity='high';private mode:WeatherMode='day';private coverage={value:0};private hooked=new Map<THREE.MeshStandardMaterial,Hook>();private scanAge=99;
+ private quality:Fidelity='high';private mode:WeatherMode='sunny';private coverage={value:0};
+ // Rain: wet ground (0..1) builds while it rains and dries slowly after; fall: leaf litter.
+ private wet={value:0};private litter={value:0};
+ private drops?:THREE.LineSegments;private dropFall=new Float32Array(0);private leaves?:THREE.Points;private leafSpin=new Float32Array(0);private leafTumble=new Float32Array(0);private leafPhase=new Float32Array(0);private leafTex=leafSprite();
+ /** How hard it is raining (0..1) and how many leaves are in the air, after easing. */
+ rain=0;autumn=0;
+ /** Lightning: the flash envelope and seconds to the next strike. `onThunder` hears each strike (delay s, strength 0..1). */
+ private flash=0;private flashAge=9;private nextBolt=6;
+ onThunder?:(delay:number,strength:number)=>void;private hooked=new Map<THREE.MeshStandardMaterial,Hook>();private scanAge=99;
  // Per flake: fall speed (m/s), flutter frequency (rad/s), amplitude (m), phase, and 1 for a spiral / 0 for a side-to-side sway.
  private fall=new Float32Array(0);private flutter=new Float32Array(0);private sway=new Float32Array(0);private phase=new Float32Array(0);private spiral=new Uint8Array(0);
  /** Hidden for an overhead photo (the phone's map). */
@@ -55,23 +90,88 @@ export class Weather {
   return out.set(Math.cos(angle)*speed,0,Math.sin(angle)*speed);
  }
  update(dt:number,mode:WeatherMode,player:THREE.Vector3,quality:Fidelity,rider:WeatherRider={}){
-  const outdoors=ACTIVE_MAP==='outdoor'||ACTIVE_MAP==='b_hill';if(!outdoors){this.coverage.value=0;this.group.visible=false;this.applyFog(0);return;}
-  if(quality!==this.quality){this.quality=quality;this.buildFlakes();}if(mode==='snow'&&this.mode!=='snow')this.coverage.value=Math.max(.12,this.coverage.value);this.mode=mode;
+  const outdoors=ACTIVE_MAP==='outdoor'||ACTIVE_MAP==='b_hill';if(!outdoors){this.coverage.value=0;this.wet.value=0;this.litter.value=0;this.rain=this.autumn=this.intensity=0;this.group.visible=false;this.applyFog(0);this.setSky(0,0,0);return;}
+  if(quality!==this.quality){this.quality=quality;this.buildFlakes();if(this.drops)this.buildDrops();if(this.leaves)this.buildLeaves();}if(mode==='snow'&&this.mode!=='snow')this.coverage.value=Math.max(.12,this.coverage.value);this.mode=mode;
   // Ground cover builds over about 45 s of snowfall and melts off in a few seconds after it.
   this.coverage.value=THREE.MathUtils.clamp(this.coverage.value+(mode==='snow'?dt/45:-dt/3),0,1);
   // Snowfall eases in and out over a few seconds instead of switching.
   this.intensity=THREE.MathUtils.clamp(this.intensity+(mode==='snow'?dt/4:-dt/2),0,1);
-  this.group.visible=this.intensity>0||this.sprayAlive();
-  // Falling snow greys the sky dome (art/sky.ts reads this).
-  this.scene.userData.overcast=this.intensity;
-  this.applyFog(this.intensity);
+  // Rain eases in over a few seconds; the ground soaks through in about 20 s and dries over a minute.
+  this.rain=THREE.MathUtils.clamp(this.rain+(mode==='rain'?dt/5:-dt/3),0,1);
+  this.wet.value=THREE.MathUtils.clamp(this.wet.value+(mode==='rain'?Math.max(.12-this.wet.value,0)+dt/20:-dt/60),0,1);
+  // Fall: leaves drift down and gather on open ground over about 15 s.
+  this.autumn=THREE.MathUtils.clamp(this.autumn+(mode==='fall'?dt/4:-dt/2),0,1);
+  this.litter.value=THREE.MathUtils.clamp(this.litter.value+(mode==='fall'?Math.max(.15-this.litter.value,0)+dt/15:-dt/4),0,1);
+  const d=Math.min(dt,.05),centre=rider.camera??player;
+  this.time+=d;
+  this.stepLightning(d);
+  this.group.visible=this.intensity>0||this.rain>0||this.autumn>0||this.sprayAlive();
+  // Falling snow and rain cloud over the sky dome (art/sky.ts) and dim the sun (daylight.ts).
+  // The flash lights the scene through the park's own ambient light (daylight.ts):
+  // a light of its own would put one more light in every material's shader.
+  this.setSky(Math.max(this.intensity,this.rain),this.rain,this.flash*this.rain);
+  this.applyFog(Math.max(this.intensity,this.rain*.7));
   this.scanAge+=dt;if(this.scanAge>1){this.scanAge=0;this.scan();}
-  if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(Math.min(dt,.05),rider.camera??player);}
+  if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(d,centre);}
   else if(this.flakes)this.flakes.visible=false;
-  this.stepSpray(Math.min(dt,.05),player,rider);
+  if(this.rain>0){if(!this.drops)this.buildDrops();this.stepDrops(d,centre);this.splash(d,player);}
+  else if(this.drops)this.drops.visible=false;
+  if(this.autumn>0){if(!this.leaves)this.buildLeaves();this.stepLeaves(d,centre);}
+  else if(this.leaves)this.leaves.visible=false;
+  this.stepSpray(d,player,rider);
+ }
+ private setSky(overcast:number,storm:number,flash:number){this.scene.userData.overcast=overcast;this.scene.userData.storm=storm;this.scene.userData.lightning=flash;}
+ /**
+  * A strike every 7-22 s in heavy rain: a bright flicker (two or three pulses)
+  * that lights the scene and the cloud deck, and thunder that follows the
+  * flash by the time sound takes to arrive (1-4 s, fainter when further).
+  */
+ private stepLightning(dt:number){
+  this.flashAge+=dt;
+  if(this.rain>.6){this.nextBolt-=dt;if(this.nextBolt<=0){this.nextBolt=7+Math.random()*15;this.flashAge=0;const delay=.9+Math.random()*3.1;this.onThunder?.(delay,THREE.MathUtils.clamp(1.25-delay/4,.35,1));}}
+  const t=this.flashAge;
+  this.flash=t<.07?1:t<.13?.18:t<.2?.75:t<.24?.1:t<.3?.45:Math.max(0,.45*Math.exp(-(t-.3)*7));
+ }
+ /** Rain: streaks along the drop's velocity (a drop falls 7-9 m/s and leans with the wind), wrapping around the camera. */
+ private stepDrops(dt:number,centre:THREE.Vector3){
+  const drops=this.drops!;drops.visible=true;(drops.material as THREE.LineBasicMaterial).opacity=.32*this.rain;
+  const wind=this.wind(this.time),pos=drops.geometry.getAttribute('position') as THREE.BufferAttribute,p=pos.array as Float32Array,half=BOX.clone().multiplyScalar(.5);
+  const n=pos.count/2,shown=Math.floor(n*this.rain);
+  for(let i=0;i<n;i++){
+   const k=i*6,vy=-this.dropFall[i],vx=wind.x*1.6,vz=wind.z*1.6;
+   let x=p[k]+vx*dt,y=p[k+1]+vy*dt,z=p[k+2]+vz*dt;
+   x=centre.x+((x-centre.x+half.x)%BOX.x+BOX.x)%BOX.x-half.x;
+   y=centre.y+((y-centre.y+half.y)%BOX.y+BOX.y)%BOX.y-half.y;
+   z=centre.z+((z-centre.z+half.z)%BOX.z+BOX.z)%BOX.z-half.z;
+   const len=i<shown?.05:0;
+   p[k]=x;p[k+1]=y;p[k+2]=z;p[k+3]=x-vx*len;p[k+4]=y-vy*len;p[k+5]=z-vz*len;
+  }
+  pos.needsUpdate=true;
+ }
+ /** Drops bursting on the ground around the rider: tiny upward sprays that settle at once. */
+ private splash(dt:number,player:THREE.Vector3){
+  if(!this.spray)this.buildSpray();
+  this.sprayDebt+=dt*this.rain*(this.quality==='low'?40:110);
+  while(this.sprayDebt>=1){this.sprayDebt--;const a=Math.random()*TAU,r=1+Math.random()*9,x=player.x+Math.cos(a)*r,z=player.z+Math.sin(a)*r;
+   this.emit(x,terrainHeight(x,z)+.02,z,(Math.random()-.5)*.6,.9+Math.random()*.9,(Math.random()-.5)*.6,.18+Math.random()*.12);}
+ }
+ /** Leaves: slower than rain, tumbling and swinging side to side, carried by the wind. */
+ private stepLeaves(dt:number,centre:THREE.Vector3){
+  const leaves=this.leaves!;leaves.visible=true;
+  const t=this.time,wind=this.wind(t),g=leaves.geometry,pos=g.getAttribute('position') as THREE.BufferAttribute,rot=g.getAttribute('aRot') as THREE.BufferAttribute,flip=g.getAttribute('aFlip') as THREE.BufferAttribute,alpha=g.getAttribute('aAlpha') as THREE.BufferAttribute;
+  const p=pos.array as Float32Array,r=rot.array as Float32Array,f=flip.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5),n=pos.count;
+  for(let i=0;i<n;i++){
+   const k=i*3,ph=this.leafPhase[i]+t*this.leafTumble[i];
+   let x=p[k]+(wind.x*1.2+Math.cos(ph)*.9)*dt,y=p[k+1]-(.9+.5*Math.abs(Math.sin(ph)))*dt,z=p[k+2]+(wind.z*1.2+Math.sin(ph*.7)*.5)*dt;
+   x=centre.x+((x-centre.x+half.x)%BOX.x+BOX.x)%BOX.x-half.x;
+   y=centre.y+((y-centre.y+half.y)%BOX.y+BOX.y)%BOX.y-half.y;
+   z=centre.z+((z-centre.z+half.z)%BOX.z+BOX.z)%BOX.z-half.z;
+   p[k]=x;p[k+1]=y;p[k+2]=z;r[i]+=this.leafSpin[i]*dt;f[i]=Math.cos(ph*1.7);a[i]=i<n*this.autumn?1:0;
+  }
+  pos.needsUpdate=rot.needsUpdate=flip.needsUpdate=alpha.needsUpdate=true;
  }
  private stepFlakes(dt:number,centre:THREE.Vector3){
-  const flakes=this.flakes!;flakes.visible=true;this.time+=dt;
+  const flakes=this.flakes!;flakes.visible=true;
   const t=this.time,wind=this.wind(t),positions=flakes.geometry.getAttribute('position') as THREE.BufferAttribute,alpha=flakes.geometry.getAttribute('aAlpha') as THREE.BufferAttribute;
   const p=positions.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5);
   for(let i=0;i<positions.count;i++){
@@ -137,8 +237,10 @@ export class Weather {
   // source text, which after wrapping is this same wrapper for every material,
   // so materials with their own shader code (the lake) were handed another
   // material's compiled program.
-  const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),key=cache(),coverage=this.coverage;
-  material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;
+  const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),key=cache(),coverage=this.coverage,wet=this.wet,litter=this.litter;
+  // Plant cards (art/flora.ts names them "<kind> foliage") turn autumn colours instead of gathering litter.
+  const foliage=/foliage/.test(material.name);
+  material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;shader.uniforms.uWet=wet;shader.uniforms.uLitter=litter;
    shader.vertexShader=shader.vertexShader.replace('void main() {','varying vec3 vSnowWorld;\nvoid main() {').replace('#include <begin_vertex>',`#include <begin_vertex>
 vec4 snowWorld = vec4(transformed, 1.0);
 #ifdef USE_INSTANCING
@@ -149,21 +251,59 @@ vSnowWorld = (modelMatrix * snowWorld).xyz;`);
    // spreads to steeper faces as it deepens; snow does not hold past about
    // 60 degrees. Fresh snow is bright and matte; a few crystals face the sun
    // and glint as the camera moves.
-   shader.fragmentShader=shader.fragmentShader.replace('void main() {',`uniform float uSnowCoverage;
+   shader.fragmentShader=(foliage?'#define SWF_FOLIAGE\n':'')+shader.fragmentShader.replace('void main() {',`uniform float uSnowCoverage, uWet, uLitter;
 varying vec3 vSnowWorld;
 float snowHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float snowNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
  return mix(mix(snowHash(i), snowHash(i + vec2(1.0, 0.0)), f.x), mix(snowHash(i + vec2(0.0, 1.0)), snowHash(i + vec2(1.0, 1.0)), f.x), f.y); }
 void main() {`).replace('#include <lights_physical_fragment>',`float snowNy = inverseTransformDirection(normal, viewMatrix).y;
+// Each weather's work sits behind a branch on its own uniform, so a clear day
+// (and the phone map's top-down photo) pays for none of the noise below.
+float snowAmount = 0.0;
+if (uSnowCoverage > 0.001) {
 float snowUp = smoothstep(mix(0.9, 0.5, uSnowCoverage), mix(0.97, 0.78, uSnowCoverage), snowNy);
 float snowPatch = snowNoise(vSnowWorld.xz * 0.35) * 0.65 + snowNoise(vSnowWorld.xz * 1.9) * 0.35;
-float snowAmount = smoothstep(snowPatch * 0.7 - 0.05, snowPatch * 0.7 + 0.2, uSnowCoverage) * snowUp;
+snowAmount = smoothstep(snowPatch * 0.7 - 0.05, snowPatch * 0.7 + 0.2, uSnowCoverage) * snowUp;
 vec2 snowCell = floor(vSnowWorld.xz * 38.0);
 float snowGlint = step(0.993, snowHash(snowCell)) * step(0.55, fract(snowHash(snowCell + 17.0) * 9.0 + dot(cameraPosition, vec3(0.61, 0.23, 0.47))));
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.94, 0.97), snowAmount);
 roughnessFactor = mix(roughnessFactor, mix(0.78, 0.08, snowGlint), snowAmount);
+}
+#ifdef SWF_FOLIAGE
+// Fall: canopies turn gold, orange and rust in patches, keeping their shading.
+if (uLitter > 0.001) {
+float fallPatch = snowNoise(vSnowWorld.xz * 0.21 + vSnowWorld.y * 0.35);
+vec3 fallTint = mix(vec3(0.86, 0.55, 0.14), vec3(0.7, 0.24, 0.09), smoothstep(0.3, 0.75, fallPatch));
+fallTint = mix(fallTint, vec3(0.93, 0.75, 0.26), smoothstep(0.72, 0.95, snowNoise(vSnowWorld.xz * 0.8 + 4.0)));
+diffuseColor.rgb = mix(diffuseColor.rgb, fallTint * (0.45 + 1.1 * dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), uLitter * 0.8);
+}
+#else
+// Fall: leaves lie on open, flat ground, one to a small cell, each turned its own way.
+float leafMask = 0.0;
+if (uLitter > 0.001) {
+vec2 leafGrid = vSnowWorld.xz * 4.4, leafCell = floor(leafGrid);
+vec2 leafAt = fract(leafGrid) - 0.5 - (vec2(snowHash(leafCell + 2.3), snowHash(leafCell + 5.9)) - 0.5) * 0.35;
+float leafTurn = snowHash(leafCell + 8.1) * 6.2832;
+vec2 leafQ = mat2(cos(leafTurn), -sin(leafTurn), sin(leafTurn), cos(leafTurn)) * leafAt;
+float leafHere = step(1.0 - uLitter * 0.42, snowHash(leafCell + 11.7)) * smoothstep(0.8, 0.95, snowNy) * (1.0 - snowAmount);
+leafMask = (1.0 - smoothstep(0.24, 0.29, length(vec2(leafQ.x * 2.1, leafQ.y)))) * leafHere;
+float leafPick = snowHash(leafCell + 13.3);
+vec3 leafColor = leafPick < 0.3 ? vec3(0.8, 0.43, 0.1) : leafPick < 0.55 ? vec3(0.62, 0.19, 0.08) : leafPick < 0.8 ? vec3(0.86, 0.67, 0.2) : vec3(0.45, 0.3, 0.15);
+diffuseColor.rgb = mix(diffuseColor.rgb, leafColor * (0.85 + 0.3 * snowHash(leafCell + 1.1)), leafMask);
+roughnessFactor = mix(roughnessFactor, 0.7, leafMask);
+}
+// Rain: everything darkens as it soaks; flat ground turns glossy and puddles
+// collect in low patches, mirroring the sky.
+if (uWet > 0.001) {
+float wetUp = smoothstep(0.55, 0.95, snowNy);
+float puddle = smoothstep(0.64, 0.74, snowNoise(vSnowWorld.xz * 0.23) * 0.7 + snowNoise(vSnowWorld.xz * 0.95) * 0.3) * wetUp * smoothstep(0.45, 1.0, uWet) * (1.0 - leafMask);
+diffuseColor.rgb *= 1.0 - uWet * (0.22 + 0.14 * wetUp) - puddle * 0.18;
+roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.42, uWet * wetUp);
+roughnessFactor = mix(roughnessFactor, 0.05, puddle);
+}
+#endif
 #include <lights_physical_fragment>`);
-  };material.customProgramCacheKey=()=>key+'|swf-snow-v2';material.needsUpdate=true;this.hooked.set(material,{compile,cache});
+  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v4-foliage':'|swf-weather-v4');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
  }
  private buildFlakes(){
   if(this.flakes){this.flakes.removeFromParent();this.flakes.geometry.dispose();(this.flakes.material as THREE.Material).dispose();}
@@ -180,6 +320,28 @@ roughnessFactor = mix(roughnessFactor, mix(0.78, 0.08, snowGlint), snowAmount);
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('aScale',new THREE.BufferAttribute(scale,1));geometry.setAttribute('aAlpha',new THREE.BufferAttribute(alpha,1));
   this.flakes=new THREE.Points(geometry,flakeMaterial(this.disc,base,.9));this.flakes.frustumCulled=false;this.flakes.renderOrder=2;this.group.add(this.flakes);
  }
+ private buildDrops(){
+  if(this.drops){this.drops.removeFromParent();this.drops.geometry.dispose();(this.drops.material as THREE.Material).dispose();}
+  const count=this.quality==='low'?700:this.quality==='medium'?1600:3200,positions=new Float32Array(count*6);
+  this.dropFall=new Float32Array(count);
+  for(let i=0;i<count;i++){const x=(Math.random()-.5)*BOX.x,y=(Math.random()-.5)*BOX.y,z=(Math.random()-.5)*BOX.z;positions.set([x,y,z,x,y,z],i*6);this.dropFall[i]=7+Math.random()*2;}
+  const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
+  this.drops=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0xc9d6e3,transparent:true,opacity:0,depthWrite:false}));
+  this.drops.frustumCulled=false;this.drops.renderOrder=2;this.drops.name='Rain';this.group.add(this.drops);
+ }
+ private buildLeaves(){
+  if(this.leaves){this.leaves.removeFromParent();this.leaves.geometry.dispose();(this.leaves.material as THREE.Material).dispose();}
+  const count=this.quality==='low'?80:this.quality==='medium'?170:300,positions=new Float32Array(count*3),colors=new Float32Array(count*3),scale=new Float32Array(count),alpha=new Float32Array(count),rot=new Float32Array(count),flip=new Float32Array(count);
+  this.leafSpin=new Float32Array(count);this.leafTumble=new Float32Array(count);this.leafPhase=new Float32Array(count);const c=new THREE.Color();
+  for(let i=0;i<count;i++){
+   positions.set([(Math.random()-.5)*BOX.x,(Math.random()-.5)*BOX.y,(Math.random()-.5)*BOX.z],i*3);
+   c.set(LEAF_COLORS[i%LEAF_COLORS.length]).offsetHSL((Math.random()-.5)*.03,0,(Math.random()-.5)*.08);colors.set([c.r,c.g,c.b],i*3);
+   scale[i]=.7+Math.random()*.7;rot[i]=Math.random()*TAU;flip[i]=1;this.leafSpin[i]=(Math.random()-.5)*5;this.leafTumble[i]=1.2+Math.random()*2.2;this.leafPhase[i]=Math.random()*TAU;
+  }
+  const geometry=new THREE.BufferGeometry();
+  for(const [name,array,size] of [['position',positions,3],['color',colors,3],['aScale',scale,1],['aAlpha',alpha,1],['aRot',rot,1],['aFlip',flip,1]] as const)geometry.setAttribute(name,new THREE.BufferAttribute(array,size));
+  this.leaves=new THREE.Points(geometry,leafMaterial(this.leafTex,.16));this.leaves.frustumCulled=false;this.leaves.renderOrder=2;this.leaves.name='Falling leaves';this.group.add(this.leaves);
+ }
  private buildSpray(){
   const count=this.quality==='low'?120:260,positions=new Float32Array(count*3),scale=new Float32Array(count),alpha=new Float32Array(count);
   for(let i=0;i<count;i++){scale[i]=.8+Math.random()*1.4;positions[i*3+1]=-1e4;}
@@ -188,8 +350,8 @@ roughnessFactor = mix(roughnessFactor, mix(0.78, 0.08, snowGlint), snowAmount);
   this.spray=new THREE.Points(geometry,flakeMaterial(this.disc,.06,.85));this.spray.frustumCulled=false;this.spray.visible=false;this.group.add(this.spray);
  }
  dispose(){
-  for(const points of [this.flakes,this.spray])if(points){points.geometry.dispose();(points.material as THREE.Material).dispose();}
-  this.disc.dispose();this.applyFog(0);
+  for(const points of [this.flakes,this.spray,this.leaves,this.drops])if(points){points.geometry.dispose();(points.material as THREE.Material).dispose();}
+  this.disc.dispose();this.leafTex.dispose();this.applyFog(0);this.setSky(0,0,0);
   for(const [material,hook]of this.hooked){material.onBeforeCompile=hook.compile;material.customProgramCacheKey=hook.cache;material.needsUpdate=true;}this.hooked.clear();this.group.removeFromParent();
  }
 }

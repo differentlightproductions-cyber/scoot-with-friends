@@ -1,9 +1,10 @@
 // The outdoor sky: a dome drawn behind everything with a scattering-style
 // gradient, a sun (or moon) with its glow, drifting fair-weather clouds and
-// stars at night. The same dome lights the scene: it is rendered into a small
+// the real stars at night (stars.ts). The same dome lights the scene: it is rendered into a small
 // PMREM environment map whenever it changes, so every material picks up the
 // real sky and horizon colour instead of an indoor studio.
 import * as THREE from "three";
+import { StarField } from "./stars";
 
 export type SkyPhase = "day" | "sunset" | "night" | "sunrise";
 
@@ -31,7 +32,7 @@ void main() {
 
 const fragment = /* glsl */ `
 uniform vec3 uSunDir, uZenith, uHorizon, uGround, uSunColor, uCloudLit, uCloudShade;
-uniform float uCover, uNight, uTime, uSize, uHaze, uOvercast;
+uniform float uCover, uNight, uTime, uSize, uHaze, uOvercast, uStorm, uFlash;
 varying vec3 vDir;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -53,12 +54,7 @@ void main() {
   float sd = max(dot(d, uSunDir), 0.0);
   float glow = pow(sd, 5.0) * 0.16 + pow(sd, 42.0) * 0.32 + pow(sd, 400.0) * 0.6;
   sky += uSunColor * glow * (1.0 - uOvercast * 0.7);
-  // Stars, twinkling, only on a clear night.
-  if (uNight > 0.01 && h > 0.0) {
-    vec2 cell = floor(d.xz / (h + 0.35) * 260.0);
-    float star = step(0.9972, hash(cell)) * (0.6 + 0.4 * sin(uTime * 2.0 + hash(cell + 3.1) * 40.0));
-    sky += vec3(0.9, 0.93, 1.0) * star * uNight * smoothstep(0.02, 0.3, h) * (1.0 - uOvercast);
-  }
+  // Stars are their own layer (stars.ts): the real sky over Boulder City.
   // Clouds on a flat layer: thin at the horizon, lit from the sun side.
   float cloud = 0.0;
   if (h > 0.0) {
@@ -77,6 +73,9 @@ void main() {
   // Overcast (falling snow) greys the whole sky.
   float grey = dot(sky, vec3(0.3, 0.55, 0.15));
   sky = mix(sky, vec3(grey) * vec3(0.92, 0.95, 1.0), uOvercast * 0.75);
+  // A rain storm darkens the cloud deck to slate; lightning lights it from inside.
+  sky *= 1.0 - uStorm * 0.42;
+  sky += vec3(0.72, 0.78, 0.95) * uFlash * (0.35 + 0.65 * cloud);
   gl_FragColor = vec4(sky, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -98,6 +97,8 @@ export class SkyDome {
     uSize: { value: PRESETS.day.size },
     uHaze: { value: PRESETS.day.haze },
     uOvercast: { value: 0 },
+    uStorm: { value: 0 },
+    uFlash: { value: 0 },
   };
   private envScene = new THREE.Scene();
   private envTarget: THREE.WebGLRenderTarget | null = null;
@@ -106,6 +107,8 @@ export class SkyDome {
   private envKey = "";
   private scratch = new THREE.Color();
   private dirScratch = new THREE.Vector3();
+  /** The night sky: real constellations for Boulder City, drawn just inside the dome. */
+  readonly stars: StarField;
 
   constructor(private scene: THREE.Scene, phase: SkyPhase = "day") {
     (scene.userData.sky as SkyDome | undefined)?.dispose();
@@ -117,12 +120,13 @@ export class SkyDome {
       toneMapped: false,
     });
     this.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), material);
+    this.stars = new StarField(this.uniforms);
     this.mesh.name = "Sky dome";
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -1000;
     this.mesh.scale.setScalar(1000);
     this.mesh.onBeforeRender = (_r, _s, camera) => { this.mesh.position.copy(camera.position); this.mesh.updateMatrixWorld(); };
-    scene.add(this.mesh);
+    scene.add(this.mesh, this.stars.points);
     scene.background = null;
     scene.userData.sky = this;
     this.envScene.add(new THREE.Mesh(this.mesh.geometry, material));
@@ -154,6 +158,12 @@ export class SkyDome {
   step(dt: number, renderer?: THREE.WebGLRenderer) {
     this.uniforms.uTime.value += dt;
     this.uniforms.uOvercast.value = THREE.MathUtils.clamp(this.scene.userData.overcast ?? 0, 0, 1);
+    this.uniforms.uStorm.value = THREE.MathUtils.clamp(this.scene.userData.storm ?? 0, 0, 1);
+    this.uniforms.uFlash.value = THREE.MathUtils.clamp(this.scene.userData.lightning ?? 0, 0, 1);
+    // Stars come out with the night and hide behind cloud; a little twilight
+    // shows only the brightest (sunset and sunrise carry a small uNight).
+    const u = this.uniforms;
+    this.stars.setVisibility(THREE.MathUtils.smoothstep(u.uNight.value, 0.05, 0.9) * (1 - u.uOvercast.value) * (1 - 0.8 * u.uStorm.value));
     if (renderer) this.updateEnvironment(renderer, dt);
   }
 
@@ -183,6 +193,7 @@ export class SkyDome {
 
   dispose() {
     this.mesh.removeFromParent();
+    this.stars.dispose();
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
     this.envTarget?.dispose();

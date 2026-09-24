@@ -6,6 +6,26 @@ import type {Simulation} from '../physics/simulation';
 import type {LocalProfile} from '../data/loadout';
 import {PROTOCOL,CONTENT,POSE_KEYS} from './protocol';
 const pick=(v:any,keys:string[])=>Object.fromEntries(keys.map(k=>[k,v[k]]));
+/**
+ * A rider's render state between two captured poses (network snapshots, and
+ * replays in replay/): continuous values are interpolated, discrete ones taken
+ * from the nearer pose, and vectors rebuilt so RiderModel.update can read it
+ * like the live Simulation. Nothing here steps physics.
+ */
+export function blendPose(a:any,b:any,t:number):Simulation{
+ const p=structuredClone(t<.5?a:b),lerp=THREE.MathUtils.lerp;
+ for(const key of ['yaw','pitch','roll','elapsed'])p[key]=key==='elapsed'?lerp(a[key],b[key],t):a[key]+wrapAngle(b[key]-a[key])*t;
+ for(const k of ['angle','velocity'])p.bodyFlip[k]=lerp(a.bodyFlip[k],b.bodyFlip[k],t);
+ for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.tricks[channel]&&b.tricks[channel])p.tricks[channel][k]=lerp(a.tricks[channel][k],b.tricks[channel][k],t);
+ p.tricks.yaw=lerp(a.tricks.yaw??0,b.tricks.yaw??0,t);
+ p.position=new THREE.Vector3().fromArray(a.position).lerp(new THREE.Vector3().fromArray(b.position),t);p.previousPosition=p.position;p.previousYaw=p.yaw;
+ if(p.fastplant)p.fastplant.foot=new THREE.Vector3().fromArray(p.fastplant.foot);
+ if(p.mantle){p.mantle.edge=new THREE.Vector3().fromArray(p.mantle.edge);p.mantle.forward=new THREE.Vector3().fromArray(p.mantle.forward);}
+ if(p.crash)for(const key of ['rider','scooter']){const body=p.crash[key];p.crash[key]={translation:()=>body.position,rotation:()=>body.rotation};}
+ return p as Simulation;
+}
+/** The short way round from one angle to another. */
+const wrapAngle=(v:number)=>v-Math.PI*2*Math.round(v/(Math.PI*2));
 export function capture(s:Simulation){
  const p:any={};for(const k of POSE_KEYS)if(typeof s[k as keyof Simulation]==='number'||typeof s[k as keyof Simulation]==='boolean'||typeof s[k as keyof Simulation]==='string')p[k]=s[k as keyof Simulation];
  Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,swim:s.swim?{time:s.swim.time,stroke:s.swim.stroke,out:null,celebrate:s.swim.celebrate,speed:Math.hypot(s.velocity.x,s.velocity.z)}:null,diveFlip:s.diveFlip,mantle:s.mantle?{kind:s.mantle.kind,time:s.mantle.time,duration:s.mantle.duration,edge:s.mantle.edge.toArray(),forward:s.mantle.forward.toArray()}:null,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
@@ -51,15 +71,8 @@ export class FreeRide {
  private clear(){for(const id of this.remotes.keys())this.remove(id);this.roster=[];}
  render(camera:THREE.Camera,dt:number){this.badge.hidden=this.status==='Solo';this.badge.textContent=this.status+(this.status==='Connected'?' / '+this.roster.length+' riders':'');const target=performance.now()-100;for(const r of this.remotes.values()){
    while(r.samples.length>2&&r.samples[1].at<=target)r.samples.shift();const a=r.samples[0],b=r.samples[1]??a;if(!a){r.model.root.visible=false;continue;}r.model.root.visible=true;
-   const t=THREE.MathUtils.clamp((target-a.at)/Math.max(1,b.at-a.at),0,1),p=structuredClone(t<.5?a.state:b.state);
-   for(const key of ['yaw','pitch','roll','elapsed'])p[key]=THREE.MathUtils.lerp(a.state[key],b.state[key],t);
-   for(const k of ['angle','velocity'])p.bodyFlip[k]=THREE.MathUtils.lerp(a.state.bodyFlip[k],b.state.bodyFlip[k],t);
-   for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.state.tricks[channel]&&b.state.tricks[channel])p.tricks[channel][k]=THREE.MathUtils.lerp(a.state.tricks[channel][k],b.state.tricks[channel][k],t);
-   p.position=new THREE.Vector3().fromArray(a.state.position).lerp(new THREE.Vector3().fromArray(b.state.position),t);p.previousPosition=p.position;p.previousYaw=p.yaw;
-   if(p.fastplant)p.fastplant.foot=new THREE.Vector3().fromArray(p.fastplant.foot);
-   if(p.mantle){p.mantle.edge=new THREE.Vector3().fromArray(p.mantle.edge);p.mantle.forward=new THREE.Vector3().fromArray(p.mantle.forward);}
-   if(p.crash)for(const key of ['rider','scooter']){const body=p.crash[key];p.crash[key]={translation:()=>body.position,rotation:()=>body.rotation};}
-   r.model.update(p as Simulation,dt,1);
+   const t=THREE.MathUtils.clamp((target-a.at)/Math.max(1,b.at-a.at),0,1),p=blendPose(a.state,b.state,t);
+   r.model.update(p,dt,1);
    const point=p.position.clone().add(new THREE.Vector3(0,2,0)),distance=point.distanceTo(this.sim().position);point.project(camera);r.label.hidden=distance>35||Math.abs(point.x)>1||Math.abs(point.y)>1||point.z>1;
    r.label.textContent=r.name+(r.chatUntil>performance.now()?'\n'+r.chat:'');r.label.style.left=(point.x*.5+.5)*innerWidth+'px';r.label.style.top=(-point.y*.5+.5)*innerHeight+'px';
  }}

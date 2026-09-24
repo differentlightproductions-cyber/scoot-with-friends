@@ -41,6 +41,7 @@ import type { InputFrame } from "../input/input";
 import { presetName } from "../input/riding";
 import './theme.css';
 import './shop.css';
+import { cityForMap, liveSky } from '../park/liveSky';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
@@ -514,7 +515,7 @@ export class GameMenu {
         add('RIDING & CONTROLS',()=>this.show('settings-riding'),'Control style, stance, held item and controller test');
         add('CAMERA',()=>this.show('settings-camera'),'View, field of view, motion and filter');
         add('GRAPHICS',()=>this.show('settings-graphics'),'Visual quality and rider detail');
-        add('TIME & WEATHER',()=>this.show('settings-time'),'Day, sunset, night, sunrise or snow');
+        add('TIME & WEATHER',()=>this.show('settings-time'),'Time of day, and sunny, fall, snow or rain');
         add('AUDIO',()=>this.show('settings-audio'),'Game sound');
         add('PHONE',()=>this.show('settings-phone'),'Which hand holds it, notifications');
         add('ACCESSIBILITY & TOUCH',()=>this.show('settings-touch'),'Touch controls, size, opacity and reset');
@@ -534,9 +535,20 @@ export class GameMenu {
         break;
       case 'settings-time':
         title='TIME & WEATHER';subtitle='SETTINGS / SKY & CONDITIONS';
-        add('TIME OF DAY '+this.profile.settings.daylight.toUpperCase(),()=>{
-          const phases=['day','sunset','night','sunrise','snow'] as const;this.profile.settings.daylight=phases[(phases.indexOf(this.profile.settings.daylight)+1)%5];this.changed();this.render();
-        },'Day, golden hours, Night, or visual Snow. Riding surfaces and physics stay unchanged.');
+        {
+        // Live mode (#48) shows what the city's sky is doing; picking a time or a weather by hand turns it off.
+        const city=cityForMap(this.currentMap),live=this.profile.settings.liveSky?liveSky.current(city):null;
+        const status=live?(live.source==='live'?`Live now: ${live.clock}, ${live.weather} (weather from Open-Meteo).`:live.source==='saved'?`${live.clock}; weather service unreachable, using its last reading (${live.weather}).`:live.source==='loading'?`${live.clock}; asking the weather service...`:`${live.clock}; offline, so the sky is clear until the weather service answers.`):'';
+        add('MATCH '+city.short+' NOW '+(live?'ON':'OFF'),()=>{this.profile.settings.liveSky=!this.profile.settings.liveSky;this.changed();this.render();},
+          live?status:`The real time of day and weather in ${city.name}, right now. The time needs no connection; the weather asks Open-Meteo (only the city's location is sent).`);
+        add('TIME OF DAY '+(live?'LIVE · '+live.phase.toUpperCase():this.profile.settings.daylight.toUpperCase()),()=>{
+          const phases=['day','sunset','night','sunrise'] as const,from=live?live.phase:this.profile.settings.daylight;this.profile.settings.liveSky=false;this.profile.settings.daylight=phases[(phases.indexOf(from)+1)%phases.length];this.changed();this.render();
+        },live?'Choosing a time turns off the live sky.':'Day, Sunset, Night or Sunrise.');
+        add('WEATHER '+(live?'LIVE · '+live.weather.toUpperCase():this.profile.settings.weather.toUpperCase()),()=>{
+          const kinds=['sunny','fall','snow','rain'] as const,from=live?live.weather:this.profile.settings.weather;this.profile.settings.liveSky=false;this.profile.settings.weather=kinds[(kinds.indexOf(from)+1)%kinds.length];this.changed();this.render();
+        },live?'Choosing a weather turns off the live sky.':'Sunny, Fall leaves, Snow, or Rain with thunderstorms. Works at any time of day; riding and physics stay the same.');
+        }
+        add('FLASHLIGHT '+(this.profile.settings.flashlight?'ON':'OFF'),()=>{this.profile.settings.flashlight=!this.profile.settings.flashlight;this.changed();this.render();},'Your light at night. Off, the park is dark: only its lamps, the moon and the stars.');
         break;
       case 'settings-camera':
         title='CAMERA';subtitle='SETTINGS / YOUR VIEW';

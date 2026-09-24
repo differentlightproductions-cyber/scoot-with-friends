@@ -5,6 +5,9 @@ export class AudioEngine {
   roll: GainNode | null = null;
   grind: GainNode | null = null;
   water:GainNode|null=null;
+  /** Rain on the ground: a soft high hiss, set by weather(). */
+  private rain:GainNode|null=null;
+  private noiseBuffer:AudioBuffer|null=null;
   filter: BiquadFilterNode | null = null;
   private nextFootstep = 0;
   enabled = true;
@@ -39,9 +42,32 @@ export class AudioEngine {
       this.grind.gain.value = 0;
       noise.connect(high).connect(this.grind).connect(this.master);
       const splashFilter=this.context.createBiquadFilter();splashFilter.type='bandpass';splashFilter.frequency.value=2400;splashFilter.Q.value=.4;this.water=this.context.createGain();this.water.gain.value=0;noise.connect(splashFilter).connect(this.water).connect(this.master);
+      const rainFilter=this.context.createBiquadFilter();rainFilter.type='highpass';rainFilter.frequency.value=1400;const rainSoft=this.context.createBiquadFilter();rainSoft.type='lowpass';rainSoft.frequency.value=7000;
+      this.rain=this.context.createGain();this.rain.gain.value=0;noise.connect(rainFilter).connect(rainSoft).connect(this.rain).connect(this.master);
+      this.noiseBuffer=buffer;
       noise.start();
     }
     if (this.context.state === "suspended") await this.context.resume();
+  }
+  /** How hard it is raining (0..1): the hiss follows it. */
+  weather(rain:number){
+    if(!this.context||!this.rain)return;
+    this.rain.gain.setTargetAtTime(rain*.2,this.context.currentTime,.5);
+  }
+  /**
+   * Thunder `delay` seconds from now: a crack for a near strike, then a low
+   * rumble that rolls and fades over several seconds. Strength 0..1.
+   */
+  thunder(delay:number,strength:number){
+    if(!this.context||!this.master||!this.noiseBuffer||!this.enabled)return;
+    const c=this.context,t=c.currentTime+delay,src=c.createBufferSource(),low=c.createBiquadFilter(),gain=c.createGain(),length=4+strength*2.5;
+    src.buffer=this.noiseBuffer;src.loop=true;
+    low.type='lowpass';low.Q.value=.7;low.frequency.setValueAtTime(260+900*strength*strength,t);low.frequency.exponentialRampToValueAtTime(70,t+length*.6);
+    gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(1.1*strength,t+.05);gain.gain.exponentialRampToValueAtTime(.4*strength,t+.6);
+    // The roll: a few swells as the sound comes back off distant cloud and hills.
+    for(let i=1;i<4;i++){const at=t+.6+i*length/5;gain.gain.linearRampToValueAtTime((.45-.08*i)*strength*(.7+Math.random()*.6),at);}
+    gain.gain.exponentialRampToValueAtTime(.001,t+length);
+    src.connect(low).connect(gain).connect(this.master);src.start(t,Math.random()*1.5);src.stop(t+length+.1);
   }
   update(
     speed: number,

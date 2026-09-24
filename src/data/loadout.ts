@@ -31,7 +31,13 @@ export interface LocalProfile {
     /** The controls preset: "regular" is shown as Normal. See input/riding.ts. */
     stance: "regular" | "goofy";
     controlsVersion: number;
-    daylight: 'day'|'sunset'|'night'|'sunrise'|'snow';
+    /** Time of day. Weather is its own setting (it used to be a fifth "snow" time). */
+    daylight: 'day'|'sunset'|'night'|'sunrise';
+    weather: 'sunny'|'fall'|'snow'|'rain';
+    /** The rider's flashlight at night. Off, the park is lit only by its lamps, the moon and the stars. */
+    flashlight: boolean;
+    /** Match the real time and weather of the map's city right now (park/liveSky.ts); overrides the two above. */
+    liveSky: boolean;
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     /** Personal camera; never networked. */
@@ -95,6 +101,9 @@ export function loadProfile(): LocalProfile {
       stance: "regular",
       controlsVersion: CONTROLS_VERSION,
       daylight: 'day',
+      weather: 'sunny',
+      flashlight: true,
+      liveSky: false,
       mountFlourish: true,
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
@@ -121,7 +130,12 @@ export function loadProfile(): LocalProfile {
     profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
     profile.pockets=validPockets(saved.pockets);
     profile.avatar=saved.avatar?sanitizeAvatar(saved.avatar):migrateRider(saved);
-    if(['day','sunset','night','sunrise','snow'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
+    if(['day','sunset','night','sunrise'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
+    if(['sunny','fall','snow','rain'].includes(saved.settings?.weather))profile.settings.weather=saved.settings.weather;
+    // Saves from before the split kept snow as a fifth time of day: snowy daytime.
+    else if(saved.settings?.daylight==='snow')profile.settings.weather='snow';
+    if(typeof saved.settings?.flashlight==='boolean')profile.settings.flashlight=saved.settings.flashlight;
+    if(typeof saved.settings?.liveSky==='boolean')profile.settings.liveSky=saved.settings.liveSky;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));

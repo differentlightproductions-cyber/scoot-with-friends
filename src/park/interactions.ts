@@ -1,3 +1,4 @@
+import { drinkingFountain, scooterRack, vendingMachine } from './props';
 import { DIVE_DOCK } from "./dive-dock";
 import * as THREE from 'three';
 import type { Park } from './park';
@@ -63,33 +64,18 @@ export class WorldInteractions {
    // Offsets are authored for a machine facing +z; a mirrored cluster flips
    // both axes, which leaves every axis-aligned box and collider valid.
    const at=(origin:THREE.Vector3,dx:number,dy:number,dz:number)=>origin.clone().add(new THREE.Vector3(dx*f,dy,dz*f));
-   for(const dx of [-.85,0,.85]){
-    park.box(new THREE.Vector3(x+dx,y+.26,z),new THREE.Vector3(.045,.52,.55),0x43585c,true);
-   }
-   park.box(new THREE.Vector3(x,y+.035,z),new THREE.Vector3(2.3,.07,.8),0x556567,true);
+   const yaw=f===1?0:Math.PI;
+   scooterRack(park,base,yaw);
    const rackId=`rack-${index}`;
    this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab '+rideName(this.stored.rideable):s.hasScooter?'Store '+rideName(s.rideable):rideName(this.stored?.rideable??s.rideable)+' stored at another rack',action:s=>this.rack(s,rackId,base)});
    if(cluster.vending){
    const machine=at(base,spread,0,0);
-   const shell=park.box(at(machine,0,.95,0),new THREE.Vector3(1.05,1.9,.7),0x335e62,true);
-   shell.name='Refresh vending machine';
-   // Cabinet depth and side/back treatment, so the machine is not a plain slab
-   // with the same face repeated on every side.
-   park.box(at(machine,0,1.93,0),new THREE.Vector3(1.11,.09,.76),0x2a4d50,false);
-   park.box(at(machine,0,.06,0),new THREE.Vector3(1.09,.12,.74),0x24393c,true);
-   for(const s of [-1,1])park.box(at(machine,s*.53,.95,0),new THREE.Vector3(.02,1.76,.66),0x2b5054,false);
-   park.box(at(machine,0,.95,-.36),new THREE.Vector3(.99,1.76,.02),0x2b5054,false);
-   park.box(at(machine,-.14,1.15,.365),new THREE.Vector3(.61,.95,.03),0x1f3039,false);
-   for(let row=0;row<3;row++)for(let col=0;col<3;col++)park.box(at(machine,-.35+col*.21,.8+row*.3,.395),new THREE.Vector3(.105,.19,.025),[0x9ccfd4,0xea884b,0x84a762][row],false);
-   for(let row=0;row<4;row++)park.box(at(machine,.36,.85+row*.15,.37),new THREE.Vector3(.13,.07,.02),0xded4ac,false);
-   park.box(at(machine,0,.36,.365),new THREE.Vector3(.55,.17,.03),0x17272e,false);
+   vendingMachine(park,machine,yaw);
    this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING',[...ITEM_KINDS.map(kind=>({label:kind as string,detail:'Free · tap to pay with your phone',action:()=>this.vend(s,kind,machine)})),{label:'Cancel',detail:'',action:()=>{}}],'Pick a drink or snack')});
    }
    if(cluster.fountain===false)continue;
    const fountain=at(base,-spread,0,0);
-   park.box(at(fountain,0,.44,0),new THREE.Vector3(.28,.88,.36),0x748e86,true);
-   park.box(at(fountain,0,.9,0),new THREE.Vector3(.55,.1,.48),0xaec1b7,true);
-   park.box(at(fountain,.17,.99,.08),new THREE.Vector3(.06,.12,.07),0xd4ded2,false);
+   drinkingFountain(park,fountain,yaw);
    this.items.push({id:`fountain-${index}`,interactionType:'fountain',position:fountain,radius:1.5,prompt:()=> 'Use Fountain',action:s=>this.fountain(s,fountain)});
   }
   for(const bench of park.benches)this.items.push({id:bench.id,interactionType:'bench',position:new THREE.Vector3(bench.x,bench.base,bench.z),radius:Math.max(1.3,bench.length/2+.3),prompt:()=> 'Sit',action:()=>{}});

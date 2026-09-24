@@ -18,6 +18,10 @@ export class HUD {
   lineAge = 10;
   feedbackAge = 10;
   lineEnded = false;
+  /** The running line (#42): its points so far, and a note when it banks. */
+  private linePoints = 0;
+  private lineTricks = 0;
+  private bankedAge = 10;
   private displayKey = "";
   private attempt!:HTMLElement;
   private attemptAge = 0;
@@ -28,7 +32,7 @@ export class HUD {
     document.querySelector("#app")!.innerHTML = `
       <header><div class="location">${OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>"}<span id="score">SESH 0 / LINE 0</span></div></header>
       <div id="start" class="overlay"><div class="start-copy"><div class="eyebrow">AN INDOOR FREESTYLE SESH</div><h1>FIND<br>YOUR<br><i>FLOW.</i></h1><p>One scooter. An empty park.<br>Make your next line a little better.</p><button id="ride" class="primary">A <span>RIDE</span> ↗</button><div id="connection">Connect a controller · or press Enter</div><small>SCOOT WITH FRIENDS</small></div></div>
-      <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
+      <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-meter" hidden><span class="lm-count"></span><span class="lm-points"></span><i class="lm-timer"><b></b></i></div><div id="line-status"></div></div>
       <div id="feedback"></div>
       <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><u id="balance-command"></u><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
       <footer><div id="hint">A PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
@@ -67,6 +71,11 @@ export class HUD {
               ? ` ? ${Math.round(e.progress * 100)}%`
               : ""),
         );
+      // A line of two or more tricks that runs out its 3 s banks with a note.
+      if (e.type === "line" && e.ended && this.lineTricks >= 2 && this.linePoints > 0) {
+        document.querySelector("#line-status")!.textContent = `LINE BANKED · ${this.lineTricks} TRICKS · +${this.linePoints.toLocaleString()}`;
+        this.bankedAge = 0;
+      }
       if (e.type === "pump") this.feedback("PUMP");
       if (e.type === "fastplant" && e.phase === "armed") this.feedback("FASTPLANT ARMED");
       else if (e.type === "fastplant" && e.phase === "missed") this.feedback("NO PLANT / ROUGH LANDING", "warn");
@@ -182,7 +191,21 @@ export class HUD {
         else this.attempt.append(name,points);
       }
     }
-    document.querySelector('#line-status')!.textContent=view?view.status==='pending'?'PENDING':view.status==='landed'?'LANDED · BANKED':'ATTEMPT LOST':'';
+    this.bankedAge+=dt;
+    if(this.bankedAge>2)document.querySelector('#line-status')!.textContent=view?view.status==='pending'?'PENDING':view.status==='landed'?'LANDED · BANKED':'ATTEMPT LOST':'';
+    // The line meter: tricks and points in this line, its multiplier, and the
+    // 3 s the next trick has to land in to keep stacking (grinds, manuals and
+    // air keep it open).
+    const tricks=s.tricks.line.length,meter=document.querySelector('#line-meter') as HTMLElement;
+    meter.hidden=tricks===0;
+    if(tricks){
+      this.lineTricks=tricks;this.linePoints=s.score.line;
+      meter.querySelector('.lm-count')!.textContent=`LINE ×${s.score.multiplier.toFixed(2)} · ${tricks} TRICK${tricks>1?'S':''}`;
+      meter.querySelector('.lm-points')!.textContent=s.score.line.toLocaleString();
+      const left=Math.max(0,1-s.tricks.ordinary/TUNE.comboTimeout);
+      (meter.querySelector('.lm-timer b') as HTMLElement).style.transform=`scaleX(${left.toFixed(3)})`;
+      meter.classList.toggle('closing',left<.34);
+    }
     (
       document.querySelector('[data-action="marker"]') as HTMLButtonElement
     ).disabled = !s.marker.saved;

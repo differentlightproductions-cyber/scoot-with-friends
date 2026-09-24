@@ -18,12 +18,14 @@ test('a pre-avatar save migrates its gear once and keeps its scooter',()=>{
  const store=new Map<string,string>();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
  const original=loadProfile() as any;delete original.avatar;
- Object.assign(original,{riderId:'rider-03',bodyBuild:'chunky',outfit:{head:'head-vented-forest',top:'top-hoodie-red',bottom:'bottom-shorts-gray',shoes:'shoes-high-top-navy'}});original.settings.daylight='snow';
+ Object.assign(original,{riderId:'rider-03',bodyBuild:'chunky',outfit:{head:'head-vented-forest',top:'top-hoodie-red',bottom:'bottom-shorts-gray',shoes:'shoes-high-top-navy'}});original.settings.daylight='snow';delete original.settings.weather;
  store.set(PROFILE_KEY,JSON.stringify(original));
  const migrated=loadProfile();
  assert.equal(migrated.avatar.bodyType,'stocky');assert.equal(migrated.avatar.headwear,'helmet');assert.equal(migrated.avatar.headwearColor,'green');
  assert.equal(migrated.avatar.top,'hoodie');assert.equal(migrated.avatar.topColor,'red');assert.equal(migrated.avatar.bottom,'shorts');assert.equal(migrated.avatar.shoes,'high-top');assert.equal(migrated.avatar.shoeColor,'navy');
- assert.deepEqual(migrated.scooter,original.scooter);assert.equal(migrated.settings.daylight,'snow');
+ assert.deepEqual(migrated.scooter,original.scooter);
+ // Snow used to be a fifth time of day: it becomes snowy weather in the daytime.
+ assert.equal(migrated.settings.daylight,'day');assert.equal(migrated.settings.weather,'snow');
  assert.equal('riderId' in migrated||'outfit' in migrated||'bodyBuild' in migrated,false);
  assert.equal(saveProfile(migrated),true);assert.deepEqual(loadProfile().avatar,migrated.avatar);
 });
@@ -44,3 +46,24 @@ test('controls version 2: Normal is the default and old presets keep their physi
  }
 });
 
+test('time of day and weather are separate settings; a new rider starts on a sunny day', () => {
+ const store=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
+ const fresh=loadProfile();
+ assert.equal(fresh.settings.daylight,'day');assert.equal(fresh.settings.weather,'sunny');
+ fresh.settings.daylight='night';fresh.settings.weather='rain';assert.equal(saveProfile(fresh),true);
+ const back=loadProfile();assert.equal(back.settings.daylight,'night');assert.equal(back.settings.weather,'rain');
+ // Unknown values fall back to the defaults.
+ const bad=JSON.parse(store.get(PROFILE_KEY)!);bad.settings.daylight='noon';bad.settings.weather='hail';store.set(PROFILE_KEY,JSON.stringify(bad));
+ const safe=loadProfile();assert.equal(safe.settings.daylight,'day');assert.equal(safe.settings.weather,'sunny');
+});
+test('the flashlight starts on and the live sky off; both are saved, bad values ignored', () => {
+ const store=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
+ const fresh=loadProfile();
+ assert.equal(fresh.settings.flashlight,true);assert.equal(fresh.settings.liveSky,false);
+ fresh.settings.flashlight=false;fresh.settings.liveSky=true;saveProfile(fresh);
+ const back=loadProfile();assert.equal(back.settings.flashlight,false);assert.equal(back.settings.liveSky,true);
+ const bad=JSON.parse(store.get(PROFILE_KEY)!);bad.settings.flashlight='yes';bad.settings.liveSky=1;store.set(PROFILE_KEY,JSON.stringify(bad));
+ const safe=loadProfile();assert.equal(safe.settings.flashlight,true);assert.equal(safe.settings.liveSky,false);
+});

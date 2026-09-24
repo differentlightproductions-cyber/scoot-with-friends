@@ -44,6 +44,7 @@ import { WarehouseBuilder } from './editor/warehouse';
 import { Daylight } from './park/daylight';
 import { Weather } from './park/weather';
 import { ACTIVE_MAP } from './park/park';
+import { cityForMap, liveSky } from './park/liveSky';
 import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
 import { Phone } from './phone/phone';
@@ -106,12 +107,18 @@ async function boot() {
   economy.onGains=gains=>rewards.celebrate(gains);events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
-  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = new Weather(scene);
+  /** Weather for the loaded map; its lightning schedules thunder in the audio engine. */
+  function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength) => audio.thunder(delay, strength); return w; }
+  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
   // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
   const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
   let phoneAir = 0;
   // Hold D-pad Down to take the phone out or put it away; taps navigate inside it.
   const phoneHold = new HoldButton();
+  // A ring fills while D-pad Down is held, so the half-second hold reads as a hold.
+  const holdRing = document.createElement('div');
+  holdRing.id = 'phone-hold'; holdRing.hidden = true; holdRing.setAttribute('aria-hidden', 'true'); holdRing.innerHTML = '<i></i>';
+  document.querySelector('#app')!.append(holdRing);
   interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
@@ -431,7 +438,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=new Weather(scene);
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -575,8 +582,11 @@ async function boot() {
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
       // and not while the current one sits in a rack.
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
-    daylight.update(dt,profile.settings.daylight==='snow'?'day':profile.settings.daylight,sim.position,renderer);
-    weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
+    // "Match Boulder City now" (#48) swaps in the city's real time and weather, and turns the stars to the real hour.
+    const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
+    daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal});
+    weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
+    audio.weather(weather.rain);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     if (sim.swim && !sim.swim.out) waterEffects.swimmer(sim.position.x, sim.position.z, Math.hypot(sim.velocity.x, sim.velocity.z) > 0.6, dt);
@@ -713,6 +723,8 @@ async function boot() {
    */
   function phoneStep(frame: InputFrame, dt: number): InputFrame {
     const phoneHeld = phoneHold.update(frame.held.menuDown > 0.5 && social.chat.hidden, dt);
+    holdRing.hidden = phoneHold.progress < 0.25 || (!phone.active && !phoneAllowed());
+    if (!holdRing.hidden) holdRing.style.setProperty('--p', phoneHold.progress.toFixed(3));
     if (phone.active) {
       if (sim.state === "Bail") phone.stow();
       phoneAir = sim.grounded ? 0 : phoneAir + dt;

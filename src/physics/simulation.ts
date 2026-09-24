@@ -1148,6 +1148,8 @@ export class Simulation {
     this.speedWobble.amount = 0;
     this.tricks.finish("failed");
     this.tricks.reset();
+    // A bail loses the line: its tricks no longer count toward the next one.
+    this.tricks.line = [];
     this.charge = 0;
     this.hopBuffer = 0;
     this.spin = 0;
