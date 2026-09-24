@@ -12,7 +12,7 @@ import type { RiderModel } from '../scooter/model';
  */
 export const PHONE = { width: 0.078, height: 0.156, depth: 0.0105 };
 /** Phone centre in the hand frame, and the turn that lays it on the palm. */
-const IN_HAND = new THREE.Vector3(0, -0.0315, 0.094);
+const IN_HAND = new THREE.Vector3(0, -0.0335, 0.104);
 const HAND_TO_PHONE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 const PHONE_TO_HAND = HAND_TO_PHONE.clone().invert();
 /** Render layer of the first-person close-up (phone, hand and forearm). */
@@ -47,6 +47,9 @@ export class PhoneRig {
   private lightScan = 0;
   private layered = new Set<THREE.Object3D>();
   private readonly materials: THREE.Material[] = [];
+  /** Parts only seen from behind (camera bump, back sticker), left out of the first-person close-up. */
+  private readonly backParts: THREE.Object3D[] = [];
+  private closeUp = false;
   private readonly geometries: THREE.BufferGeometry[] = [];
 
   constructor(screenTexture: THREE.Texture) {
@@ -72,10 +75,10 @@ export class PhoneRig {
     this.screen = add(new THREE.PlaneGeometry(w - 0.012, (w - 0.012) * 2), display, 0, 0.001, d / 2 + 0.0006);
     this.screen.castShadow = false;
     // Camera bump, two lenses and a chrome ring, top left seen from the back.
-    add(new RoundedBoxGeometry(0.024, 0.034, 0.003, 2, 0.006), glass, 0.019, 0.05, -d / 2 - 0.001);
+    this.backParts.push(add(new RoundedBoxGeometry(0.024, 0.034, 0.003, 2, 0.006), glass, 0.019, 0.05, -d / 2 - 0.001));
     for (const y of [0.059, 0.042]) {
-      add(new THREE.CylinderGeometry(0.0055, 0.0055, 0.002, 20).rotateX(Math.PI / 2), lens, 0.019, y, -d / 2 - 0.0028);
-      add(new THREE.TorusGeometry(0.0058, 0.0009, 6, 20), chrome, 0.019, y, -d / 2 - 0.0028);
+      this.backParts.push(add(new THREE.CylinderGeometry(0.0055, 0.0055, 0.002, 20).rotateX(Math.PI / 2), lens, 0.019, y, -d / 2 - 0.0028));
+      this.backParts.push(add(new THREE.TorusGeometry(0.0058, 0.0009, 6, 20), chrome, 0.019, y, -d / 2 - 0.0028));
     }
     // Side buttons and a sticker on the back.
     add(new RoundedBoxGeometry(0.002, 0.022, 0.004, 1, 0.0009), chrome, w / 2 + 0.0006, 0.03, 0);
@@ -84,6 +87,9 @@ export class PhoneRig {
     back.rotation.y = Math.PI;
     back.rotation.z = 0.18;
     back.castShadow = false;
+    this.backParts.push(back);
+    // Close-up draw order: case, glass, then the screen (see layer()).
+    this.model.children.forEach((m, i) => (m.renderOrder = 20 + (m === this.screen ? 3 : i < 2 ? i : 2)));
     this.model.position.copy(IN_HAND);
     this.model.quaternion.copy(HAND_TO_PHONE);
     this.model.visible = false;
@@ -170,6 +176,13 @@ export class PhoneRig {
     for (const o of this.layered) if (!wanted.has(o)) { o.layers.set(0); this.layered.delete(o); }
     for (const o of wanted) if (!this.layered.has(o)) { o.layers.set(VIEWMODEL_LAYER); this.layered.add(o); }
     this.model.traverse(o => { if ((o as THREE.Mesh).isMesh) o.layers.set(closeUp ? VIEWMODEL_LAYER : 0); });
+    // In the close-up the phone is drawn after the hand and over it, so the
+    // wrist or sleeve can never show through the screen. Only its front is seen.
+    if (closeUp !== this.closeUp) {
+      this.closeUp = closeUp;
+      for (const m of this.materials) m.depthTest = !closeUp;
+      for (const part of this.backParts) part.visible = !closeUp;
+    }
   }
 
   /**
