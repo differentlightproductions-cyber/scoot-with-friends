@@ -1,0 +1,461 @@
+/* The Scoot with Friends look, 2000s scooter-mag (docs: the rider creator set it).
+   One kit shared by every screen: grip tape, stickers with hard offset shadows,
+   masking tape, chrome titles, Bungee and Permanent Marker. Each part of the
+   menu gets its own treatment so screens feel related, not identical:
+     home ............ zine cover: halftone paper, big sticker buttons
+     play / maps ..... VHS tape: black shell, rainbow stripe, cassette labels
+     rides / parts ... shop catalogue: graph paper, price-tag stickers
+     rider ........... sticker sheet on grip tape
+     settings ........ anodised plate with label-maker tape
+     trick book ...... photocopied zine with highlighter
+     pause ........... clipboard, sticker-bombed
+   Fonts come from creator.css (@font-face Bungee, Marker). */
+:root {
+  --ink: #0b0c0d;
+  --paper: #f4f1e8;
+  --lime: #c6ff00;
+  --orange: #ff5a1f;
+  --teal: #1ecbe1;
+  --pink: #ff4fa3;
+  --sun: #ffd23f;
+  --display: Bungee, ParkDisplay, Impact, "Arial Black", sans-serif;
+  --marker: Marker, "Comic Sans MS", cursive;
+  --body: system-ui, "Segoe UI", Roboto, sans-serif;
+  --grip:
+    radial-gradient(circle at 20% 30%, #ffffff0d 0 1px, transparent 1.4px) 0 0 / 7px 7px,
+    radial-gradient(circle at 70% 60%, #00000055 0 1px, transparent 1.6px) 0 0 / 5px 5px,
+    radial-gradient(circle at 40% 80%, #ffffff09 0 1px, transparent 1.3px) 0 0 / 11px 11px,
+    linear-gradient(160deg, #202327, #15171a 60%, #111315);
+}
+
+/* ---- Shared kit ------------------------------------------------------------ */
+#start:not([data-screen="creator"]) {
+  background:
+    radial-gradient(120% 90% at 0% 50%, #0b0c0dcc 0%, #0b0c0d88 42%, transparent 70%);
+}
+#start.shop-overlay:not([data-screen="creator"]) { background: radial-gradient(120% 90% at 0% 50%, #0b0c0dcc 0%, #0b0c0d77 45%, transparent 72%) !important; }
+#start.sesh-overlay:not([data-screen="creator"]) { background: linear-gradient(90deg, #0b0c0dd9 0%, #0b0c0d99 40%, #0b0c0d33 70%) !important; backdrop-filter: saturate(0.8); }
+#start .game-menu {
+  --face: var(--paper);
+  --face-ink: var(--ink);
+  --pick: var(--lime);
+  --pick-shadow: var(--orange);
+  left: clamp(14px, 3.2vw, 46px);
+  top: clamp(14px, 5vh, 54px);
+  bottom: clamp(14px, 4vh, 44px);
+  width: min(36vw, 480px);
+  max-width: none;
+  padding: 18px 20px 14px;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  background: var(--grip);
+  color: var(--paper);
+  box-shadow: 8px 8px 0 var(--orange), 0 22px 60px #0009;
+  font-family: var(--body);
+}
+#start .game-menu .eyebrow {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 5px 12px 4px;
+  font: 11px/1.2 var(--display);
+  letter-spacing: 1.5px;
+  color: var(--ink);
+  background: #efe3b8;
+  border-left: 2px dashed #0002;
+  border-right: 2px dashed #0002;
+  transform: rotate(-2deg);
+  box-shadow: 2px 2px 0 #0004;
+}
+#start .game-menu h1 {
+  margin: 12px 0 14px;
+  font: clamp(30px, 3.6vw, 52px)/0.98 var(--display);
+  letter-spacing: 0;
+  background: linear-gradient(180deg, #ffffff 0%, #e6edf3 40%, #7f8c99 50%, #f6f9fc 58%, #aab5c1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--ink);
+  filter: drop-shadow(3px 3px 0 var(--orange));
+  transform: skew(-6deg);
+  transform-origin: left;
+}
+#start .game-menu nav { padding: 4px 8px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--lime) transparent; }
+#start .game-menu button {
+  position: relative;
+  margin: 0 0 9px;
+  padding: 11px 14px 10px;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  background: var(--face);
+  color: var(--face-ink);
+  font: 15px/1.2 var(--display);
+  letter-spacing: 0.3px;
+  text-align: left;
+  box-shadow: 4px 4px 0 var(--ink);
+  transition: transform 0.08s, box-shadow 0.08s, background 0.08s;
+}
+#start .game-menu button small {
+  display: block;
+  margin-top: 4px;
+  font: 600 13px/1.35 var(--body);
+  letter-spacing: 0;
+  color: #3b4148;
+}
+#start .game-menu button.selected,
+#start .game-menu button:focus-visible {
+  background: var(--pick);
+  color: var(--ink);
+  outline: none;
+  transform: translate(-2px, -2px) rotate(-0.6deg);
+  box-shadow: 6px 6px 0 var(--pick-shadow);
+}
+#start .game-menu button.selected small { color: #20252a; }
+#start .game-menu button.chosen { box-shadow: 4px 4px 0 var(--ink), inset 6px 0 0 var(--teal); }
+#start .game-menu button b {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: var(--teal);
+  color: var(--ink);
+  font: 13px/1 var(--display);
+  transform: rotate(8deg);
+}
+#start .game-menu button:disabled { opacity: 0.55; }
+#start .game-menu .menu-save-note { margin: 8px 0 4px; font: 600 12px/1.4 var(--body); color: #c9d2dc; }
+#start .game-menu .menu-controls { font: 700 10.5px/1.5 var(--body); letter-spacing: 0.6px; color: #8d98a3; }
+#start .game-menu .build-number { color: #6f7a85; letter-spacing: 1.5px; }
+#start .game-menu .menu-grid { gap: 10px; }
+#start .game-menu .menu-grid button.menu-cell { margin: 0; min-height: 64px; border-radius: 12px; font-size: 13px; }
+#start .game-menu nav button.menu-page { background: #2a2e33; color: var(--paper); box-shadow: 3px 3px 0 var(--ink); }
+#start .game-menu nav button.menu-page.selected { background: var(--pick); color: var(--ink); }
+#start .colorway-swatch { border: 2px solid var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+
+/* The preview window on the right is a taped-up print. */
+#start .preview-frame {
+  position: absolute;
+  left: 40vw;
+  top: 18vh;
+  width: 55vw;
+  height: 62vh;
+  pointer-events: none;
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 7px var(--paper), inset 0 0 0 10px var(--ink), 10px 10px 0 #0b0c0d99;
+}
+#start .preview-frame .pf-tape {
+  position: absolute;
+  width: 120px;
+  height: 28px;
+  background: #efe3b8d9;
+  border-left: 2px dashed #0002;
+  border-right: 2px dashed #0002;
+  box-shadow: 1px 2px 0 #0003;
+}
+#start .preview-frame .pf-tape:nth-of-type(1) { top: -14px; left: 26px; transform: rotate(-6deg); }
+#start .preview-frame .pf-tape:nth-of-type(2) { bottom: -12px; right: 30px; transform: rotate(4deg); }
+#start .preview-frame .pf-label {
+  position: absolute;
+  right: 22px;
+  top: 20px;
+  padding: 5px 10px 4px;
+  font: 12px/1 var(--display);
+  color: var(--ink);
+  background: var(--lime);
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--ink);
+  transform: rotate(3deg);
+}
+#start .preview-frame[data-mood="dusk"] .pf-label::before { content: "● "; color: #e0162b; }
+
+/* ---- HOME: zine cover ------------------------------------------------------- */
+#start[data-screen="home"] .game-menu {
+  background:
+    radial-gradient(circle, #0b0c0d14 1.2px, transparent 1.6px) 0 0 / 9px 9px,
+    linear-gradient(170deg, #fff7e6, #f4e9d2);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 var(--pink), 0 22px 60px #0009;
+  transform: rotate(-0.6deg);
+}
+#start[data-screen="home"] .game-menu .eyebrow { background: var(--ink); color: var(--lime); }
+#start[data-screen="home"] .game-menu h1 {
+  font-size: clamp(38px, 4.6vw, 70px);
+  background: none;
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  filter: drop-shadow(4px 4px 0 var(--sun));
+}
+#start[data-screen="home"] .game-menu h1::after {
+  content: "ISSUE #1 · BOULDER CITY, NV";
+  display: block;
+  margin-top: 8px;
+  font: 18px/1 var(--marker);
+  color: var(--orange);
+  transform: rotate(-3deg) skew(6deg);
+}
+#start[data-screen="home"] .game-menu button { font-size: 18px; }
+#start[data-screen="home"] .game-menu button:nth-child(-n+2) {
+  padding: 16px 16px 14px;
+  font-size: 26px;
+  color: var(--ink);
+  outline: none;
+}
+#start[data-screen="home"] .game-menu button:nth-child(1) { background: var(--orange); transform: rotate(-1.2deg); }
+#start[data-screen="home"] .game-menu button:nth-child(2) { background: var(--teal); transform: rotate(0.9deg); }
+#start[data-screen="home"] .game-menu button:nth-child(3) { transform: rotate(-0.5deg); }
+#start[data-screen="home"] .game-menu button:nth-child(4) { transform: rotate(0.6deg); }
+#start[data-screen="home"] .game-menu button:nth-child(-n+2) small { color: #1a1d20; font-size: 14px; }
+#start[data-screen="home"] .game-menu button.selected,
+#start[data-screen="home"] .game-menu button:focus-visible {
+  background: var(--lime);
+  color: var(--ink);
+  outline: none;
+  box-shadow: 7px 7px 0 var(--ink);
+  transform: translate(-2px, -3px) rotate(-1.5deg) scale(1.02);
+}
+#start[data-screen="home"] .game-menu button.selected span::before { content: "▶ "; color: var(--ink); }
+#start[data-screen="home"] .game-menu .menu-save-note,
+#start[data-screen="home"] .game-menu .menu-controls,
+#start[data-screen="home"] .game-menu .build-number { color: #5a5146; }
+
+/* ---- PLAY / MAPS / ONLINE: VHS tape ----------------------------------------------- */
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu {
+  --face: #fbfbf5;
+  --pick: var(--sun);
+  --pick-shadow: var(--pink);
+  background:
+    linear-gradient(180deg, transparent 0 58px, #e0162b 58px 66px, #ff8a1f 66px 74px, #ffd23f 74px 82px, #1ecbe1 82px 90px, #7a4dff 90px 98px, transparent 98px),
+    repeating-linear-gradient(0deg, #ffffff05 0 2px, transparent 2px 4px),
+    linear-gradient(160deg, #1a1b1e, #0b0c0d);
+  box-shadow: 8px 8px 0 var(--teal), 0 22px 60px #0009;
+}
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu .eyebrow { background: var(--paper); transform: none; }
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu h1 { margin-top: 58px; filter: drop-shadow(3px 3px 0 #7a4dff); }
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu button {
+  border-radius: 4px;
+  padding-left: 22px;
+  background: linear-gradient(90deg, #e0162b 0 8px, var(--face) 8px);
+  font-family: var(--display);
+}
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu button.selected {
+  background: linear-gradient(90deg, var(--ink) 0 8px, var(--pick) 8px);
+}
+#start:is([data-screen="play"], [data-screen="maps"], [data-screen="travel"], [data-screen="online"]) .game-menu button.selected span::after { content: "  ▶ PLAY"; font-size: 0.72em; color: #e0162b; }
+#start .map-list-thumb { border: 2px solid var(--ink); border-radius: 3px; }
+#start .map-preview {
+  padding: 14px 14px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 4px;
+  box-shadow: 10px 10px 0 #0b0c0d99;
+  transform: rotate(1.2deg);
+}
+#start .map-preview img { border-radius: 2px !important; border: 2px solid var(--ink); }
+#start .map-preview h2 { font-family: var(--display); letter-spacing: 0; }
+#start .map-preview .eyebrow { font: 12px/1.2 var(--marker); letter-spacing: 0.5px; color: var(--orange); }
+
+/* ---- RIDES / PARTS / SHOPS: shop catalogue ----------------------------------------- */
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu {
+  --face: #fffdf6;
+  --pick: var(--sun);
+  --pick-shadow: var(--ink);
+  background:
+    linear-gradient(#1ecbe122 1px, transparent 1px) 0 0 / 100% 18px,
+    linear-gradient(90deg, #1ecbe122 1px, transparent 1px) 0 0 / 18px 100%,
+    linear-gradient(170deg, #fbf6e8, #efe6cf);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 var(--ink), 0 22px 60px #0009;
+}
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu h1 {
+  background: none;
+  color: var(--ink);
+  -webkit-text-stroke: 0;
+  filter: drop-shadow(3px 3px 0 var(--sun));
+}
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu .eyebrow {
+  background: none;
+  border: 2px solid #c4161c;
+  color: #c4161c;
+  border-radius: 4px;
+  transform: rotate(-4deg);
+  box-shadow: none;
+}
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu button {
+  border-width: 2px;
+  border-radius: 6px 6px 6px 22px;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu .menu-save-note,
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu .menu-controls { color: #5a5146; }
+#start:is([data-screen="rides"], [data-screen="scooter"], [data-screen="brand"], [data-screen="brand-items"], [data-screen="purchase"], [data-screen="purchased"], [data-screen="longboard"], [data-screen="board-complete"], [data-screen="board-purchase"], [data-screen="shop"], [data-screen="shops"]) .game-menu button b { background: var(--sun); }
+
+/* ---- RIDER: sticker sheet on grip ------------------------------------------------------- */
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu { box-shadow: 8px 8px 0 var(--teal), 0 22px 60px #0009; }
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu button { border-radius: 999px; padding-left: 20px; }
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu button:nth-child(3n+1) { --face: #fff; }
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu button:nth-child(3n+2) { --face: #ffe8f3; }
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu button:nth-child(3n) { --face: #e5fbff; }
+#start:is([data-screen="rider"], [data-screen="rider-presets"]) .game-menu button small { font-size: 12px; }
+
+/* ---- SETTINGS: anodised plate + label-maker tape ---------------------------------------- */
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu {
+  --pick: #111;
+  background:
+    radial-gradient(circle at 16px 16px, #7d858e 0 5px, #3a4047 5.5px 6.5px, transparent 7px),
+    radial-gradient(circle at calc(100% - 16px) 16px, #7d858e 0 5px, #3a4047 5.5px 6.5px, transparent 7px),
+    radial-gradient(circle at 16px calc(100% - 16px), #7d858e 0 5px, #3a4047 5.5px 6.5px, transparent 7px),
+    radial-gradient(circle at calc(100% - 16px) calc(100% - 16px), #7d858e 0 5px, #3a4047 5.5px 6.5px, transparent 7px),
+    repeating-linear-gradient(90deg, #ffffff06 0 1px, transparent 1px 3px),
+    linear-gradient(160deg, #3a3f7a, #262a55 60%, #1c1f40);
+  box-shadow: 8px 8px 0 var(--pink), 0 22px 60px #0009;
+}
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu h1 { filter: drop-shadow(3px 3px 0 var(--pink)); }
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button {
+  border: 0;
+  border-radius: 3px;
+  padding: 10px 14px 9px;
+  background: linear-gradient(180deg, #2b2b2e, #141416);
+  color: #f2f2f2;
+  font: 14px/1.2 var(--display);
+  letter-spacing: 2.4px;
+  text-shadow: 0 1px 0 #000, 0 -1px 0 #ffffff33;
+  box-shadow: 0 2px 0 #000, 3px 4px 0 #0006;
+}
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button small { color: #b9c0c8; letter-spacing: 0; text-shadow: none; }
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button:nth-child(4n+2) { background: linear-gradient(180deg, #c62828, #8e1616); }
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button:nth-child(4n+3) { background: linear-gradient(180deg, #1f5fbf, #133c80); }
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button.selected {
+  background: var(--lime);
+  color: var(--ink);
+  text-shadow: none;
+  box-shadow: 0 2px 0 #000, 5px 6px 0 var(--pink);
+}
+#start:is([data-screen^="settings"], [data-screen="test-controller"], [data-screen="test-credit"]) .game-menu button.selected small { color: #1a1d20; }
+
+/* ---- TRICK BOOK: photocopied zine ----------------------------------------------------- */
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu {
+  --face: transparent;
+  background:
+    radial-gradient(circle at 30% 20%, #0000000d 0 1px, transparent 1.5px) 0 0 / 4px 4px,
+    radial-gradient(circle at 80% 70%, #00000014 0 1px, transparent 1.4px) 0 0 / 6px 6px,
+    linear-gradient(175deg, #fdfdfb, #eceae4);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 var(--sun), 0 22px 60px #0009;
+}
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu h1 { background: none; color: var(--ink); -webkit-text-stroke: 0; font-family: var(--marker); font-size: clamp(32px, 3.8vw, 54px); filter: none; }
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu button {
+  border: 0;
+  border-bottom: 2px dashed #0b0c0d44;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 10px 6px;
+  font-size: 15px;
+}
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu button small { font-size: 13.5px; color: #2b3035; }
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu button.selected {
+  background: linear-gradient(transparent 8%, #faff69cc 8% 88%, transparent 88%);
+  transform: none;
+  box-shadow: none;
+}
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu .menu-save-note,
+#start:is([data-screen="guide"], [data-screen="tricks"]) .game-menu .menu-controls { color: #5a5146; }
+
+/* ---- PAUSE: clipboard ------------------------------------------------------------------- */
+#pause { background: linear-gradient(90deg, #0b0c0dcc, #0b0c0d66 55%, #0b0c0d22) !important; }
+#pause .pause-sheet {
+  position: relative;
+  padding: 40px 22px 18px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background:
+    linear-gradient(#0000 0 0) padding-box,
+    linear-gradient(170deg, #fffaf0, #efe6d3);
+  color: var(--ink);
+  box-shadow: 8px 8px 0 var(--orange), 0 22px 60px #0009;
+  font-family: var(--body);
+}
+#pause .pause-sheet::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -16px;
+  width: 120px;
+  height: 36px;
+  transform: translateX(-50%);
+  border: 3px solid var(--ink);
+  border-radius: 8px 8px 12px 12px;
+  background: linear-gradient(180deg, #f6f9fc, #aab5c1 50%, #e6edf3);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+#pause .pause-sheet .eyebrow { display: inline-block; padding: 4px 10px; font: 11px/1.2 var(--display); letter-spacing: 1.5px; background: var(--ink); color: var(--lime); transform: rotate(-2deg); }
+#pause .pause-sheet h2 { font: 40px/0.95 var(--display); letter-spacing: 0; margin: 12px 0 14px; filter: drop-shadow(3px 3px 0 var(--teal)); }
+#pause .pause-sheet button {
+  margin: 0 0 7px;
+  padding: 10px 13px;
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  font: 14px/1.2 var(--display);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+#pause .pause-sheet button:nth-of-type(1) { background: var(--orange); font-size: 18px; }
+#pause .pause-sheet button:hover,
+#pause .pause-sheet button.selected { background: var(--lime); color: var(--ink); transform: translate(-1px, -2px); box-shadow: 5px 5px 0 var(--orange); }
+#pause .pause-sheet select { border: 3px solid var(--ink); border-radius: 8px; font: 600 13px var(--body); }
+#pause .pause-sheet label { font: 11px/1.2 var(--display); letter-spacing: 1px; }
+#pause .pause-sheet p { font: 600 12px/1.5 var(--body); color: #5a5146; }
+
+/* ---- HUD --------------------------------------------------------------------------------- */
+.wordmark {
+  font-family: var(--display);
+  font-style: normal;
+  font-size: 34px;
+  letter-spacing: 0;
+  color: var(--paper);
+  -webkit-text-stroke: 1.5px var(--ink);
+  filter: drop-shadow(3px 3px 0 var(--orange));
+}
+.wordmark span { font: 13px/1 var(--marker); letter-spacing: 1px; color: var(--lime); -webkit-text-stroke: 0; transform: rotate(-3deg); }
+.location {
+  padding: 7px 12px 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font: 12px/1.2 var(--display);
+  letter-spacing: 1px;
+  border-radius: 6px;
+  box-shadow: 3px 3px 0 var(--orange);
+  text-shadow: none;
+}
+.location b { font: 28px var(--display); color: var(--lime); }
+.location span { font: 700 11px/1.3 var(--body); letter-spacing: 1px; color: var(--lime); }
+.riding header { text-shadow: none; }
+.world-prompt {
+  padding: 9px 16px 8px !important;
+  border: 3px solid var(--ink);
+  border-radius: 10px !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  font: 13px/1.2 var(--display) !important;
+  box-shadow: 4px 4px 0 var(--ink);
+}
+#feedback { font-family: var(--display); letter-spacing: 0.5px; background: #0b0c0dcc; border: 2px solid var(--ink); color: var(--paper); }
+#line-label { font: 11px/1 var(--display); letter-spacing: 1.5px; color: var(--lime); }
+#line-text { font-family: var(--display); letter-spacing: 0; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; }
+.network-status { font-family: var(--display); letter-spacing: 1px; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+#loading { font-family: var(--display); letter-spacing: 1px; }
+
+@media (max-width: 820px), (max-aspect-ratio: 1/1) {
+  #start .game-menu { width: auto; right: clamp(14px, 3vw, 30px); }
+  #start .preview-frame { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #start .game-menu button { transition: none; }
+}

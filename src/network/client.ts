@@ -18,7 +18,7 @@ export function capture(s:Simulation){
 type Remote={model:RiderModel;name:string;label:HTMLDivElement;samples:{at:number;state:any}[];appearance:string;chat:string;chatUntil:number};
 export class FreeRide {
  badge=document.createElement('div');ws:WebSocket|null=null;id='';code='';secret='';generation='';owner='';locked=false;status='Solo';lastError='';roster:any[]=[];remotes=new Map<string,Remote>();muted=new Set<string>();
- map='outdoor';loadMap=async(_map:string)=>{};prepare=async()=>{};onChange=()=>{};onLost=()=>{};onJoined=()=>{};seq=0;private timer:number;private intentional=false;private retryUntil=0;
+ map='outdoor';loadMap=async(_map:string)=>{};prepare=async()=>{};onChange=()=>{};onChat=(_name:string,_message:string)=>{};onLost=()=>{};onJoined=()=>{};seq=0;private timer:number;private intentional=false;private retryUntil=0;
  constructor(private scene:THREE.Scene,private profile:LocalProfile,private sim:()=>Simulation){this.badge.className='network-status';this.badge.hidden=true;document.body.append(this.badge);try{const saved=JSON.parse(sessionStorage.getItem('swf-room-resume')||'null');if(saved?.endpoint===this.endpoint){this.secret=saved.secret;this.code=saved.code;}}catch{}this.timer=window.setInterval(()=>{if(this.status==='Connected'&&!document.hidden)this.send({type:'pose',seq:++this.seq,generation:this.generation,pose:capture(this.sim())});},50);}
  get lan(){return ['127.0.0.1','localhost'].includes(location.hostname)&&(window as any).__SWF_LAN__===true;}
  get endpoint(){return this.lan?'ws://'+location.host+'/lan-room':import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
@@ -41,7 +41,7 @@ export class FreeRide {
     for(const [id]of this.remotes)if(!m.players.some((p:any)=>p.id===id))this.remove(id);
    }
    if(m.type==='snapshot'&&m.generation===this.generation){const at=performance.now();for(const p of m.players){const r=this.remotes.get(p.id);if(!r)continue;const last=r.samples.at(-1);if(last&&new THREE.Vector3(...p.pose.position).distanceTo(new THREE.Vector3(...last.state.position))>8)r.samples=[];r.samples.push({at,state:p.pose});if(r.samples.length>8)r.samples.shift();}}
-   if(m.type==='chat'&&!this.muted.has(m.id)){const r=this.remotes.get(m.id);if(r){r.chat=m.message;r.chatUntil=performance.now()+5000;}}
+   if(m.type==='chat'&&!this.muted.has(m.id)){const r=this.remotes.get(m.id);if(r){r.chat=m.message;r.chatUntil=performance.now()+5000;}if(m.id!==this.id)this.onChat(r?.name??'Rider',String(m.message).slice(0,120));}
    if(m.type!=='snapshot')this.onChange();
   };
   ws.onclose=e=>{if(this.ws!==ws)return;this.onLost();if(this.intentional||[4001,4003].includes(e.code)){this.status='Disconnected';this.clear();}else if(this.secret){this.retryUntil||=Date.now()+30000;if(Date.now()<this.retryUntil){this.status='Reconnecting';window.setTimeout(()=>{if(!this.intentional)this.connect('resume');},1000);}else{this.status='Disconnected';this.clear();}}else this.status='Disconnected';this.onChange();};

@@ -4,11 +4,11 @@ import {catalogEntry,completeBoardSelections,bundlePrice,ownsBoard} from '../dat
 import {LONGBOARD_CATEGORIES,LONGBOARD_PARTS,longboardPart,type LongboardCategory} from '../data/longboardParts';
 import { AVATAR_PRESETS, randomAvatar } from '../avatar/config';
 import { RiderCreator, type Framing } from './creator';
-import { creatorBackdrop } from './creator-backdrop';
+import { creatorBackdrop, type BackdropMood } from './creator-backdrop';
 import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryItem,type BrowseMode} from '../data/inventory';
 import {AccountPanel} from './account';
 import {loadProfile} from '../data/loadout';
-import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN} from '../camera/fov';
+import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN,TP_FOV_DEFAULT,TP_FOV_MAX,TP_FOV_MIN,TP_FOV_STEP} from '../camera/fov';
 import { version } from '../../package.json';
 import * as THREE from "three";
 import { MAPS, type MapId } from "../data/maps";
@@ -23,6 +23,7 @@ import { saveProfile, type LocalProfile } from "../data/loadout";
 import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
 import { presetName } from "../input/riding";
+import './theme.css';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
@@ -192,9 +193,14 @@ export class GameMenu {
     const light = new THREE.DirectionalLight(0xffffff, 3);
     light.position.set(-3, 5, 4);
     this.previewScene.add(light);
+    // A soft disc the rider stands on, fading into the painted backdrop (no hard edge).
+    const fade = Object.assign(document.createElement('canvas'), { width: 256, height: 256 }), fg = fade.getContext('2d')!;
+    const radial = fg.createRadialGradient(128, 128, 0, 128, 128, 128);
+    radial.addColorStop(0, '#fff'); radial.addColorStop(0.55, '#fff'); radial.addColorStop(1, '#000');
+    fg.fillStyle = radial; fg.fillRect(0, 0, 256, 256);
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(5, 48),
-      new THREE.MeshStandardMaterial({ color: 0xb6beb2, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0xb6beb2, roughness: 1, transparent: true, alphaMap: new THREE.CanvasTexture(fade), depthWrite: false }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.01;
@@ -210,12 +216,12 @@ export class GameMenu {
     if(this.screen==='creator'&&screen!=='creator')this.leaveCreator();
     const entering=screen==='creator'&&this.screen!=='creator';
     this.screen = screen;
-    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop();this.creator.start(this.root,this.profile.avatar);return;}
+    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop('dusk');this.creator.start(this.root,this.profile.avatar);return;}
     // A direction still held from the previous screen waits before repeating here.
     this.repeatTimer=Math.max(this.repeatTimer,.38);
     this.render();
   }
-  private leaveCreator(){this.creator.stop();this.previewRider.setAvatar(this.profile.avatar);this.previewScene.background=new THREE.Color(0xc5cbc1);this.orbitGoal=null;this.focusKey='__creator';}
+  private leaveCreator(){this.creator.stop();this.previewRider.setAvatar(this.profile.avatar);this.orbitGoal=null;this.focusKey='__creator';}
   private changed() {
     if(this.seshOpen){this.previewRider.applyProfile(this.profile);return;}
     this.saveFailed = !saveProfile(this.profile);
@@ -299,7 +305,8 @@ export class GameMenu {
         add("CLAMP GRAB", () => {}, "In the air, hold RT + RB: one hand stays on the bar and the other holds the clamp (Regular: right hand, Goofy: left hand). The buttons are the same in both stances. Release to return the hand; it also lets go just before landing. Works with spins and flips; not during bar spins or finger whips.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y Superman; LT + Y deck grab; LT + LB + Y tuck. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
-        add("ON-FOOT SOCIAL", () => {}, "Hold D-pad Left and choose with RS, release to emote or build in the Warehouse. Hold D-pad Right for local chat. Enter sends; Esc/B cancels. Private room chat is shared with connected friends; solo chat stays local.");
+        add("YOUR PHONE", () => {}, "D-pad Down takes your phone out, standing or rolling on the ground: Music, Emotes, Rides, Rider, Map, Items, Build and Messages. LS moves, A opens, B goes back, Y home, D-pad Down puts it away. Riding, you coast while you look.");
+        add("ON-FOOT SOCIAL", () => {}, "Emotes are on the phone. Hold D-pad Right for chat; Enter sends, Esc/B cancels. Private room chat is shared with connected friends; solo chat stays local.");
         add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
         break;
       case 'travel':
@@ -407,6 +414,7 @@ export class GameMenu {
         add('GRAPHICS',()=>this.show('settings-graphics'),'Visual quality and rider detail');
         add('TIME & WEATHER',()=>this.show('settings-time'),'Day, sunset, night, sunrise or snow');
         add('AUDIO',()=>this.show('settings-audio'),'Game sound');
+        add('PHONE',()=>this.show('settings-phone'),'Which hand holds it, notifications');
         add('ACCESSIBILITY & TOUCH',()=>this.show('settings-touch'),'Touch controls, size, opacity and reset');
         if(this.owner())add('OWNER / ALPHA TEST CREDIT',()=>this.show('test-credit'),'Local testing only; separate from earned Credit.');
         break;
@@ -434,10 +442,17 @@ export class GameMenu {
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
         add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=FP_FOV_MAX?FP_FOV_MIN:c.firstPersonFov+5;}),`Horizontal field of view, ${FP_FOV_MIN}° to ${FP_FOV_MAX}°. Default ${FP_FOV_DEFAULT}°.`);
+        add('THIRD PERSON FOV '+this.profile.settings.thirdPersonFov+'°',()=>camera(c=>{c.thirdPersonFov=c.thirdPersonFov>=TP_FOV_MAX?TP_FOV_MIN:Math.min(TP_FOV_MAX,c.thirdPersonFov+TP_FOV_STEP);}),`Chase camera, horizontal on a widescreen, ${TP_FOV_MIN}° to ${TP_FOV_MAX}°. Default ${TP_FOV_DEFAULT}°.`);
         add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
         add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
         if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');
         break;
+      case 'settings-phone':{
+        title='PHONE';subtitle='SETTINGS / D-PAD DOWN IN THE SESH';
+        const phone=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
+        add('PHONE HAND '+this.profile.settings.phoneHand.toUpperCase(),()=>phone(c=>{c.phoneHand=c.phoneHand==='right'?'left':'right';}),'The hand that holds the phone, in first and third person. Riding, the other hand keeps the bar.');
+        add('NOTIFICATIONS '+(this.profile.settings.phoneNotifications?'ON':'OFF'),()=>phone(c=>{c.phoneNotifications=!c.phoneNotifications;}),'Small pop-ups for new messages, now playing and saves. They never open the phone.');
+        break;}
       case 'settings-touch':
         title='ACCESSIBILITY & TOUCH';subtitle='SETTINGS / ON-SCREEN CONTROLS';
         const touch=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
@@ -467,7 +482,7 @@ export class GameMenu {
     this.cellCount=this.choices.filter(c=>c.cell).length;
     const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -658,6 +673,18 @@ export class GameMenu {
     this.zoom = THREE.MathUtils.clamp(this.zoom + input.ry * dt * 1.5, this.shopOpen?.06:.8, 7);
     if (Math.abs(input.ry) > 0.05) this.zoomTarget = this.zoom;
   }
+  /** Screens with the 3D rider/ride preview on the right. */
+  showsPreview(){return !["maps","shops","play","online","settings","guide","tricks","leave-sesh"].includes(this.screen)&&!this.screen.startsWith('settings-');}
+  /** The painted set for the current screen (see creator-backdrop.ts). */
+  backdropMood():BackdropMood{
+    const s=this.screen;
+    if(['rides','scooter','brand','brand-items','purchase','purchased','longboard','board-complete','board-purchase','shop','shops'].includes(s))return 'shop';
+    if(['rider','rider-presets'].includes(s))return 'sunrise';
+    if(s==='maps'||s==='play'||s==='travel'||s==='online')return 'noon';
+    if(s.startsWith('settings')||s==='test-controller'||s==='test-credit')return 'night';
+    if(s==='guide'||s==='tricks')return 'sunrise';
+    return 'dusk';
+  }
   preview(renderer: THREE.WebGLRenderer) {
     this.previewRider.posePreviewHands(performance.now()/1000);
     const scooter=["rides","scooter","brand","brand-items","purchase","purchased","longboard","board-complete","board-purchase","shop"].includes(this.screen);
@@ -666,17 +693,19 @@ export class GameMenu {
     const compact=true,stage=this.screen==='creator'?this.root.querySelector('.cr-stage')?.getBoundingClientRect():undefined;
     let x=compact?Math.round(innerWidth*.40):0,w=compact?Math.round(innerWidth*.55):innerWidth,h=compact?Math.round(innerHeight*.62):innerHeight,y=compact?Math.round(innerHeight*.20):0;
     if(stage&&stage.width>0){x=Math.round(stage.left);w=Math.round(stage.width);h=Math.round(stage.height);y=Math.round(innerHeight-stage.bottom);}
-    // The creator's painted backdrop covers the stage without stretching (keeps the horizon band).
+    // Each part of the menu has its own painted set; it covers the stage without stretching (keeps the horizon band).
+    const mood=this.backdropMood();
+    if(this.previewScene.background!==creatorBackdrop(mood))this.previewScene.background=creatorBackdrop(mood);
     const backdrop=this.previewScene.background;
     if(backdrop instanceof THREE.Texture){const a=w/Math.max(1,h);if(a>=1){backdrop.repeat.set(1,1/a);backdrop.offset.set(0,(1-1/a)*.42);}else{backdrop.repeat.set(a,1);backdrop.offset.set((1-a)*.5,0);}}
-    if(floor instanceof THREE.Mesh)(floor.material as THREE.MeshStandardMaterial).color.setHex(this.screen==='creator'?0xd9c8ae:0xb6beb2);
+    if(floor instanceof THREE.Mesh)(floor.material as THREE.MeshStandardMaterial).color.setHex(({dusk:0xd9c8ae,noon:0xe6d2ae,night:0x8f8aa8,shop:0xc9a27a,sunrise:0xe9d3dc} as Record<BackdropMood,number>)[mood]);
     const center=this.focus.clone().add(this.pan);
     const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
     this.previewCamera.aspect=w/h;
     this.previewCamera.position.set(this.focus.x+this.pan.x+Math.sin(this.orbit)*distance,this.focus.y+this.pan.y+distance*.22,this.focus.z+this.pan.z+Math.cos(this.orbit)*distance);
     this.previewCamera.lookAt(center);this.previewCamera.updateProjectionMatrix();
     if(compact){renderer.setViewport(x,y,w,h);renderer.setScissor(x,y,w,h);renderer.setScissorTest(true);}
-    if(!["maps","shops","play","online","settings","guide","tricks","leave-sesh"].includes(this.screen)&&!this.screen.startsWith('settings-'))renderer.render(this.previewScene,this.previewCamera);
+    if(this.showsPreview())renderer.render(this.previewScene,this.previewCamera);
     if(compact){renderer.setScissorTest(false);renderer.setViewport(0,0,innerWidth,innerHeight);}
   }
 }

@@ -5,7 +5,7 @@ import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import type { RiderModel } from "../scooter/model";
 import { terrainHeight } from "../park/park";
-import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN } from "./fov";
+import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, thirdPersonVertical } from "./fov";
 
 const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0);
 /** Very wide horizontal settings on a tall screen would become a fisheye; cap the vertical angle. */
@@ -35,6 +35,10 @@ export class ChaseCamera {
   view: "third" | "first" = "third";
   /** Horizontal degrees; converted to the camera's vertical FOV for the aspect. */
   firstPersonFov = FP_FOV_DEFAULT;
+  /** Third-person horizontal field of view at 16:9 (see fov.ts). */
+  thirdPersonFov = TP_FOV_DEFAULT;
+  /** Looking down at the phone on foot (radians); riding, the head's own tilt does it. */
+  phonePitch = 0;
   motion: "reduced" | "full" = "reduced";
   /**
    * Mounted first-person framing. tilt: heads-up pitch from the head's forward
@@ -187,7 +191,7 @@ export class ChaseCamera {
     this.camera.lookAt(this.target);
     this.camera.fov = damp(
       this.camera.fov,
-      56 + Math.min(s.speed * 0.38, 5),
+      thirdPersonVertical(this.thirdPersonFov) + Math.min(s.speed * 0.38, 5),
       3,
       dt,
     );
@@ -221,7 +225,7 @@ export class ChaseCamera {
       // RS looks; the body walks where the player looks (via heading below).
       this.fpYaw -= input.rx * 2.3 * dt;
       this.fpPitch = clamp(this.fpPitch - input.ry * 1.5 * dt, -1.15, 0.9);
-      look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12));
+      look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12 - this.phonePitch));
     } else {
       // Mounted: RS belongs to tricks. The heads-up view looks forward along the
       // head, tipped down enough to see hands, bars and deck with the line ahead

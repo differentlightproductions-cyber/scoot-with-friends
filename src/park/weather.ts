@@ -41,6 +41,8 @@ export class Weather {
  private quality:Fidelity='high';private mode:WeatherMode='day';private coverage={value:0};private hooked=new Map<THREE.MeshStandardMaterial,Hook>();private scanAge=99;
  // Per flake: fall speed (m/s), flutter frequency (rad/s), amplitude (m), phase, and 1 for a spiral / 0 for a side-to-side sway.
  private fall=new Float32Array(0);private flutter=new Float32Array(0);private sway=new Float32Array(0);private phase=new Float32Array(0);private spiral=new Uint8Array(0);
+ /** Hidden for an overhead photo (the phone's map). */
+ setVisible(visible:boolean){this.group.visible=visible;}
  private time=0;private windAngle=Math.random()*TAU;private intensity=0;
  private fogBase=new WeakMap<THREE.Fog,{near:number;far:number}>();
  // Kicked-up snow: position, velocity and remaining life per particle.

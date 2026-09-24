@@ -82,6 +82,9 @@ export class RiderModel {
   boardStance = 0;
   /** Set by the first-person camera for the local rider only. */
   hideHead = false;
+  /** Head pitch while reading the phone, and the phone arm pose (set by the game for the local rider). */
+  phoneTilt = 0;
+  phonePose: ((rider: RiderModel) => void) | null = null;
   /** Longboard carry: 0 held by the top truck while moving, 1 tucked under the arm standing still. */
   boardHold = 0;
   /** 1 while pushing a longboard facing down the board, 0 in the sideways carving stance. */
@@ -586,7 +589,10 @@ export class RiderModel {
       if(s.emote.id==="nod"||s.emote.id==="laugh")this.head.rotation.x=Math.sin(t*9)*.2*fade;
       if(s.emote.id==="shake")this.head.rotation.y=Math.sin(t*8)*.35*fade;
       if(s.emote.id==="facepalm")this.head.rotation.x=.25*fade;
+      if(s.emote.id==="shrug"){this.head.rotation.z=Math.sin(Math.min(1,t*3)*Math.PI)*.12*fade;this.head.rotation.x=-.08*fade;}
+      if(s.emote.id==="cheer")this.head.rotation.x=-.18*fade;
     }
+    this.head.rotation.x+=this.phoneTilt;
     this.rider.position.set(
       0,
       s.walking && !s.sitting
@@ -799,6 +805,8 @@ export class RiderModel {
         if(id==="celebrate")target.set(sign*.39,1.74+Math.sin(t*8)*.04,0);
         if(id==="facepalm"&&i===0)target.copy(this.head.position).add(v(-.02,.045,.13));
         if(id==="laugh")target.set(sign*.11,.98,.14);
+        if(id==="cheer"&&i===0)target.set(-.2,1.78+Math.abs(Math.sin(t*7))*.07,.06);
+        if(id==="shrug"){const up=Math.sin(Math.min(1,t/1.2)*Math.PI);target.set(sign*(.3+.06*up),.98+.1*up,.2);}
         if(id==="sit")target.set(sign*.15,.4,.28);
         if(['drink','eat'].includes(id)&&i===0){const sip=THREE.MathUtils.smoothstep(t,.48,1.0)*(1-THREE.MathUtils.smoothstep(t,1.75,2.35)),tilt=id==='drink'?.9*sip:0;const wrist=v(-.035,-.052-.075*Math.sin(tilt)-.06*Math.cos(tilt),.105-.075*Math.cos(tilt)+.06*Math.sin(tilt));target.copy(v(-.18,1.0,.23).lerp(this.head.position.clone().add(wrist),sip));}
         if(['drink','eat','vend'].includes(id)&&i===1){target.set(.20,.88,.10);if(id==='drink'||id==='eat'){const opening=THREE.MathUtils.smoothstep(t,.12,.25)*(1-THREE.MathUtils.smoothstep(t,.43,.65));target.lerp(v(-.11,1.13,.27),opening);}}
@@ -928,6 +936,7 @@ export class RiderModel {
             : 0,
         0,
       );
+    this.phonePose?.(this);
     this.avatar.update(s.elapsed);
     if (decadeAngle !== 0 && !s.walking && !s.sitting) this.orbitAroundScooter(decadeAngle);
   }

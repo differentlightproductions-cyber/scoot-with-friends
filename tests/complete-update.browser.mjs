@@ -5,7 +5,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===un
 const page=await browser.newPage({viewport:{width:1440,height:900}}),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 try{
- await page.goto('http://127.0.0.1:5180/?map=outdoor');await page.waitForFunction(()=>window.__LAZER);
+ await page.goto((process.env.LAZER_URL||'http://127.0.0.1:5180')+'/?map=outdoor');await page.waitForFunction(()=>window.__LAZER);
  const result=await page.evaluate(async()=>{
   const g=window.__LAZER;g.testing(true);g.startSession('outdoor',true);
   const {emptyInput}=await import('/src/input/input.ts');const {ridingButtons}=await import('/src/input/riding.ts');
@@ -25,8 +25,8 @@ try{
   for(const x of [-8,-2,4]){const s=place(x,28,8);a(.12,{ry:1});a(1/120,{ry:-1});check('Quarter ramp pop clears coping '+x,!s.grounded&&s.velocity.y>0);}
   // The empty Warehouse is tested using real player-placed obstacles.
   g.startSession('warehouse',true);check('Warehouse starts empty',g.builder.layout.objects.length===0&&g.park.rails.every(r=>r.id.startsWith('Warehouse bench')));
-  let s=place(-12,-24);s.walking=true;g.social.warehouse=true;let f=emptyInput();f.held.menuLeft=1;g.social.update(s,f,.25);check('General wheel opens on foot',!g.social.wheel.hidden);
-  f.rx=1;g.social.update(s,f,.02);check('Wheel uses RS',g.social.selected>=0);f=emptyInput();f.pressed.brakeBars=true;g.social.update(s,f,.02);
+  let s=place(-12,-24);s.walking=true;let f=emptyInput();check('Phone may open on foot',g.phoneAllowed());g.phone.open('build');for(let i=0;i<40;i++)g.phone.tick(1/60);
+  check('Phone BUILD lists the warehouse builder',g.phone.ready&&JSON.stringify(g.phone.view.page()).includes('FLAT RAIL'));f=emptyInput();f.pressed.menuDown=true;g.phone.update(f,.02);for(let i=0;i<40;i++)g.phone.tick(1/60);check('D-pad Down puts the phone away',!g.phone.active);
   const o=makeObject('Flat Rail',0,0);Object.assign(o,{height:.65,length:5,width:.12});g.builder.begin(o);
   check('Rail ghost is actual asset geometry',g.builder.placement&&g.builder.placement.type==='Flat Rail'&&g.park.rails.every(r=>r.id.startsWith('Warehouse bench')));
   f=emptyInput();f.pressed.hop=true;g.builder.update(s,f,.02);check('Placement immediately creates rail',g.park.rails.filter(r=>!r.id.startsWith('Warehouse bench')).length===1&&g.builder.layout.objects.length===1);

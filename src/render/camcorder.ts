@@ -78,9 +78,10 @@ export class CamcorderFilter {
   }
 
   /** Renders the gameplay view, filtered when enabled. */
-  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  render(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera, after?: () => void) {
     if (!this.enabled) {
       renderer.render(scene, camera);
+      after?.();
       return;
     }
     const strength = THREE.MathUtils.clamp(this.strength, 0, 1);
@@ -95,6 +96,8 @@ export class CamcorderFilter {
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(this.target);
     renderer.render(scene, camera);
+    // Overlays (the first-person phone close-up) share the filtered picture.
+    after?.();
     renderer.setRenderTarget(previous);
     this.material.uniforms.source.value = this.target.texture;
     (this.material.uniforms.texel.value as THREE.Vector2).set(1 / width, 1 / height);

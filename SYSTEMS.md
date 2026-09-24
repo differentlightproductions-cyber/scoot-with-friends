@@ -14,7 +14,9 @@ Racks, persistent consumables, fountain drinking, and day/night controls are int
 
 ## Social
 
-`src/ui/social.ts`: on-foot D-pad Left opens the general wheel; RS selects, release/A confirms. Items, emotes, interaction and Warehouse building share its input ownership. D-pad Right opens local chat. Messages are rendered as text. Movement interrupts emotes. No online chat, networking, matchmaking or multiplayer is implemented.
+`src/phone/`: the rider's phone replaced the old radial wheel (docs/briefs/PHONE-SYSTEM.md). D-pad Down takes it out standing, sitting or rolling on the ground (never in the air, a trick, a grind, a manual or a crash); it owns controller input while out (LS/D-pad move, A select, B back, Y home, D-pad Down away) and gameplay receives an empty frame, so a rider coasts. One state machine and app registry (`phone.ts`), one canvas-drawn screen (`canvas-ui.ts`) shown in a hand-held bezel in third person and as the 3D phone's screen texture in first person, where a close-up pass (`rig.ts`, render layer 5, narrower lens from the same eye) keeps it readable without changing the world FOV. Apps (`apps.ts`) are front ends to existing systems: Sesh Music, the emote system, loadout/ride switching, the avatar creator, an overhead map photo with live markers (`map.ts`), pockets, the Warehouse builder and chat (`messages.ts`, fictional 702-555-01xx numbers). World interactions (vending) open the phone on a choice sheet. Pausing or crashing stows it. Settings: Phone hand (left/right) and notifications.
+
+`src/ui/social.ts`: emotes (started from the phone), chat (hold D-pad Right or MESSAGES) and the speech bubble. Movement interrupts emotes. Private-room chat is relayed by `src/network/client.ts` when connected.
 
 ## Customization
 

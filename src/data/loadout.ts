@@ -5,7 +5,7 @@ import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longb
 import { ownsBoard, type RideableKind } from "./catalog";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
-import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN } from "../camera/fov";
+import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
   version: 1 | 2 | 3;
   equipmentRevision?:number;
@@ -33,6 +33,12 @@ export interface LocalProfile {
     /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
     firstPersonFov: number;
     firstPersonViewVersion?: number;
+    /** Third-person HORIZONTAL field of view at 16:9, in degrees (camera/fov.ts). */
+    thirdPersonFov: number;
+    /** Which hand holds the phone, in both views. */
+    phoneHand: 'right'|'left';
+    /** Small phone notifications (music, messages, saves). */
+    phoneNotifications: boolean;
     cameraMotion: 'reduced'|'full';
     /** Presentation only; the 3D image, never the HUD or part previews. */
     cameraFilter: 'off'|'camcorder';
@@ -84,6 +90,9 @@ export function loadProfile(): LocalProfile {
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
       firstPersonViewVersion:2,
+      thirdPersonFov:TP_FOV_DEFAULT,
+      phoneHand:'right',
+      phoneNotifications:true,
       cameraMotion:'reduced',
       cameraFilter:'off',
       filterStrength:65,
@@ -106,6 +115,9 @@ export function loadProfile(): LocalProfile {
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));
     // Version 2 widened the range (70-110 became 100-150): the old defaults (90, then 110) and anything below the new minimum move to the new default.
     if((saved.settings?.firstPersonViewVersion??0)<2&&(!Number.isFinite(saved.settings?.firstPersonFov)||saved.settings.firstPersonFov<=110))profile.settings.firstPersonFov=FP_FOV_DEFAULT;
+    if(Number.isFinite(saved.settings?.thirdPersonFov))profile.settings.thirdPersonFov=Math.min(TP_FOV_MAX,Math.max(TP_FOV_MIN,Math.round(saved.settings.thirdPersonFov)));
+    if(['right','left'].includes(saved.settings?.phoneHand))profile.settings.phoneHand=saved.settings.phoneHand;
+    if(typeof saved.settings?.phoneNotifications==='boolean')profile.settings.phoneNotifications=saved.settings.phoneNotifications;
     if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
     if(['off','camcorder'].includes(saved.settings?.cameraFilter))profile.settings.cameraFilter=saved.settings.cameraFilter;
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;

@@ -73,33 +73,35 @@ try {
   await boot();
   // The live game loop (keyboard, wheel, pause) only runs outside test mode.
   await page.evaluate(() => window.__LAZER.testing(false));
-  const state = () => page.evaluate(() => { const m = window.__LAZER.music; return { status: m.status, id: m.current?.id, title: m.current?.title, time: m.position, volume: m.settings.volume, audioVolume: m.audio.volume, open: window.__LAZER.musicPlayer.open }; });
+  const state = () => page.evaluate(() => { const g = window.__LAZER, m = g.music; return { status: m.status, id: m.current?.id, title: m.current?.title, time: m.position, volume: m.settings.volume, audioVolume: m.audio.volume, open: g.phone.active && g.phone.view?.title === 'SESH MUSIC' }; });
   const waitFor = (fn, arg, timeout = 15000) => page.waitForFunction(fn, arg, { timeout, polling: 50 });
+  // A on a control of the phone screen (the same activation the controller uses).
+  const choose = (id) => page.evaluate((id) => window.__LAZER.phone.select(id), id);
 
-  // ---- Open from the pause menu (the Sesh menu) --------------------------------
+  // ---- Open from the pause menu: Sesh Music is the phone's MUSIC app --------------
   await page.evaluate(() => window.__LAZER.hud.setPaused(true));
   await page.click('[data-action="music"]');
-  await waitFor(() => window.__LAZER.musicPlayer.open && !document.querySelector('#sesh-music').hidden);
-  check('Music opens from the Sesh pause menu', (await state()).open);
+  await waitFor(() => window.__LAZER.phone.ready && window.__LAZER.phone.view?.title === 'SESH MUSIC');
+  check('Music opens from the Sesh pause menu on the phone', (await state()).open);
   await page.screenshot({ path: 'artifacts/music/now-playing-empty-selection.png' }).catch(() => {});
 
   // ---- Tracks page: choose a track ---------------------------------------------
-  await page.click('#sesh-music [data-page="tracks"]');
-  await page.click(`#sesh-music [data-id="${unicode.id}"]`);
+  check('Tracks page opens', await choose('tracks'));
+  check('Track row is listed', await choose('track-' + unicode.id));
   await waitFor((id) => { const m = window.__LAZER.music; return m.status === 'playing' && m.current?.id === id && m.position > 0.5; }, unicode.id);
   check('Choosing a track plays it', true, await state());
   await page.screenshot({ path: 'artifacts/music/tracks.png' });
 
   // Selecting the track already playing does not restart it.
   const before = (await state()).time;
-  await page.click(`#sesh-music [data-id="${unicode.id}"]`);
+  await choose('track-' + unicode.id);
   await page.waitForTimeout(400);
   check('Re-selecting the playing track does not restart it', (await state()).time >= before, { before, after: (await state()).time });
 
   // ---- Next: fade out, switch, fade in ------------------------------------------------
-  await page.click('#sesh-music [data-page="now"]');
+  await page.evaluate(() => window.__LAZER.phone.back());
   const target = (await state()).volume;
-  await page.click('#sesh-music [data-music="next"]');
+  await choose('next');
   const samples = [];
   for (let i = 0; i < 40; i++) { samples.push(await state()); await page.waitForTimeout(50); }
   const outgoing = samples.filter((s) => s.id === unicode.id).map((s) => s.audioVolume);
@@ -110,54 +112,48 @@ try {
   await page.screenshot({ path: 'artifacts/music/now-playing.png' });
 
   // ---- Controller shortcuts do not leak into gameplay -----------------------------------
-  await page.evaluate(() => window.__LAZER.hud.setPaused(false));
-  await page.evaluate(() => { const g = window.__LAZER; g.sim.reset(0, true); g.sim.walking = true; window.__events = []; g.events.on((e) => window.__events.push(e.type)); });
+  await page.evaluate(() => { const g = window.__LAZER; window.__events = []; g.events.on((e) => window.__events.push(e.type)); });
   await page.waitForTimeout(300);
-  const pos0 = await page.evaluate(() => window.__LAZER.sim.position.toArray());
-  await page.keyboard.press('KeyX'); // X: play/pause while the player owns input
+  await page.keyboard.press('KeyX'); // X: play/pause while the phone owns input
   await waitFor(() => window.__LAZER.music.status === 'paused');
   await page.keyboard.press('Space'); // A on the focused control
   await page.keyboard.press('KeyE'); // RB: next
   await page.waitForTimeout(600);
   const leaks = await page.evaluate(() => window.__events.filter((t) => ['pop', 'push', 'marker', 'playerEmote', 'trick'].includes(t)));
-  check('X toggles play/pause while the panel is open', true);
-  check('Panel-open A/X/RB trigger no hop, push, trick or marker', leaks.length === 0, leaks);
+  check('X toggles play/pause while the music app is open', true);
+  check('Phone-open A/X/RB trigger no hop, push, trick or marker', leaks.length === 0, leaks);
 
-  // ---- Volume slider, shared with Settings ------------------------------------------------
-  await page.evaluate(() => { const s = document.querySelector('#sesh-music [data-music="volume"]'); s.value = '35'; s.dispatchEvent(new Event('input', { bubbles: true })); });
-  await page.click('#sesh-music [data-page="settings"]');
-  const settingsVolume = await page.$eval('#sesh-music [data-music="volume"]', (s) => s.value);
-  check('Settings shows the same music volume', settingsVolume === '35', settingsVolume);
+  // ---- Volume, shared with Settings ------------------------------------------------
+  await page.evaluate(() => window.__LAZER.music.setVolume(0.35));
+  await choose('msettings');
+  const settingsVolume = await page.evaluate(() => window.__LAZER.phone.view.page().blocks.find((b) => b.type === 'slider')?.text);
+  check('Settings shows the same music volume', settingsVolume === '35%', settingsVolume);
   await page.screenshot({ path: 'artifacts/music/settings.png' });
 
-  // ---- Close, ride, still playing; reopen without duplicates ------------------------------
-  await page.click('#sesh-music [data-page="now"]');
-  if ((await state()).status !== 'playing') await page.click('#sesh-music [data-music="play"]');
+  // ---- Put away, ride, still playing; reopen without duplicates ------------------------------
+  await page.evaluate(() => window.__LAZER.phone.back());
+  if ((await state()).status !== 'playing') await choose('play');
   await waitFor(() => { const m = window.__LAZER.music; return m.status === 'playing' && m.position > 0.3 && m.audio.volume > 0; });
   const playingId = (await state()).id;
-  await page.keyboard.press('Escape');
-  await waitFor(() => !window.__LAZER.musicPlayer.open);
+  await page.keyboard.press('PageDown'); // D-pad Down puts the phone away
+  await waitFor(() => !window.__LAZER.phone.active);
   await page.waitForTimeout(250);
   const esc = await page.evaluate(() => ({ paused: window.__LAZER.hud.paused }));
-  check('Closing with Escape does not also open the pause menu', !esc.paused, esc);
+  check('Putting the phone away does not open the pause menu', !esc.paused, esc);
   const t1 = (await state()).time;
   await page.evaluate(() => { const g = window.__LAZER; g.sim.walking = false; g.advance(1.2, { lean: -1 }, false); });
   await page.waitForTimeout(700);
   const s2 = await state();
-  check('Music keeps playing after closing and riding', s2.status === 'playing' && s2.id === playingId && s2.time > t1, { t1, s2 });
+  check('Music keeps playing after the phone is away and riding', s2.status === 'playing' && s2.id === playingId && s2.time > t1, { t1, s2 });
   const elements = await page.evaluate(() => document.querySelectorAll('audio').length);
-  await page.evaluate(() => window.__LAZER.musicPlayer.show());
+  await page.evaluate(() => window.__LAZER.phone.open('music'));
   await page.waitForTimeout(200);
-  check('Reopening does not add a second player', (await page.evaluate(() => document.querySelectorAll('#sesh-music').length)) === 1 && elements === 0, { elements });
-  await page.keyboard.press('Escape');
+  check('Reopening does not add a second player', (await page.evaluate(() => document.querySelectorAll('.phone-overlay').length)) === 1 && elements === 0, { elements });
+  await page.evaluate(() => window.__LAZER.phone.stow());
 
-  // ---- On-foot quick wheel: Music entry opens the same player -----------------------
-  // Holding D-Pad Left is not reproducible with headless keyboard events, so this
-  // uses the wheel's real option list and action (the hold-to-open code is unchanged).
-  const wheel = await page.evaluate(() => { const g = window.__LAZER; g.sim.walking = true; const options = g.social.rootOptions(g.sim); const labels = options.map((o) => o.label); options.find((o) => o.label === 'Music')?.action(); return { labels, open: g.musicPlayer.open, playing: g.music.status }; });
-  check('On-foot quick wheel offers Music and opens the same player', wheel.labels.includes('Music') && wheel.open && wheel.playing === 'playing', wheel);
-  await page.keyboard.press('Escape');
-  await waitFor(() => !window.__LAZER.musicPlayer.open);
+  // ---- Phone home: the MUSIC app opens the same player -----------------------
+  const home = await page.evaluate(() => { const g = window.__LAZER; g.phone.open(); const listed = g.phone.apps.map((a) => a.id); const ok = g.phone.select('app-music'); const r = { listed, ok, title: g.phone.view?.title, playing: g.music.status }; g.phone.stow(); return r; });
+  check('Phone home offers Music and opens the same player', home.listed.includes('music') && home.ok && home.title === 'SESH MUSIC' && home.playing === 'playing', home);
 
   // ---- Map change keeps the same track going ------------------------------------------
   const tMap = (await state()).time;
@@ -193,8 +189,7 @@ try {
   cleanup();
   const others = JSON.parse(readFileSync('public/music/catalog.json', 'utf8')).tracks.length;
   await boot();
-  await page.evaluate(() => window.__LAZER.musicPlayer.show());
-  const emptyText = await page.$eval('#sesh-music', (n) => n.textContent);
+  const emptyText = await page.evaluate(() => { const g = window.__LAZER; g.phone.open('music'); const t = JSON.stringify(g.phone.view.page()); g.phone.stow(); return t; });
   if (others === 0) check('Empty library says "No music added yet." and the game runs', emptyText.includes('No music added yet.') && (await page.evaluate(() => window.__LAZER.sim.position.y > -5)), emptyText.slice(0, 80));
   check('No page errors', errors.length === 0, errors);
 } finally {

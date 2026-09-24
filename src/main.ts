@@ -41,7 +41,13 @@ import { Weather } from './park/weather';
 import { ACTIVE_MAP } from './park/park';
 import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
-import { MusicPlayer } from './ui/music-player';
+import { Phone } from './phone/phone';
+import { PhoneRig, READ_TILT } from './phone/rig';
+import { PhoneMap, type MapFeature } from './phone/map';
+import { MessageStore } from './phone/messages';
+import { installApps, homePage, releasePhoneThumbnails, type PhoneDeps } from './phone/apps';
+import { ownsBoard } from './data/catalog';
+import { MAPS } from './data/maps';
 async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
@@ -77,24 +83,18 @@ async function boot() {
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
   rider.root.userData.weatherDynamic=true;
-  const economy=new CreditEconomy();economy.onChange=()=>{profile.wallet=loadProfile().wallet;};window.addEventListener("storage",()=>{profile.wallet=loadProfile().wallet;});events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
+  const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;profile.wallet=loadProfile().wallet;const earned=profile.wallet.credit-before;if(earned>0)phone.notify('Credit earned','+'+earned+' Credit · '+profile.wallet.credit+' total','star');};window.addEventListener("storage",()=>{profile.wallet=loadProfile().wallet;});events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park), weather = new Weather(scene);
-  const interact = () => { const f=emptyInput();f.pressed.brakeBars=true;interactions.update(sim,f,0); };
-  social.onInteract=interact;social.onScooter=interact;social.onMusic=()=>musicPlayer.show();
-  social.onItems=()=>interactions.openItems(sim);interactions.openOptions=(title,options)=>social.openOptions(title,options);
-  social.onBuild=()=>social.openOptions('BUILD / RS SELECT',[
-    ...builder.options(sim),...builder.editOptions(sim),
-    {label:'Reset Warehouse',action:()=>social.openOptions('CLEAR YOUR LAYOUT?',[
-      {label:'Cancel',action:()=>{}},{label:'Clear placed objects',action:()=>builder.reset()}
-    ])}, {label:'Cancel',action:()=>{}}
-  ]);
-  social.warehouse=ACTIVE_MAP==='warehouse';
+  // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
+  const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
+  let phoneAir = 0;
+  interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
   const touchPad=new TouchPad();input.touch=touchPad;
-  const applyCamera=()=>{touchPad.mode=profile.settings.touchControls;touchPad.size=profile.settings.touchSize/100;touchPad.opacity=profile.settings.touchOpacity/100;camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
+  const applyCamera=()=>{touchPad.mode=profile.settings.touchControls;touchPad.size=profile.settings.touchSize/100;touchPad.opacity=profile.settings.touchOpacity/100;camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.thirdPersonFov=profile.settings.thirdPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
   rider.applyProfile(profile);
   sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
@@ -103,15 +103,21 @@ async function boot() {
   // Sesh Music: one app-level player; the panel only observes it.
   music.setSoundEnabled(audio.enabled);
   void music.loadCatalog();
-  const musicPlayer = new MusicPlayer();
-  // Held buttons that closed the panel must not become a hop, push or trick.
-  musicPlayer.onClose = () => { input.clear(); pending = emptyInput(); };
+  // Held buttons that put the phone away must not become a hop, push or trick.
+  phone.onClose = () => { input.clear(); pending = emptyInput(); releasePhoneThumbnails(); };
+  phone.onOpen = () => { if (sim.emote && sim.emote.id !== 'sit') sim.emote = null; sim.running = false; };
+  music.onNowPlaying = (track) => {
+    if (!music.settings.notifications || (phone.ready && phone.view?.title === 'SESH MUSIC')) return;
+    phone.notify('Now playing', track.title + ' · ' + track.artist, 'music');
+  };
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;};
-  events.on(e=>{if(e.type==='playerChat'&&network.status==='Connected')network.send({type:'chat',message:e.message});});
+  events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
+  network.onChat=(name,message)=>{messages.add('room',name,message,false);if(!(phone.ready&&phone.view?.title==='MESSAGES'))phone.notify('New message',name+': '+message,'messages');};
+  messages.onChange=()=>phone.refresh();
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
@@ -123,13 +129,44 @@ async function boot() {
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
   network.onChange=()=>{if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  const mapFeatures=():MapFeature[]=>{
+    const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
+    for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
+    for(const b of park.benches)out.push({kind:'bench',x:b.x,z:b.z});
+    for(const r of park.rails)if(!r.coping)out.push({kind:'rail',x:r.a.x,z:r.a.z,x2:r.b.x,z2:r.b.z});
+    for(const d of shopForMap(ACTIVE_MAP)?.displays??[])out.push({kind:'shop',x:d.x,z:d.z,label:d.label});
+    for(const r of network.remotes.values()){const p=r.model.root.position;out.push({kind:'friend',x:p.x,z:p.z,label:r.name});}
+    return out;
+  };
+  const phoneMap=new PhoneMap({renderer,scene,features:mapFeatures,player:()=>({x:sim.position.x,z:sim.position.z,yaw:sim.yaw}),
+    hide:()=>{const riderShown=rider.root.visible;rider.root.visible=false;weather.setVisible(false);for(const r of network.remotes.values())r.model.root.visible=false;return()=>{rider.root.visible=riderShown;weather.setVisible(true);for(const r of network.remotes.values())r.model.root.visible=true;};}});
+  /** The phone comes out standing, sitting, or rolling on the ground; never in the air, a trick, a grind or a crash. */
+  const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
+    sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
+  const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,
+    sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
+    emote:id=>social.perform(id,sim),
+    openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
+    switchRide:async kind=>{const r=await economy.setRideable(kind,profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not switch.';},
+    ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
+    items:()=>interactions,builder:()=>builder,
+    compose:()=>social.openChat(),
+    network:()=>network};
+  installApps(phoneDeps);
+  phone.homePage=()=>homePage(phoneDeps);
+  // First person: taps land on the 3D phone's screen.
+  renderer.domElement.addEventListener('pointerdown',e=>{
+    if(!phone.ready||!phone.firstPerson)return;
+    const r=renderer.domElement.getBoundingClientRect(),hit=phoneRig.screenPoint(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1));
+    if(hit)phone.tap(hit.u*360,hit.v*720);
+  });
   menu.economy=economy;menu.owner=()=>editor.owner;menu.onCloseShop=()=>{input.clear();pending=emptyInput();accumulator=0;};
   const shopPrompt=document.createElement("div");shopPrompt.className="world-prompt";shopPrompt.hidden=true;document.body.append(shopPrompt);
   const fidelity=new VisualFidelity(renderer);
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
-  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;applyCamera();};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.thirdPersonFov=settings.thirdPersonFov;profile.settings.phoneHand=settings.phoneHand;profile.settings.phoneNotifications=settings.phoneNotifications;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;applyCamera();};
   menu.touchPreview=(on)=>{menu.touchPreviewOn=on;touchPad.preview=on;};
   menu.controllerReport=()=>{
     const pad=input.pad,names=['A','B','X','Y','LB','RB','LT','RT','View','Menu','L3','R3','Up','Down','Left','Right','Home'];
@@ -301,6 +338,7 @@ async function boot() {
   });
   function startSession(id: MapId, force = false) {
     if (force || ACTIVE_MAP !== id) {
+      phone.stow();phoneRig.model.removeFromParent();phoneMap.reset();
       interactions.dispose();builder.dispose();
       sim.score.dispose();
       sim.contactEvents.free();
@@ -335,11 +373,10 @@ async function boot() {
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
       interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);weather=new Weather(scene);
-      interactions.openOptions=(title,options)=>social.openOptions(title,options);
+      interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
     sim.rideable = profile.activeRideable;
-    social.warehouse=id==='warehouse';
     rider.applyProfile(profile);
     fidelity.apply(scene,profile.settings.fidelity);
     sim.grindAssist = true;
@@ -428,8 +465,11 @@ async function boot() {
             input.clear();pending=emptyInput();accumulator=0;
             break;
           case "music":
-            musicPlayer.show();
-            input.clear();pending=emptyInput();
+            // Sesh Music lives on the phone: resume and take it out, if the rider is steady.
+            hud.setPaused(false);
+            input.clear();pending=emptyInput();accumulator=0;
+            if (phoneAllowed()) phone.open('music');
+            else phone.notify('Phone', 'Land first, then press D-pad Down for Sesh Music.');
             break;
           case "sound":
             audio.enabled = !audio.enabled;
@@ -477,20 +517,32 @@ async function boot() {
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
+    // Phone: arm and head follow its raise; in first person the hand is placed from the eye below.
+    phone.tick(dt);
+    hud.phoneHint = phone.active ? 'PHONE · LS MOVE / A SELECT / B BACK / Y HOME / D-PAD DOWN PUT AWAY' : '';
+    const phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0, raise = phone.raise * phone.raise * (3 - 2 * phone.raise);
+    const firstPersonPhone = camera.view === 'first' && camera.firstPersonActive && raise > 0;
+    phone.firstPerson = firstPersonPhone;
+    rider.phoneTilt = raise * (firstPersonPhone ? READ_TILT.first : READ_TILT.third);
+    rider.phonePose = raise > 0 ? (r: RiderModel) => phoneRig.pose(r, raise, phoneHand, null) : null;
+    camera.phonePitch = raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
     interactions.online=!!network.id;interactions.render(rider);
-    const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
+    const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    if (firstPersonPhone && camera.firstPersonActive) { phoneRig.pose(rider, raise, phoneHand, camera.camera); rider.avatar.update(sim.elapsed); }
+    phoneRig.attach(rider, phoneHand, raise);
+    phoneRig.layer(rider, phoneHand, firstPersonPhone && camera.firstPersonActive);
     rider.hideHead=camera.firstPersonActive&&camera.view==='first';
     rider.avatar.setFirstPerson(rider.hideHead);
     }
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
     // (and releases everything) while they own input, except in the controller test view.
-    touchPad.suspended=(overlayOpen||musicPlayer.open||!social.wheel.hidden||!social.chat.hidden)&&!touchPad.preview;
+    touchPad.suspended=(overlayOpen||phone.active||!social.chat.hidden)&&!touchPad.preview;
     // Keep the last world pose/camera underneath translucent pause menus. Rendering
     // that unchanged scene also survives resize/context compositing without a screenshot.
-    if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
+    if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
     else {renderer.setClearColor(0xc5cbc1);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
@@ -502,7 +554,7 @@ async function boot() {
     last = now;
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
-    touchPad.suspended=(!menu.root.hidden||hud.paused||musicPlayer.open||!social.wheel.hidden||!social.chat.hidden)&&!touchPad.preview;
+    touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden)&&!touchPad.preview;
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();
@@ -517,13 +569,9 @@ async function boot() {
       render(dt);
       return;
     }
-    // The music panel owns controller input while open; gameplay and the pause
-    // menu receive nothing, and the simulation keeps running (no multiplayer freeze).
-    if (musicPlayer.open) {
-      musicPlayer.update(frame);
-      frame = emptyInput();
-    }
+    // Pausing puts the phone straight away: the Sesh menu is then the only input owner.
     if (frame.pressed.pause) {
+      if (phone.active) phone.stow();
       hud.setPaused(!hud.paused);
       accumulator = 0;
     }
@@ -541,12 +589,23 @@ async function boot() {
       frame.released.hop = false;
       if (!stillHeld) startHopBlocked = false;
     }
+    // The phone owns controller input while it is out (the chat field, when
+    // composing, owns it first). Gameplay receives nothing, so a rider coasts on.
+    if (phone.active) {
+      if (sim.state === "Bail") phone.stow();
+      phoneAir = sim.grounded ? 0 : phoneAir + dt;
+      if (phoneAir > 0.2 || sim.grind || sim.manual.active) phone.close();
+      if (social.chat.hidden) { phone.update(frame, dt); frame = emptyInput(); }
+    } else if (frame.pressed.menuDown && social.chat.hidden && phoneAllowed()) {
+      phone.open();
+      frame = emptyInput();
+    }
     shopPrompt.hidden=true;
     if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){if(nearest.category==='longboard')menu.openBoardShop(shop.id);else menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
     if(builder.placement)frame=builder.update(sim,frame,dt);
     else {
       frame = social.update(sim, frame, dt);
-      frame = interactions.update(sim,frame,dt,social.wheel.hidden&&social.chat.hidden);
+      frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);
     }
     accumulator += dt;
     let first = true;
@@ -617,7 +676,7 @@ async function boot() {
       camera, camcorder, touchPad,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
-      music, musicPlayer,
+      music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),
       renderer,
       fidelity,
       snapshot: () => sim.snapshot(),

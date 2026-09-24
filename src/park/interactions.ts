@@ -31,7 +31,8 @@ export class WorldInteractions {
  private sequence=0;
  private propKey='';private current:Simulation|null=null;private water=new THREE.Group();
  get waterActive(){return this.water.visible;}
- openOptions:(title:string,options:{label:string;action:()=>void}[])=>void=()=>{};
+ /** Shows a choice on the rider's phone (vending machines, notices). */
+ openOptions:(title:string,options:{label:string;detail?:string;action:()=>void}[],sub?:string)=>void=()=>{};
  constructor(public park:Park,profile:LocalProfile){
   this.profile=profile;this.prompt.className='world-prompt';this.prompt.hidden=true;document.body.append(this.prompt);
   const scene=park.scene;
@@ -75,7 +76,7 @@ export class WorldInteractions {
    for(let row=0;row<3;row++)for(let col=0;col<3;col++)park.box(at(machine,-.35+col*.21,.8+row*.3,.395),new THREE.Vector3(.105,.19,.025),[0x9ccfd4,0xea884b,0x84a762][row],false);
    for(let row=0;row<4;row++)park.box(at(machine,.36,.85+row*.15,.37),new THREE.Vector3(.13,.07,.02),0xded4ac,false);
    park.box(at(machine,0,.36,.365),new THREE.Vector3(.55,.17,.03),0x17272e,false);
-   this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING / CONFIRM FREE ITEM',ITEM_KINDS.map(kind=>({label:kind+' / Free',action:()=>this.vend(s,kind,machine)})).concat([{label:'Cancel',action:()=>{}}]))});
+   this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING',[...ITEM_KINDS.map(kind=>({label:kind as string,detail:'Free · tap to pay with your phone',action:()=>this.vend(s,kind,machine)})),{label:'Cancel',detail:'',action:()=>{}}],'Pick a drink or snack')});
    }
    const fountain=at(base,-spread,0,0);
    park.box(at(fountain,0,.44,0),new THREE.Vector3(.28,.88,.36),0x748e86,true);
@@ -88,7 +89,7 @@ export class WorldInteractions {
  }
  dispose(){this.prompt.remove();for(const group of [this.prop,this.water]){group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});group.removeFromParent();}}
  private rack(s:Simulation,id:string,base:THREE.Vector3){
-  if(this.online){this.openOptions('RACKS UNAVAILABLE ONLINE',[{label:'Shared rack storage is still in testing',action:()=>{}}]);return;}
+  if(this.online){this.openOptions('RACKS',[{label:'OK',detail:'Shared rack storage is still in testing online',action:()=>{}}],'Unavailable in a room');return;}
   if(this.active)return;
   if(this.stored){
    if(this.stored.rackId!==id)return;
@@ -111,19 +112,12 @@ export class WorldInteractions {
  }
  private action(s:Simulation,type:string,duration:number){s.running=false;s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);s.emote={id:type,time:0,duration};this.active={type,time:0,duration,start:new THREE.Vector3(),end:new THREE.Vector3(),from:new THREE.Quaternion(),to:new THREE.Quaternion()};return this.active;}
  private vend(s:Simulation,kind:ItemKind,source:THREE.Vector3){if(this.active||this.profile.pockets.entries.length>=48)return;const a=this.action(s,'vend',.75);a.source=source;a.finish=()=>{receiveItem(this.profile.pockets,kind);saveProfile(this.profile);s.events.emit({type:'worldInteraction',interaction:'vend',item:kind});};}
- openItems(s:Simulation){
-  const pockets=this.profile.pockets,title=pockets.backpack?'BACKPACK':'POCKETS';
-  const groups=ITEM_KINDS.flatMap(kind=>['sealed','opened','empty'].map(state=>pockets.entries.filter(i=>i.kind===kind&&i.state===state))).filter(g=>g.length);
-  const show=(offset=0)=>this.openOptions(title+' / RS SELECT',groups.slice(offset,offset+5).map(group=>({label:(group[0].kind==='Chips'?'▧ ':'◉ ')+itemLabel(group[0])+' ×'+group.length+(group.some(i=>i.id===pockets.held)?' / HELD':''),action:()=>{
-   const item=group.find(i=>i.id===pockets.held)??group[0];this.openOptions(itemLabel(item).toUpperCase(),[
-    {label:'Hold / Equip',action:()=>{pockets.held=item.id;saveProfile(this.profile);}},
-    {label:item.state==='empty'?'Empty':'Use',action:()=>{pockets.held=item.id;saveProfile(this.profile);this.useHeld(s);}},
-    {label:'Stow',action:()=>{pockets.held=null;saveProfile(this.profile);}},
-    {label:'Discard…',action:()=>this.openOptions('DISCARD '+itemLabel(item)+'?',[
-     {label:'Keep',action:()=>this.openItems(s)},{label:'Discard',action:()=>{pockets.entries=pockets.entries.filter(i=>i.id!==item.id);if(pockets.held===item.id)pockets.held=null;saveProfile(this.profile);}}
-    ])},{label:'Back',action:()=>this.openItems(s)}]);
-  }})).concat(groups.length>5?[{label:'Next',action:()=>show((offset+5)%groups.length)}]:[]).concat([{label:groups.length?'Close':'Empty / Close',action:()=>{}}]));show();
- }
+ /** Pocket contents grouped for the phone's ITEMS app: one entry per kind and state. */
+ itemGroups(){const pockets=this.profile.pockets;return ITEM_KINDS.flatMap(kind=>(['sealed','opened','empty'] as const).map(state=>pockets.entries.filter(i=>i.kind===kind&&i.state===state))).filter(g=>g.length).map(items=>({items,label:itemLabel(items[0]),kind:items[0].kind,state:items[0].state,held:items.some(i=>i.id===pockets.held)}));}
+ hold(id:string|null){this.profile.pockets.held=id;saveProfile(this.profile);}
+ discard(id:string){const pockets=this.profile.pockets;pockets.entries=pockets.entries.filter(i=>i.id!==id);if(pockets.held===id)pockets.held=null;saveProfile(this.profile);}
+ /** Takes the item in hand and uses it (on foot only). */
+ use(s:Simulation,id:string){this.hold(id);this.useHeld(s);}
  private useHeld(s:Simulation){const item=this.profile.pockets.entries.find(i=>i.id===this.profile.pockets.held);if(!item||item.state==='empty'||this.active||!s.walking)return;const a=this.action(s,item.kind==='Chips'?'eat':'drink',2.4);a.itemId=item.id;}
  private fountain(s:Simulation,source:THREE.Vector3){if(this.active)return;this.profile.pockets.held=null;saveProfile(this.profile);s.position.set(source.x,source.y+.22,source.z+.62);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.yaw=s.previousYaw=Math.PI;
   const a=this.action(s,'drink-fountain',2.8);a.source=source;
@@ -156,7 +150,7 @@ export class WorldInteractions {
    return emptyInput();
   }
   if(!s.walking||!s.grounded||s.state==='Bail'||s.sitting)return input;
-  if(this.profile.pockets.held){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · D-pad Left / Items';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
+  if(this.profile.pockets.held){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · D-pad Down / Phone';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
   const near=this.items.filter(i=>i.position.distanceTo(s.position)<i.radius).sort((a,b)=>a.position.distanceToSquared(s.position)-b.position.distanceToSquared(s.position))[0];
   if(near){this.prompt.hidden=false;this.prompt.textContent=`B / keyboard B · ${near.prompt(s)}`;
    if(input.pressed.brakeBars&&near.interactionType!=='bench'){near.action(s);return {...input,pressed:{...input.pressed,brakeBars:false}};}
