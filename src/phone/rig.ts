@@ -12,13 +12,13 @@ import type { RiderModel } from '../scooter/model';
  */
 export const PHONE = { width: 0.078, height: 0.156, depth: 0.0105 };
 /** Phone centre in the hand frame, and the turn that lays it on the palm. */
-const IN_HAND = new THREE.Vector3(0, -0.0315, 0.072);
+const IN_HAND = new THREE.Vector3(0, -0.0315, 0.094);
 const HAND_TO_PHONE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
 const PHONE_TO_HAND = HAND_TO_PHONE.clone().invert();
 /** Render layer of the first-person close-up (phone, hand and forearm). */
 export const VIEWMODEL_LAYER = 5;
 /** First person: where the phone sits in front of the eye (camera space, metres). */
-const FP_OFFSET = new THREE.Vector3(0.05, -0.058, -0.27);
+const FP_OFFSET = new THREE.Vector3(0.05, -0.03, -0.27);
 /** Third person: phone centre from the head centre, rider space (x toward the holding side). */
 const TP_OFFSET = new THREE.Vector3(0.07, -0.19, 0.36);
 /** Head pitch while reading (radians, down). */
