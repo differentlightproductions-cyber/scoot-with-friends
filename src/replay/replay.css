@@ -1,0 +1,65 @@
+/* Replay Editor (#41): the scooter-mag kit over a full-screen preview. The
+   preview stays clear; the controls sit in one dock at the bottom. */
+.replay-editor { position: fixed; inset: 0; z-index: 60; pointer-events: none; font-family: var(--body); color: var(--paper); }
+.replay-editor[hidden] { display: none; }
+.replay-editor button { font: 400 clamp(11px, 1.05vw, 14px) / 1 var(--display); letter-spacing: 0.02em; color: var(--ink); background: var(--paper); border: 2px solid var(--ink); border-radius: 3px; padding: 9px 12px; box-shadow: 3px 3px 0 var(--ink); cursor: pointer; white-space: nowrap; }
+.replay-editor button.primary { background: var(--lime); }
+.replay-editor button.focus { outline: 3px solid var(--orange); outline-offset: 2px; transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+.replay-editor button:disabled { opacity: 0.45; cursor: not-allowed; }
+.re-head { position: absolute; left: clamp(16px, 3vw, 40px); top: clamp(14px, 3vh, 34px); max-width: min(560px, calc(100vw - 32px)); }
+.re-eyebrow { display: inline-block; font: 400 12px var(--display); letter-spacing: 0.08em; background: var(--pink); color: var(--ink); padding: 4px 8px; transform: rotate(-2deg); border: 2px solid var(--ink); }
+.re-head h2 { margin: 6px 0 2px; font: 400 clamp(22px, 3vw, 38px) / 1.02 var(--display); color: var(--paper); -webkit-text-stroke: 1px var(--ink); text-shadow: 3px 3px 0 var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.re-head small { font: 700 12px var(--body); letter-spacing: 0.06em; text-shadow: 0 1px 2px #000c; }
+.re-badge { position: absolute; right: clamp(16px, 3vw, 40px); top: clamp(14px, 3vh, 34px); font: 400 13px var(--display); background: #0b0c0dcc; border: 2px solid var(--paper); padding: 6px 10px; display: flex; gap: 8px; align-items: center; }
+.re-badge i { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 8px #ff3b30; animation: re-blink 1.2s steps(2) infinite; }
+@keyframes re-blink { 50% { opacity: 0.25; } }
+.re-dock { position: absolute; left: 50%; bottom: clamp(10px, 2.4vh, 26px); transform: translateX(-50%); width: min(1080px, calc(100vw - 32px)); box-sizing: border-box; padding: 14px 16px 10px; background: var(--grip); border: 2px solid var(--ink); box-shadow: 5px 5px 0 #0b0c0daa; pointer-events: auto; }
+.re-timeline { position: relative; height: 34px; background: #2a2d31; border: 2px solid var(--ink); border-radius: 3px; cursor: pointer; touch-action: none; }
+.re-keep { position: absolute; top: 0; bottom: 0; background: linear-gradient(180deg, var(--lime), #9ed100); }
+.re-cut { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(135deg, #3b3f44 0 6px, #2a2d31 6px 12px); opacity: 0.95; }
+.re-handle { position: absolute; top: -8px; bottom: -8px; width: 12px; margin-left: -6px; background: var(--paper); border: 2px solid var(--ink); border-radius: 3px; cursor: ew-resize; }
+.re-handle span { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); font: 400 10px var(--display); color: var(--paper); text-shadow: 0 1px 2px #000; }
+.re-out span { color: var(--sun); }
+.re-head-line { position: absolute; top: -6px; bottom: -6px; width: 3px; margin-left: -1.5px; background: var(--orange); box-shadow: 0 0 0 1px var(--ink); pointer-events: none; }
+.re-times { display: flex; justify-content: space-between; margin: 6px 0 10px; font: 700 12px var(--body); letter-spacing: 0.04em; }
+.re-times .re-clip b { color: var(--lime); }
+.re-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.re-legend { margin: 10px 0 0; text-align: center; font: 700 10.5px var(--body); letter-spacing: 0.06em; opacity: 0.8; }
+.re-notice { position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translateX(-50%) rotate(-1.5deg); font: 400 14px var(--display); background: var(--sun); color: var(--ink); border: 2px solid var(--ink); padding: 6px 12px; box-shadow: 3px 3px 0 var(--ink); white-space: nowrap; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+.re-notice.on { opacity: 1; }
+.re-export { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); background: #0b0c0de6; border: 2px solid var(--paper); padding: 18px 24px; text-align: center; min-width: min(360px, calc(100vw - 48px)); }
+.re-export b { font: 400 20px var(--display); color: var(--lime); }
+.re-export u { display: block; height: 12px; margin: 12px 0 8px; background: #2a2d31; border: 2px solid var(--ink); text-decoration: none; }
+.re-export s { display: block; height: 100%; background: var(--lime); text-decoration: none; }
+.re-export small { font: 700 11px var(--body); letter-spacing: 0.08em; }
+.re-dialog { position: absolute; inset: 0; background: #0b0c0d99; display: grid; place-items: center; pointer-events: auto; }
+.re-dialog section { background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); padding: 18px 20px; width: min(420px, calc(100vw - 40px)); box-sizing: border-box; display: grid; gap: 12px; }
+.re-dialog b { font: 400 18px var(--display); }
+.re-dialog input { font: 700 16px var(--body); padding: 10px; border: 2px solid var(--ink); border-radius: 3px; min-width: 0; }
+.re-dialog div { display: flex; gap: 10px; }
+.re-dialog small { font: 700 11px var(--body); letter-spacing: 0.06em; opacity: 0.7; }
+.re-dialog p { margin: 0; }
+.re-library { position: absolute; inset: 0; background: linear-gradient(90deg, #0b0c0de6 0%, #0b0c0dbb 55%, #0b0c0d66 100%); pointer-events: auto; overflow: auto; }
+.re-library .re-head { position: relative; left: auto; top: auto; margin: clamp(16px, 4vh, 40px) clamp(16px, 4vw, 48px) 14px; }
+.re-library ul { list-style: none; margin: 0 clamp(16px, 4vw, 48px); padding: 0; display: grid; gap: 10px; max-width: 980px; }
+.re-library li { display: grid; grid-template-columns: 128px 1fr auto; gap: 14px; align-items: center; background: var(--grip); border: 2px solid var(--ink); padding: 8px; box-shadow: 3px 3px 0 #000a; }
+.re-library li.focus { border-color: var(--lime); }
+.re-thumb { width: 128px; aspect-ratio: 16 / 9; background: #2a2d31; border: 2px solid var(--ink); display: grid; place-items: center; overflow: hidden; }
+.re-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.re-thumb span { font: 400 24px var(--display); color: var(--lime); }
+.re-info { min-width: 0; }
+.re-info b { display: block; font: 400 16px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.re-info small { font: 700 11px var(--body); letter-spacing: 0.05em; opacity: 0.85; }
+.re-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.re-empty { margin: 0 clamp(16px, 4vw, 48px); max-width: 520px; font: 700 15px var(--body); }
+.re-library .re-legend { margin: 16px clamp(16px, 4vw, 48px); text-align: left; }
+.re-library .re-notice { position: fixed; bottom: 24px; }
+/* The riding HUD steps aside for the replay. */
+body.replay-open :is(#app > header, #app > footer, #trick-line, #feedback, #balance, #minimap, #now-playing, #phone-hold, .remote-name, .network-status, .world-prompt) { visibility: hidden; }
+@media (max-width: 820px) {
+  .re-library li { grid-template-columns: 88px 1fr; }
+  .re-thumb { width: 88px; }
+  .re-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .replay-editor button { padding: 8px 9px; }
+  .re-legend { display: none; }
+}

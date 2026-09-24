@@ -38,6 +38,8 @@ export interface LocalProfile {
     flashlight: boolean;
     /** Match the real time and weather of the map's city right now (park/liveSky.ts); overrides the two above. */
     liveSky: boolean;
+    /** Seconds of play the replay history keeps (#41): 15, 30, 45 or 60. */
+    replayHistory: 15|30|45|60;
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     /** Personal camera; never networked. */
@@ -104,6 +106,7 @@ export function loadProfile(): LocalProfile {
       weather: 'sunny',
       flashlight: true,
       liveSky: false,
+      replayHistory: 30,
       mountFlourish: true,
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
@@ -136,6 +139,7 @@ export function loadProfile(): LocalProfile {
     else if(saved.settings?.daylight==='snow')profile.settings.weather='snow';
     if(typeof saved.settings?.flashlight==='boolean')profile.settings.flashlight=saved.settings.flashlight;
     if(typeof saved.settings?.liveSky==='boolean')profile.settings.liveSky=saved.settings.liveSky;
+    if([15,30,45,60].includes(saved.settings?.replayHistory))profile.settings.replayHistory=saved.settings.replayHistory;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));

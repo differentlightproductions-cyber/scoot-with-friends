@@ -111,10 +111,14 @@ try {
   });
   check("Opening does not trigger riding or trick input", owned.events.length === 0 && owned.open, owned);
 
-  // 14. D-pad Down: a tap steps down a list and leaves the phone out; a hold puts it away,
-  // and the held button never reaches gameplay afterwards.
+  // 14. The D-pad only takes the phone out and puts it away (#52): a Down tap, and
+  // Left / Right / Up, move nothing inside it; the left stick does the moving.
   const tap = await run(() => { const g = window.__LAZER, p = g.phone; p.home(); window.__phone.step(null, 2); const before = p.screen.focusId; g.phoneStep({ held: { menuDown: 1 }, pressed: { menuDown: true } }); for (let i = 0; i < 8; i++) g.phoneStep({ held: { menuDown: 1 } }); g.phoneStep({ released: { menuDown: true } }); window.__phone.step(null, 2); return { before, after: p.screen.focusId, open: p.active }; });
-  check("14 D-pad Down tap navigates inside the phone and does not close it", tap.open && tap.before !== tap.after, tap);
+  check("14 A D-pad Down tap does not move the focus and does not close the phone", tap.open && tap.before === tap.after, tap);
+  const sticks = await run(async () => { const g = window.__LAZER, p = g.phone, frame = window.__phone.frame; p.home(); window.__phone.step(null, 2); const start = p.screen.focusId, out = { start };
+    for (const b of ["menuLeft", "menuRight", "marker"]) { for (let i = 0; i < 20; i++) { const f = await frame(); f.held[b] = 1; f.pressed[b] = i === 0; g.phoneStep(f); } g.phoneStep(await frame()); out[b] = p.screen.focusId; }
+    const f = await frame(); f.steer = 1; g.phoneStep(f); g.phoneStep(await frame()); out.ls = p.screen.focusId; return out; });
+  check("14 D-pad Left / Right / Up do nothing in the phone; LS moves the focus", sticks.menuLeft === sticks.start && sticks.menuRight === sticks.start && sticks.marker === sticks.start && sticks.ls !== sticks.start, sticks);
   const holdClose = await run(() => { const g = window.__LAZER, p = g.phone; let leaked = 0, closedAt = -1; for (let i = 0; i < 60; i++) { const f = g.phoneStep(i === 0 ? { held: { menuDown: 1 }, pressed: { menuDown: true } } : { held: { menuDown: 1 } }); if (f.held.menuDown || f.pressed.menuDown) leaked++; g.phone.tick(1 / 60); if (closedAt < 0 && p.state === "away") closedAt = (i + 1) / 60; } const f = g.phoneStep({ released: { menuDown: true } }); if (f.released.menuDown) leaked++; return { closedAt, leaked }; });
   await settle(30);
   check("14 Holding D-pad Down about half a second puts the phone away; nothing leaks to gameplay", holdClose.closedAt >= 0.45 && holdClose.closedAt <= 0.7 && holdClose.leaked === 0 && !(await run(() => window.__LAZER.phone.active)), holdClose);

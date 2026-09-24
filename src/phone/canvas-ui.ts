@@ -4,7 +4,7 @@
  * person and the 3D phone's screen texture in first person, so there is one UI
  * state and one renderer. Apps describe a page as blocks; this lays them out,
  * draws them in the 2000s sticker style of the rider creator, moves focus with
- * the D-pad (spatially, so grids and lists both work) and hit-tests taps.
+ * the left stick (spatially, so grids and lists both work) and hit-tests taps.
  */
 export const SCREEN_W = 360;
 export const SCREEN_H = 720;

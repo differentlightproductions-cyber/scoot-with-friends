@@ -5,32 +5,13 @@ import {RiderModel} from '../scooter/model';
 import type {Simulation} from '../physics/simulation';
 import type {LocalProfile} from '../data/loadout';
 import {PROTOCOL,CONTENT,POSE_KEYS} from './protocol';
+import {blendPose} from './pose-blend';
 const pick=(v:any,keys:string[])=>Object.fromEntries(keys.map(k=>[k,v[k]]));
-/**
- * A rider's render state between two captured poses (network snapshots, and
- * replays in replay/): continuous values are interpolated, discrete ones taken
- * from the nearer pose, and vectors rebuilt so RiderModel.update can read it
- * like the live Simulation. Nothing here steps physics.
- */
-export function blendPose(a:any,b:any,t:number):Simulation{
- const p=structuredClone(t<.5?a:b),lerp=THREE.MathUtils.lerp;
- for(const key of ['yaw','pitch','roll','elapsed'])p[key]=key==='elapsed'?lerp(a[key],b[key],t):a[key]+wrapAngle(b[key]-a[key])*t;
- for(const k of ['angle','velocity'])p.bodyFlip[k]=lerp(a.bodyFlip[k],b.bodyFlip[k],t);
- for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.tricks[channel]&&b.tricks[channel])p.tricks[channel][k]=lerp(a.tricks[channel][k],b.tricks[channel][k],t);
- p.tricks.yaw=lerp(a.tricks.yaw??0,b.tricks.yaw??0,t);
- p.position=new THREE.Vector3().fromArray(a.position).lerp(new THREE.Vector3().fromArray(b.position),t);p.previousPosition=p.position;p.previousYaw=p.yaw;
- if(p.fastplant)p.fastplant.foot=new THREE.Vector3().fromArray(p.fastplant.foot);
- if(p.mantle){p.mantle.edge=new THREE.Vector3().fromArray(p.mantle.edge);p.mantle.forward=new THREE.Vector3().fromArray(p.mantle.forward);}
- if(p.crash)for(const key of ['rider','scooter']){const body=p.crash[key];p.crash[key]={translation:()=>body.position,rotation:()=>body.rotation};}
- return p as Simulation;
-}
-/** The short way round from one angle to another. */
-const wrapAngle=(v:number)=>v-Math.PI*2*Math.round(v/(Math.PI*2));
 export function capture(s:Simulation){
  const p:any={};for(const k of POSE_KEYS)if(typeof s[k as keyof Simulation]==='number'||typeof s[k as keyof Simulation]==='boolean'||typeof s[k as keyof Simulation]==='string')p[k]=s[k as keyof Simulation];
- Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,swim:s.swim?{time:s.swim.time,stroke:s.swim.stroke,out:null,celebrate:s.swim.celebrate,speed:Math.hypot(s.velocity.x,s.velocity.z)}:null,diveFlip:s.diveFlip,mantle:s.mantle?{kind:s.mantle.kind,time:s.mantle.time,duration:s.mantle.duration,edge:s.mantle.edge.toArray(),forward:s.mantle.forward.toArray()}:null,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
+ Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity','basePitch']),flipYaw0:s.flipYaw0,flipRoll0:s.flipRoll0,jumpOn:!!s.jumpOn,grinding:!!s.grind,manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,swim:s.swim?{time:s.swim.time,stroke:s.swim.stroke,out:null,celebrate:s.swim.celebrate,speed:Math.hypot(s.velocity.x,s.velocity.z)}:null,diveFlip:s.diveFlip,mantle:s.mantle?{kind:s.mantle.kind,time:s.mantle.time,duration:s.mantle.duration,edge:s.mantle.edge.toArray(),forward:s.mantle.forward.toArray()}:null,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
  p.board=pick(s.board,['lean','slide','slideSide','tuck','brake','pushTimer','travel','surfaceRoll']);
- p.tricks=pick(s.tricks,['stance','naturalDirection','quarterAir','yaw','visualPose','poseBlend','poseSide','fingerTime','fingerHand']);
+ p.tricks=pick(s.tricks,['stance','naturalDirection','quarterAir','yaw','visualPose','poseBlend','poseSide','fingerTime','fingerHand','twisting']);
  for(const k of ['deck','bars','bri','kickless','decade'] as const)p.tricks[k]={...pick(s.tricks[k],['angle','velocity','mismatch']),reversals:[],reversalAge:s.tricks[k].reversalAge??1};
  p.crash=s.crash?{age:s.crash.age,rest:s.crash.rest,rider:{position:s.crash.rider.translation(),rotation:s.crash.rider.rotation()},scooter:{position:s.crash.scooter.translation(),rotation:s.crash.scooter.rotation()}}:null;
  return JSON.parse(JSON.stringify(p));

@@ -65,14 +65,27 @@ try {
   await page.evaluate(() => { const g = window.__LAZER; g.profile.settings.weather = 'sunny'; g.profile.settings.daylight = 'day'; g.menu.openSesh('settings-time', 'outdoor'); });
   await page.waitForSelector('.game-menu');
   const labels = [];
-  for (let i = 0; i < 3; i++) { await page.locator('button', { hasText: 'WEATHER' }).first().click(); labels.push(await page.locator('button', { hasText: 'WEATHER' }).first().textContent()); }
-  await page.locator('button', { hasText: 'TIME OF DAY' }).first().click();
-  const time = await page.locator('button', { hasText: 'TIME OF DAY' }).first().textContent();
+  for (let i = 0; i < 3; i++) { await page.getByRole('button', { name: /^WEATHER/ }).click(); labels.push(await page.getByRole('button', { name: /^WEATHER/ }).textContent()); }
+  await page.getByRole('button', { name: /^TIME OF DAY/ }).click();
+  const time = await page.getByRole('button', { name: /^TIME OF DAY/ }).textContent();
   check('Settings: WEATHER cycles Fall, Snow, Rain; TIME OF DAY is its own row', /FALL/.test(labels[0]) && /SNOW/.test(labels[1]) && /RAIN/.test(labels[2]) && /SUNSET/.test(time ?? ''), { labels, time });
   await page.locator('button', { hasText: 'APPLY / SAVE CHANGES' }).first().click();
   await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
   const saved = await page.evaluate(() => window.__LAZER.profile.settings);
   check('Rain at sunset persists after reload', saved.weather === 'rain' && saved.daylight === 'sunset', { weather: saved.weather, daylight: saved.daylight });
+
+  // #44 FLASHLIGHT and #48 MATCH BOULDER CITY NOW: their own rows; live mode shows the city's time and weather.
+  await page.evaluate(() => { window.__LAZER.menu.openSesh('settings-time', 'outdoor'); });
+  await page.waitForSelector('.game-menu');
+  await page.getByRole('button', { name: /^FLASHLIGHT/ }).click();
+  const torch = await page.getByRole('button', { name: /^FLASHLIGHT/ }).textContent();
+  await page.getByRole('button', { name: /^MATCH BOULDER CITY NOW/ }).click();
+  const live = { match: await page.getByRole('button', { name: /^MATCH BOULDER CITY NOW/ }).textContent(), time: await page.getByRole('button', { name: /^TIME OF DAY/ }).textContent(), weather: await page.getByRole('button', { name: /^WEATHER/ }).textContent() };
+  check('Flashlight turns off; MATCH BOULDER CITY NOW shows the live time and weather', /FLASHLIGHT OFF/.test(torch ?? '') && /NOW ON/.test(live.match ?? '') && /LIVE · (DAY|SUNSET|NIGHT|SUNRISE)/.test(live.time ?? '') && /LIVE · (SUNNY|FALL|SNOW|RAIN)/.test(live.weather ?? ''), { torch, live });
+  await page.getByRole('button', { name: /^APPLY \/ SAVE CHANGES/ }).first().click();
+  await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
+  const kept = await page.evaluate(() => window.__LAZER.profile.settings);
+  check('Flashlight and live sky are saved', kept.flashlight === false && kept.liveSky === true, { flashlight: kept.flashlight, liveSky: kept.liveSky });
 
   // An old save with snow as the time of day opens as snowy weather in the daytime.
   await page.evaluate(async () => { const { PROFILE_KEY } = await import('/src/data/loadout.ts'); const raw = JSON.parse(localStorage.getItem(PROFILE_KEY)); raw.settings.daylight = 'snow'; delete raw.settings.weather; localStorage.setItem(PROFILE_KEY, JSON.stringify(raw)); });

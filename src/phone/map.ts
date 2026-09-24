@@ -17,6 +17,17 @@ export interface MapSource {
 const SIZE = 1024;
 /** The minimap's rider-centred photo on long maps. */
 const LOCAL_SIZE = 768;
+/**
+ * Without a GPU (a software rasteriser such as SwiftShader or llvmpipe) the
+ * full-park photo is shaded pixel by pixel on the CPU, which took over two
+ * minutes at 1024 px; a quarter of the pixels is plenty for a phone screen there.
+ */
+function softwareRenderer(renderer: THREE.WebGLRenderer) {
+  try {
+    const gl = renderer.getContext(), info = gl.getExtension('WEBGL_debug_renderer_info');
+    return /swiftshader|llvmpipe|softpipe|software/i.test(String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)));
+  } catch { return false; }
+}
 /** Pin colour and letter per feature kind, shared by the phone map and the HUD minimap. */
 const MARK: Partial<Record<MapFeature['kind'], [string, string]>> = { spawn: [PAPER, '★'], vending: [TEAL, 'V'], fountain: ['#86c3d5', 'W'], rack: ['#d5d0c4', 'R'], shop: [ORANGE, '$'], bench: ['#b8a07a', 'B'], ramp: ['#e2b87a', '▲'] };
 
@@ -46,7 +57,7 @@ function rideMarker(g: CanvasRenderingContext2D, ride: MapRide, size: number) {
 /**
  * The MAP app's picture: one overhead orthographic render of the current map,
  * taken the first time the app opens on a map (a single frame of work), with
- * the player, spots and friends drawn live on top. Pan with LS / D-pad, zoom
+ * the player, spots and friends drawn live on top. Pan with LS, zoom
  * with the bumpers or triggers.
  */
 export class PhoneMap {
@@ -79,10 +90,12 @@ export class PhoneMap {
   }
 
   /** The overhead photo, taken once per map. */
+  private softKnown: boolean | null = null;
+  private get soft() { return (this.softKnown ??= softwareRenderer(this.source.renderer)); }
   private capture(mapKey: string) {
     if (this.photo && this.key === mapKey) return this.photo;
     const b = (this.bounds = this.area(this.source.features()));
-    this.photo = this.shoot(b, SIZE);
+    this.photo = this.shoot(b, this.soft ? SIZE / 4 : SIZE);
     this.key = mapKey;
     return this.photo;
   }
@@ -100,7 +113,7 @@ export class PhoneMap {
     const l = this.local;
     if (l && l.key === mapKey && Math.max(Math.abs(p.x - l.b.x), Math.abs(p.z - l.b.z)) + span * 0.75 <= l.b.size / 2) return l;
     const nb = { x: p.x, z: p.z, size: Math.max(160, span * 3) };
-    this.local = { photo: this.shoot(nb, LOCAL_SIZE), b: nb, key: mapKey };
+    this.local = { photo: this.shoot(nb, this.soft ? LOCAL_SIZE / 4 : LOCAL_SIZE), b: nb, key: mapKey };
     return this.local;
   }
 
@@ -240,7 +253,7 @@ export class PhoneMap {
     g.textBaseline = 'alphabetic';
   }
 
-  /** LS / D-pad pans (stops following), bumpers or triggers zoom, A re-centres. */
+  /** LS pans (stops following), bumpers or triggers zoom, A re-centres. */
   input(pan: THREE.Vector2, zoom: number, recentre: boolean, dt: number) {
     if (recentre) this.follow = true;
     if (pan.lengthSq() > 0.04) {

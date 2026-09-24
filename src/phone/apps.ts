@@ -43,6 +43,8 @@ export interface PhoneDeps {
   openCrate: (id: string) => void;
   /** The one economy (data/credit.ts): the SHOP app orders through it. */
   economy: CreditEconomy;
+  /** Replays (#41): capture the rolling history into the editor, or open the saved ones. */
+  replays: { capture: () => boolean; library: () => void; seconds: () => number };
 }
 
 const time = (s: number) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -240,7 +242,7 @@ function mapApp(d: PhoneDeps): View {
     title: 'MAP', live: true,
     input: (f, dt) => {
       if (f.pressed.brakeBars || f.pressed.body) return false;
-      const pan = new THREE.Vector2(f.steer + f.rx + (f.held.menuRight > 0.5 ? 1 : 0) - (f.held.menuLeft > 0.5 ? 1 : 0), f.lean + f.ry - (f.held.marker > 0.5 ? 1 : 0));
+      const pan = new THREE.Vector2(f.steer, f.lean); // LS only: the D-pad stays with taking the phone out and away
       const zoom = (f.held.rightModifier > 0.5 ? 1 : 0) - (f.held.leftModifier > 0.5 ? 1 : 0) + f.held.pumpGrind - f.held.brake;
       d.map.input(pan, zoom, f.pressed.hop, dt);
       return true;
@@ -549,6 +551,21 @@ export function homePage(d: PhoneDeps): Page {
   };
 }
 
+// ---- REPLAYS --------------------------------------------------------------------
+function replaysApp(d: PhoneDeps): View {
+  return {
+    title: 'REPLAYS',
+    page: () => ({ blocks: [
+      { type: 'title', text: 'REPLAYS', sub: `Always recording the last ${d.replays.seconds()} s` },
+      { type: 'list', rows: [
+        { id: 'capture', label: 'CAPTURE REPLAY', detail: `The last ${d.replays.seconds()} s, into the Replay Editor`, action: () => d.phone.close(() => d.replays.capture()) },
+        { id: 'saved', label: 'SAVED REPLAYS', detail: 'Watch, edit, rename or delete', action: () => d.phone.close(() => d.replays.library()) },
+        { id: 'history', label: 'REPLAY HISTORY', detail: 'How much is kept: Settings / Gameplay', value: `${d.replays.seconds()} S`, action: () => d.phone.close(() => d.openSesh('settings-gameplay')) },
+      ] },
+    ] }),
+  };
+}
+
 export function installApps(d: PhoneDeps) {
   const apps: [string, string, IconName, string, (d: PhoneDeps) => View, (() => string | undefined)?][] = [
     ['music', 'MUSIC', 'music', ORANGE, musicApp],
@@ -561,6 +578,7 @@ export function installApps(d: PhoneDeps) {
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['shop', 'SHOP', 'crate', '#35b6ff', shopApp, () => { const n = d.profile().wallet.packages.length; return n ? String(Math.min(9, n)) : undefined; }],
+    ['replays', 'REPLAYS', 'play', '#ff5a1f', replaysApp],
   ];
   for (const [id, label, ic, color, make, badge] of apps) d.phone.register({ id, label, icon: ic, color, open: () => make(d), badge });
 }

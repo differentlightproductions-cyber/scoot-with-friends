@@ -254,16 +254,15 @@ export class Phone {
   /** Controller input while the phone is out. Gameplay receives nothing meanwhile. */
   update(f: InputFrame, dt: number) {
     if (this.state !== 'open') return;
-    // D-pad Down taps step down a list (one step per tap: holding it puts the
-    // phone away, see HoldButton, so it never auto-repeats).
+    // Only the left stick moves the focus. The D-pad is left out entirely: its
+    // Down button is held to take the phone out and put it away (HoldButton),
+    // and a D-pad step riding on that hold jumped the focus as the phone opened.
     const view = this.view;
     if (view?.input?.(f, dt)) { this.dirty = true; return; }
-    if (f.pressed.menuDown) { this.screen.move(0, 1); this.dirty = true; return; }
     if (f.pressed.brakeBars) { this.back(); return; }
     if (f.pressed.body) { this.home(); return; }
     if (f.pressed.hop) { this.screen.activate(); this.dirty = true; return; }
-    const x = f.steer + f.rx + (f.held.menuRight > 0.5 ? 1 : 0) - (f.held.menuLeft > 0.5 ? 1 : 0);
-    const y = f.lean + f.ry - (f.held.marker > 0.5 ? 1 : 0);
+    const x = f.steer, y = f.lean;
     const dir = Math.abs(x) > 0.5 && Math.abs(x) >= Math.abs(y) ? (x > 0 ? 'right' : 'left') : Math.abs(y) > 0.5 ? (y > 0 ? 'down' : 'up') : '';
     if (!dir) { this.heldDir = ''; return; }
     if (dir === this.heldDir) {

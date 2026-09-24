@@ -369,7 +369,7 @@ export class GameMenu {
         add("CLAMP GRAB", () => {}, "In the air, hold RT + RB: one hand stays on the bar and the other holds the clamp (Regular: right hand, Goofy: left hand). The buttons are the same in both stances. Release to return the hand; it also lets go just before landing. Works with spins and flips; not during bar spins or finger whips.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y Superman; LT + Y deck grab; LT + LB + Y tuck. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
-        add("YOUR PHONE", () => {}, "Hold D-pad Down to take your phone out, standing or rolling on the ground: Music, Emotes, Rides, Rider, Map, Items, Build and Messages. LS or the D-pad moves, A opens, B goes back, Y home; hold D-pad Down again to put it away. Riding, you coast while you look.");
+        add("YOUR PHONE", () => {}, "Hold D-pad Down to take your phone out, standing or rolling on the ground: Music, Emotes, Rides, Rider, Map, Items, Build and Messages. LS moves, A opens, B goes back, Y home; hold D-pad Down again to put it away. Riding, you coast while you look.");
         add("ON-FOOT SOCIAL", () => {}, "Emotes are on the phone. Hold D-pad Right for chat; Enter sends, Esc/B cancels. Private room chat is shared with connected friends; solo chat stays local.");
         add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
         break;
@@ -516,6 +516,7 @@ export class GameMenu {
         add('CAMERA',()=>this.show('settings-camera'),'View, field of view, motion and filter');
         add('GRAPHICS',()=>this.show('settings-graphics'),'Visual quality and rider detail');
         add('TIME & WEATHER',()=>this.show('settings-time'),'Time of day, and sunny, fall, snow or rain');
+        add('GAMEPLAY',()=>this.show('settings-gameplay'),'Replay history');
         add('AUDIO',()=>this.show('settings-audio'),'Game sound');
         add('PHONE',()=>this.show('settings-phone'),'Which hand holds it, notifications');
         add('ACCESSIBILITY & TOUCH',()=>this.show('settings-touch'),'Touch controls, size, opacity and reset');
@@ -528,6 +529,10 @@ export class GameMenu {
         add("CONTROLS "+(this.profile.settings.controlStyle==='pro'?'PRO / ADVANCED':'ARCADE'),()=>{this.profile.settings.controlStyle=this.profile.settings.controlStyle==='pro'?'arcade':'pro';this.changed();this.render();});
         add('CONTROLS PRESET '+presetName(this.profile.settings.stance).toUpperCase(),()=>{this.profile.settings.stance=this.profile.settings.stance==='regular'?'goofy':'regular';this.changed();this.render();});
         add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
+        break;
+      case 'settings-gameplay':
+        title='GAMEPLAY';subtitle='SETTINGS / REPLAYS';
+        add('REPLAY HISTORY '+this.profile.settings.replayHistory+' SEC',()=>{const lengths=[15,30,45,60] as const;this.profile.settings.replayHistory=lengths[(lengths.indexOf(this.profile.settings.replayHistory)+1)%lengths.length];this.changed();this.render();},'How much of your riding CAPTURE REPLAY can reach back to: 15, 30, 45 or 60 seconds.');
         break;
       case 'settings-graphics':
         title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';

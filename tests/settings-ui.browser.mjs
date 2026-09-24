@@ -23,7 +23,10 @@ assert.match(await page.getByRole('button',{name:/CHOOSE RIDER/}).innerText(),/S
 assert.match(await page.getByRole('button',{name:/CUSTOMIZE RIDER/}).innerText(),/Face, hair, eyes/);
 await page.screenshot({path:'artifacts/settings-pause/rider.png'});
 await page.getByRole('button',{name:/SAVE & BACK/}).click();
-await page.getByRole('button',{name:/^PLAY/}).click();
+// A fresh profile builds its starter scooter first (the Lazer starter), then goes on to PLAY.
+const play=page.getByRole('button',{name:/^(PLAY|BUILD YOUR SCOOTER)/}).first();
+if(/BUILD YOUR SCOOTER/.test(await play.innerText())){await play.click();await page.getByRole('button',{name:/^RIDE IT/}).click();}
+else await play.click();
 await page.getByRole('button',{name:/^SOLO/}).click();
 await page.locator('.game-menu nav button').first().click();
 await page.locator('#loading').waitFor({state:'hidden',timeout:30000});

@@ -5,7 +5,10 @@ import { copyText } from "./core/secure";
 import { TouchPad } from "./input/touchpad";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
-import {FreeRide} from './network/client';
+import {FreeRide,capture} from './network/client';
+import {appearance as riderAppearance} from './network/protocol';
+import {ReplayBuffer} from './replay/buffer';
+import {ReplayEditor} from './replay/editor';
 import {CreditEconomy} from './data/credit';
 import { ParkEditor } from "./editor/editor";
 import { buildObject, deformGroundLayers } from "./editor/assets";
@@ -143,6 +146,8 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
+  /** The rolling replay history (#41); a new map starts a new one. */
+  const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;};
   events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
@@ -192,7 +197,8 @@ async function boot() {
     ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
     items:()=>interactions,builder:()=>builder,
     compose:()=>social.openChat(),
-    network:()=>network};
+    network:()=>network,
+    replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory}};
   installApps(phoneDeps);
   phone.homePage=()=>homePage(phoneDeps);
   // First person: taps land on the 3D phone's screen.
@@ -403,6 +409,7 @@ async function boot() {
   });
   function startSession(id: MapId, force = false) {
     void economy.track({}, id);
+    replayBuffer.clear();
     if (force || ACTIVE_MAP !== id) {
       phone.stow();phoneRig.model.removeFromParent();phoneMap.reset();
       interactions.dispose();builder.dispose();
@@ -494,6 +501,15 @@ async function boot() {
           case "resume":
             hud.setPaused(false);
             break;
+          case "capture-replay":
+            hud.setPaused(false);
+            captureReplay();
+            break;
+          case "replays":
+            hud.setPaused(false);
+            input.clear();
+            void replay.openLibrary();
+            break;
           // The Sesh menu's Now Playing controls: the same MusicService as the phone.
           case "music-prev": music.previous(); break;
           case "music-toggle": music.togglePlay(); break;
@@ -565,9 +581,34 @@ async function boot() {
   window.addEventListener("gamepaddisconnected", () => {
     suspend();
   });
+  // Replays (#41): the rolling history is recorded as rider state every frame
+  // of live play (render below); the editor owns input and the screen while open.
+  const replay=new ReplayEditor({scene,renderer,camera,profile:()=>profile,sim:()=>sim,mapId:()=>ACTIVE_MAP,
+    mapName:id=>MAPS.find(m=>m.id===id)?.name??'Map',
+    loadMap:async id=>{await menu.onRide(id as MapId);},
+    draw:(dt,view,focus,yaw)=>{
+      const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
+      daylight.update(dt,live?.phase??profile.settings.daylight,focus,renderer,{flashlight:profile.settings.flashlight,yaw,sidereal:live?.sidereal});
+      weather.update(dt,live?.weather??profile.settings.weather,focus,profile.settings.fidelity,{camera:view.position});
+      camcorder.render(renderer,scene,view);
+    },
+    setLiveHidden:hidden=>{
+      rider.root.visible=!hidden;for(const r of network.remotes.values()){r.model.root.visible=!hidden;r.label.hidden=hidden;}
+      document.body.classList.toggle('replay-open',hidden);
+      if(hidden&&phone.active)phone.stow();
+    }});
+  /** Opens the last 15-60 s in the Replay Editor; the live history carries on untouched. */
+  function captureReplay(){
+    const clip=replayBuffer.snapshot({map:ACTIVE_MAP,layout:null,rideable:sim.rideable,appearance:riderAppearance({...profile,rideable:sim.rideable})});
+    if(clip.frames.length<15){phone.notify('Replays','Ride a little first: nothing to replay yet.');return false;}
+    input.clear();pending=emptyInput();accumulator=0;
+    replay.openCapture(clip);
+    return true;
+  }
   window.addEventListener("resize", () => {
     renderer.setSize(innerWidth, innerHeight);
     camera.resize();
+    replay.resize(camera.camera.aspect);
   });
   await loadingStage("Ready",100);finishLoading();
   let last = performance.now(),
@@ -601,6 +642,7 @@ async function boot() {
     rider.phonePose = raise > 0 ? (r: RiderModel) => phoneRig.pose(r, raise, phoneHand, null) : null;
     camera.phonePitch = raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
+    if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
@@ -650,6 +692,7 @@ async function boot() {
       return;
     }
     missions.update(dt);
+    if(replay.open){replay.update(frame,dt);audio.update(0,false,false,true);replay.draw(dt);return;}
     if(rewards.open){rewards.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if(menu.shopOpen||menu.seshOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if (!hud.started) {
@@ -784,6 +827,7 @@ async function boot() {
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),
+      replay, replayBuffer, captureReplay: () => captureReplay(),
       renderer,
       fidelity,
       economy, cloud,
