@@ -9,7 +9,7 @@ try{
  assert.notEqual(await bg(play),await bg(shops));
  await page.waitForTimeout(300);await page.keyboard.down('s');await page.waitForTimeout(80);await page.keyboard.up('s');
  assert(await shops.evaluate(e=>e.classList.contains('selected')));assert.notEqual(await bg(play),await bg(shops));
- assert.equal(await shops.evaluate(e=>getComputedStyle(e.querySelector('span'),'::before').content),'"› "');
+ assert.equal(await shops.evaluate(e=>getComputedStyle(e.querySelector('span'),'::before').content),'"▶ "');
  await page.screenshot({path:'artifacts/ui-polish/main-menu-focus.png'});
  await page.locator('#start button').filter({hasText:'Sign in / Create account'}).click();
  await page.locator('#account-dialog').waitFor({state:'visible'});
