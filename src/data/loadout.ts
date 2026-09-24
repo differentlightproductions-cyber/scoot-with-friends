@@ -7,6 +7,7 @@ import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longb
 import { ownsBoard, type RideableKind } from "./catalog";
 import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
 import { CONTROLS_VERSION } from "../input/riding";
+import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
   version: 1 | 2 | 3;
   equipmentRevision?:number;
@@ -73,8 +74,8 @@ export function loadProfile(): LocalProfile {
       mountFlourish: true,
       characterQuality:'auto',
       cameraView:'third',
-      firstPersonFov:110,
-      firstPersonViewVersion:1,
+      firstPersonFov:FP_FOV_DEFAULT,
+      firstPersonViewVersion:2,
       cameraMotion:'reduced',
       cameraFilter:'off',
       filterStrength:65,
@@ -96,8 +97,9 @@ export function loadProfile(): LocalProfile {
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     if(['auto','low','medium','high'].includes(saved.settings?.characterQuality))profile.settings.characterQuality=saved.settings.characterQuality;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
-    if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(110,Math.max(70,Math.round(saved.settings.firstPersonFov)));
-    if(!saved.settings?.firstPersonViewVersion&&profile.settings.firstPersonFov===90)profile.settings.firstPersonFov=110;
+    if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));
+    // Version 2 widened the range (70-110 became 100-150): the old defaults (90, then 110) and anything below the new minimum move to the new default.
+    if((saved.settings?.firstPersonViewVersion??0)<2&&(!Number.isFinite(saved.settings?.firstPersonFov)||saved.settings.firstPersonFov<=110))profile.settings.firstPersonFov=FP_FOV_DEFAULT;
     if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
     if(['off','camcorder'].includes(saved.settings?.cameraFilter))profile.settings.cameraFilter=saved.settings.cameraFilter;
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;

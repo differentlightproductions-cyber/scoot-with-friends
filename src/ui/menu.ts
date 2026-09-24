@@ -6,6 +6,7 @@ import {BODY_BUILDS} from '../scooter/body-fit';
 import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryItem,type BrowseMode} from '../data/inventory';
 import {AccountPanel} from './account';
 import {loadProfile} from '../data/loadout';
+import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN} from '../camera/fov';
 import { version } from '../../package.json';
 import * as THREE from "three";
 import { MAPS, type MapId } from "../data/maps";
@@ -409,7 +410,7 @@ export class GameMenu {
         // Camera settings take effect at once, in the Sesh too, and are saved straight away.
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
-        add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=110?70:c.firstPersonFov+5;}),'Horizontal field of view, 70° to 110°. Default 110°.');
+        add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=FP_FOV_MAX?FP_FOV_MIN:c.firstPersonFov+5;}),`Horizontal field of view, ${FP_FOV_MIN}° to ${FP_FOV_MAX}°. Default ${FP_FOV_DEFAULT}°.`);
         add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
         add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
         if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');

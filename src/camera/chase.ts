@@ -5,8 +5,18 @@ import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import type { RiderModel } from "../scooter/model";
 import { terrainHeight } from "../park/park";
+import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN } from "./fov";
 
 const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0);
+/** Very wide horizontal settings on a tall screen would become a fisheye; cap the vertical angle. */
+const FP_MAX_VERTICAL_FOV = 120;
+const channelBusy = (c: { angle: number; target: number; velocity: number }) => Math.abs(c.target - c.angle) > 0.08 || Math.abs(c.velocity) > 1;
+/** 1 while a scooter trick, rider-around-scooter trick or grab is under way in the air. */
+function trickActivity(s: Simulation) {
+  if (s.grounded || s.rideable === "longboard") return 0;
+  const t = s.tricks;
+  return channelBusy(t.deck) || channelBusy(t.bars) || channelBusy(t.bri) || channelBusy(t.kickless) || channelBusy(t.decade) || t.poseBlend > 0.2 ? 1 : 0;
+}
 export class ChaseCamera {
   camera = new THREE.PerspectiveCamera(56, innerWidth / innerHeight, 0.08, 160);
   heading = 0;
@@ -24,8 +34,15 @@ export class ChaseCamera {
   // ---- First person ----------------------------------------------------------
   view: "third" | "first" = "third";
   /** Horizontal degrees; converted to the camera's vertical FOV for the aspect. */
-  firstPersonFov = 110;
+  firstPersonFov = FP_FOV_DEFAULT;
   motion: "reduced" | "full" = "reduced";
+  /**
+   * Mounted first-person framing. tilt: heads-up pitch from the head's forward
+   * (radians, negative looks down); eyeBack: how far behind the head the eye
+   * sits; charge: extra downward tilt at a full jump charge; focus: how far
+   * (0..1) a trick in progress turns the view towards the scooter.
+   */
+  fpTune = { tilt: -0.8, eyeBack: 0.04, charge: 0.14, focus: 0.45 };
   rider: RiderModel | null = null;
   /** True while this frame is drawn from the rider's eyes (false during a heavy crash). */
   firstPersonActive = false;
@@ -35,10 +52,12 @@ export class ChaseCamera {
   private fpPitch = 0;
   private fpLookYaw = 0;
   private fpLookPitch = 0;
+  private fpCharge = 0;
+  private fpFocus = 0;
   private fpPosition = new THREE.Vector3();
   private fpQuaternion = new THREE.Quaternion();
   reset() {
-    this.fpInit = false;this.fpCrash = 0;this.fpLookYaw = this.fpLookPitch = 0;
+    this.fpInit = false;this.fpCrash = 0;this.fpLookYaw = this.fpLookPitch = 0;this.fpCharge = this.fpFocus = 0;
     this.initialized = false;
     this.wasWalking=false;this.mountTime=0;
     this.orbit = 0;
@@ -198,19 +217,38 @@ export class ChaseCamera {
       this.fpPitch = clamp(this.fpPitch - input.ry * 1.5 * dt, -1.15, 0.9);
       look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12));
     } else {
-      // Mounted: RS belongs to tricks. Baseline sits close to level ("head up"),
-      // so the ramps ahead stay visible; the eye height and rearward offset below
-      // keep the bars in the lower part of frame without needing a steep constant
-      // tilt. Going airborne on a trick attempt dips the view down further to
-      // focus on it, then eases back to level once grounded again.
-      const trickFocus = s.grounded ? 0 : 1;
-      this.fpPitch = damp(this.fpPitch, trickFocus, s.grounded ? 3.5 : 7, dt);
+      // Mounted: RS belongs to tricks. The heads-up view looks forward along the
+      // head, tipped down enough to see hands, bars and deck with the line ahead
+      // across the top of the frame. Holding RS down to charge a jump dips it a
+      // little further; a trick in progress turns it towards the scooter.
+      this.fpPitch = damp(this.fpPitch, 0, 3, dt);
       this.fpYaw = s.yaw;
-      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.24 - this.fpPitch * 0.38 + flipping * 0.4));
+      this.fpCharge = damp(this.fpCharge, s.charge > 0 ? s.charge : 0, 8, dt);
+      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpTune.tilt - this.fpCharge * this.fpTune.charge + flipping * 0.55));
     }
     // A small rearward eye offset keeps the grips in front of the lens even
-    // when the preload pose brings the rider's chin over the crossbar.
-    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : -0.18) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    // when the preload pose brings the rider's chin over the crossbar; it stays
+    // small so the front of the deck shows past the rider's hips.
+    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : -this.fpTune.eyeBack) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    // Trick focus: while a scooter trick or grab is under way the view turns
+    // towards the scooter (quickly), then eases back to the heads-up view once
+    // the trick is caught. Flips keep their own rotation, so focus fades out
+    // while the body is turning over.
+    const trick = onFoot ? 0 : trickActivity(s);
+    this.fpFocus = damp(this.fpFocus, trick, trick > this.fpFocus ? 9 : 2.6, dt);
+    const focusWeight = this.fpFocus * (1 - flipping) * this.fpTune.focus;
+    if (focusWeight > 1e-3) {
+      // Aim between the grips, the headtube and the deck: the whole scooter, whichever way it is turning.
+      const a = r.assembly, focus = a.barPivot.getWorldPosition(new THREE.Vector3()).add(a.deckSocket.getWorldPosition(new THREE.Vector3()));
+      for (const grip of a.gripSockets) focus.addScaledVector(grip.getWorldPosition(new THREE.Vector3()), 1 / a.gripSockets.length);
+      focus.divideScalar(3);
+      const toFocus = focus.sub(eye);
+      if (toFocus.lengthSq() > 1e-4) {
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(look);
+        const aimed = new THREE.Quaternion().setFromUnitVectors(forward, toFocus.normalize()).multiply(look);
+        look.slerp(aimed, focusWeight);
+      }
+    }
     // Short collision check from the chest to the eye; the rider's own body is not a collider.
     const chest = r.torso.getWorldPosition(new THREE.Vector3());
     const toEye = eye.clone().sub(chest), length = toEye.length();
@@ -237,8 +275,8 @@ export class ChaseCamera {
     this.camera.position.copy(r.root.localToWorld(this.fpPosition.clone()));
     this.camera.quaternion.copy(rootQuaternion).multiply(this.fpQuaternion);
     this.camera.near = 0.05;
-    const horizontal = THREE.MathUtils.degToRad(clamp(this.firstPersonFov, 70, 110));
-    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(horizontal / 2) / this.camera.aspect));
+    const horizontal = THREE.MathUtils.degToRad(clamp(this.firstPersonFov, FP_FOV_MIN, FP_FOV_MAX));
+    this.camera.fov = Math.min(FP_MAX_VERTICAL_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(horizontal / 2) / this.camera.aspect)));
     this.camera.updateProjectionMatrix();
     // Walking moves relative to where the rider looks.
     this.heading = onFoot ? this.fpYaw : s.yaw; this.orbit = 0;
