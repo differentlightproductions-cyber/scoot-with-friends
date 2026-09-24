@@ -520,3 +520,10 @@ body.ui-open header { visibility: hidden; }
 #account-dialog .account-save strong { font: 12px/1 var(--display); letter-spacing: .08em; color: var(--orange); }
 #account-dialog .account-save span { font: 17px/1.2 var(--display); }
 #account-dialog .account-save small { margin: 0; }
+
+/* ---- Riding HUD hints: small tape labels, readable on bright concrete and at night ---- */
+footer #hint:not(:empty) {
+  display: inline-block; padding: 6px 10px 5px; font: 10px/1.5 var(--display); letter-spacing: .06em; color: var(--paper);
+  background: #0b0c0dc4; border-radius: 6px; box-shadow: 2px 2px 0 var(--lime); transform: rotate(-.6deg);
+}
+footer .footer-right { padding: 5px 9px 4px; font-family: var(--display); color: #f4f1e8d9; background: #0b0c0d99; border-radius: 6px; }

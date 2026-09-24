@@ -225,7 +225,7 @@ async function boot() {
   let destinationLoading=false;
   const loadDestination = async (id:MapId) => {
     if(destinationLoading)return;destinationLoading=true;input.clear();
-    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B Hill":"Loading your park",10);
+    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B\u00a0Hill":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if (id === "outdoor") await latestPark();
     await loadingStage("Building the destination",40);
