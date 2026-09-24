@@ -1,6 +1,7 @@
 import {loadingStage,finishLoading,loadingFailed} from './ui/loading';
 import { version } from "../package.json";
 import * as riding from "./input/riding";
+import { copyText } from "./core/secure";
 import { TouchPad } from "./input/touchpad";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
@@ -117,8 +118,8 @@ async function boot() {
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
     {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'Both players need this Windows release. Host LAN on one PC; Join LAN on the other. Two players per room.':network.lastError,action:()=>{}},
-    ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void navigator.clipboard.writeText(network.code)}]:[]),
-    ...(network.id?[{label:'COPY INVITE',action:()=>void navigator.clipboard.writeText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
+    ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void copyText(network.code)}]:[]),
+    ...(network.id?[{label:'COPY INVITE',action:()=>void copyText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
@@ -474,7 +475,7 @@ async function boot() {
       // and not while the current one sits in a rack.
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
     daylight.update(dt,profile.settings.daylight==='snow'?'day':profile.settings.daylight,sim.position);
-    weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity);
+    weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';

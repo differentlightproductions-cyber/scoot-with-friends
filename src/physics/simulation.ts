@@ -1853,7 +1853,7 @@ export class Simulation {
     if (
       this.tricks.bri.mismatch > 1 ||
       this.tricks.kickless.mismatch > 1 ||
-      this.tricks.decade.mismatch > 1 ||
+      this.tricks.decadeUnfinished ||
       this.tricks.poseBlend > 0.65
     )
       quality = "failed";
@@ -2925,7 +2925,10 @@ export class Simulation {
       this.tricks.quarterAir=!!this.airQuarter;
       // Seconds until the wheels land; Clamp Grab lets go a moment before then.
       this.tricks.landingIn = Math.min(contact, fall);
-      if (this.rideable === "scooter") this.tricks.input(dt, input, flipChord);
+      if (this.rideable === "scooter") {
+        this.tricks.briPending = !!this.groundIntent;
+        this.tricks.input(dt, input, flipChord);
+      }
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
     }

@@ -259,10 +259,22 @@ export function outdoorLip(x: number, z: number, vz: number, vx = 0) {
   }
   return null;
 }
+// Each module's surface runs a little past its free side edges so a wheel on the
+// very edge does not drop off early. Where two modules share an edge (the small
+// box between the large transfer at x = -4 and the spine at x = 0.61) neither
+// reaches over the other: the taller one used to extend 0.125 m onto the lower
+// deck as an invisible, sloped wall that shoved riders sideways.
+const EDGE_MARGIN = 0.125;
+const sharedEdge = (m: RampModule, x: number) =>
+  modules.some(o => o !== m && (Math.abs(o.x0 - x) < 1e-6 || Math.abs(o.x1 - x) < 1e-6) && o.z0 < m.z1 && o.z1 > m.z0);
+const surfaceSpan = modules.map(m => [
+  m.x0 - (sharedEdge(m, m.x0) ? 0 : EDGE_MARGIN),
+  m.x1 + (sharedEdge(m, m.x1) ? 0 : EDGE_MARGIN),
+]);
 export function outdoorHeight(x: number, z: number) {
   let height = extensionHeight(x, z);
-  for (const m of modules)
-    if (x >= m.x0 - 0.125 && x <= m.x1 + 0.125) height = Math.max(height, profile(m, z));
+  for (let i = 0; i < modules.length; i++)
+    if (x >= surfaceSpan[i][0] && x <= surfaceSpan[i][1]) height = Math.max(height, profile(modules[i], z));
   return height;
 }
 /**

@@ -35,6 +35,18 @@ const materials = {
   shoe: new THREE.MeshStandardMaterial({ color: 0x263333, roughness: .86 }),
 };
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+/** The imported rider's upper-arm joint in the torso's frame (measured on the rig), and the legacy proxy's. */
+const HUMAN_SHOULDER = v(.174, .182, .036), PROXY_SHOULDER = v(.19, .17, 0);
+/**
+ * Where a hand holding a round bar puts its wrist to reach toward `shoulder`:
+ * the imported hand rolls round the bar (ImportedHuman), so the wrist can sit
+ * anywhere on the circle of radius `roll` about the bar axis through `centre`;
+ * the nearest point of that circle to the shoulder is the one it reaches for.
+ */
+function barWrist(shoulder:THREE.Vector3,centre:THREE.Vector3,axis:THREE.Vector3,roll:number){
+  const d=shoulder.clone().sub(centre),perp=d.addScaledVector(axis,-d.dot(axis)),length=perp.length();
+  return length<1e-6?centre.clone():centre.clone().addScaledVector(perp,roll/length);
+}
 function armElbow(shoulder:THREE.Vector3,hand:THREE.Vector3,pole:THREE.Vector3){
   const delta=hand.clone().sub(shoulder),distance=Math.max(.001,delta.length()),direction=delta.divideScalar(distance);
   // A hinge with fixed segment lengths, rather than an off-axis midpoint
@@ -95,6 +107,22 @@ const TUCK = { crouch: 0.1, deckLift: 0.42, deckBack: 0.02, deckTilt: 0, round: 
 // below the shoulders. Tuned so both arms stay inside the imported rig's reach.
 export const CLAMP = { crouch: 0.9, lift: 0.1, back: -0.1, pitch: -0.4 };
 if (import.meta.env?.DEV && typeof window !== "undefined") (window as any).__CLAMP = CLAMP; // tuning handle for tests
+// Decade body: while the rider swings round the bars the knees draw up (crouch)
+// with the feet together (footWidth either side of centre), lifted and a little
+// back so the legs clear the deck, which stays still underneath.
+export const DECADE = { crouch: 0.2, footWidth: 0.075, footLift: 0.26, footBack: -0.08 };
+if (import.meta.env?.DEV && typeof window !== "undefined") (window as any).__DECADE = DECADE;
+// Deck Grab: a deep tuck with the scooter pulled up (lift), in toward the rider
+// (back), nose up (pitch) and tipped toward the grabbing hand (roll), so the free hand closes on the deck's edge
+// `along` of the way from the neck to the tail, beside the front foot.
+export const DECK_GRAB = { crouch: 0.8, lift: 0.3, back: -0.05, pitch: -0.6, roll: 0.2, along: 0.35 };
+// Finger whip: the same pull-up while the free hand flicks the spinning deck;
+// it is complete by the moment of contact and held until the hand lets go.
+export const FINGER = { crouch: 0.86, lift: 0.36, back: 0.07, pitch: -0.22, roll: 0.22, along: 0.2 };
+// Superman: the arms reach along `arms` (torso frame: up the spine, a little
+// toward the chest), gripping at `reach` of full arm length (flipReach in a flip).
+export const SUPERMAN = { arms: v(0, 0.85, 0.5), reach: 0.88, flipReach: 0.92 };
+if (import.meta.env?.DEV && typeof window !== "undefined") Object.assign(window as any, { __DECK_GRAB: DECK_GRAB, __FINGER: FINGER });
 const RIDE_STANCE = { height: 1.2, forward: 0, lean: 0.3, drop: 0.5, reach: -0.3, fold: 0.6 };
 export function poseRod(m: THREE.Mesh, a: THREE.Vector3, b: THREE.Vector3) {
   m.position.copy(a).add(b).multiplyScalar(0.5);
@@ -154,6 +182,10 @@ export class RiderModel {
   placed = 0;
   private backpack=new THREE.Group();
   pushFoot = v(0.055, 0.2, -0.19);
+  /** The deck pivot's resting position while a Decade holds the deck in place for a frame. */
+  private deckHome: THREE.Vector3 | null = null;
+  /** 0..1 of the way from the rider's usual pitch to the scooter's, to keep hold of the bars (leanIntoBars). */
+  private barLean = 0;
   private garmentSkins:GarmentSkin[]=[];
   private trousers?:GarmentSkin;
   constructor(scene: THREE.Scene) {
@@ -530,6 +562,69 @@ export class RiderModel {
   private trickClear = 0;
   /** Keep the rigid scooter outside the chest/head during its authored sweep.
    * This adjusts presentation before hand IK; it never moves the physics body. */
+  /**
+   * Holding the bars at any pitch. The rider normally pitches only 65% as far
+   * as the scooter, which on a steep nose-down air carried the grips past the
+   * imported arms (hands 8-16 cm off the bars) and on a nose-up one brought the
+   * stem into the chest. This leans the whole rider further toward the
+   * scooter's pitch, only as far as that needs; the wheels stay where the
+   * physics put them. It is measured against the scooter's ordinary pose, not a
+   * Bri's sweep, so a Bri caught at a steep pitch ends exactly on the ordinary
+   * pose instead of popping when the Bri's own reach and body clearance let go.
+   * More lean is taken at once (the hands never leave the bars); less eases off.
+   */
+  /**
+   * Superman: the body is stretched out flat behind the bars with both arms
+   * reaching forward past the head. Moves the scooter so the middle of its grips
+   * sits SUPERMAN.reach of the way to full arm's length from the shoulders,
+   * along the stretched arms, instead of at a fixed spot the imported rider's
+   * 0.39 m arms could not reach.
+   */
+  private fitSupermanBars(blend:number,inFlip:boolean){
+    if(!this.human)return;
+    this.root.updateMatrixWorld(true);
+    const toRoot=(o:THREE.Object3D,p:THREE.Vector3)=>this.root.worldToLocal(o.localToWorld(p));
+    const shoulders=toRoot(this.rider,v(0,HUMAN_SHOULDER.y,HUMAN_SHOULDER.z).applyQuaternion(this.torso.quaternion).add(this.torso.position));
+    const arms=SUPERMAN.arms.clone().normalize().applyQuaternion(this.torso.quaternion).applyQuaternion(this.rider.quaternion);
+    const length=(Math.min(...this.human.armReach)+this.gripRoll(0))*(inFlip?SUPERMAN.flipReach:SUPERMAN.reach);
+    const grips=toRoot(this.assembly.gripSockets[0],v(0,0,0)).lerp(toRoot(this.assembly.gripSockets[1],v(0,0,0)),.5);
+    this.scooter.position.addScaledVector(shoulders.addScaledVector(arms,length).sub(grips),blend);
+    this.root.updateMatrixWorld(true);
+  }
+  /** Distance from a held grip's bar axis to the wrist: palm height over the bar and the palm's length. */
+  private gripRoll(i:number){
+    return Math.hypot((this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,this.hands[i].userData.palmLength??.082);
+  }
+  private leanIntoBars(baseScooter:THREE.Matrix4,scooterPitch:number,barYaw:number,handsOnBars:boolean,dt:number){
+    const from=this.rider.rotation.x,span=scooterPitch-from;
+    if(!this.human||Math.abs(span)<1e-4){this.barLean=0;return;}
+    const bars=baseScooter.clone().multiply(new THREE.Matrix4().compose(this.barPivot.position,new THREE.Quaternion().setFromAxisAngle(v(0,1,0),barYaw),v(1,1,1)));
+    const sockets=this.assembly.gripSockets.map(o=>o.position.clone().applyMatrix4(bars));
+    const barAxis=v(1,0,0).transformDirection(bars),roll=[this.gripRoll(0),this.gripRoll(1)];
+    const segments:[THREE.Line3,number][]=[[new THREE.Line3(v(0,.30,-.008).applyMatrix4(bars),sockets[0].clone().lerp(sockets[1],.5)),.025],[new THREE.Line3(sockets[0],sockets[1]),.028]];
+    const reach=this.human.armReach.map(r=>r*.98);
+    const shoulders=[-1,1].map(sign=>v(sign*HUMAN_SHOULDER.x,HUMAN_SHOULDER.y,HUMAN_SHOULDER.z).applyQuaternion(this.torso.quaternion).add(this.torso.position));
+    const centres:[THREE.Vector3,number][]=[[this.hips.position.clone(),.17],[this.torso.position.clone().add(v(0,.05,0).applyQuaternion(this.torso.quaternion)),.2],[this.head.position.clone(),.135]];
+    const euler=this.rider.rotation.clone(),matrix=new THREE.Matrix4(),q=new THREE.Quaternion(),p=v(0,0,0);
+    let limit='';
+    const violation=(t:number)=>{
+      euler.x=from+span*t;matrix.compose(this.rider.position,q.setFromEuler(euler),this.rider.scale);
+      let worst=-Infinity;
+      const note=(value:number,name:string)=>{if(value>worst){worst=value;limit=name;}};
+      if(handsOnBars)for(let i=0;i<2;i++){p.copy(shoulders[i]).applyMatrix4(matrix);note(p.distanceTo(barWrist(p,sockets[i],barAxis,roll[i]))-reach[i],'reach'+i);}
+      centres.forEach(([centre,radius],c)=>{p.copy(centre).applyMatrix4(matrix);segments.forEach(([segment,thickness],k)=>note(.01-(segment.closestPointToPoint(p,true,v(0,0,0)).distanceTo(p)-radius-thickness),['hips','chest','head'][c]+(k?'-bar':'-stem')));});
+      return worst;
+    };
+    // Whatever cannot be met even leaning all the way (a crude body sphere
+    // touching the bars in the ordinary stance) is not asked for.
+    const floor=Math.max(0,violation(1))+1e-4,start=violation(0);
+    this.root.userData.barLean={start:+start.toFixed(4),floor:+floor.toFixed(4),limit};
+    let needed=0;
+    if(start>floor){let lo=0,hi=1;for(let k=0;k<12;k++){const mid=(lo+hi)/2;if(violation(mid)>floor)lo=mid;else hi=mid;}needed=hi;}
+    this.barLean=needed>=this.barLean?needed:damp(this.barLean,needed,10,dt);
+    this.rider.rotation.x=from+span*this.barLean;
+    this.root.updateMatrixWorld(true);
+  }
   private clearTrickBody(side:number) {
     const toRoot=(object:THREE.Object3D,p:THREE.Vector3)=>this.root.worldToLocal(object.localToWorld(p));
     const direction=v(side*.8,0,.6).normalize(),total=v(0,0,0);
@@ -566,6 +661,8 @@ export class RiderModel {
   update(s: Simulation, dt: number, alpha: number) {
     const onBoard = s.rideable === "longboard";
     this.hands.forEach(h=>{h.userData.freeWrist=false;h.userData.barLift=0;});
+    // Undo last frame's Decade hold on the deck (see orbitAroundScooter).
+    if(this.deckHome){this.deckPivot.position.copy(this.deckHome);this.deckPivot.rotation.x=0;this.deckHome=null;}
     this.scooter.visible = !onBoard;
     this.board.visible = onBoard;
     if (onBoard && !this.boardAssembly) this.setLongboard();
@@ -658,6 +755,8 @@ export class RiderModel {
       Math.abs(s.tricks.bri.velocity) > 0.1 || s.tricks.bri.mismatch > 0.02;
     const bp=briPose(bri,s.tricks.naturalDirection,s.tricks.quarterAir?s.tricks.yaw:0);
     const baseRotation=this.scooter.rotation.clone();
+    // The scooter's ordinary pose this frame, before any trick moves it (see leanIntoBars).
+    const baseScooter=new THREE.Matrix4().compose(this.scooter.position.clone(),new THREE.Quaternion().setFromEuler(baseRotation),this.scooter.scale);
     const cycle = Math.abs(bri) % (Math.PI * 2),
       lift = Math.sin(cycle / 2),
       side = Math.sign(bri) || 1;
@@ -671,9 +770,9 @@ export class RiderModel {
     const kickLift=Math.sin((Math.abs(kickless)%(Math.PI*2))/2);
     this.scooter.rotation.z += Math.sign(kickless)*kickLift*.3;
     // Decade: the rider and bars go once round the steering axis (applied at the
-    // end of update); the deck turns back by the same angle so it stays put.
+    // end of update) while the deck is held exactly where it was.
     const decadeAngle=s.tricks.decade.angle;
-    this.deckPivot.rotation.y = s.tricks.deck.angle-Math.sign(kickless)*kickLift*Math.PI*1.1-decadeAngle;
+    this.deckPivot.rotation.y = s.tricks.deck.angle-Math.sign(kickless)*kickLift*Math.PI*1.1;
     this.deckPivot.rotation.z = Math.sin(kickless) * 0.28;
     this.barPivot.rotation.y = s.tricks.bars.angle + (s.grounded ? -s.steer*.15 : 0) + (briActive?bp.barLead:0);
     this.barPivot.updateMatrix();
@@ -717,22 +816,30 @@ export class RiderModel {
     this.scooter.position.z+=tuck*TUCK.deckBack;
     this.scooter.rotation.x+=tuck*TUCK.deckTilt;
     const fingerReach=s.tricks.fingerTime>0?Math.sin((1-s.tricks.fingerTime/.35)*Math.PI):0;
-    this.scooter.position.y+=fingerReach*.28;
-    const grabBlend=s.tricks.visualPose==='Deck Grab'?s.tricks.poseBlend:0;
-    // Lifting the deck further only raised the bars over the head: the grab
-    // target is clamped 0.68 m from the legacy shoulder, beyond the imported
-    // arm either way. The grab pose itself needs redesigning (see report).
-    const grabLift=.13;
-    this.scooter.position.y+=grabBlend*grabLift;
+    // Finger whip and Deck Grab: the deck is far below a standing rider's
+    // 0.39 m arms, so the rider tucks deep and pulls the scooter up and toward
+    // the free hand (as for the Clamp Grab) until the deck is within reach.
+    const fingerPull=THREE.MathUtils.smoothstep(fingerReach,0,.7);
+    this.scooter.position.y+=fingerPull*FINGER.lift;
+    this.scooter.position.z-=fingerPull*FINGER.back;
+    this.scooter.rotation.x+=fingerPull*FINGER.pitch;
+    this.scooter.rotation.z+=fingerPull*FINGER.roll*s.tricks.fingerHand;
+    const grabBlend=s.tricks.visualPose==='Deck Grab'?THREE.MathUtils.smoothstep(s.tricks.poseBlend,0,1):0;
+    this.scooter.position.y+=grabBlend*DECK_GRAB.lift;
+    this.scooter.position.z-=grabBlend*DECK_GRAB.back;
+    this.scooter.rotation.x+=grabBlend*DECK_GRAB.pitch;
+    // Regular grabs with the +x hand, Goofy with the -x hand (see grabbingHand).
+    this.scooter.rotation.z+=grabBlend*DECK_GRAB.roll*(s.tricks.stance==='regular'?1:-1);
     const clampEase=s.tricks.visualPose==='Clamp Grab'?THREE.MathUtils.smoothstep(s.tricks.poseBlend,0,1):0;
     this.scooter.position.y+=clampEase*CLAMP.lift;
     this.scooter.position.z-=clampEase*CLAMP.back;
     this.scooter.rotation.x+=clampEase*CLAMP.pitch;
     const fountainBlend=s.emote?.id==='drink-fountain'?THREE.MathUtils.smoothstep(s.emote.time,0,.55)*(1-THREE.MathUtils.smoothstep(s.emote.time,2.25,2.8)):0;
-    // 0 over the deck, 1 out at the side or front: the feet leave the deck for the orbit.
-    const decadeLift=Math.min(1,Math.abs(Math.sin(decadeAngle/2))*2.4);
-    const c = this.crouch+grabBlend*.4+fingerReach*.28+fountainBlend*.25+clampEase*CLAMP.crouch,
-      whip = Math.abs(s.tricks.deck.velocity) > 1 || kicklessActive || briActive || decadeLift > 0.02;
+    // 0 over the deck, 1 out at the side or front: the feet leave the deck for the
+    // orbit. Eased so the knees draw up and set back down without a pop.
+    const decadeLift=THREE.MathUtils.smoothstep(Math.abs(Math.sin(decadeAngle/2))*2.2,0,1);
+    const c = this.crouch+grabBlend*DECK_GRAB.crouch+fingerPull*FINGER.crouch+fountainBlend*.25+clampEase*CLAMP.crouch+decadeLift*DECADE.crouch,
+      whip = Math.abs(s.tricks.deck.velocity) > 1 || kicklessActive || briActive;
     // On the deck the imported rider's real leg and arm lengths set the
     // stance: hips high enough for relaxed (~28 degree) knees, the chest
     // leaning toward the bars so the hands reach the grips with bent elbows,
@@ -769,11 +876,12 @@ export class RiderModel {
       // Inside a flip the body stretches less and the scooter is held further out
       // in front and lower, so the stem cannot come back past the head as the
       // rotation carries the rider round it.
+      // Both hands stay on the grips: the bars are placed at arm's length in
+      // front of the shoulders once the body is posed (fitSupermanBars).
       const inFlip = s.bodyFlip.active ? 1 : 0;
       this.torso.rotation.x += blend * (1.2 - inFlip * 0.45);
       this.torso.position.z -= blend * .1;
       this.torso.position.y -= blend * .06;
-      this.scooter.position.lerp(inFlip ? v(.03,.30,.50) : v(.03,.36,.34),blend);
       this.scooter.rotation.x+=blend*(.12 + inFlip * .25);
     }
     if (pose === "Tuck No-hander") {
@@ -830,17 +938,20 @@ export class RiderModel {
     );
     this.root.updateMatrixWorld(true);
     this.root.userData.trickBodyClearance=null;
+    if(riding&&pose==='Superman')this.fitSupermanBars(blend,s.bodyFlip.active);
+    if(riding&&pose!=='Superman'&&!placing&&!s.emote&&this.carry<.001)this.leanIntoBars(baseScooter,baseRotation.x,s.grounded?-s.steer*.15:0,!pose||pose==='Clamp Grab',dt);
+    else this.barLean=0;
     if(briActive||kicklessActive){
       // Keep the rigid bar sweep within both arms' reach before solving hands.
       // Clamping each wrist alone leaves a visible gap at the far grip.
       const inverse=this.root.getWorldQuaternion(new THREE.Quaternion()).invert();
       // The imported rider's real shoulder joint and arm length, not the old
       // stretchy proxy's 0.66 m, or the bars sweep out of the hands.
-      const reach=this.human?this.human.armReach.map(r=>r*.98):[.66,.66],shoulderAt=this.human?v(.174,.185,0):v(.19,.17,0);
+      const reach=this.human?this.human.armReach.map(r=>r*.98):[.66,.66],shoulderAt=this.human?HUMAN_SHOULDER:PROXY_SHOULDER;
       for(let pass=0;pass<6;pass++)for(let i=0;i<2;i++){
         const socket=this.assembly.gripSockets[i],q=socket.getWorldQuaternion(new THREE.Quaternion()).premultiply(inverse);
-        const wrist=this.root.worldToLocal(socket.getWorldPosition(v(0,0,0))).add(v(0,(this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??.082)).applyQuaternion(q));
-        const shoulder=this.root.worldToLocal(this.rider.localToWorld(v((i===0?-1:1)*shoulderAt.x,shoulderAt.y,0).applyQuaternion(this.torso.quaternion).add(this.torso.position)));
+        const shoulder=this.root.worldToLocal(this.rider.localToWorld(v((i===0?-1:1)*shoulderAt.x,shoulderAt.y,shoulderAt.z).applyQuaternion(this.torso.quaternion).add(this.torso.position)));
+        const wrist=barWrist(shoulder,this.root.worldToLocal(socket.getWorldPosition(v(0,0,0))),v(1,0,0).applyQuaternion(q),this.gripRoll(i));
         const delta=shoulder.sub(wrist),distance=delta.length();
         if(distance>reach[i]){this.scooter.position.addScaledVector(delta,(distance-reach[i])/distance);this.root.updateMatrixWorld(true);}
       }
@@ -855,10 +966,14 @@ export class RiderModel {
       const push =
         i === rear && s.pushTimer > 0 ? 1 - s.pushTimer / TUNE.pushCadence : -1;
       const foot = v(
-        sign * (.043 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:decadeLift)*.177),
-        0.15 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:decadeLift)*.2 + grabBlend*grabLift,
+        sign * (.043 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:0)*.177),
+        0.15 + (Math.abs(s.tricks.deck.velocity)>1||kicklessActive?1:briActive?bp.clearance:0)*.2,
         i !== rear ? 0.04 : -0.19,
       );
+      // Decade: the whole body swings round the bars as one piece, knees drawn
+      // up with the feet together under the hips. Not the wide, kicking legs of
+      // a whip, which made the orbit read as a tailwhip.
+      if(decadeLift>0)foot.lerp(v(sign*DECADE.footWidth,.15+DECADE.footLift,DECADE.footBack),decadeLift);
       if (push >= 0 && !s.walking) {
         // Lift forward, plant, drive backward, then recover over the deck.
         // The path and blend both reach zero velocity at the cadence boundaries.
@@ -919,7 +1034,7 @@ export class RiderModel {
         foot.lerp(target,contact);
       }
       this.shoes[i].quaternion.identity();
-      if(!s.walking&&!s.sitting&&!whip&&push<0&&!s.fastplant&&(!pose||pose==='Clamp Grab')){
+      if(!s.walking&&!s.sitting&&!whip&&push<0&&!s.fastplant&&(!pose||pose==='Clamp Grab'||pose==='Deck Grab')){
         const worldFoot=this.scooter.localToWorld(foot.clone());foot.copy(this.rider.worldToLocal(worldFoot));
         this.shoes[i].quaternion.copy(this.rider.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(this.scooter.getWorldQuaternion(new THREE.Quaternion())));
       }
@@ -1053,12 +1168,14 @@ export class RiderModel {
         elbow.copy(shoulder).lerp(hand, 0.55);
         poseRod(this.upperArms[i], shoulder, elbow);
       }
-      const grabbingHand=(pose==='Deck Grab'||pose==='Superman')&&i===(s.tricks.stance==='regular'?1:0);
+      // Superman keeps both hands on the bars with the body stretched out behind;
+      // only the Deck Grab lets one hand go (Regular left, Goofy right, as before).
+      const grabbingHand=pose==='Deck Grab'&&i===(s.tricks.stance==='regular'?1:0);
       // Clamp Grab: the stance-side hand (Regular right, Goofy left) leaves the bar; the other keeps its grip.
       const clampingHand=pose==='Clamp Grab'&&i===sideIndex(clampGrabHand(s.tricks.stance));
       // Walking or running, the hand on the scooter's side keeps hold of its bar.
       const walkingGrip=s.walking&&!s.sitting&&!s.emote&&!s.heldItem&&sign>0&&this.walkOffset>.3;
-      const holdingGrip=walkingGrip||!s.walking&&!s.sitting&&!s.emote&&(!pose||pose==='Clamp Grab'||(pose==='Deck Grab'||pose==='Superman')&&!grabbingHand)&&(s.tricks.fingerTime===0||sign!==s.tricks.fingerHand)&&Math.abs(s.tricks.bars.velocity)<1;
+      const holdingGrip=walkingGrip||!s.walking&&!s.sitting&&!s.emote&&(!pose||pose==='Clamp Grab'||pose==='Superman'||pose==='Deck Grab'&&!grabbingHand)&&(s.tricks.fingerTime===0||sign!==s.tricks.fingerHand)&&Math.abs(s.tricks.bars.velocity)<1;
       const gripRotation=new THREE.Quaternion();
       if(holdingGrip){
         this.assembly.gripSockets[i].getWorldQuaternion(gripRotation);
@@ -1092,8 +1209,9 @@ export class RiderModel {
         gripRotation.slerp(rotation,clampEase);
       }
       if(grabbingHand){
-        const deckTarget=this.rider.worldToLocal(this.assembly.deckSocket.getWorldPosition(new THREE.Vector3()));
-        deckTarget.x=sign*Math.abs(deckTarget.x);
+        // The deck's edge on the grabbing side, DECK_GRAB.along of the way from the neck to the tail.
+        const edge=this.assembly.deckSocket.position.clone();edge.x=sign*Math.abs(edge.x);edge.z*=DECK_GRAB.along/.5;
+        const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(edge));
         const deckRotation=this.assembly.deckSocket.getWorldQuaternion(new THREE.Quaternion());deckRotation.premultiply(this.rider.getWorldQuaternion(new THREE.Quaternion()).invert());deckRotation.multiply(new THREE.Quaternion().setFromAxisAngle(v(0,1,0),-sign*Math.PI/2));
         gripRotation.copy(deckRotation);
         deckTarget.sub(v(0,-.035,this.hands[i].userData.palmLength??.082).applyQuaternion(deckRotation));
@@ -1102,7 +1220,18 @@ export class RiderModel {
       }
       const fingerContact=s.tricks.fingerTime>0&&sign===s.tricks.fingerHand;
       if(s.walking&&s.heldItem&&i===0&&!usingItem)hand.set(-.22,.95,.20);
-      if(fingerContact){const local=this.assembly.deckSocket.position.clone();local.x*=sign;const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(local));const sidePoint=v(sign*.38,Math.max(.55,deckTarget.y+.15),.30);const contact=deckTarget.x*sign>=-.02&&s.tricks.fingerTime>.20;const target=contact?sidePoint.lerp(deckTarget,THREE.MathUtils.smoothstep(fingerReach,.35,.7)):sidePoint;hand.lerp(target,fingerReach);}
+      if(fingerContact){
+        const local=this.assembly.deckSocket.position.clone();local.x*=sign;local.z*=FINGER.along/.5;
+        const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(local));
+        const reachFrom=(this.human?v(sign*HUMAN_SHOULDER.x,HUMAN_SHOULDER.y,HUMAN_SHOULDER.z):v(sign*PROXY_SHOULDER.x,PROXY_SHOULDER.y,PROXY_SHOULDER.z)).applyQuaternion(this.torso.quaternion).add(this.torso.position);
+        const toDeck=deckTarget.clone().sub(reachFrom);
+        // The palm, not the wrist, meets the deck's edge.
+        const onDeck=deckTarget.clone().addScaledVector(toDeck.clone().normalize(),-(this.hands[i].userData.palmLength??.082)*.5);
+        // Before and after the flick the hand follows the deck, inside the arm's reach.
+        const hover=reachFrom.clone().add(toDeck.clone().setLength(Math.min(toDeck.length(),(this.human?.armReach[i]??.66)*.95)));
+        const contact=deckTarget.x*sign>=-.02&&s.tricks.fingerTime>.20;
+        hand.lerp(contact?hover.lerp(onDeck,THREE.MathUtils.smoothstep(fingerReach,.35,.7)):hover,THREE.MathUtils.smoothstep(fingerReach,0,.55));
+      }
       if(holdingGrip||grabbingHand||fingerContact||this.carry>.001||(s.walking&&!s.sitting&&!s.emote&&!s.heldItem)){
         const delta=hand.clone().sub(shoulder);const reach=delta.length();
         if(reach>.68)hand.copy(shoulder).addScaledVector(delta,.68/reach);
@@ -1166,10 +1295,18 @@ export class RiderModel {
    * was solved against an ordinary scooter; the deck is turned back separately.
    */
   private orbitAroundScooter(angle:number){
+    this.root.updateMatrixWorld(true);
+    // The deck (with the rear wheel) keeps exactly the world transform it had
+    // before the orbit, position and orientation, whatever the scooter's tilt:
+    // it neither turns nor slides, so nothing about it reads as a whip.
+    const deckWorld=this.deckPivot.matrixWorld.clone();
+    this.deckHome=this.deckPivot.position.clone();
     this.scooter.updateMatrix();
-    const axis=v(0,0,.3).applyMatrix4(this.scooter.matrix),q=new THREE.Quaternion().setFromAxisAngle(v(0,1,0),angle);
+    const axis=this.deckPivot.position.clone().applyMatrix4(this.scooter.matrix),q=new THREE.Quaternion().setFromAxisAngle(v(0,1,0),angle);
     for(const o of [this.scooter,this.rider]){o.position.sub(axis).applyQuaternion(q).add(axis);o.quaternion.premultiply(q);}
     this.root.updateMatrixWorld(true);
+    this.scooter.matrixWorld.clone().invert().multiply(deckWorld).decompose(this.deckPivot.position,this.deckPivot.quaternion,this.deckPivot.scale);
+    this.deckPivot.updateMatrixWorld(true);
   }
   private crashPose(s:Simulation){
     const crash=s.crash!;this.root.position.set(0,0,0);this.root.rotation.set(0,0,0);

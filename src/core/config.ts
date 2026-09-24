@@ -283,10 +283,17 @@ export const TUNE = {
   deckMaxSpeed: 21,
   barAcceleration: 220,
   barMaxSpeed: 26,
-  // The rider's revolution around the scooter for a Decade. Heavier than a deck
-  // whip: about 0.55 s for the full turn, so it needs a real hop or air.
-  decadeAcceleration: 120,
-  decadeMaxSpeed: 15,
+  // The rider's revolution around the scooter for a Decade: a whole body
+  // swinging round the bars, far slower than a deck whip. Each Decade is paced
+  // to the air left when it starts, finishing decadeCatchMargin seconds before
+  // touchdown, but never faster than decadeFastest or slower than
+  // decadeSlowest seconds per turn. A late start or a small hop still bails.
+  // (Acceleration / max speed below are only the defaults before a start.)
+  decadeAcceleration: 40,
+  decadeMaxSpeed: 9,
+  decadeFastest: 0.7,
+  decadeSlowest: 1.05,
+  decadeCatchMargin: 0.1,
   // A Decade caught this close (radians) to the full turn still counts.
   decadeCatchTolerance: 0.6,
   // --- Landing grades: PERFECT (internally "clean") / GOOD / SKETCHY / BAIL --

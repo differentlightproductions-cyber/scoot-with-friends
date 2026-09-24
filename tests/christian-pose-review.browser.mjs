@@ -35,9 +35,12 @@ const POSES=[
  {name:'inward-25',grip:[0,1],air:true,bri:-Math.PI*.5},
  {name:'inward',grip:[0,1],air:true,bri:-Math.PI},
  {name:'inward-75',grip:[0,1],air:true,bri:-Math.PI*1.5},
- {name:'finger',reach:[1],air:true,finger:true},
+ {name:'finger',reach:[1],grip:[0],air:true,finger:true},
+ // The flick itself: early in the whip, the hand on the deck as it starts to turn.
+ {name:'finger-contact',reach:[1],grip:[0],air:true,finger:{time:.26,angle:.4},fingerContact:true},
  {name:'deckgrab',reach:[1],grip:[0],air:true,visual:'Deck Grab'},
- {name:'superman',grip:[0],reach:[1],air:true,visual:'Superman'},
+ {name:'superman',grip:[0,1],air:true,visual:'Superman'},
+ {name:'superman-flip',grip:[0,1],air:true,visual:'Superman',flip:-Math.PI*.5},
  {name:'nohander',air:true,deck:[0,1],visual:'No-hander'},
  {name:'tucknohander',air:true,visual:'Tuck No-hander'},
  {name:'onefooter',grip:[0,1],deck:['front'],air:true,visual:'One-footer'},
@@ -107,7 +110,7 @@ function evaluatePose(page,pose){
     if(pose.bars){s.tricks.bars.angle=pose.bars[0];s.tricks.bars.velocity=pose.bars[1];}
     if(pose.kickless){s.tricks.kickless.angle=pose.kickless[0];s.tricks.kickless.velocity=pose.kickless[1];}
     if(pose.bri!==undefined){s.tricks.bri.angle=pose.bri;s.tricks.bri.velocity=12;}
-    if(pose.finger){s.tricks.fingerTime=.175;s.tricks.fingerHand=1;s.tricks.deck.angle=1.3;s.tricks.deck.velocity=12;}
+    if(pose.finger){const f=pose.finger===true?{time:.175,angle:1.3}:pose.finger;s.tricks.fingerTime=f.time;s.tricks.fingerHand=1;s.tricks.deck.angle=f.angle;s.tricks.deck.velocity=12;}
     if(pose.visual){s.tricks.visualPose=pose.visual;s.tricks.poseBlend=1;s.tricks.poseSide=1;}
     if(pose.flip!==undefined){s.bodyFlip.active=true;s.bodyFlip.angle=pose.flip;s.bodyFlip.velocity=Math.sign(pose.flip)*5;s.pitch=pose.flip;}
     if(pose.sit)s.sitting={id:'visual-seat',origin:s.position.clone()};
@@ -171,8 +174,10 @@ function evaluatePose(page,pose){
     const hp=pos(S+'UpLeg'),kn=pos(S+'Leg'),an=pos(S+'Foot');
     const lu=kn.clone().sub(hp).normalize(),ll=an.clone().sub(kn).normalize();
     const ld=an.clone().sub(hp).normalize(),ko=kn.clone().sub(hp);ko.addScaledVector(ld,-ko.dot(ld));
-    const fwd=new T.Vector3(0,0,1).applyQuaternion(m.hips.quaternion);
-    out.knee[k]={flex:r3(Math.acos(T.MathUtils.clamp(lu.dot(ll),-1,1))*180/Math.PI),forward:ko.length()>.005?r3(ko.normalize().dot(fwd)):null};
+    // Knees bend toward the pelvis's front. The model's hips object turns with the whole torso, so in a deep tuck its
+    // forward axis points at the ground; there the rider's own forward-and-up is the pelvis's front. Either counts.
+    const fwd=new T.Vector3(0,0,1).applyQuaternion(m.hips.quaternion),tuckFwd=new T.Vector3(0,.5,1).normalize();
+    out.knee[k]={flex:r3(Math.acos(T.MathUtils.clamp(lu.dot(ll),-1,1))*180/Math.PI),forward:ko.length()>.005?r3(Math.max(ko.clone().normalize().dot(fwd),ko.clone().normalize().dot(tuckFwd))):null};
    }
    // sole vs deck, and ground penetration
    const deckInv=m.deckPivot.matrixWorld.clone().invert();
@@ -191,6 +196,7 @@ function evaluatePose(page,pose){
     }}
    out.sole=minSole.map(y=>r3(y-.112));out.footGround=minFoot.map(y=>r3(y-groundY));
    out.groundY=r3(groundY);out.belowGround=r3(groundY-minY);
+   if(pose.fingerContact){const edge=m.assembly.deckSocket.position.clone();edge.z*=window.__FINGER.along/.5;const deck=m.rider.worldToLocal(m.deckPivot.localToWorld(edge));const S=pos('RightHand').x>0?'Right':'Left';out.fingerDeck=r3(new T.Line3(pos(S+'Hand'),pos(S+'HandMiddle1')).closestPointToPoint(deck,true,new T.Vector3()).distanceTo(deck));}
    // Front (deck) foot per src/core/stance.ts: Regular = left foot = index 1.
    out.front=s.tricks.stance==='regular'?1:0;
    // views
@@ -220,6 +226,7 @@ function finish(pose,row,image){
   for(const [k,x] of Object.entries(row.stretch))if(Math.abs(x)>.02)fails.push(`stretch ${k} ${(x*100).toFixed(1)}%`);
   for(const [k,x] of Object.entries(row.scale))if(x>.02)fails.push(`scale ${k} ${(x*100).toFixed(1)}%`);
   for(const k of pose.reach??[])if(row.wrist[k]>.03)fails.push(`reach${k} ${row.wrist[k]} short`);
+  if(pose.fingerContact&&row.fingerDeck>.05)fails.push(`finger hand ${row.fingerDeck} from the deck`);
   const gripSides=(pose.grip??[]).filter(x=>x!=='off');
   // A held hand may roll around the bar, so contact is the palm-to-bar gap.
   for(const k of gripSides)if(row.palm[k]>.03)fails.push(`palm${k} ${row.palm[k]} off the grip`);

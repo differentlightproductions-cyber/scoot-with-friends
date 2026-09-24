@@ -6,6 +6,8 @@ import { StickGesture } from "./gesture";
 import { ridingButtons } from "../input/riding";
 /** Clamp Grab hands back to the bar this many seconds before the wheels land. */
 const CLAMP_RELEASE_TIME = 0.17;
+/** An LB press held longer than this is a modifier (Can Can, No Foot...), not a Decade tap. */
+const DECADE_TAP_TIME = 0.35;
 // A torque-limited rotational channel. Inputs add angular targets; angle and angular
 // velocity remain continuous, and an unfinished catch remains a landing hazard.
 export class RotationChannel {
@@ -203,17 +205,37 @@ export class Tricks {
   get decadeCompleted() {
     return Math.abs(this.decade.angle) >= TAU - TUNE.decadeCatchTolerance ? 1 : 0;
   }
+  /**
+   * A Decade that is still swinging and not yet within the catch tolerance: the
+   * rider is off to the side of the deck, so touching down now is a bail, not a
+   * landing the rider is snapped back over.
+   */
+  get decadeUnfinished() {
+    return this.decade.target !== 0 && this.decadePhase !== "caught" && !this.decadeCompleted;
+  }
   private decadeSettling = false;
+  /** An LB press made in the air, waiting to see whether it is a tap (Decade) or a modifier. */
+  private decadeTap: { time: number; spoiled: boolean } | null = null;
+  /**
+   * Set by the simulation while a direct Bri/Inward takeoff is still waiting to
+   * kick in just after leaving the ground; a Decade must not start over it.
+   */
+  briPending = false;
   /**
    * Begins one Decade when the hands, deck and bars are all free, once per air.
-   * Direction follows the stance (mirrored for Goofy) like every other rotation:
-   * the deck turns against the rider by what a natural tailwhip would.
+   * A Decade and a Bri / Inward / Kickless never share an air: both move the
+   * rider round the scooter, so whichever starts first owns the air. Direction
+   * follows the stance (mirrored for Goofy) like every other rotation.
    */
   startDecade() {
     if (
       !this.airborne ||
       this.decadeStarted ||
       this.pendingBumper ||
+      this.briPending ||
+      this.bri.target !== 0 ||
+      this.kickless.target !== 0 ||
+      this.fingerTime > 0 ||
       this.poseBlend >= 0.05 ||
       Math.abs(this.deck.velocity) >= 1 ||
       this.deck.mismatch >= 0.3 ||
@@ -222,6 +244,17 @@ export class Tricks {
     )
       return false;
     this.decadeStarted = true;
+    // A body swinging round the bars, not a whip: the revolution is paced to the
+    // air that is left (ending a little before the wheels land) between a
+    // natural slowest and a fastest committed swing. A quarter of the time
+    // speeds up, half cruises, a quarter slows into the catch.
+    const duration = clamp(
+      this.landingIn - TUNE.decadeCatchMargin,
+      TUNE.decadeFastest,
+      TUNE.decadeSlowest,
+    );
+    this.decade.maxSpeed = TAU / (0.75 * duration);
+    this.decade.acceleration = this.decade.maxSpeed / (0.25 * duration);
     this.decade.kick(-this.naturalDirection);
     return true;
   }
@@ -333,7 +366,32 @@ export class Tricks {
         this.pendingBumper = null;
       }
     } else this.bumperHeldDuration = 0;
-    const whipPressed = input.pressed[buttons.whip] && !this.pendingBumper;
+    // Decade: a tap of LB in the air, the same button in every stance and control
+    // style. LB is also the left rewind and the Can Can / No Foot / Tuck
+    // No-hander modifier, so the Decade starts on the release, and only when LB
+    // was used for nothing else while it was down.
+    if (input.pressed.leftModifier && this.airborne) this.decadeTap = { time: 0, spoiled: false };
+    const tap = this.decadeTap;
+    if (tap) {
+      tap.time += dt;
+      if (
+        tap.time > DECADE_TAP_TIME ||
+        this.consumedBumpers.has("leftModifier") ||
+        input.held.body > 0.5 ||
+        input.held.rightModifier > 0.5 ||
+        (!flipChord && (input.held.pumpGrind > 0.5 || input.held.brake > 0.5)) ||
+        input.pressed.hop ||
+        input.pressed.pushDeck ||
+        input.pressed.brakeBars
+      )
+        tap.spoiled = true;
+      if (input.held.leftModifier < 0.5) {
+        if (!tap.spoiled) this.startDecade();
+        this.decadeTap = null;
+      }
+    }
+    const decadeActive = this.decadeActive;
+    const whipPressed = input.pressed[buttons.whip] && !this.pendingBumper && !decadeActive;
     if (whipPressed && finger) {
       this.finger = true;
       this.fingerHand = direction === 1 ? 1 : -1;
@@ -345,10 +403,6 @@ export class Tricks {
       });
     }
     this.fingerTime = Math.max(0, this.fingerTime - dt);
-    // Decade: A in the air. Where A is already the whip button (Goofy's Pro
-    // preset) the Decade has no input yet; that binding is an owner decision.
-    const decadeActive = this.decadeActive;
-    if (buttons.whip !== "hop" && input.pressed.hop && !clampWanted) this.startDecade();
     if (!this.pendingBumper && !decadeActive)
       this.deck.input(
         dt,
@@ -392,7 +446,8 @@ export class Tricks {
     } else {
       if (clampWanted) pose = "Clamp Grab";
       const gesture = this.gesture.step(dt, input.rx, input.ry);
-      if (gesture?.kind === "bri" && !clampWanted) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
+      // No Bri / Inward in an air that already has a Decade (see startDecade).
+      if (gesture?.kind === "bri" && !clampWanted && this.decade.target === 0) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
       if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=.16;
       this.kicklessBuffer=Math.max(0,this.kicklessBuffer-dt);
       if(this.kicklessBuffer>0&&(this.deck.canRewind||this.pendingBumper)&&Math.abs(this.kickless.velocity)<1){
@@ -483,6 +538,7 @@ export class Tricks {
     this.decade.reset();
     this.decadeStarted = false;
     this.decadeSettling = false;
+    this.decadeTap = null;
     this.yaw = 0;
     this.flip = 0;this.flairContext=false;this.quarterAir=false;
     this.fastplant = false;
@@ -638,6 +694,7 @@ export class Tricks {
     this.decade.reset();
     this.decadeStarted = false;
     this.decadeSettling = false;
+    this.decadeTap = null;
     this.bri.reset();
     this.kickless.reset();
     this.gesture.reset();

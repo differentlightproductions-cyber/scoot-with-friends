@@ -1,4 +1,5 @@
-﻿import { Events } from "../core/events";
+import { Events } from "../core/events";
+import { randomId } from "../core/secure";
 import { TUNE } from "../core/config";
 import { completedDegrees, type TrickPrimitives } from "./resolver";
 export function trickSignature(raw?: TrickPrimitives, name = "") {
@@ -27,7 +28,7 @@ export interface AttemptDisplay {id:number;name:string;points:number;multiplier:
 export class ScoreSystem {
  dispose:()=>unknown;total=0;line=0;multiplier=1;recent:string[]=[];lastAward=0;caseFactor=1;
  display:AttemptDisplay|null=null;
- private rewardRun=crypto.randomUUID();
+ private rewardRun=randomId();
  private seen=new Set<number>();private sequence=-1;
  private segment:{id:number;name:string;points:number}|null=null;
  constructor(events:Events){this.dispose=events.on(e=>{
