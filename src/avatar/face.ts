@@ -270,6 +270,14 @@ function drawFacialHair(g: Ctx, c: AvatarConfig, L: ReturnType<typeof faceLayout
   const hair = swatchHex(HAIR_COLORS, c.hairColor), color = css(hair), mouthY = faceY(L.mouthY), noseY = faceY(L.noseY);
   g.save();
   g.fillStyle = color;
+  // Facial hair never reaches the eyes: sideburns begin under the lower lid,
+  // and a clip keeps a clear margin round each eye whatever its size or place.
+  const eyeY = faceY(L.eyeY), eyeRx = 30 * L.eyeScale + 8, eyeRy = 26 * L.eyeScale + 8;
+  const top = Math.max(faceY(0.02), eyeY + eyeRy);
+  g.beginPath();
+  g.rect(0, 0, FACE_SIZE, FACE_SIZE);
+  for (const side of [-1, 1]) { g.moveTo(faceX(side * L.eyeX) + eyeRx, eyeY); g.ellipse(faceX(side * L.eyeX), eyeY, eyeRx, eyeRy, 0, 0, Math.PI * 2); }
+  g.clip('evenodd');
   const mustache = () => {
     g.beginPath();
     g.moveTo(0, noseY + 14);
@@ -289,14 +297,14 @@ function drawFacialHair(g: Ctx, c: AvatarConfig, L: ReturnType<typeof faceLayout
   const jaw = (inner: number) => {
     // From the sideburns round the jaw; the mouth area stays clear.
     g.beginPath();
-    g.moveTo(-112, faceY(0.02));
-    g.lineTo(-100, faceY(0.02));
+    g.moveTo(-112, top);
+    g.lineTo(-100, top);
     g.quadraticCurveTo(-96, mouthY - inner, -44, mouthY + 14);
     g.quadraticCurveTo(0, mouthY + 26, 44, mouthY + 14);
-    g.quadraticCurveTo(96, mouthY - inner, 100, faceY(0.02));
-    g.lineTo(112, faceY(0.02));
+    g.quadraticCurveTo(96, mouthY - inner, 100, top);
+    g.lineTo(112, top);
     g.quadraticCurveTo(116, faceY(-0.13), 0, faceY(-0.16));
-    g.quadraticCurveTo(-116, faceY(-0.13), -112, faceY(0.02));
+    g.quadraticCurveTo(-116, faceY(-0.13), -112, top);
     g.fill();
   };
   g.translate(FACE_SIZE / 2, 0);
