@@ -254,9 +254,11 @@ export class Phone {
   /** Controller input while the phone is out. Gameplay receives nothing meanwhile. */
   update(f: InputFrame, dt: number) {
     if (this.state !== 'open') return;
-    if (f.pressed.menuDown) { this.close(); return; }
+    // D-pad Down taps step down a list (one step per tap: holding it puts the
+    // phone away, see HoldButton, so it never auto-repeats).
     const view = this.view;
     if (view?.input?.(f, dt)) { this.dirty = true; return; }
+    if (f.pressed.menuDown) { this.screen.move(0, 1); this.dirty = true; return; }
     if (f.pressed.brakeBars) { this.back(); return; }
     if (f.pressed.body) { this.home(); return; }
     if (f.pressed.hop) { this.screen.activate(); this.dirty = true; return; }

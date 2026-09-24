@@ -53,12 +53,12 @@ export class GameMenu {
     const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return false;}
     // Only a newly chosen part must be owned; what was already saved stays valid.
     for(const [slot,item] of Object.entries(this.profile.scooter) as [keyof ScooterLoadout,{partId:string;variantId:string}][]){const saved=latest.scooter[slot];if(!owns(latest.wallet,item)&&(saved.partId!==item.partId||saved.variantId!==item.variantId)){this.notice='An equipped item is not owned.';this.render();return false;}}
-    const customized=JSON.stringify(latest.scooter)!==JSON.stringify(this.profile.scooter)||JSON.stringify(latest.longboard)!==JSON.stringify(this.profile.longboard);
+    const scooterChanged=JSON.stringify(latest.scooter)!==JSON.stringify(this.profile.scooter),boardChanged=JSON.stringify(latest.longboard)!==JSON.stringify(this.profile.longboard),customized=scooterChanged||boardChanged;
     if(this.profile.activeRideable==='longboard'&&!ownsBoard(latest.wallet,this.profile.longboard)){this.notice='Own every part of this board before riding it.';this.render();return false;}
     const nextRevision=(this.profile.equipmentRevision??0)+1;this.profile.equipmentRevision=nextRevision;
     if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return false;}
     Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes '+savedWhere();this.saveFailed=false;this.render();
-    if(customized)void this.economy.track({},undefined,['customize']);return true;
+    if(customized){this.presetSaved(scooterChanged&&boardChanged?'both':boardChanged?'longboard':'scooter');void this.economy.track({},undefined,['customize']);}return true;
   }
   /** The rider creator (src/ui/creator.ts) edits a draft avatar on the preview rider. */
   readonly creator=new RiderCreator({
@@ -124,12 +124,12 @@ export class GameMenu {
     if(entry?.rideable==='longboard'){
       if(this.seshOpen){this.profile.longboard[entry.category as LongboardCategory]=selection;this.changed();this.render();return;}
       this.buying=true;this.notice='Saving board...';this.render();const result=await this.economy.equip(selection,this.profile.equipmentRevision??0);this.buying=false;if(request!==this.equipRequest)return;
-      if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Board '+savedWhere();this.saveFailed=false;}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();return;
+      if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Board '+savedWhere();this.saveFailed=false;this.presetSaved('longboard');}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();return;
     }
     const part=PARTS.find(p=>p.id===partId)!;
     if(this.seshOpen){if(part.category==='wheels'){this.profile.scooter.frontWheel={...selection};this.profile.scooter.rearWheel={...selection};}else this.profile.scooter[part.category]=selection;this.changed();this.render();return;}
     this.buying=true;this.notice='Saving equipment...';this.render();const result=await this.economy.equip(selection,this.profile.equipmentRevision??0);this.buying=false;if(request!==this.equipRequest)return;
-    if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Equipped / '+savedWhere();this.saveFailed=false;}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();
+    if(result.profile){Object.assign(this.profile,result.profile);this.previewRider.applyProfile(this.profile);this.onChange();this.notice='Equipped / '+savedWhere();this.saveFailed=false;this.presetSaved('scooter');}else{this.notice=result.error??'Could not save';this.saveFailed=true;}this.render();
   }
 
   category: Category = "deck";
@@ -271,6 +271,18 @@ export class GameMenu {
     this.previewRider.applyProfile(this.profile);
     this.onChange();
   }
+  /** Rides screen X: customize the focused ride (the same physical X in either stance). */
+  private customizeFocused(){
+    const board=this.index===1||this.index===3;
+    if(board)this.show('longboard');else if(this.needsStarter())this.startStarter('scooter');else this.show('scooter');
+  }
+  /** An unmissable "PRESET SAVED" stamp over the ride preview when a build is saved. */
+  private presetSaved(kind:'scooter'|'longboard'|'both'){
+    this.root.querySelector('.preset-stamp')?.remove();
+    const el=document.createElement('div');el.className='preset-stamp';el.setAttribute('role','status');
+    el.textContent=kind==='both'?'RIDE PRESETS SAVED':kind==='longboard'?'LONGBOARD PRESET SAVED':'SCOOTER PRESET SAVED';
+    this.root.append(el);window.setTimeout(()=>el.classList.add('out'),1700);window.setTimeout(()=>el.remove(),2100);
+  }
   /** Switch the ridden rideable; the other build stays saved untouched. */
   private async ride(kind:'scooter'|'longboard'){
     if(this.buying)return;
@@ -326,10 +338,12 @@ export class GameMenu {
         add("SOLO",()=>this.show("maps"),"Choose a park and ride");
         add("PRIVATE FREE-RIDE",()=>this.show("online"),"Invite friends to a private room");break;
       case "rides":{
-        title="RIDES";subtitle="SWITCH WHAT YOU RIDE / CUSTOMIZE EACH BUILD";
+        title="RIDES";subtitle="A RIDE IT / X CUSTOMIZE";
         const boardOwned=ownsBoard(loadProfile().wallet,this.profile.longboard),active=this.profile.activeRideable;
-        add('SCOOTER',()=>void this.ride('scooter'),active==='scooter'?'Riding now':'Select to ride your scooter. Both builds stay saved.',active==='scooter');
-        add('LONGBOARD',()=>void this.ride('longboard'),!boardOwned?'Buy a complete Sometimes Summer board at Techno Gravity first':active==='longboard'?'Riding now':'Select to ride your board. Both builds stay saved.',active==='longboard');
+        // The two rides are the big choices: A rides the focused one, X (either
+        // stance) customizes it. Focusing one only previews it; nothing is equipped.
+        add('SCOOTER',()=>void this.ride('scooter'),(active==='scooter'?'Riding now':'A to ride it')+' · X to customize',active==='scooter',{primary:true});
+        add('LONGBOARD',()=>void this.ride('longboard'),!boardOwned?'Buy a complete Sometimes Summer board at Techno Gravity first':(active==='longboard'?'Riding now':'A to ride it')+' · X to customize',active==='longboard',{primary:true});
         add('CUSTOMIZE SCOOTER',()=>this.needsStarter()?this.startStarter('scooter'):this.show('scooter'),this.needsStarter()?'Build your starter scooter first':'Your parts by brand / '+selectedPart(this.profile.scooter.deck).part.name);
         add('CUSTOMIZE LONGBOARD',()=>this.show('longboard'),boardOwned?'Sometimes Summer / '+longboardPart(this.profile.longboard.deck).variant.name+' build':'Your board parts by category');
         break;}
@@ -354,7 +368,7 @@ export class GameMenu {
         add("CLAMP GRAB", () => {}, "In the air, hold RT + RB: one hand stays on the bar and the other holds the clamp (Regular: right hand, Goofy: left hand). The buttons are the same in both stances. Release to return the hand; it also lets go just before landing. Works with spins and flips; not during bar spins or finger whips.");
         add("BODY TRICKS", () => {}, "Y in air = no-hander. RT + Y Superman; LT + Y deck grab; LT + LB + Y tuck. Bumpers + Y add can-can, one-foot, or no-foot.");
         add("WALKING / RECOVERY", () => {}, "Y dismounts or mounts. LS walks, LS click runs while carrying the scooter, A climbs, B sits at a bench. After a bail, press A to get up.");
-        add("YOUR PHONE", () => {}, "D-pad Down takes your phone out, standing or rolling on the ground: Music, Emotes, Rides, Rider, Map, Items, Build and Messages. LS moves, A opens, B goes back, Y home, D-pad Down puts it away. Riding, you coast while you look.");
+        add("YOUR PHONE", () => {}, "Hold D-pad Down to take your phone out, standing or rolling on the ground: Music, Emotes, Rides, Rider, Map, Items, Build and Messages. LS or the D-pad moves, A opens, B goes back, Y home; hold D-pad Down again to put it away. Riding, you coast while you look.");
         add("ON-FOOT SOCIAL", () => {}, "Emotes are on the phone. Hold D-pad Right for chat; Enter sends, Esc/B cancels. Private room chat is shared with connected friends; solo chat stays local.");
         add("COPING STALL", () => {}, "Hold LT while riding into spine coping to brake into a stall. Shift with LS left/right, then lean forward or back to drop in.");
         break;
@@ -753,6 +767,7 @@ export class GameMenu {
     else if(key!==this.repeatKey){this.repeatKey=key;this.repeatTimer=.38;this.move(vertical,horizontal);}
     else if((this.repeatTimer-=dt)<=0){this.repeatTimer=.11;this.move(vertical,horizontal);}
     if (input.pressed.hop) this.select();
+    else if (input.pressed.pushDeck && this.screen==='rides') this.customizeFocused();
     else if (input.pressed.brakeBars || input.pressed.pause) this.back();
     else if(input.pressed.brake)this.pageTurn(-1);
     else if(input.pressed.pumpGrind)this.pageTurn(1);

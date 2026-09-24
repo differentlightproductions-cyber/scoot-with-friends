@@ -6,6 +6,7 @@ import { ownershipKey, ownsBoard, ownsSelection, type RideableKind } from "./cat
 import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
+import { validBuild, type SavedBuild } from "./builds";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
   version: 1 | 2 | 3 | 4;
@@ -21,6 +22,8 @@ export interface LocalProfile {
   activeRideable: RideableKind;
   /** XP, missions and unopened crates (data/progress.ts). */
   progress: Progress;
+  /** Player builds, saved compactly (data/builds.ts): the Warehouse layout. */
+  builds?: { warehouse?: SavedBuild };
   settings: {
     controlStyle: "pro" | "arcade";
     sound: boolean;
@@ -114,6 +117,7 @@ export function loadProfile(): LocalProfile {
     if (!saved || ![1,2,3,4].includes(saved.version)) return profile;
     profile.wallet=validWallet(saved.wallet);
     profile.progress=validProgress(saved.progress);
+    const warehouse=validBuild(saved.builds?.warehouse);if(warehouse)profile.builds={warehouse};
     profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
     profile.pockets=validPockets(saved.pockets);
     profile.avatar=saved.avatar?sanitizeAvatar(saved.avatar):migrateRider(saved);

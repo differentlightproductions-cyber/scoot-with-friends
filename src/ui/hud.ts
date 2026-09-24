@@ -13,6 +13,8 @@ export class HUD {
   menuIndex = 0;
   private navHeld = false;
   private sideHeld = false;
+  /** Column within a button row (the Now Playing controls): 0 previous, 1 play/pause, 2 next. */
+  private rowIndex = 1;
   lineAge = 10;
   feedbackAge = 10;
   lineEnded = false;
@@ -24,14 +26,14 @@ export class HUD {
   root: HTMLElement;
   constructor(public events: Events) {
     document.querySelector("#app")!.innerHTML = `
-      <header><div class="wordmark">SCOOT<span>WITH FRIENDS</span></div><div class="location">${OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>"}<span id="score">SESH 0 / LINE 0</span></div></header>
+      <header><div class="location">${OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>"}<span id="score">SESH 0 / LINE 0</span></div></header>
       <div id="start" class="overlay"><div class="start-copy"><div class="eyebrow">AN INDOOR FREESTYLE SESH</div><h1>FIND<br>YOUR<br><i>FLOW.</i></h1><p>One scooter. An empty park.<br>Make your next line a little better.</p><button id="ride" class="primary">A <span>RIDE</span> ↗</button><div id="connection">Connect a controller · or press Enter</div><small>SCOOT WITH FRIENDS</small></div></div>
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-status"></div></div>
       <div id="feedback"></div>
       <div id="balance" hidden><span id="balance-title">MANUAL</span><div class="balance-track"><span class="balance-center"></span><u id="balance-command"></u><i id="balance-dot"></i></div><small>RIGHT STICK / BALANCE</small></div>
       <footer><div id="hint">A PUSH &nbsp; / &nbsp; RS DOWN HOLD / RELEASE TO HOP</div><div class="footer-right"><span id="pad-status">CONTROLLER NOT DETECTED</span><span>H CONTROLS &nbsp; · &nbsp; MENU PAUSE</span></div></footer>
       <aside id="help" hidden></aside>
-      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="hillstart" hidden>Return to Hill Start</button><button data-action="map">Maps</button><button data-action="shops">Shops</button><button data-action="rides">Rides</button><button data-action="rider">Rider</button><button data-action="music">Music</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
+      <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><div class="np-player" aria-label="Now playing"><div class="np-meta"><span class="np-label">NOW PLAYING</span><strong class="np-title">Nothing playing</strong><small class="np-artist"></small><u class="np-bar"><s></s></u></div><div class="np-controls"><button data-action="music-prev" data-row="music-toggle" aria-label="Previous track">⏮</button><button data-action="music-toggle" data-row="music-toggle" aria-label="Play">▶</button><button data-action="music-next" data-row="music-toggle" aria-label="Next track">⏭</button></div></div><button data-action="resume">Resume <span>↗</span></button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="hillstart" hidden>Return to Hill Start</button><button data-action="map">Maps</button><button data-action="shops">Shops</button><button data-action="rides">Rides</button><button data-action="rider">Rider</button><button data-action="music">Music</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
     this.root = document.querySelector("#app")!;
     this.attempt = document.querySelector("#line-text")!;
@@ -66,6 +68,10 @@ export class HUD {
               : ""),
         );
       if (e.type === "pump") this.feedback("PUMP");
+      if (e.type === "fastplant" && e.phase === "armed") this.feedback("FASTPLANT ARMED");
+      else if (e.type === "fastplant" && e.phase === "missed") this.feedback("NO PLANT / ROUGH LANDING", "warn");
+      if (e.type === "swim" && e.trick) this.feedback(e.trick.clean ? `${e.trick.name.toUpperCase()}${e.phase === "enter" ? " / SPLASH" : " / STUCK IT"}` : `${e.trick.name.toUpperCase()} / OUCH`, e.trick.clean ? "" : "warn");
+      else if (e.type === "swim" && e.phase === "enter") this.feedback(e.fromRide ? "SPLASH / YOUR RIDE WAITS AT THE EDGE" : "SPLASH");
       if (e.type === "railImpact" && !e.bail)
         this.feedback("RAIL CLIP / RIDE IT OUT", "warn");
       if (e.type === "grindCatch")
@@ -105,9 +111,12 @@ export class HUD {
   }
   menu(input: InputFrame) {
     if (!this.paused) return;
-    const buttons = Array.from(
+    const all = Array.from(
       document.querySelectorAll<HTMLButtonElement>("[data-action]"),
     ).filter((b) => !b.disabled && !b.hidden);
+    // A row of buttons (data-row names its lead) is one stop going up and down;
+    // left and right move along it.
+    const buttons = all.filter((b) => !b.dataset.row || b.dataset.row === b.dataset.action);
     const direction =
       input.held.marker > 0.5
         ? -1
@@ -141,11 +150,16 @@ export class HUD {
         (spawn.selectedIndex + side + spawn.options.length) %
         spawn.options.length;
     }
+    const lead = buttons[this.menuIndex];
+    let target = lead;
+    if (lead?.dataset.row) {
+      const row = all.filter((b) => b.dataset.row === lead.dataset.row);
+      if (side && !this.sideHeld) this.rowIndex = Math.max(0, Math.min(row.length - 1, this.rowIndex + side));
+      target = row[this.rowIndex] ?? lead;
+    } else this.rowIndex = 1;
     this.sideHeld = !!side;
-    buttons.forEach((b, i) =>
-      b.classList.toggle("selected", i === this.menuIndex),
-    );
-    if (input.pressed.hop) buttons[this.menuIndex]?.click();
+    all.forEach((b) => b.classList.toggle("selected", b === target));
+    if (input.pressed.hop) target?.click();
     if (input.pressed.brakeBars) this.setPaused(false);
   }
   update(
@@ -237,7 +251,7 @@ export class HUD {
         "<dt>Y ON GROUND</dt><dd>Walk / mount. On foot A jumps or climbs, B sits near benches; LS click runs carrying scooter.</dd>" +
         "<dt>Y NEAR QUARTER COPING</dt><dd>Set up drop-in; LS forward commits, back rebalances, B cancels.</dd><dt>SPINE STALL</dt><dd>Hold LT while grounded at spine coping to brake into a stall. Use LS left/right to adjust, then lean LS forward or back to drop in.</dd>" +
         "<dt>BAIL</dt><dd>Press A after the fall to get up. Double-tap A to skip the crash.</dd>" +
-        "<dt>D-PAD DOWN: PHONE</dt><dd>Music, emotes, rides, rider, map, items, build and messages. LS moves, A opens, B back, Y home, D-pad Down puts it away.</dd><dt>ON FOOT: HOLD D-PAD RIGHT</dt><dd>Chat; Enter sends, Esc/B cancels. Messages appear above your head.</dd><dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
+        "<dt>HOLD D-PAD DOWN: PHONE</dt><dd>Music, emotes, rides, rider, map, items, build and messages. LS or D-pad moves, A opens, B back, Y home; hold D-pad Down again to put it away.</dd><dt>ON FOOT: HOLD D-PAD RIGHT</dt><dd>Chat; Enter sends, Esc/B cancels. Messages appear above your head.</dd><dt>D-PAD UP / VIEW / MENU</dt><dd>Tap marker return, hold to set / reset rider / pause</dd><dt>RS CLICK</dt><dd>Recenter camera; RS orbits while walking</dd></dl>" +
         "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
         "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";
     }
@@ -263,9 +277,13 @@ export class HUD {
     (document.querySelector("#balance-command") as HTMLElement).style.bottom =
       track(s.manual.balance + s.manual.command * 0.25);
     const hints: Record<string, string> = {
-      Walking: s.running
-        ? "A JUMP / CLIMB / LS CLICK WALK / Y MOUNT"
-        : "LS WALK / A JUMP / B SIT NEAR BENCH / Y MOUNT",
+      Walking: s.swim
+        ? "LS SWIM / HOLD A STROKE HARDER / SWIM TO A LADDER OR THE BANK TO CLIMB OUT"
+        : s.footAir && !s.grounded
+          ? "LT+RT + LS FLIP / LB RB TWIST / X TUCK / B SWAN · LET GO TO OPEN UP"
+          : s.running
+            ? "A JUMP / CLIMB / LS CLICK WALK / Y MOUNT"
+            : "LS WALK / A JUMP / B SIT NEAR BENCH / Y MOUNT",
       Sitting: "B STAND / A JUMP / Y MOUNT",
       DropInReady: "LS FORWARD TO COMMIT / BACK TO REBALANCE / B CANCEL",
       DropInCommit: "LEAN INTO THE TRANSITION",

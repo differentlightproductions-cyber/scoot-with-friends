@@ -10,11 +10,16 @@ import {CreditEconomy} from './data/credit';
 import { ParkEditor } from "./editor/editor";
 import { buildObject, deformGroundLayers } from "./editor/assets";
 import {
+  activeLayout,
+  CATALOG,
   setActiveLayout,
   setEditedHeightQuery,
   validateLayout,
   type ParkLayout,
 } from "./editor/layout";
+import { modules as outdoorRamps } from "./park/outdoor";
+import { Minimap } from "./ui/minimap";
+import { NowPlaying } from "./ui/now-playing";
 import { buildBaseAssets } from "./editor/base-assets";
 import { WaterEffects } from "./park/water";
 import "./style.css";
@@ -29,7 +34,7 @@ import { RiderModel } from "./scooter/model";
 import { ChaseCamera } from "./camera/chase";
 import { AudioEngine } from "./audio/audio";
 import { HUD } from "./ui/hud";
-import { SocialControls } from "./ui/social";
+import { EMOTES, SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
 import type { MapId } from "./data/maps";
@@ -42,6 +47,7 @@ import { ACTIVE_MAP } from './park/park';
 import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
 import { Phone } from './phone/phone';
+import { HoldButton } from './phone/hold';
 import { PhoneRig, READ_TILT } from './phone/rig';
 import { PhoneMap, type MapFeature } from './phone/map';
 import { MessageStore } from './phone/messages';
@@ -56,6 +62,7 @@ async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
+  if(ACTIVE_MAP==="church"){const church=await import("./park/church");church.installChurch();setActiveLayout(church.churchLayout);selectPark("church");}
   const events = new Events(),
     hud = new HUD(events),
     input = new Input(),
@@ -99,10 +106,12 @@ async function boot() {
   economy.onGains=gains=>rewards.celebrate(gains);events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
-  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park), weather = new Weather(scene);
+  let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = new Weather(scene);
   // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
   const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
   let phoneAir = 0;
+  // Hold D-pad Down to take the phone out or put it away; taps navigate inside it.
+  const phoneHold = new HoldButton();
   interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
@@ -118,7 +127,8 @@ async function boot() {
   void music.loadCatalog();
   // Held buttons that put the phone away must not become a hop, push or trick.
   phone.onClose = () => { input.clear(); pending = emptyInput(); releasePhoneThumbnails(); };
-  phone.onOpen = () => { if (sim.emote && sim.emote.id !== 'sit') sim.emote = null; sim.running = false; };
+  // Taking the phone out ends an emote that needs the phone hand; a one-hand emote on the other hand plays on.
+  phone.onOpen = () => { const e = sim.emote, phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0; if (e && e.id !== 'sit' && !(EMOTES.find(x => x.id === e.id)?.phoneCompatible && e.hand !== phoneHand)) sim.emote = null; sim.running = false; };
   music.onNowPlaying = (track) => {
     if (!music.settings.notifications || (phone.ready && phone.view?.title === 'SESH MUSIC')) return;
     phone.notify('Now playing', track.title + ' · ' + track.artist, 'music');
@@ -150,18 +160,26 @@ async function boot() {
     for(const b of park.benches)out.push({kind:'bench',x:b.x,z:b.z});
     for(const r of park.rails)if(!r.coping)out.push({kind:'rail',x:r.a.x,z:r.a.z,x2:r.b.x,z2:r.b.z});
     for(const d of shopForMap(ACTIVE_MAP)?.displays??[])out.push({kind:'shop',x:d.x,z:d.z,label:d.label});
+    // Ramps and features: the built wood park on Veterans, plus any laid-out or placed ramp pieces.
+    if(ACTIVE_MAP==='outdoor')for(const m of outdoorRamps)out.push({kind:'ramp',x:(m.x0+m.x1)/2,z:(m.z0+m.z1)/2,label:m.kind});
+    const ramps:readonly string[]=CATALOG.Ramps;
+    for(const o of activeLayout?.objects??[])if(ramps.includes(o.type))out.push({kind:'ramp',x:o.x,z:o.z,label:o.type});
     for(const r of network.remotes.values()){const p=r.model.root.position;out.push({kind:'friend',x:p.x,z:p.z,label:r.name});}
     return out;
   };
-  const phoneMap=new PhoneMap({renderer,scene,features:mapFeatures,player:()=>({x:sim.position.x,z:sim.position.z,yaw:sim.yaw}),
+  const mapRide=()=>sim.walking||sim.sitting?'foot' as const:sim.rideable==='longboard'?'longboard' as const:'scooter' as const;
+  const phoneMap=new PhoneMap({renderer,scene,features:mapFeatures,player:()=>({x:sim.position.x,z:sim.position.z,yaw:sim.yaw,ride:mapRide()}),
     hide:()=>{const riderShown=rider.root.visible;rider.root.visible=false;weather.setVisible(false);for(const r of network.remotes.values())r.model.root.visible=false;return()=>{rider.root.visible=riderShown;weather.setVisible(true);for(const r of network.remotes.values())r.model.root.visible=true;};}});
+  builder.onChange=()=>phoneMap.invalidate();
   /** The phone comes out standing, sitting, or rolling on the ground; never in the air, a trick, a grind or a crash. */
+  const minimap=new Minimap(document.querySelector('#app')!,phoneMap),minimapView=new THREE.Vector3();
+  const nowPlaying=new NowPlaying(music,document.querySelector('#app')!,document.querySelector('#pause .np-player')!);
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
   const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,
     openCrate:id=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,crates);},
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
-    emote:id=>social.perform(id,sim),
+    emote:id=>social.perform(id,sim,profile.settings.phoneHand==='left'?1:0),
     openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
     switchRide:async kind=>{const r=await economy.setRideable(kind,profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not switch.';},
     ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
@@ -231,8 +249,9 @@ async function boot() {
   let destinationLoading=false;
   const loadDestination = async (id:MapId) => {
     if(destinationLoading)return;destinationLoading=true;input.clear();
-    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B\u00a0Hill":"Loading your park",10);
+    try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B\u00a0Hill":id==="church"?"Heading to the Church":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
+    if(id==="church"){const church=await import("./park/church");church.installChurch();}
     if (id === "outdoor") await latestPark();
     await loadingStage("Building the destination",40);
     setActiveLayout(id === "outdoor" ? publicLayout : null);
@@ -320,9 +339,29 @@ async function boot() {
     startSession("outdoor", true);
     exitToMenu();
   };
+  // The first-swim moment plays once, even before the mission save catches up.
+  let firstSwimShown = false;
   events.on((e) => {
     audio.event(e);
     if (e.type === "splash") waterEffects.splash(e.x, e.z);
+    if (e.type === "swim" && e.phase === "enter") {
+      // The ride waits at the water's edge; the first swim gets its moment.
+      interactions.parkAtShore(sim, e.shore[0], e.shore[1], e.yaw);
+      if (!profile.progress.firsts.includes("swim") && !firstSwimShown) { firstSwimShown = true; rewards.firstSwim(); if (sim.swim) sim.swim.celebrate = 1.8; }
+      missions.first("swim");
+    }
+    if (e.type === "swim" && e.trick?.clean && e.trick.rotations >= 1) missions.first("water-flip");
+    if (e.type === "swim" && e.phase === "enter" && e.trick?.clean && !e.fromRide) {
+      // Water missions (data/progress.ts, WATER group), read off the entry.
+      const t = e.trick, name = t.name;
+      if (name === "Cannonball") missions.first("water:cannonball");
+      if (t.entry === "head") missions.first("water:dive");
+      if ((t.height ?? 0) >= 3.5) missions.first("water:tower");
+      if (t.board && t.rotations >= 0.9) missions.first("water:board");
+      if (/\d{3} *(Twist)?$/.test(name) && t.rotations >= 0.9) missions.first("water:twist");
+      if (name.startsWith("Swan Dive")) missions.first("water:swan");
+      if (t.rotations >= 1.8) missions.first("water:double");
+    }
     if (e.type === "pop") input.rumble(TUNE.rumble.pop, 45);
     if (e.type === "landing")
       input.rumble(
@@ -392,7 +431,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park);daylight=new Daylight(park);weather=new Weather(scene);
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=new Weather(scene);
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -408,7 +447,7 @@ async function boot() {
       "?map="+id,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":ACTIVE_MAP==="b_hill"?"B HILL":"WAREHOUSE <b>01</b>") +
+      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":ACTIVE_MAP==="b_hill"?"B HILL":ACTIVE_MAP==="church"?"THE CHURCH":"WAREHOUSE <b>01</b>") +
       '<span id="score">SESH 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
@@ -448,6 +487,10 @@ async function boot() {
           case "resume":
             hud.setPaused(false);
             break;
+          // The Sesh menu's Now Playing controls: the same MusicService as the phone.
+          case "music-prev": music.previous(); break;
+          case "music-toggle": music.togglePlay(); break;
+          case "music-next": music.next(); break;
           case "marker":
             sim.marker.returnTo(sim);
             hud.setPaused(false);
@@ -489,7 +532,7 @@ async function boot() {
             hud.setPaused(false);
             input.clear();pending=emptyInput();accumulator=0;
             if (phoneAllowed()) phone.open('music');
-            else phone.notify('Phone', 'Land first, then press D-pad Down for Sesh Music.');
+            else phone.notify('Phone', 'Land first, then hold D-pad Down for Sesh Music.');
             break;
           case "sound":
             audio.enabled = !audio.enabled;
@@ -536,10 +579,11 @@ async function boot() {
     weather.update(dt,profile.settings.daylight,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
+    if (sim.swim && !sim.swim.out) waterEffects.swimmer(sim.position.x, sim.position.z, Math.hypot(sim.velocity.x, sim.velocity.z) > 0.6, dt);
     camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
     // Phone: arm and head follow its raise; in first person the hand is placed from the eye below.
     phone.tick(dt);
-    hud.phoneHint = phone.active ? 'PHONE · LS MOVE / A SELECT / B BACK / Y HOME / D-PAD DOWN PUT AWAY' : '';
+    hud.phoneHint = phone.active ? 'PHONE · LS / D-PAD MOVE · A SELECT · B BACK · Y HOME · HOLD D-PAD DOWN PUT AWAY' : '';
     const phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0, raise = phone.raise * phone.raise * (3 - 2 * phone.raise);
     const firstPersonPhone = camera.view === 'first' && camera.firstPersonActive && raise > 0;
     phone.firstPerson = firstPersonPhone;
@@ -550,6 +594,8 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    // Placing a build piece: the build camera frames the ghost instead.
+    if(builder.placement)builder.frame(camera.camera,dt);
     if (firstPersonPhone && camera.firstPersonActive) { phoneRig.pose(rider, raise, phoneHand, camera.camera); rider.avatar.update(sim.elapsed); }
     phoneRig.attach(rider, phoneHand, raise);
     phoneRig.layer(rider, phoneHand, firstPersonPhone && camera.firstPersonActive);
@@ -567,6 +613,11 @@ async function boot() {
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
     rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
+    // Minimap: only over live riding, never over menus, the phone, loading or building.
+    camera.camera.getWorldDirection(minimapView);
+    const liveHud=hud.started&&!hud.paused&&menu.root.hidden&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!phone.active&&!editor.active&&!rewards.open;
+    minimap.update(dt,liveHud&&!builder.placement,ACTIVE_MAP,Math.atan2(minimapView.x,minimapView.z),mapRide());
+    nowPlaying.update(liveHud);
     if(hud.started&&!hud.paused){missions.sample(sim,dt);if(phone.active)missions.first('phone');}
     // Phone-shop packages land in your parts when their time comes (also after a reload).
     deliveryCheck-=dt;if(deliveryCheck<=0){deliveryCheck=1;if(profile.wallet.packages.some(k=>k.arrives<=Date.now()))void economy.deliver().then(arrived=>{if(typeof arrived==='string')return;for(const k of arrived){const c=collectibles().find(x=>x.partId===k.partId&&x.variantId===k.variantId);rewards.delivered(c?c.name.replace(/^(Lazer|Mafioso|Sometimes Summer) /,'')+' / '+c.variantName:k.partId);phone.notify('Package delivered',(c?.name??k.partId)+' is in your parts','crate');}});}
@@ -618,15 +669,7 @@ async function boot() {
     }
     // The phone owns controller input while it is out (the chat field, when
     // composing, owns it first). Gameplay receives nothing, so a rider coasts on.
-    if (phone.active) {
-      if (sim.state === "Bail") phone.stow();
-      phoneAir = sim.grounded ? 0 : phoneAir + dt;
-      if (phoneAir > 0.2 || sim.grind || sim.manual.active) phone.close();
-      if (social.chat.hidden) { phone.update(frame, dt); frame = emptyInput(); }
-    } else if (frame.pressed.menuDown && social.chat.hidden && phoneAllowed()) {
-      phone.open();
-      frame = emptyInput();
-    }
+    frame = phoneStep(frame, dt);
     shopPrompt.hidden=true;
     if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){if(nearest.category==='longboard')menu.openBoardShop(shop.id);else menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
     if(builder.placement)frame=builder.update(sim,frame,dt);
@@ -663,6 +706,31 @@ async function boot() {
     );
     render(dt, accumulator / TUNE.step);
   });
+  /**
+   * The phone's share of one frame of input: hold D-pad Down to take it out or
+   * put it away; while it is out it owns every button and gameplay gets an
+   * empty frame. Returns what gameplay receives.
+   */
+  function phoneStep(frame: InputFrame, dt: number): InputFrame {
+    const phoneHeld = phoneHold.update(frame.held.menuDown > 0.5 && social.chat.hidden, dt);
+    if (phone.active) {
+      if (sim.state === "Bail") phone.stow();
+      phoneAir = sim.grounded ? 0 : phoneAir + dt;
+      if (phoneAir > 0.2 || sim.grind || sim.manual.active) phone.close();
+      if (phoneHeld) phone.close();
+      else if (social.chat.hidden) phone.update(frame, dt);
+      return emptyInput();
+    }
+    if (phoneHeld && phoneAllowed()) {
+      phone.open();
+      return emptyInput();
+    }
+    if (frame.held.menuDown > 0.5 || frame.released.menuDown) {
+      // The press belongs to the hold gesture, never to gameplay.
+      frame.held.menuDown = 0; frame.pressed.menuDown = false; frame.released.menuDown = false;
+    }
+    return frame;
+  }
   let pending = emptyInput();
   function pendingFrame(f: InputFrame) {
     for (const k of Object.keys(f.pressed) as (keyof InputFrame["pressed"])[]) {
@@ -737,6 +805,8 @@ async function boot() {
         return sim.snapshot();
       },
       render: () => render(1 / 60),
+      /** The main loop's phone input step, for tests. */
+      phoneStep: (values: Partial<InputFrame>, dt = 1 / 60) => phoneStep({ ...emptyInput(), ...values, held: { ...emptyInput().held, ...values.held }, pressed: { ...emptyInput().pressed, ...values.pressed }, released: { ...emptyInput().released, ...values.released } }, dt),
     };
   }
 }

@@ -35,6 +35,8 @@ export interface TrickPrimitives {
   }[];
   motionOrder?: string[];
   fastplant?: boolean;
+  /** The bar spins were Bar Twists (RT + B + LS): named Bar Twist, Double Bar Twist... */
+  barTwist?: boolean;
   /** Full rider revolutions around the scooter (Decade), credited only when caught. */
   decadeTurns?: number;
   decadeAngle?: number;
@@ -138,7 +140,7 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
   const bars = raw.barReversals?.length
     ? rewindName("Bar", raw.barReversals.length)
     : raw.barTurns
-      ? sequence(raw.barTurns, "Barspin", raw.barCatches)
+      ? sequence(raw.barTurns, raw.barTwist ? "Bar Twist" : "Barspin", raw.barCatches)
       : "";
   const decade = raw.decadeTurns ? counted(Math.abs(raw.decadeTurns), "Decade") : "";
   if (deck) parts.push(deck);
@@ -215,6 +217,8 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
   if(briAir)name=[flipName,...parts.map(p=>p==='Bri'?'Bri Air':p==='Inward'?'Inward Air':p)].filter(Boolean).join(' + ');
   if(flair)name=['Flair',...parts].filter(Boolean).join(' + ');
   if(frontFlair)name=['Front Flair',...parts].filter(Boolean).join(' + ');
+  // A Fastplant without a flip is its own trick, named ahead of anything done in its air.
+  if(raw.fastplant&&!flips){name=['Fastplant',name].filter(Boolean).join(' + ');components.unshift('Fastplant');}
   return {
     name,
     recognized: flair?"flair":frontFlair?"front-flair":briAir?"bri-air":rule?.id ?? (downside ? "downside-whip" : null),

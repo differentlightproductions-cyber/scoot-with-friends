@@ -1,13 +1,19 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 export type Fidelity='low'|'medium'|'high';
+/**
+ * Render resolution per preset, from the screen's own ratio (capped at 1.5 so a
+ * 3x phone is not asked for 3x): Low draws 25% under it, Medium at it, High 35%
+ * over it (supersampled on an ordinary 1x screen), never above 2.
+ */
+export const fidelityPixelRatio=(quality:Fidelity,device:number)=>{const base=Math.min(device||1,1.5);return +Math.min(2,base*(quality==='low'?.75:quality==='high'?1.35:1)).toFixed(3);};
 export class VisualFidelity {
  quality:Fidelity='high';environment:THREE.Texture;private shadowLights:{light:THREE.DirectionalLight;offset:THREE.Vector3}[]=[];
  private scene?:THREE.Scene;private materialFeatures=new Map<THREE.MeshStandardMaterial,{bump:THREE.Texture|null;rough:THREE.Texture|null}>();
  constructor(private renderer:THREE.WebGLRenderer){const pmrem=new THREE.PMREMGenerator(renderer),room=new RoomEnvironment();this.environment=pmrem.fromScene(room,.04).texture;room.dispose();pmrem.dispose();}
  apply(scene:THREE.Scene,quality:Fidelity){
   this.quality=quality;this.scene=scene;this.shadowLights=[];scene.environment=scene.userData.skyEnvironment??this.environment;scene.environmentIntensity=.35;
-  const low=quality==='low',high=quality==='high';this.renderer.setPixelRatio(Math.min(devicePixelRatio,low?.85:high?1.7:1.15));
+  const low=quality==='low',high=quality==='high';this.renderer.setPixelRatio(fidelityPixelRatio(quality,devicePixelRatio));
   this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=high?THREE.PCFSoftShadowMap:THREE.PCFShadowMap;
   const size=high?2048:low?512:1024;
   scene.traverse(o=>{

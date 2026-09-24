@@ -49,6 +49,11 @@ const POSES=[
  // the clamp, the other stays on its grip. clamp = which hand index is expected on the clamp.
  {name:'clamp-regular',grip:[1],air:true,visual:'Clamp Grab',stance:'regular',clamp:0},
  {name:'clamp-goofy',grip:[0],air:true,visual:'Clamp Grab',stance:'goofy',clamp:1},
+ // Toboggan: the same stance-side hand reaches the rear of the deck (its anchor), the other keeps its grip.
+ {name:'toboggan-regular',grip:[1],reach:[0],air:true,visual:'Toboggan',stance:'regular'},
+ {name:'toboggan-goofy',grip:[0],reach:[1],air:true,visual:'Toboggan',stance:'goofy'},
+ // Bar Twist: the bars spin tipped forward and down.
+ {name:'bartwist',air:true,deck:[0,1],bars:[Math.PI*.5,12],twist:true},
  // Decade: rider and bars orbit the scooter's steering axis; both hands stay on the grips.
  ...[.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5].flatMap(q=>[
   {name:'decade-regular-'+q,grip:[0,1],air:true,stance:'regular',decade:-q*Math.PI/3},
@@ -107,7 +112,7 @@ function evaluatePose(page,pose){
     if(pose.weight)s.airWeight.shift=pose.weight;
     if(pose.manual){s.manual.active=true;s.manual.pitch=pose.manual;}
     if(pose.deck2){s.tricks.deck.angle=pose.deck2[0];s.tricks.deck.velocity=pose.deck2[1];}
-    if(pose.bars){s.tricks.bars.angle=pose.bars[0];s.tricks.bars.velocity=pose.bars[1];}
+    if(pose.bars){s.tricks.bars.angle=pose.bars[0];s.tricks.bars.velocity=pose.bars[1];s.tricks.twisting=!!pose.twist;}
     if(pose.kickless){s.tricks.kickless.angle=pose.kickless[0];s.tricks.kickless.velocity=pose.kickless[1];}
     if(pose.bri!==undefined){s.tricks.bri.angle=pose.bri;s.tricks.bri.velocity=12;}
     if(pose.finger){const f=pose.finger===true?{time:.175,angle:1.3}:pose.finger;s.tricks.fingerTime=f.time;s.tricks.fingerHand=1;s.tricks.deck.angle=f.angle;s.tricks.deck.velocity=12;}

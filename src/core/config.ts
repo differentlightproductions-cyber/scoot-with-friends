@@ -41,6 +41,8 @@ export const TUNE = {
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,
+  /** Pro Goofy (A whips): RT + A arms a Fastplant only this close to touchdown (s). */
+  fastplantLateArm: 0.3,
   // A pop on a ramp adds a leg extension's worth of HEIGHT to the air the ramp
   // already gives, not a fixed speed: the same 4.7 m/s on top of a fast lip
   // launch roughly doubled the air and sent riders several metres up.
@@ -143,7 +145,7 @@ export const TUNE = {
   //                     third constant; it is limited by drag against slope, so
   //                     a legitimate downhill run is never abruptly erased.
   pushMaxSpeed: 14.6, // +22% over the previous 12; see CHECKPOINT-1.md
-  extremeSpeed: 30,
+  extremeSpeed: 36, // B Hill's steepest tucked sections now settle around 33-35 m/s
   extremeSpeedResponse: 2.4, // how quickly travel eases back under the ceiling
   mountSpeedCap: 8.6, // unchanged in effect: was maxSpeed(12) * 0.72
   // --- Jump-on mounting -----------------------------------------------------
@@ -207,11 +209,13 @@ export const TUNE = {
   carveGrip: 8,
   // Bombing a hill. None of these act at or below pushMaxSpeed, so riding a
   // park is unchanged; they only matter where gravity carries a rider past it.
-  scooterAero: 0.0032, // air drag on the speed above pushMaxSpeed; a crouch trims it
+  scooterAero: 0.0024, // air drag on the speed above pushMaxSpeed; a crouch trims it
   scooterGripAccel: 19, // sideways acceleration the tyres hold at bombing speed
   washOutSlip: 0.3, // slip angle (rad) at speed where the front can no longer be saved
   wobbleSpeed: 15, // below this no speed wobble builds
   wobbleFullSpeed: 26,
+  wobbleRoll: 0.045, // visible shimmy at a full wobble (rad of rider roll, about 2.5 degrees)
+  wobbleYaw: 0.25, // heading drift per second at a full wobble
   wobbleSteerRate: 3, // steering change per second that counts as a jerk
   wobbleGain: 0.8, // wobble per unit of outward steering jerk at full speed
   wobbleSlipGain: 3, // per second, per radian of tyre slip beyond a normal carve
@@ -387,6 +391,16 @@ export const TUNE = {
   vaultHeight: 1.05,
   mantleHeight: 1.35,
   climbReach: 2.05,
+  /** Swimming (m/s): LS strokes, A held strokes harder; response is the water's drag on changes. */
+  swimSpeed: 1.8,
+  swimSprint: 2.9,
+  swimResponse: 2.2,
+  /** On-foot dive flip rotation (rad/s): one flip in about 0.7 s, inside a foot jump's air time. */
+  diveFlipRate: 8.8,
+  /** On-foot twist (LB / RB in the air, rad/s): a 360 in about 0.6 s. */
+  diveTwistRate: 10.5,
+  /** A foot jump off the dive dock's springboard launches this fast upward (m/s; a normal jump is 6): about twice the height. */
+  springboardJump: 9,
   runSpeed: 6.4,
   runMountBoost: 0.9,
   trickHoldDelay: 0.18,

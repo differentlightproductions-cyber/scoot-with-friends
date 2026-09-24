@@ -1,3 +1,4 @@
+import { DIVE_DOCK } from "./dive-dock";
 import * as THREE from 'three';
 import type { Park } from './park';
 import { OUTDOOR, ACTIVE_MAP, terrainHeight } from './park';
@@ -14,6 +15,9 @@ import type { ScooterLoadout } from '../data/scooterParts';
 import { LongboardAssembly } from '../longboard/assembly';
 import type { LongboardLoadout } from '../data/longboardParts';
 import type { RideableKind } from '../data/catalog';
+import { sideSign, walkSide } from '../core/stance';
+/** Where the ride stands beside the rider (Regular right, Goofy left; stance.ts), in world space. */
+const besideRider=(s:Simulation)=>{const k=sideSign(walkSide(s.tricks.stance))*.48;return s.position.clone().add(new THREE.Vector3(Math.cos(s.yaw)*k,-.22,-Math.sin(s.yaw)*k));};
 export interface Interactable {
  id:string; interactionType:'rack'|'vending'|'fountain'|'bench'; position:THREE.Vector3;
  radius:number; prompt:(s:Simulation)=>string; action:(s:Simulation)=>void;
@@ -47,9 +51,12 @@ export class WorldInteractions {
   // toward -z (the whole cluster is mirrored). At Techno Gravity the machine
   // stood out on the sidewalk showing its plain back to everyone arriving from
   // the street; it now backs onto the storefront and faces the approach.
-  const clusters:{x:number;z:number;vending:boolean;spread:number;facing?:1|-1}[]=OUTDOOR
-   ?[{x:22,z:-31.4,vending:false,spread:2.2},{x:-42,z:-20,vending:true,spread:3},{x:48,z:-25.5,vending:true,spread:3}]
-   :ACTIVE_MAP==="techno_gravity"?[{x:5.2,z:-6,vending:true,spread:2.4,facing:-1}]:[{x:24,z:-31,vending:true,spread:3}];
+  // The lake's dive dock gets a rack of its own (no fountain): rack the ride, go for a dip.
+  const clusters:{x:number;z:number;vending:boolean;spread:number;facing?:1|-1;fountain?:boolean}[]=OUTDOOR
+   ?[{x:22,z:-31.4,vending:false,spread:2.2},{x:-42,z:-20,vending:true,spread:3},{x:48,z:-25.5,vending:true,spread:3},{x:DIVE_DOCK.rack[0],z:DIVE_DOCK.rack[1],vending:false,spread:2.2,fountain:false}]
+   :ACTIVE_MAP==="techno_gravity"?[{x:5.2,z:-6,vending:true,spread:2.4,facing:-1}]
+   // The Church: a rack and machine at the corner of the front lot, by the sidewalk.
+   :ACTIVE_MAP==="church"?[{x:25.5,z:-41,vending:true,spread:3}]:[{x:24,z:-31,vending:true,spread:3}];
   for(const [index,cluster] of clusters.entries()){
    const {x,z,spread}=cluster,f=cluster.facing??1;
    const y=terrainHeight(x,z),base=new THREE.Vector3(x,y,z);
@@ -78,6 +85,7 @@ export class WorldInteractions {
    park.box(at(machine,0,.36,.365),new THREE.Vector3(.55,.17,.03),0x17272e,false);
    this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING',[...ITEM_KINDS.map(kind=>({label:kind as string,detail:'Free · tap to pay with your phone',action:()=>this.vend(s,kind,machine)})),{label:'Cancel',detail:'',action:()=>{}}],'Pick a drink or snack')});
    }
+   if(cluster.fountain===false)continue;
    const fountain=at(base,-spread,0,0);
    park.box(at(fountain,0,.44,0),new THREE.Vector3(.28,.88,.36),0x748e86,true);
    park.box(at(fountain,0,.9,0),new THREE.Vector3(.55,.1,.48),0xaec1b7,true);
@@ -88,20 +96,41 @@ export class WorldInteractions {
   scene.add(this.prop,this.water);this.prop.visible=false;this.water.visible=false;
  }
  dispose(){this.prompt.remove();for(const group of [this.prop,this.water]){group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});group.removeFromParent();}}
- private rack(s:Simulation,id:string,base:THREE.Vector3){
-  if(this.online){this.openOptions('RACKS',[{label:'OK',detail:'Shared rack storage is still in testing online',action:()=>{}}],'Unavailable in a room');return;}
+ /**
+  * Into the water: the ride is left lying at the water's edge where the rider
+  * went in, and is grabbed back like a rack (B beside it). Works online too:
+  * it never leaves this rider's own world.
+  */
+ parkAtShore(s:Simulation,x:number,z:number,yaw:number){
+  if(this.stored||!s.hasScooter)return;
+  const board=s.rideable==='longboard',mesh=new THREE.Group();
+  if(board)new LongboardAssembly(mesh,this.profile.longboard);else new ScooterAssembly(mesh).build(this.profile.scooter);
+  const y=terrainHeight(x,z);
+  // A scooter lies on its side; a board sits wheels down.
+  mesh.position.set(x,y+(board?.0:.13),z);
+  mesh.quaternion.setFromEuler(new THREE.Euler(0,yaw,board?0:Math.PI/2,'YXZ'));
+  this.park.scene.add(mesh);
+  this.stored={ownerId:'local-player',rackId:'shore',slot:1,rideable:s.rideable,loadout:structuredClone(board?this.profile.longboard:this.profile.scooter),mesh};
+  s.hasScooter=false;
+  const at=mesh.position.clone();
+  this.dropShore();
+  this.items.push({id:'shore',interactionType:'rack',position:at,radius:2.2,prompt:()=>'Grab your '+rideName(this.stored?.rideable??s.rideable).toLowerCase(),action:s=>this.rack(s,'shore',at,true)});
+ }
+ private dropShore(){const i=this.items.findIndex(i=>i.id==='shore');if(i>=0)this.items.splice(i,1);}
+ private rack(s:Simulation,id:string,base:THREE.Vector3,own=false){
+  if(this.online&&!own){this.openOptions('RACKS',[{label:'OK',detail:'Shared rack storage is still in testing online',action:()=>{}}],'Unavailable in a room');return;}
   if(this.active)return;
   if(this.stored){
    if(this.stored.rackId!==id)return;
    const stored=this.stored;
-   this.active={type:'grab',time:0,duration:.65,start:stored.mesh.position.clone(),end:s.position.clone().add(new THREE.Vector3(.48,-.22,0)),from:stored.mesh.quaternion.clone(),to:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),mesh:stored.mesh,finish:()=>{
+   this.active={type:'grab',time:0,duration:.65,start:stored.mesh.position.clone(),end:besideRider(s),from:stored.mesh.quaternion.clone(),to:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),mesh:stored.mesh,finish:()=>{
     s.hasScooter=true;s.rideable=stored.rideable;stored.mesh.removeFromParent();stored.mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m.dispose();}});this.stored=null;
    }};
   }else if(s.hasScooter){
    const board=s.rideable==='longboard',mesh=new THREE.Group();
    if(board)new LongboardAssembly(mesh,this.profile.longboard);else new ScooterAssembly(mesh).build(this.profile.scooter);this.park.scene.add(mesh);
    const loadout=structuredClone(board?this.profile.longboard:this.profile.scooter);s.hasScooter=false;
-   const start=s.position.clone().add(new THREE.Vector3(Math.cos(s.yaw)*.48,-.22,-Math.sin(s.yaw)*.48));
+   const start=besideRider(s);
    mesh.position.copy(start);
    this.stored={ownerId:'local-player',rackId:id,slot:1,rideable:s.rideable,loadout,mesh};
    // A board stands nose-up in the slot rather than borrowing the scooter's pose.
@@ -132,6 +161,7 @@ export class WorldInteractions {
  }
  update(s:Simulation,input:InputFrame,dt:number,enabled=true):InputFrame{
   this.current=s;
+  if(this.stored?.rackId!=='shore')this.dropShore();
   this.prompt.hidden=true;
   if((!s.walking||s.state==='Bail')&&this.profile.pockets.held){this.profile.pockets.held=null;saveProfile(this.profile);}
   s.heldItem=this.profile.pockets.entries.find(i=>i.id===this.profile.pockets.held)?.kind??null;
@@ -150,11 +180,11 @@ export class WorldInteractions {
    return emptyInput();
   }
   if(!s.walking||!s.grounded||s.state==='Bail'||s.sitting)return input;
-  if(this.profile.pockets.held){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · D-pad Down / Phone';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
+  if(this.profile.pockets.held){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · Hold D-pad Down / Phone';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
   const near=this.items.filter(i=>i.position.distanceTo(s.position)<i.radius).sort((a,b)=>a.position.distanceToSquared(s.position)-b.position.distanceToSquared(s.position))[0];
   if(near){this.prompt.hidden=false;this.prompt.textContent=`B / keyboard B · ${near.prompt(s)}`;
    if(input.pressed.brakeBars&&near.interactionType!=='bench'){near.action(s);return {...input,pressed:{...input.pressed,brakeBars:false}};}
-  }else if(!s.hasScooter){this.prompt.hidden=false;this.prompt.textContent=rideName(this.stored?.rideable??s.rideable)+' stored · Return to its rack to grab it';}
+  }else if(!s.hasScooter){this.prompt.hidden=false;this.prompt.textContent=rideName(this.stored?.rideable??s.rideable)+(this.stored?.rackId==='shore'?' left at the water\'s edge · Go back to grab it':' stored · Return to its rack to grab it');}
   return input;
  }
  render(rider:RiderModel){

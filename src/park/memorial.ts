@@ -5,6 +5,9 @@ import { aleppoPine, boulder, bursage, plant, yucca, type Placement } from '../a
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
+import { WATER, buildShoreline, dressLake } from "./water";
+import { buildDiveDock } from "./dive-dock";
+import { surfaceMaterial } from "./art";
 const clamp = THREE.MathUtils.clamp;
 // The compact metal street plaza and BMX track have traded sides.  Keep the
 // metal layout authored in its original local coordinates, then place it in
@@ -515,38 +518,21 @@ export function buildMemorialGrounds(park: Park) {
   ])
     box((a + b) / 2, 0.08, -47, b - a, 0.16, 0.22, 0xcac8bb, true);
 
-  // Lake and surrounding trail, set outside the usable skatepark lines.
-  const lake = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 72),
-    new THREE.MeshStandardMaterial({
-      color: 0x327b8c,
-      roughness: 0.24,
-      metalness: 0.25,
-      polygonOffset: true,
-      polygonOffsetUnits: -30,
-    }),
-  );
+  // Lake and surrounding trail, set outside the usable skatepark lines: the
+  // water itself (water.ts), a slim concrete edge between it and the grass, and
+  // the dive dock at its south tip for on-foot water tricks.
+  const lake = new THREE.Mesh(new THREE.CircleGeometry(1, 96));
   lake.name = "lake-water";
-  (lake.material as THREE.MeshStandardMaterial).onBeforeCompile = (shader) => {
-    shader.uniforms.waterTime = { value: 0 };
-    lake.userData.waterShader = shader;
-    shader.vertexShader =
-      "varying vec2 waterUV;\n" +
-      shader.vertexShader.replace(
-        "#include <begin_vertex>",
-        "#include <begin_vertex>\nwaterUV=position.xy;",
-      );
-    shader.fragmentShader =
-      "uniform float waterTime; varying vec2 waterUV;\n" +
-      shader.fragmentShader.replace(
-        "#include <color_fragment>",
-        "#include <color_fragment>\nfloat ripple=sin(waterUV.x*45.0+waterUV.y*18.0+waterTime*1.8)*sin(waterUV.y*60.0-waterTime);diffuseColor.rgb*=0.90+0.08*ripple+0.16*length(waterUV);",
-      );
-  };
+  dressLake(lake);
   lake.rotation.x = -Math.PI / 2;
-  lake.scale.set(10, 30, 1);
-  lake.position.set(-97, 0.009, 5);
+  lake.scale.set(WATER.radiusX, WATER.radiusZ, 1);
+  lake.position.set(WATER.x, WATER.surface, WATER.z);
   scene.add(lake);
+  const shoreline = surfaceMaterial(0xdedad0, "concrete", 2.4, 2.4);
+  shoreline.polygonOffset = true;
+  shoreline.polygonOffsetUnits = -40;
+  buildShoreline(scene, shoreline);
+  buildDiveDock(park);
   const pavilion = (x: number, z: number) => {
     box(x, 0.02, z, 7, 0.04, 7, 0xc2b9a0);
     for (const dx of [-2.6, 2.6])

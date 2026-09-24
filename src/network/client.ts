@@ -8,7 +8,7 @@ import {PROTOCOL,CONTENT,POSE_KEYS} from './protocol';
 const pick=(v:any,keys:string[])=>Object.fromEntries(keys.map(k=>[k,v[k]]));
 export function capture(s:Simulation){
  const p:any={};for(const k of POSE_KEYS)if(typeof s[k as keyof Simulation]==='number'||typeof s[k as keyof Simulation]==='boolean'||typeof s[k as keyof Simulation]==='string')p[k]=s[k as keyof Simulation];
- Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
+ Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,swim:s.swim?{time:s.swim.time,stroke:s.swim.stroke,out:null,celebrate:s.swim.celebrate,speed:Math.hypot(s.velocity.x,s.velocity.z)}:null,diveFlip:s.diveFlip,mantle:s.mantle?{kind:s.mantle.kind,time:s.mantle.time,duration:s.mantle.duration,edge:s.mantle.edge.toArray(),forward:s.mantle.forward.toArray()}:null,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
  p.board=pick(s.board,['lean','slide','slideSide','tuck','brake','pushTimer','travel','surfaceRoll']);
  p.tricks=pick(s.tricks,['stance','naturalDirection','quarterAir','yaw','visualPose','poseBlend','poseSide','fingerTime','fingerHand']);
  for(const k of ['deck','bars','bri','kickless','decade'] as const)p.tricks[k]={...pick(s.tricks[k],['angle','velocity','mismatch']),reversals:[],reversalAge:s.tricks[k].reversalAge??1};
@@ -24,7 +24,7 @@ export class FreeRide {
  get endpoint(){return this.lan?'ws://'+location.host+'/lan-room':import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
  send(value:any){if(this.ws?.readyState===WebSocket.OPEN&&this.ws.bufferedAmount<65536)this.ws.send(JSON.stringify(value));}
  private revision(){return sha256Hex(JSON.stringify(activeLayout??null));}
- async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
+ async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill','church'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
  private async receiveMap(m:any){this.status='Loading';this.generation=m.generation;this.map=m.map;this.clear();this.onLost();try{await this.loadMap(m.map);this.send({type:'ready',generation:m.generation,mapRevision:await this.revision()});}catch{this.lastError='Could not load the room destination. Leave and retry.';this.onChange();}}
  async connect(mode:'create'|'join'|'resume',name='Rider',code=''){
   if(mode!=='resume')await this.prepare();
@@ -57,6 +57,7 @@ export class FreeRide {
    for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.state.tricks[channel]&&b.state.tricks[channel])p.tricks[channel][k]=THREE.MathUtils.lerp(a.state.tricks[channel][k],b.state.tricks[channel][k],t);
    p.position=new THREE.Vector3().fromArray(a.state.position).lerp(new THREE.Vector3().fromArray(b.state.position),t);p.previousPosition=p.position;p.previousYaw=p.yaw;
    if(p.fastplant)p.fastplant.foot=new THREE.Vector3().fromArray(p.fastplant.foot);
+   if(p.mantle){p.mantle.edge=new THREE.Vector3().fromArray(p.mantle.edge);p.mantle.forward=new THREE.Vector3().fromArray(p.mantle.forward);}
    if(p.crash)for(const key of ['rider','scooter']){const body=p.crash[key];p.crash[key]={translation:()=>body.position,rotation:()=>body.rotation};}
    r.model.update(p as Simulation,dt,1);
    const point=p.position.clone().add(new THREE.Vector3(0,2,0)),distance=point.distanceTo(this.sim().position);point.project(camera);r.label.hidden=distance>35||Math.abs(point.x)>1||Math.abs(point.y)>1||point.z>1;

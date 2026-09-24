@@ -22,5 +22,11 @@ export const sideIndex = (side: Side): 0 | 1 => (side === "right" ? 0 : 1);
 export const sideSign = (side: Side): -1 | 1 => (side === "right" ? -1 : 1);
 export const frontFootIndex = (stance: Stance) => sideIndex(frontFoot(stance));
 export const pushFootIndex = (stance: Stance) => sideIndex(pushFoot(stance));
+/**
+ * Off the scooter (standing, walking, sitting, mounting, racking) it stays on
+ * this side of the rider: Regular on the RIGHT, Goofy on the LEFT. Only where
+ * the scooter sits changes; trick buttons never follow it.
+ */
+export const walkSide = (stance: Stance): Side => (stance === "regular" ? "right" : "left");
 /** The hand that lets go of the bars for a Clamp Grab (the other stays on the grip). */
 export const clampGrabHand = (stance: Stance): Side => (stance === "regular" ? "right" : "left");

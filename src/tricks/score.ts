@@ -40,7 +40,7 @@ export class ScoreSystem {
    // GOOD keeps the combo alive and pays a substantial normal reward through the
    // existing configuration; only a genuinely rough ride-away is discounted.
    const quality=e.record?.landing==='sketchy'?.8:e.record?.landing==='good'?.95:1;
-   const value=this.preview(e.record?.raw,e.name,quality,extra),factor=this.multiplier;
+   const value=this.preview(e.record?.raw,e.name,quality,extra,e.points),factor=this.multiplier;
    this.total+=value;this.line+=value;this.lastAward=value;events.emit({type:"banked",eventId:this.rewardRun+":"+id,points:value});
    this.display={id,name:e.name,points:value,multiplier:factor,status:'landed',age:0};
    if(extra||this.segment?.name===e.name)this.segment=null;
@@ -56,9 +56,9 @@ export class ScoreSystem {
   }
   if(e.type==='reset'){this.display=null;this.segment=null;this.line=0;this.multiplier=1;this.caseFactor=1;}
  });}
- preview(raw?:TrickPrimitives,name='',quality=1,extra=0){
+ preview(raw?:TrickPrimitives,name='',quality=1,extra=0,base?:number){
   const sig=trickSignature(raw,name),n=this.recent.filter(s=>s===sig).length;
-  return Math.round((trickValue(raw)+extra)*this.multiplier*TUNE.repetitionValues[n]*quality*this.caseFactor);
+  return Math.round(((base??trickValue(raw))+extra)*this.multiplier*TUNE.repetitionValues[n]*quality*this.caseFactor);
  }
  observe(attempt:({id:number;name:string;raw:TrickPrimitives})|null){
   if(attempt&&!this.seen.has(attempt.id))this.display={id:attempt.id,name:attempt.name,points:this.preview(attempt.raw,attempt.name),multiplier:this.multiplier,status:'pending',age:0};

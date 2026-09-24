@@ -9,10 +9,11 @@ import { GROUPS } from "../physics/groups";
 import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns, modules, surfaceSpan } from "./outdoor";
 import { buildBHill, bHillHeight, bHillSurface, B_HILL_SPAWNS } from "./bhill";
+import { PILLAR_HALF, WAREHOUSE_PILLARS } from "../data/builds";
 export let OUTDOOR =
   typeof window !== "undefined" &&
-  !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity","b_hill"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
-export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /b_hill/.test(location.search) ? "b_hill" : typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "techno_gravity" : "warehouse");
+  !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity","b_hill","church"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
+export let ACTIVE_MAP = OUTDOOR ? "outdoor" : (typeof window!=="undefined" && /b_hill/.test(location.search) ? "b_hill" : typeof window!=="undefined" && /church/.test(location.search) ? "church" : typeof window!=="undefined" && /shop|gravity/.test(location.search) ? "techno_gravity" : "warehouse");
 export interface Rail {
   id: string;
   a: THREE.Vector3;
@@ -46,6 +47,8 @@ export function terrainSurface(x: number, z: number): "road" | "shoulder" | "dir
 export function baseTerrainHeight(x: number, z: number): number {
   if (OUTDOOR) return outdoorHeight(x, z);
   if (ACTIVE_MAP === "b_hill") return bHillHeight(x, z);
+  const map = mapBuilders.get(ACTIVE_MAP);
+  if (map?.height) return map.height(x, z);
   return 0;
 }
 export function legacyWarehouseHeight(x:number,z:number){
@@ -139,11 +142,33 @@ const warehouseSpawns = [
 export let SPAWNS = OUTDOOR ? outdoorSpawns : ACTIVE_MAP === "b_hill" ? B_HILL_SPAWNS : warehouseSpawns;
 let shopBuilder:((park:Park)=>void)|null=null;
 export function registerShop(build:(park:Park)=>void){shopBuilder=build;}
+/**
+ * Maps authored in their own module (the Church): the builder, the analytic
+ * ground height the riding physics reads (plazas, stairs, banks), and spawns.
+ * Registered by the module itself before the park is built, as the shop is.
+ */
+export interface MapModule { build(park: Park): void; height?(x: number, z: number): number; spawns: { name: string; x: number; z: number; yaw: number }[] }
+const mapBuilders = new Map<string, MapModule>();
+export function registerMap(id: string, map: MapModule) { mapBuilders.set(id, map); if (ACTIVE_MAP === id) SPAWNS = map.spawns; }
+/**
+ * A step down in an authored map's own ground just ahead (a stair nosing, a
+ * plaza edge): more drop over `reach` than the slope the rider is already on
+ * would explain. Only the map's height counts, so layout ramps and quarters
+ * (dropping in) never trigger it, nor does riding on top of one.
+ */
+export function authoredDropAhead(x: number, z: number, dx: number, dz: number, reach: number) {
+  const h = mapBuilders.get(ACTIVE_MAP)?.height;
+  if (!h || ACTIVE_MAP === "b_hill") return false;
+  const here = h(x, z);
+  if (terrainHeight(x, z) - here > 0.05) return false;
+  const slope = Math.max(0, (h(x - dx * 0.1, z - dz * 0.1) - here) / 0.1);
+  return here - h(x + dx * reach, z + dz * reach) > 0.12 + slope * reach;
+}
 const shopSpawns=[{name:"TECHNO GRAVITY / FRONTAGE",x:0,z:-11,yaw:0},{name:"DIY ALLEY",x:1,z:14,yaw:0}];
 export function selectPark(id: string) {
   ACTIVE_MAP = id;
   OUTDOOR = id === "outdoor";
-  SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:id==="b_hill"?B_HILL_SPAWNS:warehouseSpawns;
+  SPAWNS = OUTDOOR ? outdoorSpawns : id==="techno_gravity"?shopSpawns:id==="b_hill"?B_HILL_SPAWNS:mapBuilders.get(id)?.spawns??warehouseSpawns;
 }
 export class Park {
   benches: {
@@ -202,6 +227,12 @@ export class Park {
     // B Hill builds its own continuous road and hillside collision.
     if (ACTIVE_MAP === "b_hill") {
       buildBHill(this);
+      return;
+    }
+    // Authored maps lay their own ground (the Church's lot, plaza and stair).
+    const authored = mapBuilders.get(ACTIVE_MAP);
+    if (authored) {
+      authored.build(this);
       return;
     }
     this.terrain();
@@ -521,6 +552,89 @@ export class Park {
       0x778b84,
     ).castShadow = false;
     for (const z of [-18, -12]) this.bench("Warehouse bench " + z, -29, 0, z);
+    this.buildShop();
+  }
+  /**
+   * The Warehouse as a build floor (data/builds.ts, editor/warehouse.ts): a
+   * painted 1 m / 4 m floor grid to line pieces up by, structural pillars the
+   * placement check keeps pieces clear of, hazard striping, two roll-up loading
+   * doors and stencilled bay numbers. The floor itself stays open.
+   */
+  private buildShop() {
+    const scene = this.scene;
+    const paint = (w: number, h: number, draw: (g: CanvasRenderingContext2D, w: number, h: number) => void) => {
+      const c = document.createElement("canvas");
+      c.width = w; c.height = h;
+      draw(c.getContext("2d")!, w, h);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      return t;
+    };
+    const decal = (map: THREE.Texture, w: number, h: number, x: number, y: number, z: number, ry: number, flat = false) => {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map, transparent: true, depthWrite: false, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 }));
+      if (flat) mesh.rotation.x = -Math.PI / 2; else mesh.rotation.y = ry;
+      mesh.position.set(x, y, z);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    };
+    // Floor grid: faint metre lines, stronger 4 m lines, aligned to the world grid.
+    const grid = paint(512, 512, (g, w) => {
+      g.strokeStyle = "rgba(236,241,233,.2)"; g.lineWidth = 2;
+      for (let i = 1; i < 4; i++) { const p = (i * w) / 4; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, w); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+      g.strokeStyle = "rgba(243,211,92,.5)"; g.lineWidth = 5; g.strokeRect(0, 0, w, w);
+    });
+    grid.wrapS = grid.wrapT = THREE.RepeatWrapping;
+    grid.repeat.set(64 / 4, 88 / 4);
+    decal(grid, 64, 88, 0, 0.006, 0, 0, true).name = "Warehouse floor grid";
+    const stripes = (w: number, h: number, repeat: number) => {
+      const t = paint(256, 64, (g, cw, ch) => { g.fillStyle = "#e7b52c"; g.fillRect(0, 0, cw, ch); g.fillStyle = "#23262a"; for (let x = -ch; x < cw; x += 64) { g.beginPath(); g.moveTo(x, ch); g.lineTo(x + 32, ch); g.lineTo(x + 32 + ch, 0); g.lineTo(x + ch, 0); g.fill(); } });
+      t.wrapS = THREE.RepeatWrapping; t.repeat.set(repeat, 1);
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, name: "Hazard stripes" + w + h });
+    };
+    // Structural pillars: steel columns with a striped guard and a keep-clear box painted round them.
+    const column = new THREE.MeshStandardMaterial({ color: 0x3c4c4b, metalness: 0.55, roughness: 0.5, name: "Steel column" });
+    const guard = stripes(0.9, 1.2, 2);
+    const keep = paint(256, 256, (g, w) => { g.strokeStyle = "rgba(231,181,44,.85)"; g.lineWidth = 16; g.strokeRect(8, 8, w - 16, w - 16); g.lineWidth = 6; for (let i = -w; i < w; i += 48) { g.beginPath(); g.moveTo(i, w); g.lineTo(i + w, 0); g.stroke(); } });
+    for (const [x, z] of WAREHOUSE_PILLARS) {
+      const s = PILLAR_HALF * 2;
+      const post = new THREE.Mesh(new THREE.BoxGeometry(s * 0.8, 12, s * 0.8), column);
+      post.position.set(x, 6, z); post.castShadow = post.receiveShadow = true; scene.add(post);
+      const wrap = new THREE.Mesh(new THREE.BoxGeometry(s, 1.2, s), guard);
+      wrap.position.set(x, 0.6, z); wrap.castShadow = wrap.receiveShadow = true; scene.add(wrap);
+      decal(keep, s + 0.8, s + 0.8, x, 0.008, z, 0, true);
+      this.world.createCollider(RAPIER.ColliderDesc.cuboid(PILLAR_HALF, 6, PILLAR_HALF).setTranslation(x, 6, z).setCollisionGroups(GROUPS.surface));
+    }
+    // Hazard striping along the foot of the long walls.
+    for (const side of [-1, 1]) {
+      const band = new THREE.Mesh(new THREE.PlaneGeometry(88, 0.45), stripes(88, 0.45, 60));
+      band.position.set(side * 31.97, 0.23, 0); band.rotation.y = -side * Math.PI / 2; band.receiveShadow = true; scene.add(band);
+    }
+    // Two roll-up loading doors on the far wall, with a painted apron in front.
+    const slats = paint(512, 512, (g, w, h) => {
+      g.fillStyle = "#8f989a"; g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 16) { g.fillStyle = "rgba(255,255,255,.18)"; g.fillRect(0, y, w, 3); g.fillStyle = "rgba(0,0,0,.22)"; g.fillRect(0, y + 12, w, 4); }
+      g.fillStyle = "rgba(60,50,40,.25)"; for (let i = 0; i < 40; i++) g.fillRect(Math.random() * w, h * 0.7 + Math.random() * h * 0.3, 2 + Math.random() * 30, 2);
+    });
+    const frame = new THREE.MeshStandardMaterial({ color: 0x2f3a3a, metalness: 0.5, roughness: 0.55, name: "Door frame" });
+    const apron = paint(512, 256, (g, w, h) => { g.strokeStyle = "rgba(231,181,44,.8)"; g.lineWidth = 10; g.strokeRect(6, 6, w - 12, h - 12); g.fillStyle = "rgba(236,238,230,.55)"; g.font = "900 64px Impact, sans-serif"; g.textAlign = "center"; g.fillText("KEEP CLEAR", w / 2, h / 2 + 22); });
+    [-14, 14].forEach((x, i) => {
+      const door = new THREE.Mesh(new THREE.PlaneGeometry(6, 5), new THREE.MeshStandardMaterial({ map: slats, metalness: 0.4, roughness: 0.6, name: "Roll-up door" }));
+      door.position.set(x, 2.5, 43.97); door.rotation.y = Math.PI; door.receiveShadow = true; scene.add(door);
+      for (const dx of [-3.1, 3.1]) { const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5.3, 0.16), frame); jamb.position.set(x + dx, 2.65, 43.92); scene.add(jamb); }
+      const head = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.5, 0.4), frame); head.position.set(x, 5.4, 43.8); head.castShadow = true; scene.add(head);
+      const label = paint(512, 128, (g, w, h) => { g.fillStyle = "#e7b52c"; g.fillRect(0, 0, w, h); g.fillStyle = "#23262a"; g.font = "900 84px Impact, sans-serif"; g.textAlign = "center"; g.fillText("DOCK " + (i + 1), w / 2, h / 2 + 30); });
+      decal(label, 2.4, 0.6, x, 6.1, 43.96, Math.PI);
+      decal(apron, 6, 3, x, 0.008, 42.4, 0, true);
+    });
+    // Stencilled bay numbers on the long walls and the shop name on the near wall.
+    const stencil = (text: string, w: number) => paint(1024, 256, (g, cw, ch) => { g.fillStyle = "rgba(233,236,228,.82)"; g.font = "900 190px Impact, 'Arial Narrow', sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text, cw / 2, ch / 2, cw * 0.95); void w; });
+    [-30, -10, 10, 30].forEach((z, i) => {
+      decal(stencil("BAY 0" + (i + 1), 4), 4, 1, -31.96, 4.2, z, Math.PI / 2);
+      decal(stencil("BAY 0" + (i + 5), 4), 4, 1, 31.96, 4.2, z, -Math.PI / 2);
+    });
+    decal(stencil("WAREHOUSE 01 · BUILD FLOOR", 14), 14, 3.5, 0, 6.5, -43.96, 0);
   }
   /** The real ground height here (editor terrain edits included), so props
    * sit on the surface instead of an assumed y = 0. Exposed on the park so
@@ -528,7 +642,8 @@ export class Park {
   groundHeight(x: number, z: number) {
     return terrainHeight(x, z);
   }
-  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id), solid?: THREE.Vector3) {
+  /** `floor` is where the support posts stand: given for a layout piece, whose points are local to it (its base is 0). */
+  rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id), solid?: THREE.Vector3, floor?: number) {
     this.rails.push({ id, a, b, kind, coping, solid: solid?.clone().setY(0).normalize() });
     const direction = b.clone().sub(a);
     const length = direction.length();
@@ -567,10 +682,10 @@ export class Park {
     if (kind === "rail")
       for (const t of [0.1, 0.9]) {
         const p = a.clone().lerp(b, t),
-          floor = terrainHeight(p.x, p.z);
+          ground = floor ?? terrainHeight(p.x, p.z);
         this.box(
-          new THREE.Vector3(p.x, (p.y + floor) / 2, p.z),
-          new THREE.Vector3(0.08, p.y - floor, 0.08),
+          new THREE.Vector3(p.x, (p.y + ground) / 2, p.z),
+          new THREE.Vector3(0.08, p.y - ground, 0.08),
           0x344b49,
         ).name = id + " support";
       }

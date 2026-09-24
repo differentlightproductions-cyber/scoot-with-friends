@@ -9,6 +9,8 @@ import {
   brushHeight,
   activeLayout,
 } from "./layout";
+import { woodRampMaterials } from "../park/wood-ramps";
+import { surfaceMaterial } from "../park/art";
 export const MATERIALS: Record<string, number> = {
   wood: 0xc59c65,
   metal: 0x748e96,
@@ -18,6 +20,117 @@ export const MATERIALS: Record<string, number> = {
   gravel: 0x858578,
   asphalt: 0x51585b,
 };
+/** Plywood sheet size (4 x 8 ft), matching the park's manufactured wood ramps. */
+const SHEET_W = 1.22,
+  SHEET_L = 2.44;
+const tinted = new Map<string, THREE.MeshStandardMaterial>();
+/**
+ * The shared surface materials a profiled piece is dressed in: the park's own
+ * birch plywood, side sheathing and steel for wood; brushed steel for metal;
+ * poured concrete (tinted for the other ground kinds). Shared, never disposed
+ * per piece (userData.shared). `scale` is metres per texture repeat.
+ */
+function pieceMaterials(kind: string) {
+  if (kind === "wood" || kind === "metal") {
+    const m = woodRampMaterials();
+    for (const mat of Object.values(m)) mat.userData.shared = true;
+    return kind === "wood"
+      ? { top: m.riding, side: m.side, plate: m.steel as THREE.Material | null, u: SHEET_W, v: SHEET_L }
+      : { top: m.steel, side: m.steel, plate: null, u: 1.2, v: 1.2 };
+  }
+  let mat = tinted.get(kind);
+  if (!mat) {
+    mat = surfaceMaterial(kind === "concrete" ? 0xffffff : (MATERIALS[kind] ?? 0xffffff), "concrete", 2.4, 2.4);
+    mat.userData.shared = true;
+    tinted.set(kind, mat);
+  }
+  return { top: mat, side: mat, plate: null, u: 2.4, v: 2.4 };
+}
+
+/** A grid of points (rows x columns) as an indexed, UV-mapped surface. */
+function ribbon(points: { x: number; y: number; z: number; u: number; v: number }[][], flip = false) {
+  const p: number[] = [],
+    uv: number[] = [],
+    index: number[] = [];
+  const cols = points[0].length;
+  for (const row of points)
+    for (const q of row) {
+      p.push(q.x, q.y, q.z);
+      uv.push(q.u, q.v);
+    }
+  for (let r = 0; r < points.length - 1; r++)
+    for (let c = 0; c < cols - 1; c++) {
+      const a = r * cols + c,
+        b = a + 1,
+        d = a + cols,
+        e = d + 1;
+      if (flip) index.push(a, b, d, b, e, d);
+      else index.push(a, d, b, b, d, e);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * The visible body of a profiled piece (ramps, boxes, ledges, stairs): a riding
+ * surface following the physics profile with arc-length UVs, flat sides and
+ * end walls with their own UVs and normals (no smeared shading at the edges),
+ * and steel kick plates where a wooden transition meets the floor.
+ */
+function profileMeshes(o: ParkObject) {
+  const mat = pieceMaterials(o.material ?? "concrete");
+  const W = o.width / 2,
+    n = 96,
+    lift = 0.006; // The riding face sits a hair proud of the floor it starts from.
+  const zs: number[] = [],
+    ys: number[] = [],
+    arc: number[] = [0];
+  for (let i = 0; i <= n; i++) {
+    zs.push(-o.length / 2 + (o.length * i) / n);
+    ys.push(surface(o, 0, zs[i]) ?? 0);
+    if (i) arc.push(arc[i - 1] + Math.hypot(zs[i] - zs[i - 1], ys[i] - ys[i - 1]));
+  }
+  const out: THREE.Mesh[] = [];
+  const add = (g: THREE.BufferGeometry, m: THREE.Material, name: string) => {
+    const mesh = new THREE.Mesh(g, m);
+    mesh.name = `${o.type} ${name}`;
+    mesh.castShadow = mesh.receiveShadow = true;
+    out.push(mesh);
+  };
+  add(ribbon(zs.map((z, i) => [-W, W].map((x) => ({ x, y: ys[i] + lift, z, u: (x + W) / mat.u, v: arc[i] / mat.v })))), mat.top, "riding surface");
+  for (const x of [-W, W])
+    add(
+      ribbon(zs.map((z, i) => [0, ys[i] + lift].map((y) => ({ x, y, z, u: (z + o.length / 2) / mat.v, v: y / mat.u }))), x > 0),
+      mat.side,
+      "side",
+    );
+  for (const [z, h, far] of [[zs[0], ys[0], false], [zs[n], ys[n], true]] as const)
+    if (h > 0.02)
+      add(
+        ribbon([0, h + lift].map((y) => [-W, W].map((x) => ({ x, y, z, u: (x + W) / mat.v, v: y / mat.u }))), far),
+        mat.side,
+        "end wall",
+      );
+  // Steel kick plates up each transition foot, as on the park's wooden ramps.
+  if (mat.plate)
+    for (const dir of [1, -1]) {
+      const start = dir > 0 ? 0 : n;
+      if (ys[start] > 0.02 || Math.abs(ys[start + dir] - ys[start]) < 1e-4) continue;
+      const rows: { x: number; y: number; z: number; u: number; v: number }[][] = [];
+      for (let i = start; i >= 0 && i <= n; i += dir) {
+        const along = Math.abs(arc[i] - arc[start]);
+        rows.push([-W, W].map((x) => ({ x, y: ys[i] + lift + 0.004, z: zs[i], u: x / 1.2, v: along / 1.2 })));
+        if (along > 0.46) break;
+      }
+      add(ribbon(dir > 0 ? rows : rows.reverse()), mat.plate, "kick plate");
+    }
+  return out;
+}
+
 export function buildObject(park: Park, o: ParkObject) {
   const children = new Set(park.scene.children),
     handles = new Set<number>();
@@ -44,6 +157,8 @@ export function buildObject(park: Park, o: ParkObject) {
       b,
       ledge ? "ledge" : "rail",
       ledge && ["Quarter Pipe","Spine","Half Pipe","Mini Ramp"].includes(o.type),
+      undefined,
+      0,
     );
     if (ledge) park.rails.at(-1)!.coping = true;
   };
@@ -158,35 +273,15 @@ export function buildObject(park: Park, o: ParkObject) {
         );
       }
     }
-    idx.push(
-      0,
-      1,
-      2,
-      1,
-      3,
-      2,
-      n * 4,
-      n * 4 + 2,
-      n * 4 + 1,
-      n * 4 + 1,
-      n * 4 + 2,
-      n * 4 + 3,
-    );
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
-    g.setIndex(idx);
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(
-      g,
-      new THREE.MeshStandardMaterial({
-        color,
-        side: THREE.DoubleSide,
-        roughness: 0.85,
-      }),
-    );
-    mesh.castShadow = mesh.receiveShadow = true;
-    park.scene.add(mesh);
-    park.solids.push(mesh);
+    // End caps only where the profile has height: a zero-height cap at a ramp's
+    // toe is a degenerate sliver the rider's ball snags on rolling back off it.
+    if ((surface(o, 0, -o.length / 2) ?? 0) > 0.02) idx.push(0, 1, 2, 1, 3, 2);
+    if ((surface(o, 0, o.length / 2) ?? 0) > 0.02)
+      idx.push(n * 4, n * 4 + 2, n * 4 + 1, n * 4 + 1, n * 4 + 2, n * 4 + 3);
+    for (const mesh of profileMeshes(o)) {
+      park.scene.add(mesh);
+      park.solids.push(mesh);
+    }
     park.world.createCollider(
       RAPIER.ColliderDesc.trimesh(new Float32Array(v), new Uint32Array(idx))
         .setCollisionGroups(GROUPS.surface)

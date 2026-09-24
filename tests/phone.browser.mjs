@@ -70,11 +70,18 @@ try {
     await shot("app-" + id);
     check(`${5 + ["music", "emotes", "rides", "rider", "map", "items", "build", "messages"].indexOf(id)} ${id.toUpperCase()} app opens`, r.includes(text), r.slice(0, 120));
   }
-  // EMOTES triggers the existing emote system and the phone goes away.
+  // EMOTES: a one-hand emote plays on the free hand with the phone still out;
+  // a two-hand emote puts the phone away first. Same emote system either way.
   await run(() => { const p = window.__LAZER.phone; p.home(); p.select("app-emotes"); p.select("emote-wave"); });
   await settle(30);
-  const emote = await run(() => ({ emote: window.__LAZER.sim.emote?.id, phone: window.__LAZER.phone.active }));
-  check("6 EMOTES plays the wave through the emote system and puts the phone away", emote.emote === "wave" && !emote.phone, emote);
+  const emote = await run(() => { const g = window.__LAZER, phoneHand = g.menu.profile.settings.phoneHand === "left" ? 1 : 0; return { emote: g.sim.emote?.id, hand: g.sim.emote?.hand, phoneHand, phone: g.phone.active, inHand: g.phoneRig.model.parent === g.rider.avatar.hands[phoneHand] }; });
+  check("6 EMOTES: wave plays on the free hand while the phone stays in the phone hand", emote.emote === "wave" && emote.phone && emote.inHand && emote.hand === 1 - emote.phoneHand, emote);
+  await shot("tp-wave-with-phone");
+  await run(() => { const p = window.__LAZER.phone; p.select("emote-clap"); });
+  await settle(40);
+  const clap = await run(() => ({ emote: window.__LAZER.sim.emote?.id, phone: window.__LAZER.phone.active }));
+  check("6 EMOTES: clap (two hands) puts the phone away first, then plays", clap.emote === "clap" && !clap.phone, clap);
+  await run(() => { window.__LAZER.sim.emote = null; });
   // MESSAGES: a sent chat lands in the thread.
   const chat = await run(() => { const g = window.__LAZER; g.social.send("hello crew"); return g.messages.threads.get("room")?.at(-1); });
   check("12 MESSAGES records the chat (future hook for rooms)", chat?.text === "hello crew" && chat.mine, chat);
@@ -104,10 +111,16 @@ try {
   });
   check("Opening does not trigger riding or trick input", owned.events.length === 0 && owned.open, owned);
 
-  // 14. D-pad Down closes.
-  await press("menuDown");
+  // 14. D-pad Down: a tap steps down a list and leaves the phone out; a hold puts it away,
+  // and the held button never reaches gameplay afterwards.
+  const tap = await run(() => { const g = window.__LAZER, p = g.phone; p.home(); window.__phone.step(null, 2); const before = p.screen.focusId; g.phoneStep({ held: { menuDown: 1 }, pressed: { menuDown: true } }); for (let i = 0; i < 8; i++) g.phoneStep({ held: { menuDown: 1 } }); g.phoneStep({ released: { menuDown: true } }); window.__phone.step(null, 2); return { before, after: p.screen.focusId, open: p.active }; });
+  check("14 D-pad Down tap navigates inside the phone and does not close it", tap.open && tap.before !== tap.after, tap);
+  const holdClose = await run(() => { const g = window.__LAZER, p = g.phone; let leaked = 0, closedAt = -1; for (let i = 0; i < 60; i++) { const f = g.phoneStep(i === 0 ? { held: { menuDown: 1 }, pressed: { menuDown: true } } : { held: { menuDown: 1 } }); if (f.held.menuDown || f.pressed.menuDown) leaked++; g.phone.tick(1 / 60); if (closedAt < 0 && p.state === "away") closedAt = (i + 1) / 60; } const f = g.phoneStep({ released: { menuDown: true } }); if (f.released.menuDown) leaked++; return { closedAt, leaked }; });
   await settle(30);
-  check("14 D-pad Down puts the phone away", !(await run(() => window.__LAZER.phone.active)));
+  check("14 Holding D-pad Down about half a second puts the phone away; nothing leaks to gameplay", holdClose.closedAt >= 0.45 && holdClose.closedAt <= 0.7 && holdClose.leaked === 0 && !(await run(() => window.__LAZER.phone.active)), holdClose);
+  const holdOpen = await run(() => { const g = window.__LAZER, p = g.phone; const out = {}; for (let i = 0; i < 18; i++) g.phoneStep(i === 0 ? { held: { menuDown: 1 }, pressed: { menuDown: true } } : { held: { menuDown: 1 } }); out.afterTap = p.active; g.phoneStep({ released: { menuDown: true } }); for (let i = 0; i < 40; i++) g.phoneStep(i === 0 ? { held: { menuDown: 1 }, pressed: { menuDown: true } } : { held: { menuDown: 1 } }); out.afterHold = p.active; for (let i = 0; i < 60; i++) g.phoneStep({ held: { menuDown: 1 } }); out.stillOpen = p.active; g.phoneStep({ released: { menuDown: true } }); return out; });
+  check("14 A short press does not open the phone; a hold opens it once and keeps holding does not close it", !holdOpen.afterTap && holdOpen.afterHold && holdOpen.stillOpen, holdOpen);
+  await run(() => window.__LAZER.phone.stow());
 
   // 2. Riding (grounded, coasting), third person.
   await run(() => { const g = window.__LAZER, s = g.sim; s.walking = false; s.velocity.set(0, 0, 3); s.body.setLinvel(s.velocity, true); g.advance(0.4); });

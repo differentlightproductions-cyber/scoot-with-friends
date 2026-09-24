@@ -3,7 +3,8 @@ import { music, MUSIC_GENRES } from '../audio/music';
 import type { Simulation } from '../physics/simulation';
 import type { LocalProfile } from '../data/loadout';
 import type { WorldInteractions } from '../park/interactions';
-import { BUILD_ASSETS, type WarehouseBuilder } from '../editor/warehouse';
+import { SNAP_MODES, matchAsset, type WarehouseBuilder } from '../editor/warehouse';
+import { BUILD_CATALOG, BUILD_GROUPS, BUILD_LIMITS, type BuildGroup } from '../data/builds';
 import { EMOTES } from '../ui/social';
 import { CATEGORIES, selectedPart } from '../data/scooterParts';
 import { LONGBOARD_CATEGORIES, longboardPart } from '../data/longboardParts';
@@ -144,10 +145,12 @@ function emotesApp(d: PhoneDeps): View {
       const ok = onFoot(d.sim());
       const tiles: Tile[] = EMOTES.map((e, i) => ({
         id: 'emote-' + e.id, label: e.label.toUpperCase(), icon: EMOTE_ICONS[e.id] ?? 'emote', color: EMOTE_COLOURS[i % EMOTE_COLOURS.length], disabled: !ok,
-        action: () => d.phone.close(() => d.emote(e.id)),
+        // One-hand and head emotes play with the phone still in hand; two-hand and
+        // full-body ones put it away first.
+        action: () => e.phoneCompatible ? d.emote(e.id) : d.phone.close(() => d.emote(e.id)),
       }));
       return { blocks: [
-        { type: 'title', text: 'EMOTES', sub: ok ? 'Pick one · the phone goes away' : 'Step off your ride to emote' },
+        { type: 'title', text: 'EMOTES', sub: ok ? 'One-hand emotes keep your phone out' : 'Step off your ride to emote' },
         { type: 'grid', cols: 3, tiles },
       ] };
     },
@@ -284,7 +287,46 @@ function itemsApp(d: PhoneDeps): View {
 const useButton = (d: PhoneDeps) => ({ pushDeck: 'X', leftModifier: 'LB', rightModifier: 'RB' } as Record<string, string>)[d.profile().pockets.useAction] ?? 'X';
 
 // ---- BUILD --------------------------------------------------------------------
+// The Warehouse build mode (editor/warehouse.ts): a catalog by category, the
+// placed pieces to move, duplicate or delete, undo / redo, save and clear.
 function buildApp(d: PhoneDeps): View {
+  const m = (v: number) => (Math.round(v * 10) / 10).toString();
+  const category = (group: BuildGroup): View => ({
+    title: group,
+    page: () => {
+      const b = d.builder();
+      return { blocks: [
+        { type: 'title', text: group, sub: b.used + ' / ' + BUILD_LIMITS.budget + ' budget used' },
+        { type: 'list', rows: BUILD_CATALOG.filter(a => a.group === group).map(a => ({ id: 'add-' + a.id, label: a.label.toUpperCase(), detail: `${m(a.width)} × ${m(a.length)} m · ${m(a.height)} m tall`, value: a.cost + ' PTS', action: () => d.phone.close(() => d.builder().add(a, d.sim())) })) },
+      ] };
+    },
+  });
+  const piece = (id: string): View => ({
+    title: 'PIECE',
+    page: () => {
+      const b = d.builder(), o = b.layout.objects.find(v => v.id === id);
+      if (!o) return { blocks: [{ type: 'title', text: 'GONE', sub: 'This piece is no longer placed' }] };
+      const name = (matchAsset(o)?.label ?? o.type).toUpperCase();
+      return { blocks: [
+        { type: 'title', text: name, sub: `${m(o.x)}, ${m(o.z)} · ${Math.round(((o.rotation * 180) / Math.PI + 360) % 360)}°` },
+        { type: 'list', rows: [
+          { id: 'move', label: 'MOVE / ROTATE', detail: 'Pick it up and place it again', action: () => d.phone.close(() => d.builder().move(id)) },
+          { id: 'dup', label: 'DUPLICATE', detail: 'A copy beside it, ready to place', action: () => d.phone.close(() => d.builder().duplicate(id)) },
+          { id: 'del', label: 'DELETE', detail: 'UNDO brings it back', action: () => { d.builder().deletePiece(id); d.phone.back(); } },
+        ] },
+      ] };
+    },
+  });
+  const placed: View = {
+    title: 'PLACED',
+    page: () => {
+      const list = d.builder().placed(d.sim());
+      return { blocks: [
+        { type: 'title', text: 'PLACED', sub: list.length ? 'Nearest first' : 'Nothing placed yet' },
+        { type: 'list', rows: list.map(({ o, asset, distance }) => ({ id: 'piece-' + o.id, label: (asset?.label ?? o.type).toUpperCase(), detail: m(distance) + ' m away', action: () => d.phone.push(piece(o.id)) })) },
+      ] };
+    },
+  };
   return {
     title: 'BUILD',
     page: () => {
@@ -293,14 +335,19 @@ function buildApp(d: PhoneDeps): View {
         { type: 'text', text: 'Building is open in the Warehouse: place ramps, rails and boxes, then ride them. Pick the Warehouse from Maps.' },
         { type: 'list', rows: [{ id: 'maps', label: 'OPEN MAPS', action: () => d.phone.close(() => d.openSesh('maps')) }] },
       ] };
-      const b = d.builder(), s = d.sim(), edit = b.editOptions(s), add = b.options(s);
+      const b = d.builder(), count = b.layout.objects.length;
       const rows: Row[] = [
-        ...edit.map((o, i) => ({ id: 'edit-' + i, label: o.label.toUpperCase(), detail: 'Nearest placed object', action: () => d.phone.close(o.action) })),
-        ...add.map((o, i) => { const a = BUILD_ASSETS[i]; return { id: 'add-' + i, label: o.label.toUpperCase(), detail: `${a[2]} × ${a[4]} m · ${a[3]} m tall`, action: () => d.phone.close(o.action) }; }),
-        { id: 'reset', label: 'RESET WAREHOUSE…', detail: 'Clear everything you placed', action: () => d.phone.sheet('CLEAR YOUR LAYOUT?', [{ label: 'CANCEL', action: () => {} }, { label: 'CLEAR PLACED OBJECTS', action: () => b.reset() }]) },
+        ...BUILD_GROUPS.map(g => ({ id: 'cat-' + g, label: 'ADD ' + g, detail: BUILD_CATALOG.filter(a => a.group === g).map(a => a.label).slice(0, 3).join(' · ') + '…', action: () => d.phone.push(category(g)) })),
+        { id: 'placed', label: 'EDIT PLACED', detail: 'Move, rotate, duplicate or delete', value: String(count), disabled: !count, action: () => d.phone.push(placed) },
+        { id: 'undo', label: 'UNDO', disabled: !b.canUndo, action: () => b.undo() },
+        { id: 'redo', label: 'REDO', disabled: !b.canRedo, action: () => b.redo() },
+        { id: 'snap', label: 'SNAP', detail: 'Y also switches while placing', value: SNAP_MODES[b.snap].name, action: () => { b.snap = (b.snap + 1) % SNAP_MODES.length; } },
+        { id: 'save', label: 'SAVE BUILD', detail: 'Saved to your profile (also after every edit)', action: () => b.save() },
+        { id: 'clear', label: 'CLEAR BUILD…', detail: 'Reset the Warehouse to empty', disabled: !count, action: () => d.phone.sheet('CLEAR THE WHOLE BUILD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'CLEAR ' + count + ' PIECES', action: () => b.reset() }], 'UNDO can bring it back until you leave') },
       ];
       return { blocks: [
-        { type: 'title', text: 'BUILD', sub: b.layout.objects.length + ' placed · LS move · RS/LB/RB turn · A place' },
+        { type: 'title', text: 'BUILD', sub: `${count} / ${BUILD_LIMITS.pieces} pieces · ${b.used} / ${BUILD_LIMITS.budget} budget` },
+        ...(b.notice || b.saveError ? [{ type: 'text', text: b.saveError || b.notice } as Block] : []),
         { type: 'list', rows },
       ] };
     },

@@ -170,9 +170,18 @@ export const STARTER: StarterMission[] = [
   { id: "s-bri", group: "BIG TRICKS", title: "Land a Bri Flip", how: "RS down, round and out to the side", tier: "big", first: "trick:Bri" },
   { id: "s-decade", group: "BIG TRICKS", title: "Land a Decade", how: "In the air: tap LB", tier: "big", first: "trick:Decade" },
   { id: "s-clamp", group: "BIG TRICKS", title: "Land a Clamp Grab", how: "In the air: hold RT + RB", tier: "skill", first: "trick:Clamp Grab" },
-  { id: "s-phone", group: "GETTING AROUND", title: "Check your phone", how: "D-pad Down takes it out", tier: "intro", first: "phone" },
+  { id: "s-phone", group: "GETTING AROUND", title: "Check your phone", how: "Hold D-pad Down to take it out", tier: "intro", first: "phone" },
   { id: "s-crate", group: "GETTING AROUND", title: "Open a crate", how: "Open one from MISSIONS", tier: "intro", first: "crate" },
   { id: "s-customize", group: "GETTING AROUND", title: "Customize your ride", how: "Equip a new part from RIDES", tier: "intro", first: "customize" },
+  { id: "s-swim", group: "GETTING AROUND", title: "Take a swim", how: "Walk or ride into the lake at Veterans", tier: "intro", first: "swim" },
+  { id: "s-water-flip", group: "TRICKS", title: "Flip into the lake", how: "Jump in on foot, LT+RT and LS up or down", tier: "skill", first: "water-flip" },
+  { id: "w-cannonball", group: "WATER", title: "Cannonball!", how: "Off the dive dock, hold X to tuck", tier: "intro", first: "water:cannonball" },
+  { id: "w-dive", group: "WATER", title: "Head-first dive", how: "LT+RT + LS up, let go head down", tier: "basic", first: "water:dive" },
+  { id: "w-tower", group: "WATER", title: "Jump off the tower", how: "Climb the dive dock stairs, jump", tier: "basic", first: "water:tower" },
+  { id: "w-board", group: "WATER", title: "Springboard flip", how: "Jump off the springboard, flip in", tier: "skill", first: "water:board" },
+  { id: "w-twist", group: "WATER", title: "Flip with a twist", how: "Add LB or RB to a flip", tier: "skill", first: "water:twist" },
+  { id: "w-swan", group: "WATER", title: "Swan Dive", how: "Front Dive holding B, arms out", tier: "skill", first: "water:swan" },
+  { id: "w-double", group: "WATER", title: "Double into the lake", how: "Hold LT+RT through two flips", tier: "big", first: "water:double" },
 ];
 const FIRSTS = new Set(STARTER.map((m) => m.first));
 /** Tricks that count as a "first", matched against a landed trick's name. */

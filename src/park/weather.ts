@@ -133,7 +133,11 @@ export class Weather {
  private scan(){this.scene.traverse(object=>{if(!(object instanceof THREE.Mesh)||object instanceof THREE.SkinnedMesh||this.dynamic(object))return;for(const material of Array.isArray(object.material)?object.material:[object.material])if(material instanceof THREE.MeshStandardMaterial&&!material.transparent&&!material.userData.characterQuality&&!this.hooked.has(material))this.hook(material);});}
  private dynamic(object:THREE.Object3D){for(let item:THREE.Object3D|null=object;item;item=item.parent)if(item.userData.weatherDynamic)return true;return false;}
  private hook(material:THREE.MeshStandardMaterial){
-  const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),coverage=this.coverage;
+  // The program key is read before wrapping: the default key is the hook's own
+  // source text, which after wrapping is this same wrapper for every material,
+  // so materials with their own shader code (the lake) were handed another
+  // material's compiled program.
+  const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),key=cache(),coverage=this.coverage;
   material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;
    shader.vertexShader=shader.vertexShader.replace('void main() {','varying vec3 vSnowWorld;\nvoid main() {').replace('#include <begin_vertex>',`#include <begin_vertex>
 vec4 snowWorld = vec4(transformed, 1.0);
@@ -159,7 +163,7 @@ float snowGlint = step(0.993, snowHash(snowCell)) * step(0.55, fract(snowHash(sn
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.9, 0.94, 0.97), snowAmount);
 roughnessFactor = mix(roughnessFactor, mix(0.78, 0.08, snowGlint), snowAmount);
 #include <lights_physical_fragment>`);
-  };material.customProgramCacheKey=()=>cache()+'|swf-snow-v2';material.needsUpdate=true;this.hooked.set(material,{compile,cache});
+  };material.customProgramCacheKey=()=>key+'|swf-snow-v2';material.needsUpdate=true;this.hooked.set(material,{compile,cache});
  }
  private buildFlakes(){
   if(this.flakes){this.flakes.removeFromParent();this.flakes.geometry.dispose();(this.flakes.material as THREE.Material).dispose();}

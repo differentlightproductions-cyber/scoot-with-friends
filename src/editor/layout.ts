@@ -47,6 +47,8 @@ export interface ParkObject {
   grindable: boolean;
   material: string;
   points?: [number, number][];
+  /** The build catalog piece it was placed from (data/builds.ts), in build mode. */
+  asset?: string;
 }
 export interface Brush {
   x: number;
@@ -195,6 +197,7 @@ export function validateLayout(data: unknown): ParkLayout {
     }
     n.coping = !!o.coping;
     n.grindable = !!o.grindable;
+    if (typeof o.asset === "string" && /^[a-z0-9-]{1,40}$/.test(o.asset)) n.asset = o.asset;
     n.material = [
       "wood",
       "metal",

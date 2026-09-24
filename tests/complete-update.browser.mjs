@@ -26,7 +26,7 @@ try{
   // The empty Warehouse is tested using real player-placed obstacles.
   g.startSession('warehouse',true);check('Warehouse starts empty',g.builder.layout.objects.length===0&&g.park.rails.every(r=>r.id.startsWith('Warehouse bench')));
   let s=place(-12,-24);s.walking=true;let f=emptyInput();check('Phone may open on foot',g.phoneAllowed());g.phone.open('build');for(let i=0;i<40;i++)g.phone.tick(1/60);
-  check('Phone BUILD lists the warehouse builder',g.phone.ready&&JSON.stringify(g.phone.view.page()).includes('FLAT RAIL'));f=emptyInput();f.pressed.menuDown=true;g.phone.update(f,.02);for(let i=0;i<40;i++)g.phone.tick(1/60);check('D-pad Down puts the phone away',!g.phone.active);
+  check('Phone BUILD lists the warehouse builder',g.phone.ready&&/RAMPS.*RAILS/.test(JSON.stringify(g.phone.view.page())));for(let i=0;i<40;i++){f=emptyInput();f.held.menuDown=1;f.pressed.menuDown=i===0;g.phoneStep(f,1/60);g.phone.tick(1/60);}f=emptyInput();f.released.menuDown=true;g.phoneStep(f,1/60);for(let i=0;i<40;i++)g.phone.tick(1/60);check('Holding D-pad Down puts the phone away',!g.phone.active);
   const o=makeObject('Flat Rail',0,0);Object.assign(o,{height:.65,length:5,width:.12});g.builder.begin(o);
   check('Rail ghost is actual asset geometry',g.builder.placement&&g.builder.placement.type==='Flat Rail'&&g.park.rails.every(r=>r.id.startsWith('Warehouse bench')));
   f=emptyInput();f.pressed.hop=true;g.builder.update(s,f,.02);check('Placement immediately creates rail',g.park.rails.filter(r=>!r.id.startsWith('Warehouse bench')).length===1&&g.builder.layout.objects.length===1);

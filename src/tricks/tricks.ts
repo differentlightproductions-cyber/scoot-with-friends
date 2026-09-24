@@ -4,6 +4,7 @@ import { resolveTrick, TrickRecord, TrickPrimitives } from "./resolver";
 import type { InputFrame } from "../input/input";
 import { StickGesture } from "./gesture";
 import { ridingButtons } from "../input/riding";
+import { poseAllowed, type HandsBusy } from "./hands";
 /** Clamp Grab hands back to the bar this many seconds before the wheels land. */
 const CLAMP_RELEASE_TIME = 0.17;
 /** An LB press held longer than this is a modifier (Can Can, No Foot...), not a Decade tap. */
@@ -262,6 +263,9 @@ export class Tricks {
   kickless = new RotationChannel(110, 17);
   gesture = new StickGesture();
   finger = false;
+  /** This air's bar spins are Bar Twists (RT + B + LS, Pro); `twisting` while one is in the hands. */
+  barTwist = false;
+  twisting = false;
   /**
    * Seconds until the wheels reach the surface below, written by the simulation
    * each airborne frame. Clamp Grab lets go this long before touchdown so the
@@ -294,21 +298,30 @@ export class Tricks {
     // the bar, the stance-side hand reaches the clamp. It needs a free hand and
     // an unspun bar, so it waits while a bar spin, finger whip, rewind or Bri /
     // Kickless owns the hands, and lets go shortly before the wheels land.
-    const barsBusy = Math.abs(this.bars.velocity) > 1 || this.bars.mismatch > 0.3;
-    const handsBusy =
-      barsBusy ||
-      this.decadeActive ||
-      this.fingerTime > 0 ||
-      !!this.pendingBumper ||
-      Math.abs(this.bri.velocity) > 1 ||
-      Math.abs(this.kickless.velocity) > 1;
+    // A kicked spin owns the hands from the press (target set, not yet moving).
+    const spinning = (c: RotationChannel) => Math.abs(c.velocity) > 1 || c.mismatch > 0.3 || Math.abs(c.target - c.angle) > 0.05;
+    const barsBusy = spinning(this.bars);
+    // One hand-occupancy model (hands.ts): a whip holds both hands on the bars,
+    // a bar spin has let go, and the rest below hold them too.
+    const busy: HandsBusy = {
+      whip: spinning(this.deck),
+      barspin: barsBusy,
+      other: this.decadeActive || this.fingerTime > 0 || !!this.pendingBumper || Math.abs(this.bri.velocity) > 1 || Math.abs(this.kickless.velocity) > 1,
+    };
     const clampWanted =
       input.held.pumpGrind > 0.5 &&
       input.held.rightModifier > 0.5 &&
       !this.consumedBumpers.has("rightModifier") &&
-      !handsBusy &&
+      poseAllowed("Clamp Grab", busy) &&
       this.landingIn > CLAMP_RELEASE_TIME;
-    const finger = !flipChord && !clampWanted && input.held.pumpGrind > 0.5;
+    // Pro, either stance: RT + B is Toboggan (stance hand to the rear of the deck);
+    // with LS pushed it is a Bar Twist instead (a tilted bar spin, held for more).
+    // Arcade keeps RT + B as its finger whip (B whips there).
+    const pro = this.controlStyle !== "arcade", rt = input.held.pumpGrind > 0.5;
+    const stick = Math.abs(input.steer) > 0.5 || Math.abs(input.lean) > 0.5;
+    const twistPress = pro && rt && input.pressed.brakeBars && stick && !clampWanted && !this.decadeActive;
+    const tobogganWanted = pro && rt && input.held.brakeBars > 0.5 && !stick && !clampWanted && !this.twisting && poseAllowed("Toboggan", busy) && this.landingIn > CLAMP_RELEASE_TIME;
+    const finger = !flipChord && !clampWanted && !tobogganWanted && input.held.pumpGrind > 0.5;
     const direction = this.naturalDirection * (heel ? -1 : 1);
     for (const action of ["leftModifier", "rightModifier"] as const)
       if (input.held[action] < 0.5 && !input.pressed[action])
@@ -416,13 +429,18 @@ export class Tricks {
     const lb =
       input.held.leftModifier > 0.5 &&
       !this.consumedBumpers.has("leftModifier");
+    // Pro: B with RT held is Toboggan or a Bar Twist, never a plain barspin.
+    if (twistPress) this.barTwist = this.twisting = true;
+    const barButton = this.controlStyle === "arcade" ? "pushDeck" : "brakeBars";
+    const plainBars = !pro || !rt || this.twisting;
     this.bars.input(
       dt,
-      input.pressed[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"] && !clampWanted && !decadeActive,
-      input.held[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"] >
-        0.5 && !clampWanted && !decadeActive,
+      (input.pressed[barButton] && plainBars && !clampWanted && !decadeActive) || twistPress,
+      input.held[barButton] > 0.5 && plainBars && !clampWanted && !decadeActive,
       this.naturalDirection * (rb ? -1 : 1),
     );
+    // The twist ends when the bars are caught and B is let go.
+    if (this.twisting && input.held.brakeBars < 0.5 && Math.abs(this.bars.velocity) < 1 && this.bars.mismatch < 0.3) this.twisting = false;
     this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
     let pose = "";
     if (input.held.body > 0.5 && !decadeActive) {
@@ -445,6 +463,7 @@ export class Tricks {
                     : "No-hander";
     } else {
       if (clampWanted) pose = "Clamp Grab";
+      else if (tobogganWanted) pose = "Toboggan";
       const gesture = this.gesture.step(dt, input.rx, input.ry);
       // No Bri / Inward in an air that already has a Decade (see startDecade).
       if (gesture?.kind === "bri" && !clampWanted && this.decade.target === 0) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
@@ -455,6 +474,9 @@ export class Tricks {
         if(this.continueKickless(direction>0?'right':'left',direction))this.kicklessBuffer=0;
       }
     }
+    // A pose that frees a hand waits while a whip or bar spin owns the hands
+    // (no No-hander mid-Tailwhip or mid-Barspin); the hands come back first.
+    if (pose && !poseAllowed(pose, busy)) pose = "";
     this.poseBlend += clamp((pose ? 1 : 0) - this.poseBlend, -dt * 7, dt * 7);
     if (pose) {
       this.visualPose = pose;
@@ -520,6 +542,7 @@ export class Tricks {
   constructor(public events: Events) {}
   startAir(fromLink: boolean, keepGesture = false) {
     this.kicklessBuffer=0;
+    this.barTwist=false;this.twisting=false;
     this.attemptId=this.nextRecordId++;
     this.fingerTargets = [];
     this.pendingBumper = null;
@@ -638,6 +661,7 @@ export class Tricks {
     raw.barReversals = this.bars.reversals.filter(r=>r.performed!==false).map(r=>({...r}));
     raw.originalDeckDirection = this.deck.originalDirection;
     raw.finger = this.finger;
+    raw.barTwist = this.barTwist;
     raw.fingerTurns = this.fingerTargets.filter(
       (f) =>
         f.direction === Math.sign(this.deck.angle) &&

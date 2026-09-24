@@ -1,6 +1,8 @@
 import { activeLayout } from '../editor/layout';
 
-import { inWater } from "../park/water";
+import { inWater, WATER } from "../park/water";
+import { DIVE_DOCK, dockBlocks, dockClear, ladderNear, springboardTop } from "../park/dive-dock";
+import { judgeWater, settleTarget, type WaterAir } from "../tricks/water";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { TUNE, clamp, damp, wrap } from "../core/config";
@@ -17,6 +19,7 @@ import {
   OUTDOOR,
   ACTIVE_MAP,
   terrainSurface,
+  authoredDropAhead,
 } from "../park/park";
 import { Tricks } from "../tricks/tricks";
 import { ManualBalance } from "../player/manual";
@@ -51,6 +54,17 @@ export type RideState =
   | "Sitting"
   | "DropInReady"
   | "DropInCommit";
+/**
+ * One water-trick rotation for a frame: while `held` it keeps turning in `dir`;
+ * let go, it finishes to the next half turn (feet or head first) and stops.
+ */
+function spinToward(angle: number, dir: number, held: boolean, rate: number, dt: number) {
+  if (dir === 0) return angle;
+  if (held) return angle + dir * rate * dt;
+  const target = settleTarget(angle, dir), step = rate * dt;
+  return Math.abs(target - angle) <= step ? target : angle + Math.sign(target - angle) * step;
+}
+
 export class Simulation {
   get rampWorld(){return OUTDOOR || !!activeLayout?.objects.length;}
   body: RAPIER.RigidBody;
@@ -198,7 +212,7 @@ export class Simulation {
    * it settles more slowly the faster they go. It shows as a shimmy through the
    * bars and deck; past 1 the rider goes down.
    */
-  speedWobble = { amount: 0, phase: 0, steer: 0, side: 0, sideAge: 9 };
+  speedWobble = { amount: 0, phase: 0, steer: 0, side: 0, sideAge: 9, rollOffset: 0 };
   private stepSpeedWobble(dt: number, steer: number, slip: number, calm = 1) {
     const w = this.speedWobble, speed = this.speed;
     // Only steering away from centre counts (a turn-in or a correction), and
@@ -211,7 +225,7 @@ export class Simulation {
     w.sideAge += dt;
     if (Math.abs(steer) > 0.35) { if (Math.sign(steer) !== w.side) w.side = Math.sign(steer); w.sideAge = 0; }
     const f = clamp((speed - TUNE.wobbleSpeed) / (TUNE.wobbleFullSpeed - TUNE.wobbleSpeed), 0, 1.3);
-    if (f <= 0 && w.amount < 1e-3) { w.amount = 0; return; }
+    if (f <= 0 && w.amount < 1e-3) { w.amount = 0; this.roll -= w.rollOffset; w.rollOffset = 0; return; }
     const surface = terrainSurface(this.position.x, this.position.z);
     const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : 0;
     const feed = f * f * (Math.max(0, rate - TUNE.wobbleSteerRate) * TUNE.wobbleGain * calm +
@@ -219,9 +233,12 @@ export class Simulation {
     const settle = TUNE.wobbleDamping * (1 - 0.45 * Math.min(1, f));
     w.amount = Math.max(0, w.amount + (feed - settle * w.amount) * dt);
     w.phase += dt * Math.PI * 2 * (4.5 + 3 * Math.min(1, f));
-    // The shimmy: bars and deck oscillate; the heading barely moves.
-    this.roll += Math.sin(w.phase) * 0.16 * Math.min(1, w.amount);
-    this.yaw += Math.cos(w.phase) * 0.9 * Math.min(1, w.amount) * dt;
+    // The shimmy: bars and deck oscillate a little; the heading barely moves. The
+    // roll is an offset swapped in each frame, not added to, so it never builds up.
+    const shimmy = Math.sin(w.phase) * TUNE.wobbleRoll * Math.min(1, w.amount);
+    this.roll += shimmy - w.rollOffset;
+    w.rollOffset = shimmy;
+    this.yaw += Math.cos(w.phase) * TUNE.wobbleYaw * Math.min(1, w.amount) * dt;
     if (w.amount > 1) {
       w.amount = 0;
       this.bail("Speed wobble", true);
@@ -292,6 +309,20 @@ export class Simulation {
   mantle: { kind: "vault" | "mantle" | "climb"; start: THREE.Vector3; end: THREE.Vector3; edge: THREE.Vector3; forward: THREE.Vector3; peak: number; time: number; duration: number } | null =
     null;
   walking = false;
+  /**
+   * Swimming in the lake. Entered on foot or off the ride (the ride is left at
+   * the water's edge); `out` is the climb back onto the shore.
+   */
+  swim: { time: number; stroke: number; out: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null; celebrate?: number } | null = null;
+  /**
+   * On-foot water-trick rotation in a foot jump (tricks/water.ts names it on
+   * entry): `angle` about the side axis (LT+RT with LS up / down, front +),
+   * `side` about the forward axis (LT+RT with LS left / right), `twist` about
+   * the body's long axis (LB / RB). Each *Dir is 0 until that rotation starts.
+   */
+  diveFlip: { angle: number; dir: 1 | -1 | 0; side: number; sideDir: 1 | -1 | 0; twist: number; twistDir: 1 | -1 | 0 } | null = null;
+  /** A foot jump in progress: its peak (for the height bonus), springboard launch, run-up speed and how the body is held (X tuck, B spread). */
+  footAir: { peak: number; board: boolean; run: number; tuck: boolean; spread: boolean } | null = null;
   sitting: { id: string; origin: THREE.Vector3 } | null = null;
   hasScooter = true;
   heldItem:string|null=null;
@@ -391,7 +422,10 @@ export class Simulation {
     const current=this.currentLip();
     return current ?? (this.velocity.y>0&&this.elapsed-this.lastGround<TUNE.coyoteTime?this.departureLip:null);
   }
-  fastplant: {time:number;foot:THREE.Vector3;entry:THREE.Vector3;launched:boolean}|null=null;
+  /** A foot plant in progress; `flip` when LS was held back (Fastplant Backflip). */
+  fastplant: {time:number;foot:THREE.Vector3;entry:THREE.Vector3;launched:boolean;flip?:boolean}|null=null;
+  /** RT + A in the air arms a Fastplant for the next valid touchdown (see land()). */
+  plantArmed: {flip:boolean}|null=null;
   private plantQueued=-1;
   private plantLatched=false;
   transitionAir = false;
@@ -420,11 +454,14 @@ export class Simulation {
   grindDuration = 0;
   pushTimer = 0;
   pushHoldTime = 0;
-  emote: { id: string; time: number; duration: number } | null = null;
+  /** `hand`: which hand (0 right, 1 left) a one-hand emote uses. */
+  emote: { id: string; time: number; duration: number; hand?: 0 | 1 } | null = null;
   private pendingPushTap = false;
   private lastRS = { x: 0, y: 0 };
   pumpTimer = 0;
   popTimer = 0;
+  /** Rolling off an authored step edge (the Church's stair top): no ground contact briefly, so it is a drop. */
+  private dropTimer = 0;
   airTime = 0;
   recovery = 0;
   landTimer = 0;
@@ -539,7 +576,8 @@ export class Simulation {
 
     this.bodyFlip.reset();this.airQuarter=null;
     this.departureLip=null;
-    this.fastplant=null;this.plantQueued=-1;this.plantLatched=false;
+    this.fastplant=null;this.plantQueued=-1;this.plantLatched=false;this.plantArmed=null;
+    this.swim=null;this.diveFlip=null;this.footAir=null;
     this.resolvingSpawn = true;
     this.releasingRail = undefined;
     this.groundIntent = null;
@@ -554,7 +592,7 @@ export class Simulation {
     this.launch = null;
     this.poppedEdge = [];
     this.board.reset();
-    this.speedWobble.amount = this.speedWobble.steer = this.speedWobble.side = 0;
+    this.speedWobble.amount = this.speedWobble.steer = this.speedWobble.side = this.speedWobble.rollOffset = 0;
     this.hopRail = null;
     this.copingDrop = null;
     this.copingDropHeld = 0;
@@ -614,6 +652,7 @@ export class Simulation {
     this.stall = null;
     this.recovery = 0;
     this.popTimer = 0;
+    this.dropTimer = 0;
     this.hopBuffer = 0;
     this.airTime = 0;
     this.pushTimer = 0;
@@ -684,7 +723,7 @@ export class Simulation {
       normal.y,
     );
   }
-  private support(): { height: number; normal: THREE.Vector3; centre: number } {
+  private support(footprint = 0.32): { height: number; normal: THREE.Vector3; centre: number } {
     const p = this.position;
     // Two wheel footprints define the longitudinal riding plane. The center query
     // is retained as a chassis clearance check across a sharp crest or stair tread.
@@ -694,7 +733,7 @@ export class Simulation {
     const below = terrainNormal(p.x, p.z),
       heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)),
       along = heading.clone().projectOnPlane(below),
-      reach = along.lengthSq() > 1e-6 ? 0.32 * Math.hypot(along.normalize().x, along.z) : 0.32;
+      reach = along.lengthSq() > 1e-6 ? footprint * Math.hypot(along.normalize().x, along.z) : footprint;
     const dx = Math.sin(this.yaw) * reach,
       dz = Math.cos(this.yaw) * reach;
     const front = terrainHeight(p.x + dx, p.z + dz),
@@ -1059,17 +1098,28 @@ export class Simulation {
         if(plant.time<TUNE.fastplantContactTime){this.world.step(this.contactEvents,this.contactHooks);return null;}
         plant.launched=true;this.velocity.copy(plant.entry);
         this.pop(0,0,'fastplant');this.tricks.fastplant=true;
-        this.bodyFlip.active=true;this.bodyFlip.velocity=TUNE.flipMaxRate;
+        if(plant.flip){this.bodyFlip.active=true;this.bodyFlip.velocity=TUNE.flipMaxRate;}
         this.body.setLinvel(this.velocity,true);return null;
       }
       if(plant.time>.42||this.grounded||this.state==='Bail')this.fastplant=null;
+    }
+    // In the air RT + A arms the plant for the next valid touchdown. In Pro Goofy
+    // A is also the whip button, so RT + A is a Fingerwhip until the last moment
+    // before landing, too late to finish a whip anyway.
+    if(this.plantArmed&&(this.grind||this.state==='Bail'))this.plantArmed=null;
+    const whipIsA=this.tricks.controlStyle!=='arcade'&&this.tricks.stance==='goofy';
+    if(!this.grounded&&!this.grind&&this.tricks.airborne&&!this.plantArmed&&!this.plantLatched&&input.pressed.hop&&input.held.pumpGrind>.5&&this.state!=='Bail'&&(!whipIsA||this.tricks.landingIn<TUNE.fastplantLateArm)){
+      this.plantArmed={flip:input.lean<-.35};this.plantLatched=true;
+      this.events.emit({type:'fastplant',phase:'armed'});
+      return {...input,held:{...input.held,hop:0},pressed:{...input.pressed,hop:false}};
     }
     const opportunity=this.fastplantOpportunity();
     if(!this.plantLatched&&this.plantQueued<0&&input.pressed.hop&&opportunity)this.plantQueued=0;
     if(this.plantQueued>=0){
       this.plantQueued+=dt;
-      if(opportunity&&input.held.pumpGrind>.5&&input.lean<-.35){
-        this.fastplant={time:0,foot:opportunity.foot,entry:this.velocity.clone(),launched:false};
+      // RT + A plants in both stances; LS held back adds the backflip.
+      if(opportunity&&input.held.pumpGrind>.5){
+        this.fastplant={time:0,foot:opportunity.foot,entry:this.velocity.clone(),launched:false,flip:input.lean<-.35};
         this.plantQueued=-1;this.plantLatched=true;this.preload.reset();this.hopBuffer=0;this.pendingPushTap=false;return null;
       }
       if(this.plantQueued<TUNE.fastplantChordWindow)return {...input,held:{...input.held,hop:0},pressed:{...input.pressed,hop:false}};
@@ -1085,7 +1135,7 @@ export class Simulation {
     this.state = "Bail";
     this.getUpTimer = 0;
     this.bodyFlip.reset();this.airQuarter=null;
-    this.fastplant=null;this.plantQueued=-1;
+    this.fastplant=null;this.plantQueued=-1;this.plantArmed=null;
     this.preload.reset();
     this.grounded = false;
     this.bailTimer = 0;
@@ -1580,6 +1630,125 @@ export class Simulation {
     const climb = rise > TUNE.mantleHeight;
     return { kind: climb ? "climb" : "mantle", start: this.position.clone(), end, edge, forward: forward.clone(), peak: end.y, time: 0, duration: climb ? 1.05 : 0.55 };
   }
+  /** The current foot jump as tricks/water.ts reads it. */
+  private waterAir(): WaterAir {
+    const d = this.diveFlip, air = this.footAir;
+    return {
+      flip: d?.angle ?? 0, side: d?.side ?? 0, twist: d?.twist ?? 0,
+      tuck: !!air?.tuck, spread: !!air?.spread,
+      height: Math.max(0, (air?.peak ?? this.position.y) - this.position.y),
+      gainer: (d?.dir ?? 0) < 0 && (air?.run ?? 0) > 2.5,
+      board: !!air?.board,
+    };
+  }
+  /**
+   * Into the lake, on foot or off the ride: a flip on the way in is scored as a
+   * water trick (a hook for a swimming-tricks game), the ride waits at the
+   * water's edge (`swim` event, see WorldInteractions.parkAtShore) and the rider swims.
+   */
+  private enterWater() {
+    const fromRide = !this.walking;
+    let trick: { name: string; clean: boolean; rotations: number; points?: number; entry?: "feet" | "head" | "flat"; height?: number; board?: boolean } | null = null;
+    if (!fromRide && this.footJumped && (this.diveFlip || this.footAir)) {
+      // On foot: the water-trick set (tricks/water.ts).
+      const air = this.waterAir();
+      const t = judgeWater(air);
+      trick = { name: t.name, clean: t.clean, rotations: t.rotations, points: t.points, entry: t.entry, height: +air.height.toFixed(2), board: air.board };
+    } else if (fromRide && this.bodyFlip.active) {
+      const turns = Math.abs(this.bodyFlip.angle) / (Math.PI * 2), whole = Math.round(turns), clean = whole >= 1 && Math.abs(turns - whole) < 0.2;
+      const base = this.bodyFlip.angle >= 0 ? "Front Flip" : "Back Flip";
+      trick = { name: clean ? (whole > 1 ? ["", "", "Double ", "Triple "][Math.min(3, whole)] + base : base) : this.bodyFlip.angle >= 0 ? "Belly Flop" : "Back Smack", clean, rotations: +turns.toFixed(2) };
+    }
+    const shore = this.lastSafeGround.clone();
+    this.events.emit({ type: "splash", x: this.position.x, z: this.position.z });
+    if (fromRide) {
+      this.finishManual();
+      this.tricks.reset();
+      this.grind = null;
+      this.fakie.reset();
+      this.preload.reset();
+    }
+    this.bodyFlip.reset(); this.airQuarter = null;
+    this.diveFlip = null; this.footAir = null; this.footJumped = false; this.mantle = null; this.jumpOn = null; this.sitting = null; this.emote = null;
+    this.walking = true; this.running = false; this.state = "Walking";
+    this.pitch = this.roll = this.spin = 0;
+    this.body.collider(0).setCollisionGroups(GROUPS.chassis);
+    this.riderIntangible = false; this.guardClear = false;
+    this.velocity.set(this.velocity.x * 0.35, 0, this.velocity.z * 0.35);
+    this.swim = { time: 0, stroke: 0, out: null };
+    this.grounded = false;
+    // After the swim state exists, so listeners (the first-swim celebration) can use it.
+    this.events.emit({ type: "swim", phase: "enter", fromRide, shore: [shore.x, shore.z], yaw: this.yaw, trick });
+    if (trick?.points !== undefined) this.events.emit({ type: "trick", name: trick.name, points: trick.points });
+  }
+  /** Swimming: LS strokes relative to the camera (A strokes harder); swim into the edge to climb out. */
+  private swimStep(dt: number, input: InputFrame) {
+    const sw = this.swim!;
+    sw.time += dt;
+    if (sw.celebrate) sw.celebrate = Math.max(0, sw.celebrate - dt);
+    this.body.setGravityScale(0, true);
+    const floatY = WATER.surface + TUNE.radius;
+    if (sw.out) {
+      const o = sw.out;
+      o.time += dt;
+      const t = clamp(o.time / 0.7, 0, 1), e = t * t * (3 - 2 * t);
+      this.position.copy(o.start).lerp(o.end, e);
+      this.position.y += Math.sin(t * Math.PI) * 0.25;
+      this.body.setTranslation(this.position, true);
+      this.velocity.set(0, 0, 0); this.body.setLinvel(this.velocity, true);
+      if (t === 1) { this.swim = null; this.grounded = true; this.lastGround = this.elapsed; this.events.emit({ type: "swim", phase: "exit", fromRide: false, shore: [this.position.x, this.position.z], yaw: this.yaw, trick: null }); }
+      return;
+    }
+    const h = this.walkCameraYaw;
+    const desired = new THREE.Vector3(-Math.sin(h) * input.lean - Math.cos(h) * input.steer, 0, -Math.cos(h) * input.lean + Math.sin(h) * input.steer);
+    if (desired.length() > 1) desired.normalize();
+    const moving = desired.lengthSq() > 0.02;
+    desired.multiplyScalar(input.held.hop > 0.5 ? TUNE.swimSprint : TUNE.swimSpeed);
+    this.velocity.x = damp(this.velocity.x, desired.x, TUNE.swimResponse, dt);
+    this.velocity.z = damp(this.velocity.z, desired.z, TUNE.swimResponse, dt);
+    this.velocity.y = 0;
+    const speed = Math.hypot(this.velocity.x, this.velocity.z);
+    sw.stroke += dt * (1.4 + speed * 1.6);
+    if (moving) this.yaw += wrap(Math.atan2(desired.x, desired.z) - this.yaw) * (1 - Math.exp(-4 * dt));
+    const next = this.position.clone().addScaledVector(this.velocity, dt);
+    if (this.rampWorld) {
+      // The dive dock: swim at a ladder to climb out onto the deck; the deck's footing is solid.
+      const ladder = moving ? ladderNear(next.x, next.z) : null;
+      if (ladder && desired.x * (ladder.top[0] - this.position.x) + desired.z * (ladder.top[1] - this.position.z) > 0) {
+        sw.out = { start: this.position.clone(), end: new THREE.Vector3(ladder.top[0], DIVE_DOCK.deck + TUNE.radius, ladder.top[1]), time: 0 };
+        return;
+      }
+      if (dockBlocks(this.position.x, this.position.z)) {
+        const out = dockClear(this.position.x, this.position.z);
+        next.set(out[0], next.y, out[1]);
+      } else if (dockBlocks(next.x, next.z)) {
+        if (dockBlocks(next.x, this.position.z)) { next.x = this.position.x; this.velocity.x = 0; }
+        if (dockBlocks(next.x, next.z)) { next.z = this.position.z; this.velocity.z = 0; }
+      }
+    }
+    // At the edge: swimming on toward the shore climbs out onto it.
+    if (!inWater(next.x, next.z, 0.985)) {
+      const out = next.clone().addScaledVector(new THREE.Vector3(this.velocity.x, 0, this.velocity.z).normalize(), 0.9);
+      if (moving && !inWater(out.x, out.z, 1.04)) {
+        out.y = terrainHeight(out.x, out.z) + TUNE.radius;
+        if (this.standingClear(out)) { sw.out = { start: this.position.clone(), end: out, time: 0 }; return; }
+      }
+      // Otherwise slide along the edge.
+      const centre = new THREE.Vector3(WATER.x, 0, WATER.z), n = new THREE.Vector3((next.x - WATER.x) / (WATER.radiusX ** 2), 0, (next.z - WATER.z) / (WATER.radiusZ ** 2)).normalize();
+      const into = this.velocity.dot(n);
+      if (into > 0) this.velocity.addScaledVector(n, -into);
+      next.copy(this.position).addScaledVector(this.velocity, dt);
+      if (!inWater(next.x, next.z, 0.985)) next.copy(this.position).lerp(centre.setY(this.position.y), 0.01);
+    }
+    this.position.set(next.x, floatY + Math.sin(sw.time * 2.1) * 0.02, next.z);
+    this.body.setTranslation(this.position, true);
+    this.body.setLinvel(this.velocity, true);
+    this.body.setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw), true);
+    this.pitch = damp(this.pitch, 0, 8, dt); this.roll = damp(this.roll, 0, 8, dt);
+    this.normal.set(0, 1, 0);
+    this.grounded = false;
+    this.state = "Walking";
+  }
   private walk(dt: number, input: InputFrame) {
     if (this.mantle) {
       const m = this.mantle;
@@ -1621,7 +1790,11 @@ export class Simulation {
     if (input.pressed.sprint) this.running = !this.running;
     this.tricks.endFakie();
     this.rampLean = damp(this.rampLean, 0, 9, dt);
-    const support = this.support();
+    // Feet under the body, not a wheelbase: averaged 0.32 m ahead, a sheer step
+    // in the map's own ground (the Church's raised plaza) read as half its
+    // height and floated a walker standing at its foot off the ground, so A
+    // could not climb it. The body can stand within a few cm of such a face.
+    const support = this.support(0);
     const targetY =
       support.height + TUNE.radius / Math.max(0.55, support.normal.y);
     const gap = this.position.y - targetY;
@@ -1654,10 +1827,15 @@ export class Simulation {
         return;
       }
       if (this.grounded) {
-        this.velocity.y = 6;
+        // The dive dock's springboard throws a foot jump higher.
+        const board = this.rampWorld ? springboardTop(this.position.x, this.position.z) : null;
+        const onBoard = board !== null && Math.abs(this.position.y - TUNE.radius - board) < 0.25;
+        this.velocity.y = onBoard ? TUNE.springboardJump : 6;
         this.grounded = false;
         this.footJumpTimer = 0.18;
         this.footJumped = true;
+        this.diveFlip = null;
+        this.footAir = { peak: this.position.y, board: onBoard, run: Math.hypot(this.velocity.x, this.velocity.z), tuck: false, spread: false };
       }
     }
     // Y in the air after an A jump puts the carried scooter down under the
@@ -1684,8 +1862,44 @@ export class Simulation {
         approach: travel.length(),
         id: ++this.jumpOnId,
       };
+      this.diveFlip = null; this.footAir = null;
       this.mountInAir(this.jumpOn, heading);
       return;
+    }
+    // Water tricks in a foot jump (tricks/water.ts): LT+RT with LS up / down
+    // flips front / back, with LS left / right side flips; LB / RB twist; X
+    // tucks (spins faster), B spreads the arms (swan). Holding keeps a rotation
+    // going; letting go finishes it to the next half turn and opens up.
+    const air = this.footAir;
+    if (air && this.footJumped && !this.grounded && !this.jumpOn) {
+      air.peak = Math.max(air.peak, this.position.y);
+      air.tuck = input.held.pushDeck > 0.5;
+      air.spread = input.held.brakeBars > 0.5 && !air.tuck;
+      const hold = input.held.brake > 0.5 && input.held.pumpGrind > 0.5;
+      const twist = (input.held.leftModifier > 0.5 ? 1 : 0) - (input.held.rightModifier > 0.5 ? 1 : 0);
+      const fresh = () => ({ angle: 0, dir: 0 as const, side: 0, sideDir: 0 as const, twist: 0, twistDir: 0 as const });
+      let d = this.diveFlip;
+      if (hold && Math.abs(input.lean) > 0.5 && (!d || (d.dir === 0 && d.sideDir === 0))) { d ??= fresh(); d.dir = input.lean < 0 ? 1 : -1; }
+      else if (hold && Math.abs(input.steer) > 0.5 && (!d || (d.dir === 0 && d.sideDir === 0))) { d ??= fresh(); d.sideDir = input.steer > 0 ? 1 : -1; }
+      if (twist) { d ??= fresh(); if (d.twistDir === 0 || Math.sign(d.twist) !== -twist) d.twistDir = twist as 1 | -1; }
+      if (d) {
+        this.diveFlip = d;
+        const rate = TUNE.diveFlipRate * (air.tuck ? 1.45 : air.spread ? 0.8 : 1);
+        d.angle = spinToward(d.angle, d.dir, hold, rate, dt);
+        d.side = spinToward(d.side, d.sideDir, hold, rate * 0.9, dt);
+        d.twist = spinToward(d.twist, d.twistDir, twist === d.twistDir && twist !== 0, TUNE.diveTwistRate, dt);
+      }
+    }
+    if (this.grounded && (this.diveFlip || this.footAir)) {
+      // Back on the ground: feet first lands (and scores any rotation), anything else is a crash.
+      const rotated = !!this.diveFlip && (Math.abs(this.diveFlip.angle) > 0.35 || Math.abs(this.diveFlip.side) > 0.35 || Math.abs(this.diveFlip.twist) > 0.35);
+      const t = rotated ? judgeWater(this.waterAir(), true) : null;
+      this.diveFlip = null; this.footAir = null;
+      if (t && !t.clean) { this.bail("Under-rotated the " + t.name.toLowerCase()); return; }
+      if (t && (t.halves > 0 || t.twists > 0)) {
+        this.events.emit({ type: "swim", phase: "land", fromRide: false, shore: [this.position.x, this.position.z], yaw: this.yaw, trick: { name: t.name, clean: true, rotations: t.rotations, points: t.points, entry: t.entry } });
+        this.events.emit({ type: "trick", name: t.name, points: t.points });
+      }
     }
     if (this.grounded) {
       const magnitude = desired.length();
@@ -1698,6 +1912,8 @@ export class Simulation {
         1.8,
       );
     }
+    // Mid dive flip LS picks the flip, not a drift: the dive keeps its line.
+    if (this.diveFlip && !this.grounded) desired.set(this.velocity.x, 0, this.velocity.z);
     this.velocity.x = damp(
       this.velocity.x,
       desired.x,
@@ -1710,7 +1926,7 @@ export class Simulation {
       this.grounded ? TUNE.walkAcceleration : 2.5,
       dt,
     );
-    if (desired.lengthSq() > 0.03)
+    if (desired.lengthSq() > 0.03 && !this.diveFlip)
       this.yaw +=
         wrap(Math.atan2(desired.x, desired.z) - this.yaw) *
         (1 - Math.exp(-TUNE.walkTurnResponse * dt));
@@ -2052,6 +2268,17 @@ export class Simulation {
     this.position.y =
       support.centre;
     this.body.setTranslation(this.position, true);
+    // An armed Fastplant plants on this touchdown when it is a riding surface:
+    // flat enough, rolling and not a sketchy save.
+    const armed=this.plantArmed;this.plantArmed=null;
+    if(armed&&support.normal.y>.8&&this.speed>1.5&&quality!=='sketchy'&&this.rideable!=='longboard'){
+      const side=sideSign(pushFoot(this.tricks.stance));
+      const foot=this.position.clone().add(new THREE.Vector3(Math.cos(this.yaw)*side*.23,0,-Math.sin(this.yaw)*side*.23));
+      foot.y=support.height;
+      this.fastplant={time:0,foot,entry:this.velocity.clone(),launched:false,flip:armed.flip};
+      this.preload.reset();this.hopBuffer=0;this.pendingPushTap=false;
+      this.events.emit({type:'fastplant',phase:'plant'});
+    }else if(armed)this.events.emit({type:'fastplant',phase:'missed'});
   }
   /** Replay buffer, assist log and extreme-state guard (see physics/diagnostics.ts). */
   readonly diagnostics = new RidingDiagnostics();
@@ -2098,6 +2325,7 @@ export class Simulation {
     this.pushTimer = Math.max(0, this.pushTimer - dt);
     this.pumpTimer = Math.max(0, this.pumpTimer - dt);
     this.popTimer = Math.max(0, this.popTimer - dt);
+    this.dropTimer = Math.max(0, this.dropTimer - dt);
     this.recovery = Math.max(0, this.recovery - dt);
     this.landTimer = Math.max(0, this.landTimer - dt);
     this.manualEntryLock = Math.max(0, this.manualEntryLock - dt);
@@ -2140,21 +2368,15 @@ export class Simulation {
     }
     this.getUpTimer = Math.max(0, this.getUpTimer - dt);
     if(this.getUpTimer>0){this.velocity.set(0,0,0);this.body.setLinvel(this.velocity,true);return;}
+    if (this.swim) { this.swimStep(dt, input); return; }
     if (
       this.rampWorld &&
       inWater(this.position.x, this.position.z) &&
-      this.position.y < 0.35 &&
-      !this.waterBail
+      this.position.y < 0.5 &&
+      !this.waterBail && this.state !== "Bail"
     ) {
-      this.bail("Water — returning to shore");
-      this.waterBail = true;
-      this.riderIntangible = true;
-      this.guardClear = true;
-      this.events.emit({
-        type: "splash",
-        x: this.position.x,
-        z: this.position.z,
-      });
+      this.enterWater();
+      return;
     }
     if (
       this.grounded &&
@@ -2359,9 +2581,17 @@ export class Simulation {
     const contactBand = wasGrounded
       ? 0.1
       : Math.max(TUNE.touchdownGap, -this.velocity.dot(support.normal) * dt);
+    // The contact band would carry a rider down a stair set like a slope. Rolling
+    // off a step edge an authored map marks in its own ground leaves the ground
+    // instead (maps without one, and every layout ramp, are unaffected).
+    const flat = Math.hypot(this.velocity.x, this.velocity.z);
+    if (wasGrounded && !this.grind && this.dropTimer === 0 && flat > 2 &&
+      authoredDropAhead(this.position.x, this.position.z, this.velocity.x / flat, this.velocity.z / flat, Math.max(0.15, flat * dt * 1.5)))
+      this.dropTimer = 0.1;
     if (
       !this.grind &&
       this.popTimer === 0 &&
+      this.dropTimer === 0 &&
       !staleTakeoffContact &&
       gap < contactBand &&
       gap > -0.5 &&
@@ -2605,7 +2835,13 @@ export class Simulation {
         // At a bend the rider can sit a hair behind the new segment's start.
         g.t = clamp(this.railProgress(g.rail), 0, 1);
       }
-      const point = g.rail.a.clone().lerp(g.rail.b, g.t);
+      // The capture sweeps a step ahead and a held grind locks on at a wheel,
+      // so the rider's centre can still be short of the rail's start. Only
+      // running off an end in the direction of travel releases the rail;
+      // entering it from its end keeps the grind.
+      const lead = (TUNE.grindWheelReach + 0.2) / Math.max(0.25, g.rail.a.distanceTo(g.rail.b));
+      const offEnd = (g.t > 1 && g.speed >= 0) || (g.t < 0 && g.speed <= 0) || g.t < -lead || g.t > 1 + lead;
+      const point = g.rail.a.clone().lerp(g.rail.b, clamp(g.t, 0, 1));
       const side = new THREE.Vector3(
         g.direction.z,
         0,
@@ -2664,8 +2900,7 @@ export class Simulation {
           this.releaseCopingDrop();
         }
       } else if (
-        g.t < 0 ||
-        g.t > 1 ||
+        offEnd ||
         (!settling && Math.abs(lateral - g.contactOffset) > 0.55) ||
         Math.abs(g.speed) < 0.8 ||
         ((g.contactOffset >= seat.high - 1e-6 || g.contactOffset <= seat.low + 1e-6) && Math.abs(input.steer) > .9 &&
@@ -3300,6 +3535,8 @@ export class Simulation {
       dropIn: { phase: this.dropIn.phase, lean: this.dropIn.lean },
       mantle: !!this.mantle,
       traverse: this.mantle?.kind ?? null,
+      swimming: !!this.swim,
+      diveFlip: this.diveFlip ? +this.diveFlip.angle.toFixed(2) : null,
       stance: this.tricks.stance,
       pushButton: ridingButtons(this.tricks.stance, this.tricks.controlStyle)
         .pushLabel,
