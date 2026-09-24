@@ -82,13 +82,28 @@ Done and verified in headless Chrome (software rendering; no real controller or 
 - DONE (tests/decade.browser.mjs, tests/decade-visual.browser.mjs) #16 Decade: A in the air; rider and bars go once round the steering axis while the deck stays put; lifecycle START/ACTIVE/CATCH/CAUGHT tracked in `Tricks.decade`; hop, higher hop, quarter air, 180 + Decade, flips + Decade land clean; a late A bails ("Unaligned landing"); Regular/Goofy mirror.
 
 Paused for the owner (the prompt conflicts with an existing rule, so it was left alone):
-- PAUSED Decade on A in Goofy Pro: A is Goofy's tailwhip button (src/input/riding.ts swaps A/X between Normal and Goofy). #16 says A, #17/#18 say buttons never change with stance. Decade is wired to A wherever A is not the whip button (Regular Pro, both stances in Arcade); Goofy Pro has no Decade input yet.
+- DONE (dc855cb) Owner moved Decade to LB in the air (tap), same in every stance/style; never shares an air with Bri/Inward/Kickless; slower (paced to the air, 0.7-1.05 s); deck held still; tucked legs, no whip look. Superseded: PAUSED Decade on A in Goofy Pro: A is Goofy's tailwhip button (src/input/riding.ts swaps A/X between Normal and Goofy). #16 says A, #17/#18 say buttons never change with stance. Decade is wired to A wherever A is not the whip button (Regular Pro, both stances in Arcade); Goofy Pro has no Decade input yet.
 - PAUSED #18 "the Push input must be the same button in both stances": the shipped Normal/Goofy control presets deliberately swap A (push) and X (push) with stance. Not changed. Only the push FOOT was fixed.
 - PAUSED Off-scooter scooter side: the scooter is always held on the rider's left while walking; the prompt does not say which side each stance should use.
 
 Still open:
 - TODO Wire the 27 Tripo animation clips (walk/run/ride/sit...) and an Emotes customization tab (6 wheel slots, all clips selectable for testing). Source: Downloads "christian+model+with+animations.glb" (27 clips, 65 joints).
 - TODO New mountain model (owner will supply); current mountains fade in and out. Female model not started.
-- TODO Trick poses whose hand cannot reach with Christian's 0.39 m arms: finger whip, Deck Grab, Superman (grab hand), Bri/Inward mid-spin. They need redesigning (deeper tuck / grab the front of the deck), not a new character.
-- TODO Small box: invisible sloped wall at x about -3.8 kicks riders sideways (~6 m/s) from the +-0.125 m margin in outdoorHeight (src/park/outdoor.ts).
-- TODO Consolidation: remove every extra copy of the game from the PC (work/, releases/, Desktop and Documents packaged copies; Documentsscooter-town is an unrelated Godot project, ask first), keeping one checkout in Documents and GitHub. Not done: needs the owner's go-ahead on the exact delete list.
+- DONE (dc855cb, pose review 48/49; open: mid-Bri left wrist twist 86 deg) Trick poses whose hand cannot reach with Christian's 0.39 m arms: finger whip, Deck Grab, Superman (grab hand), Bri/Inward mid-spin. They need redesigning (deeper tuck / grab the front of the deck), not a new character.
+- DONE (dc855cb, tests/box-seam) Small box: invisible sloped wall at x about -3.8 kicks riders sideways (~6 m/s) from the +-0.125 m margin in outdoorHeight (src/park/outdoor.ts).
+- DONE 2026-09-23 (owner approved; extras sent to the Recycle Bin, unique work committed first; kept scooter-town, this checkout and Documents\Scoot-with-Friends-Windows) Consolidation: remove every extra copy of the game from the PC (work/, releases/, Desktop and Documents packaged copies; Documentsscooter-town is an unrelated Godot project, ask first), keeping one checkout in Documents and GitHub. Not done: needs the owner's go-ahead on the exact delete list.
+
+## H. Owner requests 2026-09-23 (evening) - do in this order
+
+Also done in dc855cb: rider leans with the scooter at steep pitch (hands stay on the bars, Bri catch pop gone); realistic snowfall (world-space flakes, terminal fall speed, wind/gusts/eddies, flutter), patchy slope-aware cover, wheel/landing powder, snowfall fog; http-safe startup (randomId / SHA-256 / clipboard fallbacks) for phones on the home network.
+
+1. TODO First-person camera (do FIRST):
+   - The 70 FOV setting is WAY too close; you can't see anything useful.
+   - The 110 FOV setting is not far enough; it should show much more.
+   - The angle changed from the previous version, which the owner liked better: now the deck can't be seen at all and the bars are barely visible. Restore a view that shows the bars and the deck.
+   - Flips look great (keep the camera rotation in flips).
+   - During a trick, focus the camera on the trick being done, then return to the heads-up view.
+   - Tilt the camera slightly down while the player charges the jump (holding RS down).
+2. TODO Find or make new, better textures for the concrete, the sky backgrounds and other surfaces (credit any third-party assets in THIRD_PARTY_NOTICES.md).
+3. TODO New character: the owner is done with the Christian model. Build a brand-new character designed around the existing physics and IK: one boy and one girl, Wii Mii-like (stylised, funny, fun) against the realistic scooter and park. Customisable: head size, eyebrows, eyes, hair, colours, "everything like that". Must hold the bars, stand on the deck, push, grab and flip correctly with the current physics.
+4. TODO (carried over) "Play on Phone" launcher in the Windows package: serve the game on the home network, show the address and a QR code, so phones can open the browser version with the existing touch controls. The http-safe startup is already done.
