@@ -114,6 +114,7 @@ Also done in dc855cb: rider leans with the scooter at steep pitch (hands stay on
 - TODO Avatar Part 1: replace the realistic rider completely with an original Mii-style avatar (remove the old model code and assets).
 - TODO Avatar Part 2: creator UI (controller-first, live preview, categories, presets, randomize, save/load).
 - TODO Outdoor art overhaul (owner, 2026-09-24): "the most aesthetic scooter game on a web browser ever". Riders stay Mii-style; the outdoors go realistic and magical, set in Boulder City, NV: desert landscape, creosote, pine trees at the park, better tree/plant/rock/mountain models, skies, better CC0 textures (absorbs H2), hot summer / cold winter moods (owner liked the snow). Voxel touches are welcome only if beautiful. B Hill (also Boulder City) must be built in the same look. Owner: "go crazy".
+- TODO Phone system / app hub (docs/briefs/PHONE-SYSTEM.md): D-Pad Down in-game smartphone replacing the utility wheel (Music, Emotes, Rides, Rider, Map, Items, Build, Messages), 3D phone in hand in third and first person. Owner: do pieces opportunistically while in related code.
 - TODO H4 Play on Phone.
 - TODO #20 B Hill speed/steepness/downhill difficulty + environment cleanup (after the outdoor art overhaul, in its style).
-- Order agreed in chat: Avatar Part 1 -> Avatar Part 2 -> outdoor art overhaul (+H2) -> H4 -> #20.
+- Order: Avatar Part 1 -> Avatar Part 2 -> phone system -> outdoor art overhaul (+H2) -> H4 -> #20 (phone after the creator because its Rider app hosts the creator and its hand pose uses the avatar rig).
