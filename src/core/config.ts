@@ -383,6 +383,10 @@ export const TUNE = {
   manualDropLimit: -.55, // front/rear wheel comes back down
   manualLoopLimit: .85, // past the supporting wheel: loop out / over the bars
   walkSpeed: 3.2,
+  /** On-foot traversal (A into an obstacle): vault anything this high or lower if it is thin, mantle up to mantleHeight, climb up to climbReach (hands on a head-high ledge). */
+  vaultHeight: 1.05,
+  mantleHeight: 1.35,
+  climbReach: 2.05,
   runSpeed: 6.4,
   runMountBoost: 0.9,
   trickHoldDelay: 0.18,

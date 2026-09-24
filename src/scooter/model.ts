@@ -576,6 +576,9 @@ export class RiderModel {
     // both elbows up like wings.
     this.torso.position.z += weight * TUNE.airWeightShiftStrength * (1 - .65 * ride);
     this.torso.rotation.x += weight * 0.36;
+    // Vault / mantle / climb: lean over the hands on the edge.
+    const traverse=s.walking&&s.mantle?Math.sin(Math.PI*THREE.MathUtils.clamp(s.mantle.time/s.mantle.duration,0,1)):0;
+    this.torso.rotation.x += traverse * (s.mantle?.kind==='vault'?.55:.4);
     this.hips.position.set(0, 0.88 - c, -0.13 - c * 0.5);
     this.hips.position.z += weight * TUNE.airWeightShiftStrength * 0.65;
     pelvisFromChest(this.torso, this.hips.position);
@@ -715,6 +718,14 @@ export class RiderModel {
         );
         this.shoes[i].position.copy(foot);
       }
+      if (s.walking && s.mantle) {
+        // Vault: both legs swing up and over together, tucked to one side.
+        // Mantle / climb: the leading knee comes up onto the top while the other leg pushes.
+        const m = s.mantle, t = THREE.MathUtils.clamp(m.time / m.duration, 0, 1);
+        if (m.kind === 'vault') { const tuck = Math.sin(Math.PI * t); foot.set(sign * 0.1 + 0.2 * tuck, 0.045 + 0.4 * tuck, 0.04 + 0.1 * tuck); }
+        else { const lift = Math.sin(Math.PI * THREE.MathUtils.clamp((t - (m.kind === 'climb' ? 0.3 : 0.1)) / 0.8, 0, 1)); foot.set(sign * 0.12, 0.045 + (sign > 0 ? 0.52 : 0.2) * lift, 0.06 + (sign > 0 ? 0.2 : -0.04) * lift); }
+        this.shoes[i].position.copy(foot);
+      }
       const knee = v(sign * 0.13, 0.53 - c * 0.55, 0.04 + c * 0.4);
       if (s.sitting) {
         knee.set(sign * 0.12, 0.03, 0.34);
@@ -753,6 +764,16 @@ export class RiderModel {
         const grip=this.rider.worldToLocal(this.scooter.localToWorld(contact));
         hand.lerp(grip, this.carry);
         elbow.lerp(v(sign * 0.32, 1.13, 0.06), this.carry);
+      }
+      if (s.walking && s.mantle && (this.carry < 0.001 || i === 1)) {
+        // Hands on the obstacle's edge, planted early and pushed off late. Carrying
+        // the scooter, the stem hand keeps it and only the other hand plants.
+        const m = s.mantle, t = THREE.MathUtils.clamp(m.time / m.duration, 0, 1);
+        const on = m.kind === 'vault' ? THREE.MathUtils.smoothstep(t, 0, 0.15) * (1 - THREE.MathUtils.smoothstep(t, 0.55, 0.8)) : THREE.MathUtils.smoothstep(t, 0, 0.12) * (1 - THREE.MathUtils.smoothstep(t, 0.78, 1));
+        const plant = this.rider.worldToLocal(m.edge.clone().addScaledVector(m.forward, 0.1));
+        plant.x += sign * 0.2; plant.y += 0.03;
+        hand.lerp(plant, on);
+        elbow.lerp(v(sign * 0.36, plant.y + 0.25, plant.z * 0.5), on);
       }
       if (s.tricks.fingerTime > 0 && sign === s.tricks.fingerHand) {
         const reach = Math.sin((1 - s.tricks.fingerTime / 0.35) * Math.PI);
@@ -842,7 +863,7 @@ export class RiderModel {
         }
         hand.copy(this.rider.worldToLocal(contact)).add(v(0,(walkingGrip?.012:this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET,-(this.hands[i].userData.palmLength??RIG.palm)).applyQuaternion(gripRotation));
       }
-      const carryingContact=this.carry>.001&&!s.emote&&!s.heldItem;
+      const carryingContact=this.carry>.001&&!s.emote&&!s.heldItem&&!(s.walking&&s.mantle&&i===1);
       if(carryingContact){
         const relative=this.rider.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(this.scooter.getWorldQuaternion(new THREE.Quaternion()));
         // Align the palm's grip axis with the upright stem or deck edge.

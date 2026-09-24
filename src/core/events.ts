@@ -17,6 +17,7 @@ export type GameEvent =
   | { type: "trick"; name: string; record?: TrickRecord; attemptId?:number }
   | { type: "railImpact"; speed: number; bail: boolean }
   | { type: "grindCatch"; name: string; assisted: boolean }
+  | { type: "traverse"; kind: "vault" | "mantle" | "climb" }
   | { type: "dismount"; walking: boolean }
   | { type: "marker"; message: string; progress: number }
   | { type: "line"; names: string[]; ended: boolean }

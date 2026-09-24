@@ -283,7 +283,13 @@ export class Simulation {
   jumpOnLanded = 0;
   /** Mounted in the air by a jump-on and not yet landed. */
   private jumpOnPending = false;
-  mantle: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null =
+  /**
+   * On-foot traversal in progress (A while walking into an obstacle): a vault
+   * over something low and thin, a mantle onto a reachable top, or a climb up a
+   * chest-to-head-high ledge. `edge` is where the hands go, `peak` the height
+   * the rider's centre clears on a vault. Always validated before it starts.
+   */
+  mantle: { kind: "vault" | "mantle" | "climb"; start: THREE.Vector3; end: THREE.Vector3; edge: THREE.Vector3; forward: THREE.Vector3; peak: number; time: number; duration: number } | null =
     null;
   walking = false;
   sitting: { id: string; origin: THREE.Vector3 } | null = null;
@@ -1487,24 +1493,124 @@ export class Simulation {
       });
     }
   }
+  /**
+   * The top of whatever stands at (x, z) below `from`: terrain, boxes, ledges,
+   * ramp decks and placed build pieces alike (rails excluded: they are ground
+   * for grinding, not for standing on).
+   */
+  private standTop(x: number, z: number, from: number): { height: number; normalY: number } {
+    let height = terrainHeight(x, z), normalY = terrainNormal(x, z).y;
+    const hit = this.world.castRayAndGetNormal(
+      new RAPIER.Ray({ x, y: from, z }, { x: 0, y: -1, z: 0 }),
+      from - height + 0.05, true, undefined, GROUPS.chassis, undefined, this.body,
+      (c) => !this.park.railHandles.has(c.handle),
+    );
+    if (hit && from - hit.timeOfImpact > height + 0.01) { height = from - hit.timeOfImpact; normalY = hit.normal.y; }
+    return { height, normalY };
+  }
+  /** A standing rider fits at `centre` (the ball centre): nothing within the body from the feet to the head. */
+  private standingClear(centre: THREE.Vector3) {
+    const rot = { x: 0, y: 0, z: 0, w: 1 }, ball = new RAPIER.Ball(0.2);
+    for (const lift of [0.12, 0.7, 1.3])
+      if (this.world.intersectionWithShape({ x: centre.x, y: centre.y + lift, z: centre.z }, rot, ball, undefined, GROUPS.chassis, undefined, this.body)) return false;
+    return true;
+  }
+  /** A clear straight line through the world (rails count: the body cannot pass through one). */
+  private lineClear(from: THREE.Vector3, to: THREE.Vector3) {
+    const d = to.clone().sub(from), length = d.length();
+    if (length < 1e-4) return true;
+    d.divideScalar(length);
+    return !this.world.castRay(new RAPIER.Ray(from, d), length, true, undefined, GROUPS.chassis, undefined, this.body);
+  }
+  /**
+   * What A does in front of a walking rider: vault a low thin obstacle, mantle
+   * onto a reachable top or climb a higher ledge. Anything too high, blocked
+   * above, without room to stand or with a ceiling in the way returns null and
+   * A stays a plain jump.
+   */
+  traversal(forward: THREE.Vector3): NonNullable<Simulation["mantle"]> | null {
+    const feet = this.position.y - TUNE.radius, reachTop = feet + TUNE.climbReach + 0.3;
+    const at = (d: number) => this.position.clone().addScaledVector(forward, d);
+    // The obstacle's face: the first probe more than a step above the feet.
+    let face = -1;
+    for (let d = 0.3; d <= 1.3; d += 0.1) {
+      const top = this.standTop(at(d).x, at(d).z, reachTop).height;
+      if (top - feet > 0.25) { face = d; break; }
+      if (top - feet < -0.6) return null; // a drop, not an obstacle
+    }
+    if (face < 0) return null;
+    // Its top: the highest point just past the face.
+    let rise = 0, normalY = 1;
+    for (const k of [0.02, 0.15, 0.3]) {
+      const s = this.standTop(at(face + k).x, at(face + k).z, reachTop);
+      if (s.height - feet > rise) { rise = s.height - feet; normalY = s.normalY; }
+    }
+    if (rise > TUNE.climbReach) return null; // out of reach
+    const top = feet + rise, edge = at(face).setY(top);
+    // Nothing overhead: room to rise from here to above the top.
+    const headroom = Math.max(1.9, rise + 1.2);
+    if (!this.lineClear(this.position.clone().setY(feet + 1), this.position.clone().setY(feet + headroom))) return null;
+    // Through the air above the top, at hip and head height.
+    for (const up of [0.45, 1.3])
+      if (!this.lineClear(this.position.clone().setY(top + up), edge.clone().addScaledVector(forward, 0.5).setY(top + up))) return null;
+    // Vault: a low obstacle that ends within a metre, with ground to land on beyond it.
+    if (rise <= TUNE.vaultHeight) {
+      for (let d = face + 0.15; d <= face + 1; d += 0.1) {
+        const s = this.standTop(at(d).x, at(d).z, top + 0.3);
+        if (s.height < top - 0.2) {
+          const land = at(d + 0.45), ground = this.standTop(land.x, land.z, top + 0.3);
+          const drop = feet - ground.height;
+          if (drop < -0.25 || drop > 1.6 || ground.normalY < 0.9) break;
+          if (Math.abs(this.standTop(at(d + 0.2).x, at(d + 0.2).z, top + 0.3).height - ground.height) > 0.2) break;
+          const end = land.setY(ground.height + TUNE.radius);
+          if (!this.standingClear(end)) break;
+          return { kind: "vault", start: this.position.clone(), end, edge, forward: forward.clone(), peak: top + TUNE.radius + 0.18, time: 0, duration: 0.5 + 0.12 * (d - face) + 0.08 * Math.max(0, drop) };
+        }
+      }
+    }
+    // Mantle / climb: onto a flat top with room to stand on it.
+    if (normalY < 0.9) return null;
+    // Deep enough to stand on (half a metre of top), with room for the body.
+    const end = at(face + 0.4), beyond = at(face + 0.55);
+    const standing = this.standTop(end.x, end.z, reachTop);
+    if (Math.abs(standing.height - top) > 0.15 || standing.normalY < 0.9) return null;
+    if (Math.abs(this.standTop(beyond.x, beyond.z, reachTop).height - top) > 0.15) return null;
+    end.y = standing.height + TUNE.radius;
+    if (!this.standingClear(end)) return null;
+    const climb = rise > TUNE.mantleHeight;
+    return { kind: climb ? "climb" : "mantle", start: this.position.clone(), end, edge, forward: forward.clone(), peak: end.y, time: 0, duration: climb ? 1.05 : 0.55 };
+  }
   private walk(dt: number, input: InputFrame) {
     if (this.mantle) {
       const m = this.mantle;
       m.time += dt;
-      const t = clamp(m.time / 0.55, 0, 1);
-      const horizontal = clamp((t - 0.4) / 0.6, 0, 1);
-      const eased = horizontal * horizontal * (3 - 2 * horizontal);
-      this.position.copy(m.start).lerp(m.end, eased);
-      this.position.y =
-        m.start.y +
-        (m.end.y - m.start.y) * Math.sin((Math.min(1, t / 0.6) * Math.PI) / 2) +
-        Math.sin(t * Math.PI) * 0.12;
+      const t = clamp(m.time / m.duration, 0, 1);
+      if (m.kind === "vault") {
+        // Plant, swing the legs over, land: one arc peaking over the obstacle.
+        const u = t * t * (3 - 2 * t);
+        this.position.copy(m.start).lerp(m.end, u);
+        const base = m.start.y + (m.end.y - m.start.y) * u;
+        const bump = Math.max(0, m.peak - Math.max(m.start.y, m.end.y)) / 0.85;
+        this.position.y = base + bump * Math.sin(Math.PI * Math.min(1, u * 1.08));
+      } else {
+        // Hands on the edge, pull up (slower and higher for a climb), step over.
+        const rise = m.kind === "climb" ? 0.62 : 0.4;
+        const horizontal = clamp((t - rise) / (1 - rise), 0, 1);
+        const eased = horizontal * horizontal * (3 - 2 * horizontal);
+        this.position.copy(m.start).lerp(m.end, eased);
+        this.position.y =
+          m.start.y +
+          (m.end.y - m.start.y) * Math.sin((Math.min(1, t / (rise + 0.2)) * Math.PI) / 2) +
+          Math.sin(t * Math.PI) * 0.12;
+      }
+      this.yaw += wrap(Math.atan2(m.forward.x, m.forward.z) - this.yaw) * (1 - Math.exp(-14 * dt));
       this.body.setTranslation(this.position, true);
       this.velocity.set(0, 0, 0);
       this.body.setLinvel(this.velocity, true);
       if (t === 1) {
         this.mantle = null;
         this.grounded = true;
+        this.lastGround = this.elapsed;
       }
       return;
     }
@@ -1539,30 +1645,13 @@ export class Simulation {
         desired.lengthSq() > 0.01
           ? desired.clone().normalize()
           : new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
-      for (const distance of [0.45, 0.75, 1, 1.25]) {
-        const end = this.position.clone().addScaledVector(forward, distance),
-          height = terrainHeight(end.x, end.z);
-        if (
-          height + 0.22 - this.position.y > 0.25 &&
-          height + 0.22 - this.position.y < 1.4 &&
-          terrainNormal(end.x, end.z).y > 0.93
-        ) {
-          end.y = height + 0.24;
-          if (
-            !this.world.intersectionWithShape(
-              end,
-              { x: 0, y: 0, z: 0, w: 1 },
-              new RAPIER.Ball(0.08),
-              undefined,
-              GROUPS.chassis,
-              undefined,
-              this.body,
-            )
-          ) {
-            this.mantle = { start: this.position.clone(), end, time: 0 };
-            return;
-          }
-        }
+      // Grounded, or rising in a foot jump (A again at the top grabs a ledge).
+      const move = (this.grounded || (this.footJumped && this.velocity.y > -1)) && !this.sitting && !this.jumpOn ? this.traversal(forward) : null;
+      if (move) {
+        this.mantle = move;
+        this.running = this.running && move.kind === "vault";
+        this.events.emit({ type: "traverse", kind: move.kind });
+        return;
       }
       if (this.grounded) {
         this.velocity.y = 6;
@@ -3210,6 +3299,7 @@ export class Simulation {
       sitting: this.sitting?.id ?? null,
       dropIn: { phase: this.dropIn.phase, lean: this.dropIn.lean },
       mantle: !!this.mantle,
+      traverse: this.mantle?.kind ?? null,
       stance: this.tricks.stance,
       pushButton: ridingButtons(this.tricks.stance, this.tricks.controlStyle)
         .pushLabel,
