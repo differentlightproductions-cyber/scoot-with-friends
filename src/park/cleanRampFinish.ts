@@ -48,11 +48,13 @@ export function applyCleanRampFinish(root: THREE.Object3D) {
           float retainedDetail = clamp((sourceLuma - .24) * .09, -.025, .03);
           vec3 midAmber = vec3(.19, .07, .018) * (1.0 + retainedDetail);
           diffuseColor.rgb = mix(sourceRampColor, midAmber, woodColor * .985);
-          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.68, .70, .72), cleanSteel);
+          // Coping and hardware read as dark worn copper, matching the
+          // grindable coping tubes, not a neutral silver/chrome.
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.43, .24, .13), cleanSteel);
         `);
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <roughnessmap_fragment>',
-          '#include <roughnessmap_fragment>\nroughnessFactor = mix(max(roughnessFactor, .72), .38, cleanSteel);',
+          '#include <roughnessmap_fragment>\nroughnessFactor = mix(max(roughnessFactor, .72), .42, cleanSteel);',
         );
       };
       const cache = material.customProgramCacheKey.bind(material);

@@ -10,7 +10,7 @@ export function capture(s:Simulation){
  Object.assign(p,{position:s.position.toArray(),airWeight:{shift:s.airWeight.shift},bodyFlip:pick(s.bodyFlip,['active','angle','velocity']),manual:pick(s.manual,['active','pitch','nose']),dropIn:pick(s.dropIn,['phase','lean']),emote:s.emote,heldItem:s.heldItem,sitting:s.sitting?{id:s.sitting.id}:null,fastplant:s.fastplant?{time:s.fastplant.time,foot:s.fastplant.foot.toArray(),launched:s.fastplant.launched}:null});
  p.board=pick(s.board,['lean','slide','slideSide','tuck','brake','pushTimer','travel','surfaceRoll']);
  p.tricks=pick(s.tricks,['stance','naturalDirection','quarterAir','yaw','visualPose','poseBlend','poseSide','fingerTime','fingerHand']);
- for(const k of ['deck','bars','bri','kickless'] as const)p.tricks[k]={...pick(s.tricks[k],['angle','velocity','mismatch']),reversals:[],reversalAge:s.tricks[k].reversalAge??1};
+ for(const k of ['deck','bars','bri','kickless','decade'] as const)p.tricks[k]={...pick(s.tricks[k],['angle','velocity','mismatch']),reversals:[],reversalAge:s.tricks[k].reversalAge??1};
  p.crash=s.crash?{age:s.crash.age,rest:s.crash.rest,rider:{position:s.crash.rider.translation(),rotation:s.crash.rider.rotation()},scooter:{position:s.crash.scooter.translation(),rotation:s.crash.scooter.rotation()}}:null;
  return JSON.parse(JSON.stringify(p));
 }
@@ -19,7 +19,8 @@ export class FreeRide {
  badge=document.createElement('div');ws:WebSocket|null=null;id='';code='';secret='';generation='';owner='';locked=false;status='Solo';lastError='';roster:any[]=[];remotes=new Map<string,Remote>();muted=new Set<string>();
  map='outdoor';loadMap=async(_map:string)=>{};prepare=async()=>{};onChange=()=>{};onLost=()=>{};onJoined=()=>{};seq=0;private timer:number;private intentional=false;private retryUntil=0;
  constructor(private scene:THREE.Scene,private profile:LocalProfile,private sim:()=>Simulation){this.badge.className='network-status';this.badge.hidden=true;document.body.append(this.badge);try{const saved=JSON.parse(sessionStorage.getItem('swf-room-resume')||'null');if(saved?.endpoint===this.endpoint){this.secret=saved.secret;this.code=saved.code;}}catch{}this.timer=window.setInterval(()=>{if(this.status==='Connected'&&!document.hidden)this.send({type:'pose',seq:++this.seq,generation:this.generation,pose:capture(this.sim())});},50);}
- get endpoint(){return import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
+ get lan(){return ['127.0.0.1','localhost'].includes(location.hostname)&&(window as any).__SWF_LAN__===true;}
+ get endpoint(){return this.lan?'ws://'+location.host+'/lan-room':import.meta.env.VITE_ROOM_SERVER_URL||(import.meta.env.DEV?'ws://127.0.0.1:8787':'');}
  send(value:any){if(this.ws?.readyState===WebSocket.OPEN&&this.ws.bufferedAmount<65536)this.ws.send(JSON.stringify(value));}
  private async revision(){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(activeLayout??null)));return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');}
  async changeMap(map:string){if(this.owner!==this.id){this.lastError='Only the room owner can choose a destination.';this.onChange();return;}if(!['outdoor','techno_gravity','b_hill'].includes(map)){this.lastError='Warehouse rooms are not ready yet.';this.onChange();return;}this.status='Loading';this.onLost();await this.loadMap(map);this.send({type:'map',map,mapRevision:await this.revision()});}
@@ -52,7 +53,7 @@ export class FreeRide {
    const t=THREE.MathUtils.clamp((target-a.at)/Math.max(1,b.at-a.at),0,1),p=structuredClone(t<.5?a.state:b.state);
    for(const key of ['yaw','pitch','roll','elapsed'])p[key]=THREE.MathUtils.lerp(a.state[key],b.state[key],t);
    for(const k of ['angle','velocity'])p.bodyFlip[k]=THREE.MathUtils.lerp(a.state.bodyFlip[k],b.state.bodyFlip[k],t);
-   for(const channel of ['deck','bars','bri','kickless'])for(const k of ['angle','velocity'])p.tricks[channel][k]=THREE.MathUtils.lerp(a.state.tricks[channel][k],b.state.tricks[channel][k],t);
+   for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.state.tricks[channel]&&b.state.tricks[channel])p.tricks[channel][k]=THREE.MathUtils.lerp(a.state.tricks[channel][k],b.state.tricks[channel][k],t);
    p.position=new THREE.Vector3().fromArray(a.state.position).lerp(new THREE.Vector3().fromArray(b.state.position),t);p.previousPosition=p.position;p.previousYaw=p.yaw;
    if(p.fastplant)p.fastplant.foot=new THREE.Vector3().fromArray(p.fastplant.foot);
    if(p.crash)for(const key of ['rider','scooter']){const body=p.crash[key];p.crash[key]={translation:()=>body.position,rotation:()=>body.rotation};}

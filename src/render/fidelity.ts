@@ -22,7 +22,10 @@ export class VisualFidelity {
    }
   });
   const crowns=scene.getObjectByName('tree-crowns') as THREE.InstancedMesh|undefined;
-  if(crowns){
+  // Hidden crowns mean authored trees replaced the procedural ones: the nearby
+  // layered canopies are built from those same crowns and must go with them.
+  if(crowns&&!crowns.visible)this.retireProceduralTrees();
+  if(crowns&&crowns.visible){
    if(this.farTrees!==crowns){this.treeMatrices=[];this.treeColors=[];for(let i=0;i<crowns.count;i++){const m=new THREE.Matrix4(),c=new THREE.Color();crowns.getMatrixAt(i,m);crowns.getColorAt(i,c);this.treeMatrices.push(m);this.treeColors.push(c);}}
    if(this.nearTrees){this.nearTrees.removeFromParent();this.nearTrees.geometry.dispose();this.nearTrees=undefined;}
    crowns.geometry.dispose();crowns.geometry=canopy(1);this.farTrees=crowns;
@@ -34,10 +37,13 @@ export class VisualFidelity {
  }
  update(player:THREE.Vector3,dt:number){
   for(const {light,offset}of this.shadowLights){const x=Math.round(player.x*16)/16,z=Math.round(player.z*16)/16;light.target.position.set(x,Math.round(player.y),z);light.position.copy(offset).add(light.target.position);light.target.updateMatrixWorld();}
+  if(this.farTrees&&!this.farTrees.visible)this.retireProceduralTrees();
   this.age+=dt;if(this.age<.3||!this.farTrees)return;this.age=0;let near=0,far=0;
   const range=this.quality==='low'?85:this.quality==='medium'?130:190;
   this.treeMatrices.forEach((m,i)=>{const dx=m.elements[12]-player.x,dz=m.elements[14]-player.z,d=Math.hypot(dx,dz);if(d>range)return;const target=this.nearTrees&&d<38?this.nearTrees:this.farTrees!;const index=target===this.nearTrees?near++:far++;target.setMatrixAt(index,m);target.setColorAt(index,this.treeColors[i]);});
   for(const [tree,count] of [[this.farTrees,far],[this.nearTrees,near]] as const)if(tree){tree.count=count;tree.instanceMatrix.needsUpdate=true;if(tree.instanceColor)tree.instanceColor.needsUpdate=true;tree.computeBoundingSphere();}
  }
+ /** Drops the procedural canopy layers once authored trees have replaced them. */
+ private retireProceduralTrees(){if(this.nearTrees){this.nearTrees.removeFromParent();this.nearTrees.geometry.dispose();}this.nearTrees=this.farTrees=undefined;this.treeMatrices=[];this.treeColors=[];}
  disposeScene(){this.materialFeatures.clear();this.scene=undefined;this.farTrees=this.nearTrees=undefined;this.treeMatrices=[];this.treeColors=[];}
 }

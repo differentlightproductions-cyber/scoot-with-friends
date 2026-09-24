@@ -198,11 +198,15 @@ export class ChaseCamera {
       this.fpPitch = clamp(this.fpPitch - input.ry * 1.5 * dt, -1.15, 0.9);
       look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12));
     } else {
-      // Mounted: RS belongs to tricks. Look forward along the head, tipped down
-      // enough to see hands, bars and deck.
-      this.fpPitch = damp(this.fpPitch, 0, 3, dt);
+      // Mounted: RS belongs to tricks. Baseline sits close to level ("head up"),
+      // so the ramps ahead stay visible; the eye height and rearward offset below
+      // keep the bars in the lower part of frame without needing a steep constant
+      // tilt. Going airborne on a trick attempt dips the view down further to
+      // focus on it, then eases back to level once grounded again.
+      const trickFocus = s.grounded ? 0 : 1;
+      this.fpPitch = damp(this.fpPitch, trickFocus, s.grounded ? 3.5 : 7, dt);
       this.fpYaw = s.yaw;
-      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.76 + flipping * 0.55));
+      look = headQuaternion.clone().multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, -0.24 - this.fpPitch * 0.38 + flipping * 0.4));
     }
     // A small rearward eye offset keeps the grips in front of the lens even
     // when the preload pose brings the rider's chin over the crossbar.

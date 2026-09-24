@@ -226,6 +226,7 @@ export class HUD {
         "<dt>RS CIRCULAR SWEEP</dt><dd>Complete a full circular sweep for Bri / Inward Bri from ground or air. Load first for a higher pop; kickless requires an active whip.</dd>" +
         "<dt>LS</dt><dd>Steer on ground; spin and shift weight forward/back in air</dd>" +
         "<dt>Y IN AIR</dt><dd>No-hander. RT + Y: Superman. LT + Y: Deck Grab. LT + LB + Y: Tuck.</dd>" +
+        "<dt>RT + RB IN AIR</dt><dd>Clamp Grab: one hand stays on the bar, the stance-side hand holds the clamp for as long as you hold both. Same buttons in both stances. Lets go just before landing.</dd>" +
         "<dt>BUMPERS + Y</dt><dd>LB: Can Can (LS chooses side). RB: One Foot. Both: No Foot. Release poses to land.</dd>" +
         "<dt>LT / RT ON GROUND</dt><dd>Brake / pump. LT near spine coping requests a stall. RT in air requests a grind.</dd>" +
         "<dt>GENTLE RS UP / DOWN</dt><dd>Nose manual / manual at 20–50% RS. Neutral settles the wheel. Deep RS down then up pops out.</dd>" +

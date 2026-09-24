@@ -8,6 +8,7 @@ const server=http.createServer(async(req,res)=>{
  const pathname=new URL(req.url,localOrigin).pathname;
  const json=(value,status=200)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'}).end(JSON.stringify(value));};
  if(pathname==='/local-admin'){json({enabled:!!owner});return;}
+ if(process.env.SWF_LAN_HOST&&pathname==='/api/public-park'){json({layout:null,revision:null,offline:true});return;}
  if(pathname==='/api/public-park'&&req.method==='GET'){try{const r=await fetch(publicOrigin+pathname,{signal:AbortSignal.timeout(4000)});if(!r.ok)throw Error();json(await r.json());}catch{json({layout:null,revision:null,offline:true});}return;}
  if(pathname==='/local-publish'&&req.method==='POST'){
   if(!owner||!['http://127.0.0.1:'+server.address().port,'http://localhost:'+server.address().port].includes(req.headers.origin)||req.headers['content-type']!=='application/json'){json({error:'Owner launcher required.'},403);return;}
@@ -17,8 +18,11 @@ const server=http.createServer(async(req,res)=>{
  let file;try{file=path.resolve(root,'.'+decodeURIComponent(pathname));}catch{res.writeHead(400).end();return;}
  if(file!==root&&!file.startsWith(root+path.sep)){res.writeHead(403).end();return;}
  if(file===root)file=path.join(root,'index.html');
+ if(process.env.SWF_LAN_HOST&&file===path.join(root,'index.html')){res.writeHead(200,{'Content-Type':'text/html','Cache-Control':'no-store'});res.end(fs.readFileSync(file,'utf8').replace('<head>','<head><script>window.__SWF_LAN__=true;</script>'));return;}
  fs.stat(file,(error,stat)=>{if(error||!stat.isFile()){res.writeHead(404).end('Not found');return;}res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','Cache-Control':'no-cache'});fs.createReadStream(file).pipe(res);});
 });
+const closeLan=process.env.SWF_LAN_HOST?require('./lan-runtime.cjs').attachLanRelay(server,process.env.SWF_LAN_HOST):()=>{};
+process.on('SIGINT',closeLan);process.on('SIGTERM',()=>{closeLan();server.close();});
 let port=owner?5199:5188;server.on('error',e=>{if(e.code==='EADDRINUSE'&&port<5220)server.listen(++port,'127.0.0.1');else{console.error('Unable to start the game:',e.message);process.exitCode=1;}});
 server.on('listening',()=>{const url='http://127.0.0.1:'+server.address().port;console.log('\nScoot with Friends'+(owner?' — Owner Edition':'')+'\n\nOpening '+url+'\nKeep this window open while playing. Close it to stop.\n');if(!process.env.SWF_NO_OPEN)spawn('cmd.exe',['/c','start','',url],{windowsHide:true});});
 server.listen(port,'127.0.0.1');process.on('SIGINT',()=>server.close(()=>process.exit()));

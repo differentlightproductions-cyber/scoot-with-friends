@@ -19,7 +19,8 @@ import {
 } from "../park/park";
 import { Tricks } from "../tricks/tricks";
 import { ManualBalance } from "../player/manual";
-import { classifyLanding } from "../player/landing";
+import { classifyLanding, crookedLandingAngle, surfaceAxis } from "../player/landing";
+import { pushFoot, sideSign } from "../core/stance";
 import { GrindContact, continueGrind, findGrind } from "../grind/grind";
 import { FakieControl } from "../player/fakie";
 import { AirSpinControl } from "../player/air-spin";
@@ -133,9 +134,17 @@ export class Simulation {
    * axis (forward or fakie) and the rider pivots slightly into their travel, so
    * they ride away rather than sliding out sideways. Speed is kept in proportion
    * to how straight the landing was.
+   *
+   * The axis is the one the deck actually has on this surface (surfaceAxis) and
+   * the same one the landing was graded against. It used to be the heading
+   * projected onto the surface, which across a steep quarter wall lies up to 60
+   * degrees from the deck while the grade compared flat yaw with flat travel:
+   * a landing graded sketchy was then turned 60-90 degrees, sending a rider who
+   * was coming down back UP the wall (relaunched off the coping on the same
+   * tick, up to six times in a row) or reversing their travel along it.
    */
   private absorbCrookedLanding(normal: THREE.Vector3) {
-    const heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)).projectOnPlane(normal).normalize();
+    const heading = surfaceAxis(this.yaw, normal);
     const speed = this.velocity.length();
     if (speed < 0.5 || heading.lengthSq() < 0.5) return;
     const along = this.velocity.dot(heading);
@@ -296,6 +305,35 @@ export class Simulation {
     const distance = (lip.lip - along) * lip.direction;
     return distance > -TUNE.quarterAirClearOutside && distance < TUNE.quarterAirClearInside;
   }
+  /**
+   * True while the rail guard sits over the coping of the ramp the rider is on.
+   * The guard is an upright capsule hung 0.26 m ahead along the HEADING and
+   * 0.05-0.81 m above the rider's centre, so on the steep top of a transition it
+   * overlaps the coping of the lip the rider faces whichever way they travel.
+   * The crossing clearance below keys on travel toward a lip and excludes
+   * manuals, so rolling back down under a lip the rider just failed to clear, a
+   * fakie roll-in, or a manual up the wall left the guard solid inside that
+   * coping: the solver then threw the rider (measured 1.6-6.1 m/s kicks, "Rail
+   * impact" bails). Only guard-versus-coping pairs are released, and in the air
+   * only while not travelling toward the lip, which is how a real case arrives.
+   */
+  private guardOverOwnCoping() {
+    if (!this.rampWorld || this.grind) return false;
+    const facing = outdoorLip(
+      this.position.x,
+      this.position.z,
+      Math.cos(this.yaw),
+      Math.sin(this.yaw),
+    );
+    if (!facing) return false;
+    if (this.grounded)
+      return this.normal.y < 0.95 || facing.module.kind === "box";
+    return this.velocity.dot(facing.forward) <= 0;
+  }
+  /** Collider handles of every coping pipe, for the contact filter. */
+  private copingHandles = new Set<number>();
+  private copingRailCount = -1;
+  private copingGuardClear = false;
   private launchLip(){
     const current=this.currentLip();
     return current ?? (this.velocity.y>0&&this.elapsed-this.lastGround<TUNE.coyoteTime?this.departureLip:null);
@@ -385,6 +423,7 @@ export class Simulation {
       const chassis = this.chassisHandle, guard = this.guardHandle;
       if (this.riderIntangible && (a === chassis || b === chassis || a === guard || b === guard)) return null;
       if (this.guardClear && (a === guard || b === guard)) return null;
+      if (this.copingGuardClear && (a === guard ? this.copingHandles.has(b) : b === guard && this.copingHandles.has(a))) return null;
       return this.grindCooldown > 0 && this.releasingRail !== undefined &&
         (a===this.releasingRail || b===this.releasingRail) ? null : RAPIER.SolverFlags.COMPUTE_IMPULSE;
     },
@@ -480,6 +519,7 @@ export class Simulation {
     this.riderIntangible = false;
     this.body.collider(0).setCollisionGroups(GROUPS.chassis);
     this.guardClear = false;
+    this.copingGuardClear = false;
     this.fakie.reset();
     this.airSpin.reset();
     this.railImpactCooldown = 0;
@@ -869,7 +909,13 @@ export class Simulation {
       );
       this.velocity.y = across * Math.sin(angle) + up * Math.cos(angle);
     }
-    const lip = fromGrind ? null : this.launchLip();
+    // The lip this pop leaves is the one under the rider when it was asked for
+    // (popLip). Looking it up again here read the velocity after the pop had
+    // already turned it: the lip helper only answers while travel heads toward
+    // the lip, so an LS-back lean (up to 49 degrees) that tipped the travel
+    // past vertical made the lip vanish, skipped its bounded takeoff below, and
+    // threw the rider 3-3.7 m/s backward off the quarter, spine or box.
+    const lip = popLip ?? (fromGrind ? null : this.launchLip());
     this.airQuarter=lip?.module.kind==="quarter"?lip:null;
     if (lip && lip.distance > -0.25 && lip.distance < 1.25) {
       // A deliberate takeoff owns the coping for the rest of its short
@@ -934,7 +980,8 @@ export class Simulation {
       const hit=this.world.castRayAndGetNormal(ray,6,true,undefined,undefined,undefined,this.body,c=>!this.park.railHandles.has(c.handle));
       return hit&&hit.normal.y>.3?this.position.y+.35-hit.timeOfImpact:null;
     };
-    const side=this.tricks.stance==='regular'?1:-1;
+    // The planted foot is the pushing (rear) foot: the rider's right in Regular.
+    const side=sideSign(pushFoot(this.tricks.stance));
     const foot=this.position.clone().add(new THREE.Vector3(Math.cos(this.yaw)*side*.23,0,-Math.sin(this.yaw)*side*.23));
     const ground=supportAt(foot);if(ground===null||Math.abs(this.position.y-.22-ground)>.32)return null;
     foot.y=ground;
@@ -1789,6 +1836,11 @@ export class Simulation {
       yaw: this.yaw,
       velocityYaw: Math.atan2(this.velocity.x, this.velocity.z),
       speed: this.speed,
+      // Judged on the landing surface against the axis the deck has there, the
+      // same angle absorbCrookedLanding turns the travel through. Flat yaw versus
+      // flat travel is the same thing on flat ground but means little on a
+      // near-vertical wall, where the travel is mostly vertical.
+      crookedAngle: crookedLandingAngle(this.velocity, support.normal, this.yaw),
       impact,
       deckAngle: this.tricks.deck.angle,
       barAngle: this.tricks.bars.angle,
@@ -1801,6 +1853,7 @@ export class Simulation {
     if (
       this.tricks.bri.mismatch > 1 ||
       this.tricks.kickless.mismatch > 1 ||
+      this.tricks.decade.mismatch > 1 ||
       this.tricks.poseBlend > 0.65
     )
       quality = "failed";
@@ -2870,6 +2923,8 @@ export class Simulation {
       // quarter wall is a whole flip at less than 360 raw degrees, a backflip at more.
       this.tricks.flip=this.bodyFlip.active?this.bodyFlip.angle-level:0;
       this.tricks.quarterAir=!!this.airQuarter;
+      // Seconds until the wheels land; Clamp Grab lets go a moment before then.
+      this.tricks.landingIn = Math.min(contact, fall);
       if (this.rideable === "scooter") this.tricks.input(dt, input, flipChord);
       this.captureGrind(input);
       if (input.held.pumpGrind <= 0.3) this.grindCandidate = "—";
@@ -2948,6 +3003,13 @@ export class Simulation {
         this.grind ? GROUPS.chassisSurfaceOnly : crossing ? GROUPS.chassisClearCoping : GROUPS.chassis,
       );
     this.guardClear = !!this.grind || crossing;
+    if (this.park.rails.length !== this.copingRailCount) {
+      this.copingRailCount = this.park.rails.length;
+      this.copingHandles = new Set(
+        this.park.rails.filter((r) => r.coping && r.colliderHandle !== undefined).map((r) => r.colliderHandle!),
+      );
+    }
+    this.copingGuardClear = this.guardOverOwnCoping();
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(
       new THREE.Quaternion().setFromAxisAngle(

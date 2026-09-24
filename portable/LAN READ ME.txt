@@ -1,0 +1,42 @@
+SCOOT WITH FRIENDS - LAN FREE-RIDE (TESTING)
+
+Both Windows PCs need this same extracted release and a network that allows
+them to connect to each other. No Node install or coding credits are needed.
+
+HOST
+1. Double-click Host LAN.cmd. Keep its window open.
+2. If Windows asks, allow Node on your PRIVATE network.
+3. Give your friend the local IPv4 address printed in the window.
+   If several addresses appear, use your Wi-Fi/Ethernet address (not a VPN).
+4. In the game choose Play > Private Free-ride > Create Private Room.
+5. Choose your guest name. Copy Invite and send that text to your friend.
+
+FRIEND
+1. Double-click Join LAN.cmd on your own PC.
+2. Enter the host's local IPv4 address when asked.
+3. In the game choose Play > Private Free-ride > Join Room.
+4. PASTE the invite into that prompt. Do not open the invite in a browser:
+   its localhost address refers to your own PC, not the host.
+
+Each PC runs the game at localhost so controller support remains available.
+Only the room connection travels across the LAN. Internet hosting is not
+required. Do not forward router ports for this LAN mode.
+
+CURRENT LIMITS
+Two players. Veterans Memorial Park first; the owner can then select Techno
+Gravity Shop. Warehouse multiplayer is not ready. Text entry currently uses
+browser prompts. Guest play only; online account login is on the public site.
+Progress is stored on each PC and does not sync with the website or friends.
+Always use the same release. Physics stay local; riders don't collide.
+Temporary disconnects have a 30-second reconnect window. Closing the HOST
+window ends the server for everyone; leaving a room in-game does not.
+
+If the host cannot be reached: keep Host LAN open, verify the address, and
+allow TCP port 8787/Node on the host's private-network firewall. School/guest
+Wi-Fi can isolate devices; ask the network administrator if that applies.
+If port 8787 is in use, close the previous LAN host first.
+Do not turn off your firewall or browser security.
+
+This release is tested with simulated clients on one Windows machine.
+Two physical PCs/controllers and school Wi-Fi are not yet verified.
+Use Play Scoot with Friends.cmd for ordinary offline solo play.

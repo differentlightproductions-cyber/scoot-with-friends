@@ -2,7 +2,7 @@ import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { grainTexture } from "./materials";
-import { benchPlanks, surfaceMaterial, surfaceTexture } from './art';
+import { benchPlanks, lawnTexture, surfaceMaterial, surfaceTexture } from './art';
 import { lathe } from '../scooter/surfaces';
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
@@ -202,6 +202,7 @@ export class Park {
     public world: RAPIER.World,
   ) {
     scene.userData.parkGeneration = (scene.userData.parkGeneration ?? 0) + 1;
+    scene.userData.assetLoads = [];
     // B Hill builds its own continuous road and hillside collision.
     if (ACTIVE_MAP === "b_hill") {
       buildBHill(this);
@@ -386,13 +387,14 @@ export class Park {
     const terrainMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.91,map:surfaceTexture('concrete')});
     terrainMaterial.onBeforeCompile=shader=>{
       shader.uniforms.woodGrain={value:surfaceTexture('wood')};
+      shader.uniforms.lawnGrain={value:lawnTexture(1,1)};
       shader.uniforms.detailedQuarterMask=this.detailedQuarterMask;
       shader.uniforms.detailedSmallBoxMask=this.detailedSmallBoxMask;
       shader.uniforms.detailedSpineMask=this.detailedSpineMask;
       shader.uniforms.detailedLargeBoxMask=this.detailedLargeBoxMask;
-      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform float detailedSpineMask;\nuniform float detailedQuarterMask;\nuniform float detailedSmallBoxMask;\nuniform float detailedLargeBoxMask;\n'+shader.fragmentShader;
+      shader.fragmentShader='uniform sampler2D woodGrain;\nuniform sampler2D lawnGrain;\nuniform float detailedSpineMask;\nuniform float detailedQuarterMask;\nuniform float detailedSmallBoxMask;\nuniform float detailedLargeBoxMask;\n'+shader.fragmentShader;
       shader.fragmentShader=shader.fragmentShader.replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>\nif((detailedSpineMask>.5 && vMapUv.x>=.36 && vMapUv.x<=8.50 && vMapUv.y>=-2.765 && vMapUv.y<=3.765) || (detailedQuarterMask>.5 && abs(vMapUv.x)<=13.26 && ((vMapUv.y>=22.0&&vMapUv.y<=30.0)||(vMapUv.y>=-30.0&&vMapUv.y<=-22.0))) || (detailedSmallBoxMask>.5&&vMapUv.x>=-4.26&&vMapUv.x<=1.26&&vMapUv.y>=-7.76&&vMapUv.y<=5.76) || (detailedLargeBoxMask>.5&&vMapUv.x>=-16.26&&vMapUv.x<=-3.74&&vMapUv.y>=-9.26&&vMapUv.y<=8.26)) discard;`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\n#endif\ndiffuseColor*=groundSample;`);
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\nelse if(vColor.g>vColor.r*1.1 && vColor.g>vColor.b*1.25)groundSample=vec4(texture2D(lawnGrain,vMapUv*.33).rgb/max(vColor.rgb,vec3(.05))*.92,1.0);\n#endif\ndiffuseColor*=groundSample;`);
     };
     const mesh = new THREE.Mesh(g,terrainMaterial);
     mesh.name = "Terrain surface";
@@ -420,7 +422,7 @@ export class Park {
   ) {
     const mesh = new THREE.Mesh(
       new RoundedBoxGeometry(size.x, size.y, size.z, 2, Math.min(.035,size.x*.08,size.y*.08,size.z*.08)),
-      Math.max(size.x,size.z)>2 && size.y<.5 ? surfaceMaterial(color,((color>>16)&255)>((color>>8)&255)*1.12?'wood':'concrete',size.x,size.z) : new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
+      Math.max(size.x,size.z)>2 && size.y<.5 ? surfaceMaterial(color,((color>>8)&255)>((color>>16)&255)*1.1&&((color>>8)&255)>(color&255)*1.25?'grass':((color>>16)&255)>((color>>8)&255)*1.12?'wood':'concrete',size.x,size.z) : new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
     );
     mesh.position.copy(pos);
     mesh.castShadow = true;
@@ -518,6 +520,12 @@ export class Park {
     ).castShadow = false;
     for (const z of [-18, -12]) this.bench("Warehouse bench " + z, -29, 0, z);
   }
+  /** The real ground height here (editor terrain edits included), so props
+   * sit on the surface instead of an assumed y = 0. Exposed on the park so
+   * scenery builders need not import this module and form an import cycle. */
+  groundHeight(x: number, z: number) {
+    return terrainHeight(x, z);
+  }
   rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id), solid?: THREE.Vector3) {
     this.rails.push({ id, a, b, kind, coping, solid: solid?.clone().setY(0).normalize() });
     const direction = b.clone().sub(a);
@@ -525,13 +533,15 @@ export class Park {
     const mid = a.clone().add(b).multiplyScalar(0.5);
     const mesh = new THREE.Mesh(
       lathe([[0,-length/2],[.04,-length/2],[.045,-length/2+.005],[.045,length/2-.005],[.04,length/2],[0,length/2]],32),
-      // Muted oxide red-brown: worn satin painted steel, not scarlet. Defined
-      // only here, inside rail(), so no scooter part, garment or sign shares it.
-      // Colour only - collider size, friction and grind behaviour are untouched.
+      // Muted oxide red-brown for street rails: worn satin painted steel, not
+      // scarlet. Coping (the ramp-edge lip riders grind) is a separate dark
+      // copper, not the rusty oxide tone - it reads as worn metal trim rather
+      // than a rusted-out rail. Colour only - collider size, friction and grind
+      // behaviour are untouched.
       new THREE.MeshStandardMaterial({
-        color: 0x8c4a33,
-        metalness: 0.45,
-        roughness: 0.58,
+        color: coping ? 0x6e4326 : 0x8c4a33,
+        metalness: coping ? 0.55 : 0.45,
+        roughness: coping ? 0.42 : 0.58,
       }),
     );
     mesh.position.copy(mid);
@@ -540,8 +550,8 @@ export class Park {
       direction.normalize(),
     );
     mesh.castShadow = true;
-    this.scene.add(mesh);
     mesh.name = id;
+    this.scene.add(mesh);
     this.railHandles.add(
       (mesh.userData.collider = this.world.createCollider(
         RAPIER.ColliderDesc.cylinder(length / 2, 0.045)

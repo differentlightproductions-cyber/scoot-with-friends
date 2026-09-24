@@ -14,6 +14,13 @@ export const GRIP_PALM_OFFSET = 0.012;
 export class ScooterAssembly {
  deckPivot=new THREE.Group();barPivot=new THREE.Group();wheels:THREE.Mesh[]=[];
  gripSockets:THREE.Object3D[]=[];deckSocket=new THREE.Object3D();
+ /**
+  * Centre of the equipped clamp on the stem, on the bar assembly so it turns with
+  * the bars. Grabs (Clamp Grab) target this instead of a hard-coded height, so
+  * a double, triple or segmented clamp is always found where it really sits.
+  * userData.radius is the clamp's outer radius in metres.
+  */
+ clampGrabAnchor=new THREE.Object3D();
  constructor(public root:THREE.Group,loadout:ScooterLoadout=defaultScooter()){this.build(loadout);}
  build(loadout:ScooterLoadout){
   const gs=new Set<THREE.BufferGeometry>(),ms=new Set<THREE.Material>();
@@ -100,6 +107,8 @@ export class ScooterAssembly {
   if(clamp.part.shape==='segmented')for(let row=0;row<3;row++)for(let face=0;face<10;face++){
    const angle=.25+face*(Math.PI*2-.5)/10;const geo=plate(.016,.013,.010,.002);geo.rotateX(Math.PI/2);geo.rotateY(angle);add(this.barPivot,geo,clamp.variant.color,clamp.part.id,'paint',v(Math.sin(angle)*.030,.343+row*.014,-.009+Math.cos(angle)*.030));
   }
+  this.clampGrabAnchor=new THREE.Object3D();this.clampGrabAnchor.name='ClampGrabAnchor';
+  this.clampGrabAnchor.position.set(0,.336+h/2,-.009);this.clampGrabAnchor.userData.radius=clamp.part.shape==='segmented'?.036:.03;this.barPivot.add(this.clampGrabAnchor);
   for(let i=0;i<n;i++){
    add(this.barPivot,extrusion([[-.020,-.007],[.020,-.007],[.023,.005],[.018,.009],[-.018,.009]],.012,.002),clamp.variant.color,clamp.part.id,'paint',v(0,.348+i*.021,-.035));
    rod(this.barPivot,v(-.024,.348+i*.021,-.035),v(.024,.348+i*.021,-.035),.003,0xb8cbc6,clamp.part.id,'steel');bolt(this.barPivot,v(-.026,.348+i*.021,-.035),clamp.part.id,.0055);

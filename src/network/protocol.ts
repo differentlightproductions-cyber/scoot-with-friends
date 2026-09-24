@@ -19,6 +19,7 @@ export function pose(value:any){
  const numeric=(o:any,keys:string[])=>o&&keys.every(k=>typeof o[k]==='number'&&Number.isFinite(o[k]));
  if(!numeric(value,['yaw','pitch','roll','speed','elapsed','charge','compression','getUpTimer','landTimer','landingCompression','popTimer','pushTimer','rampLean','steer'])||!numeric(value.bodyFlip,['angle','velocity'])||!numeric(value.airWeight,['shift'])||!numeric(value.manual,['pitch'])||!value.dropIn||!value.tricks)return null;
  for(const k of ['deck','bars','bri','kickless'])if(!numeric(value.tricks[k],['angle','velocity','mismatch']))return null;
+ if(value.tricks.decade!==undefined&&!numeric(value.tricks.decade,['angle','velocity','mismatch']))return null;
  if(!['regular','goofy'].includes(value.tricks.stance)||!numeric(value.tricks,['naturalDirection','poseBlend','poseSide','fingerTime','fingerHand']))return null;
  if(value.fastplant&&(!numeric(value.fastplant,['time'])||!Array.isArray(value.fastplant.foot)||value.fastplant.foot.length!==3||!value.fastplant.foot.every((n:any)=>typeof n==='number'&&Number.isFinite(n))||typeof value.fastplant.launched!=='boolean'))return null;
  if(value.rideable!==undefined&&!['scooter','longboard'].includes(value.rideable))return null;

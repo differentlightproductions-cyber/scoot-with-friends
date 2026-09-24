@@ -35,6 +35,9 @@ export interface TrickPrimitives {
   }[];
   motionOrder?: string[];
   fastplant?: boolean;
+  /** Full rider revolutions around the scooter (Decade), credited only when caught. */
+  decadeTurns?: number;
+  decadeAngle?: number;
 }
 export interface ResolvedTrick {
   name: string;
@@ -137,8 +140,10 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
     : raw.barTurns
       ? sequence(raw.barTurns, "Barspin", raw.barCatches)
       : "";
+  const decade = raw.decadeTurns ? counted(Math.abs(raw.decadeTurns), "Decade") : "";
   if (deck) parts.push(deck);
   if (bars) parts.push(bars);
+  if (decade) parts.push(decade);
   const briTurns = Math.trunc(
       (Math.abs(raw.briAngle ?? 0) + 0.2) / (Math.PI * 2),
     ),
@@ -176,6 +181,7 @@ export function resolveTrick(raw: TrickPrimitives): ResolvedTrick {
     ...(degrees ? [`${degrees}°`] : []),
     ...(rawDeck ? [rawDeck] : []),
     ...(bars ? [bars] : []),
+    ...(decade ? [decade] : []),
     ...extras,
     ...raw.states,
   ];

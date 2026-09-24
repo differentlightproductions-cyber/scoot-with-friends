@@ -11,7 +11,18 @@ export function surfaceTexture(kind:'wood'|'concrete'){
  }ctx.putImageData(d,0,0);if(kind==='wood'){ctx.strokeStyle='rgba(80,65,40,.10)';ctx.lineWidth=1;for(const x of [18,95,161,233]){ctx.beginPath();ctx.ellipse(x,117,3,37,.02,0,Math.PI*2);ctx.stroke();}}
  const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;cache.set(kind,t);return t;
 }
-export function surfaceMaterial(color:number,kind:'wood'|'concrete',sx=1,sz=1){
+// Photographed lawn (ambientCG "Grass004", CC0) instead of generated noise: tinted
+// concrete texture read as painted paving, not grass. One shared image; every
+// slab gets its own Texture so its repeat can follow its size, and each is
+// flagged for upload only once the image has actually arrived.
+let lawnImage:HTMLImageElement|undefined,lawnReady=false;const lawnTextures:THREE.Texture[]=[];
+export function lawnTexture(sx:number,sz:number){
+ if(!lawnImage){lawnImage=new Image();lawnImage.onload=()=>{lawnReady=true;lawnTextures.forEach(t=>{t.needsUpdate=true;});};lawnImage.src='/textures/grass-lawn.jpg?v=1';}
+ const t=new THREE.Texture(lawnImage);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;
+ t.repeat.set(sx/3,sz/3);if(lawnReady)t.needsUpdate=true;else lawnTextures.push(t);return t;
+}
+export function surfaceMaterial(color:number,kind:'wood'|'concrete'|'grass',sx=1,sz=1){
+ if(kind==='grass'){const m=new THREE.MeshStandardMaterial({color:0xffffff,map:lawnTexture(sx,sz),roughness:1});m.name='grass';return m;}
  const texture=surfaceTexture(kind).clone();texture.repeat.set(sx/(kind==='wood'?.3:1.6),sz/(kind==='wood'?2:1.6));texture.needsUpdate=true;
  const m=new THREE.MeshStandardMaterial({color,map:texture,bumpMap:texture,bumpScale:kind==='wood'?.001:.0006,roughness:kind==='wood'?.83:.94});m.name=kind;return m;
 }

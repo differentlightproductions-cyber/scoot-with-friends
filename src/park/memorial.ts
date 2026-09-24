@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { addParkPeople } from "./people";
 import { canopy, rockShape } from './art';
+import { loadNatureAsset, trackAssetLoad, PINE_TREE_URL, CAMELLIA_SHRUB_URL } from './nature';
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
@@ -660,6 +661,18 @@ export function buildMemorialGrounds(park: Park) {
     [-29, 20, 5],
   );
   for(let i=trees.length-1;i>=0;i--)if(!clearPlant(trees[i][0],trees[i][1],2.7))trees.splice(i,1);
+  // A rider should not be able to ride straight through a tree trunk. One
+  // fixed cylinder per tree, sized to the trunk rather than the full canopy
+  // so it does not block grinding or riding under low branches.
+  for (const [x, z, h] of trees) {
+    const ground = park.groundHeight(x, z), radius = 0.28, height = Math.min(h, 2.4);
+    park.world.createCollider(
+      RAPIER.ColliderDesc.cylinder(height / 2, radius)
+        .setTranslation(x, ground + height / 2, z)
+        .setFriction(0.1)
+        .setCollisionGroups(GROUPS.surface),
+    );
+  }
   const trunks = new THREE.InstancedMesh(
     mergeGeometries([
       new THREE.CylinderGeometry(.15,.34,1,16),
@@ -679,10 +692,11 @@ export function buildMemorialGrounds(park: Park) {
   const matrix = new THREE.Matrix4(),
     q = new THREE.Quaternion();
   trees.forEach(([x, z, h], i) => {
+    const ground = park.groundHeight(x, z);
     q.setFromAxisAngle(v(0,1,0), i*2.399);
-    matrix.compose(v(x, h / 2, z), q, v(1, h, 1));
+    matrix.compose(v(x, ground + h / 2, z), q, v(1, h, 1));
     trunks.setMatrixAt(i, matrix);
-    matrix.compose(v(x, h + 0.8, z), q, v(2.4, h * 0.55, 2.4));
+    matrix.compose(v(x, ground + h + 0.8, z), q, v(2.4, h * 0.55, 2.4));
     crowns.setMatrixAt(i, matrix);
     crowns.setColorAt(i,new THREE.Color().setHSL(.23+(i%4)*.008,.34,.29+(i%5)*.014));
   });
@@ -690,6 +704,34 @@ export function buildMemorialGrounds(park: Park) {
   trunks.name = "tree-trunks";
   crowns.name = "tree-crowns";
   scene.add(trunks, crowns);
+  // The authored pine tree replaces both procedural meshes at once (trunk and
+  // canopy are one mesh); the simple fallback stays visible until it loads.
+  // The scene is reused when a park is rebuilt, and every build waits on the
+  // same shared file request. A build that was replaced before the file arrived
+  // must not act at all: it would otherwise see the newer build's meshes and
+  // skip hiding that build's own fallback trees, which then stayed on screen.
+  const generation = scene.userData.parkGeneration,
+    isCurrentBuild = () => scene.userData.parkGeneration === generation;
+  trackAssetLoad(scene, loadNatureAsset(PINE_TREE_URL).then(({ geometry, material, height }) => {
+    if (!isCurrentBuild()) return;
+    const detailed = new THREE.InstancedMesh(geometry, material, trees.length);
+    detailed.name = "Detailed trees";
+    trees.forEach(([x, z, h], i) => {
+      q.setFromAxisAngle(v(0, 1, 0), i * 2.399);
+      const scale = h / height;
+      matrix.compose(v(x, park.groundHeight(x, z), z), q, v(scale, scale, scale));
+      detailed.setMatrixAt(i, matrix);
+    });
+    detailed.instanceMatrix.needsUpdate = true;
+    detailed.castShadow = true;
+    scene.add(detailed);
+    trunks.visible = false;
+    crowns.visible = false;
+    // The fidelity pass (render/fidelity.ts) builds nearby layered canopies out
+    // of the procedural crowns; they leave with them, immediately, not on the
+    // next frame the render loop happens to retire them.
+    scene.getObjectByName("Nearby layered foliage")?.removeFromParent();
+  }));
   addParkPeople(scene);
   // Bins and lamp bases use the same modest polygon and material budget as
   // nearby furniture, placed clear of riding paths.
@@ -727,6 +769,30 @@ export function buildMemorialGrounds(park: Park) {
   }
   shrubs.name = "bushes";
   scene.add(shrubs);
+  trackAssetLoad(scene, loadNatureAsset(CAMELLIA_SHRUB_URL).then(({ geometry, material, height }) => {
+    if (!isCurrentBuild()) return;
+    const detailed = new THREE.InstancedMesh(geometry, material, 120);
+    detailed.name = "Detailed shrubs";
+    for (let i = 0; i < 120; i++) {
+      const strip = i < 40 ? -42 : i < 80 ? 36 : -94;
+      const x = -105 + (i % 40) * 5.3,
+        z = strip + Math.sin(i * 2.3) * 1.8;
+      const entrance =
+        strip === -42 &&
+        (Math.abs(x) < 6 ||
+          Math.abs(x - 65) < 7 ||
+          Math.abs(x + 28) < 6 ||
+          Math.abs(x - 90) < 5);
+      const scale = (0.45 + (i % 3) * 0.12) / height;
+      q.setFromAxisAngle(v(0, 1, 0), i * 1.7);
+      matrix.compose(v(x, entrance || !clearPlant(x, z, 1.1) ? -2 : park.groundHeight(x, z), z), q, v(scale, scale, scale));
+      detailed.setMatrixAt(i, matrix);
+    }
+    detailed.instanceMatrix.needsUpdate = true;
+    detailed.castShadow = true;
+    scene.add(detailed);
+    shrubs.visible = false;
+  }));
   const rocks = new THREE.InstancedMesh(
     rockShape(),
     new THREE.MeshStandardMaterial({ color: 0x9b947f, roughness:.96 }),

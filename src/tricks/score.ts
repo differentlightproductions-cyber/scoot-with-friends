@@ -3,7 +3,7 @@ import { TUNE } from "../core/config";
 import { completedDegrees, type TrickPrimitives } from "./resolver";
 export function trickSignature(raw?: TrickPrimitives, name = "") {
   if (!raw) return name.toLowerCase().replace(/ out$/, "");
-  return JSON.stringify([completedDegrees(raw.bodyYaw),Math.sign(raw.flipPitch)*Math.floor((Math.abs(raw.flipPitch)*180/Math.PI+TUNE.flipNameTolerance)/360),!!raw.fastplant, raw.deckTurns, raw.barTurns,
+  return JSON.stringify([completedDegrees(raw.bodyYaw),Math.sign(raw.flipPitch)*Math.floor((Math.abs(raw.flipPitch)*180/Math.PI+TUNE.flipNameTolerance)/360),!!raw.fastplant, raw.deckTurns, raw.barTurns, raw.decadeTurns ?? 0,
     raw.finger ?? false, Math.round((raw.briAngle ?? 0) / (Math.PI * 2)),
     Math.round((raw.kicklessAngle ?? 0) / (Math.PI * 2)),
     raw.deckReversals?.length ?? 0, raw.barReversals?.length ?? 0,
@@ -15,7 +15,7 @@ export function trickValue(raw?: TrickPrimitives) {
   const values = [completedDegrees(raw.bodyYaw) / 180 * TUNE.rotationPointsPer180,
     Math.floor((Math.abs(raw.flipPitch)*180/Math.PI+TUNE.flipNameTolerance)/360)*450,
     Math.abs(raw.deckTurns) * TUNE.deckTurnPoints * (raw.finger ? 1.35 : 1),
-    Math.abs(raw.barTurns) * TUNE.barTurnPoints, raw.states.length * TUNE.bodyTrickPoints,
+    Math.abs(raw.barTurns) * TUNE.barTurnPoints, Math.abs(raw.decadeTurns ?? 0) * TUNE.decadePoints, raw.states.length * TUNE.bodyTrickPoints,
     Math.trunc((Math.abs(raw.briAngle ?? 0) + 0.2) / (Math.PI * 2)) * 300,
     Math.trunc((Math.abs(raw.kicklessAngle ?? 0) + 0.2) / (Math.PI * 2)) * 200,
     ((raw.deckReversals?.length ?? 0) + (raw.barReversals?.length ?? 0)) * 100];

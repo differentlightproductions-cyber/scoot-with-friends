@@ -1,18 +1,22 @@
 import { OUTDOOR } from './park';
 import { activeLayout, localXZ } from "../editor/layout";
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { GLTFLoader, type GLTF } from "three/addons/loaders/GLTFLoader.js";
 import {addDesertRidges} from './ridges';
 import type { Park } from "./park";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { GROUPS } from "../physics/groups";
 import { applyCleanRampFinish } from "./cleanRampFinish";
+import { loadNatureAsset, CLOUD_URL, trackAssetLoad } from "./nature";
 import {
   buildMemorialGrounds,
   extensionHeight,
   metalQuarters,
 } from "./memorial";
 
+function loadDetailed(scene: THREE.Scene, url: string, onLoad: (gltf: GLTF) => void) {
+  trackAssetLoad(scene, new GLTFLoader().loadAsync(url).then(onLoad));
+}
 export const outdoorSpawns = [
   { name: "WOOD PARK / RUNWAY", x: -10, z: -19, yaw: 0 },
   { name: "SMALL BOX", x: -1.5, z: 13, yaw: Math.PI },
@@ -303,6 +307,35 @@ export function buildOutdoor(park: Park) {
   });
   sun.shadow.normalBias = 0.035;
   scene.add(sun);
+  // A handful of large, distant clouds - too far and too soft to usefully cast
+  // shadows or receive them, so both stay off for this instance.
+  const skyGeneration = scene.userData.parkGeneration;
+  trackAssetLoad(scene, loadNatureAsset(CLOUD_URL).then(({ geometry, width: sourceWidth }) => {
+    // A park rebuilt before the file arrived leaves this callback pending for a
+    // scene that has since been cleared and rebuilt; only the newest build acts.
+    if (scene.userData.parkGeneration !== skyGeneration) return;
+    const count = 22;
+    // The scanned base-color/normal maps read as a dark, mottled grey under
+    // this scene's lights instead of a bright sunlit puff. A flat white
+    // material lets the low-poly geometry's own soft shading read as fluff.
+    const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+    const clouds = new THREE.InstancedMesh(geometry, material, count);
+    clouds.name = "Sky clouds";
+    const matrix = new THREE.Matrix4(),
+      q = new THREE.Quaternion();
+    for (let i = 0; i < count; i++) {
+      const x = -130 + ((i * 53) % 260);
+      const z = -140 + ((i * 71) % 200);
+      const y = 42 + (i % 5) * 4;
+      const width = 34 + (i % 4) * 12;
+      const scale = width / sourceWidth;
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), i * 1.13);
+      matrix.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(scale, scale * 0.8, scale));
+      clouds.setMatrixAt(i, matrix);
+    }
+    clouds.instanceMatrix.needsUpdate = true;
+    scene.add(clouds);
+  }));
   const box = (
     x: number,
     y: number,
@@ -327,7 +360,8 @@ export function buildOutdoor(park: Park) {
         indices: number[] = [];
       for (let i = 0; i <= 72; i++) {
         const z = m.z0 + ((m.z1 - m.z0) * i) / 72;
-        vertices.push(x, 0, z, x, profile(m, z), z);
+        // Cladding covers only the upper slope near the coping, not the full drop to the ground.
+        vertices.push(x, profile(m, z) * 0.45, z, x, profile(m, z), z);
         if (i < 72) {
           const a = i * 2;
           indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -592,7 +626,7 @@ export function buildOutdoor(park: Park) {
     for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.dispose();
   });
   if (new URLSearchParams(location.search).get("tripoQuarter") !== "0")
-    new GLTFLoader().load("/models/park/wooden-quarter.glb?v=4", ({ scene: source }) => {
+    loadDetailed(scene, "/models/park/wooden-quarter.glb?v=4", ({ scene: source }) => {
     if (stale()) { disposeModel(source); return; }
     for (const m of modules.filter((module) => module.kind === "quarter")) {
       const name = `Detailed ${m.id}`;
@@ -647,7 +681,7 @@ export function buildOutdoor(park: Park) {
     }
     park.showDetailedQuarters();
     });
-  new GLTFLoader().load("/models/park/small-box.glb?v=4", ({ scene: model }) => {
+  loadDetailed(scene, "/models/park/small-box.glb?v=4", ({ scene: model }) => {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed small-box")) { disposeModel(model); return; }
     model.name = "Detailed small-box";
@@ -671,7 +705,7 @@ export function buildOutdoor(park: Park) {
     quarterFallbacks.get("small-box")?.forEach((object) => { object.visible = false; });
     park.showDetailedSmallBox();
   });
-  new GLTFLoader().load("/models/park/large-box.glb?v=4", ({ scene: model }) => {
+  loadDetailed(scene, "/models/park/large-box.glb?v=4", ({ scene: model }) => {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed large-box")) { disposeModel(model); return; }
     model.name = "Detailed large-box";
@@ -691,7 +725,7 @@ export function buildOutdoor(park: Park) {
     quarterFallbacks.get("large-transfer")?.forEach((object) => { object.visible = false; });
     park.showDetailedLargeBox();
   });
-  new GLTFLoader().load("/models/park/wood-hub.glb?v=4", ({ scene: model }) => {
+  loadDetailed(scene, "/models/park/wood-hub.glb?v=4", ({ scene: model }) => {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed wood-hub")) { disposeModel(model); return; }
     model.name = "Detailed wood-hub";
@@ -710,7 +744,7 @@ export function buildOutdoor(park: Park) {
     scene.add(model);
     hubFallback.forEach((object) => { object.visible = false; });
   });
-  new GLTFLoader().load("/models/park/spine.glb?v=7", ({ scene: model }) => {
+  loadDetailed(scene, "/models/park/spine.glb?v=7", ({ scene: model }) => {
     if (stale()) { disposeModel(model); return; }
     if (scene.getObjectByName("Detailed spine")) { disposeModel(model); return; }
     model.name = "Detailed spine";
@@ -732,6 +766,40 @@ export function buildOutdoor(park: Park) {
       }
     });
     applyCleanRampFinish(model);
+    // The source metalness map flags "clean steel" well past the actual coping
+    // trim, reading as a second silver band reaching too far down the ramp
+    // face. Bake each vertex's height fraction and gate the steel
+    // classification on it, so only the top of the ramp (near the coping)
+    // keeps the brushed-metal look and the bottom 45% renders as plain wood.
+    model.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      for (const material of materials) {
+        if (!(material instanceof THREE.MeshStandardMaterial) || !material.map) continue;
+        object.geometry.computeBoundingBox();
+        const top = object.geometry.boundingBox!.max.y || 1;
+        const position = object.geometry.getAttribute("position");
+        const mask = new Float32Array(position.count);
+        for (let i = 0; i < position.count; i++) mask[i] = position.getY(i) / top > 0.75 ? 1 : 0;
+        object.geometry.setAttribute("steelHeightMask", new THREE.BufferAttribute(mask, 1));
+        const previous = material.onBeforeCompile;
+        material.onBeforeCompile = (shader, renderer) => {
+          previous.call(material, shader, renderer);
+          shader.vertexShader = "attribute float steelHeightMask;\nvarying float vSteelHeightMask;\n" + shader.vertexShader.replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvSteelHeightMask = steelHeightMask;",
+          );
+          shader.fragmentShader = "varying float vSteelHeightMask;\n" + shader.fragmentShader.replace(
+            "cleanSteel = smoothstep(.35, .72, sourceMetal);",
+            "cleanSteel = smoothstep(.35, .72, sourceMetal) * vSteelHeightMask;",
+          );
+        };
+        const cache = material.customProgramCacheKey.bind(material);
+        const key = cache();
+        material.customProgramCacheKey = () => key + "|spine-steel-height-cut-1";
+        material.needsUpdate = true;
+      }
+    });
     scene.add(model);
     quarterFallbacks.get("spine")?.forEach((object) => { object.visible = false; });
     park.showDetailedSpine();

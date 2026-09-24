@@ -68,3 +68,27 @@ Status: TODO / IN PROGRESS / DONE (commit).
 - DONE Flips/spins as one body, released spin settles on half turns (68bfd2a)
 - DONE One-flip intent (f7bf926)
 - DONE Sesh Music (aa1beb4)
+
+## G. Session 2026-09-23 (branch `codex/claude-release-lan`, checkout `work/claude-release-lan`)
+
+Done and verified in headless Chrome (software rendering; no real controller or GPU run):
+- DONE (tests/nature-review, tests/asset-swap) Authored pine tree, camellia shrub and cloud models: baked (quantization applied), planted on the real terrain (0 buried / 0 floating of 30 trees, 79 shrubs), old procedural trees, canopy layers, bushes and clouds retired; the loading screen now waits for the authored ramps, trees, shrubs and clouds so the plain versions never flash.
+- DONE Photographed lawn texture (ambientCG Grass004, CC0; credit in THIRD_PARTY_NOTICES.md) on grass slabs and the terrain grass band. Silver spine band trimmed/recoloured copper; coping colour; first-person mounted pitch.
+- DONE (tests/christian-pose-review) Imported Christian rig: fixed-length IK for arms and legs, hands on grips (1.2 cm), soles on the deck, limb stretch <= 1.5%, per-bone-oriented arm frames. Everyday poses pass; see "Still open" for the tricks that do not.
+- DONE (tests/lip-launch, tests/lip-landing.test.ts, physics acceptance 53/53) Ramp coping launch fixes: pop() used a stale lip after LS lean, the rail-guard capsule caught the rider's own coping, angled quarter-air landings were re-launched off the coping.
+- DONE (tests/lan.test.ts) LAN hosting (Host LAN / Join LAN launchers, server/lan.ts) ported from `feature/private-multiplayer` (was uncommitted there).
+- DONE (src/core/stance.ts, tests/stance-push.browser.mjs) Stance: one canonical place says which foot/hand a stance means. Regular: left foot forward, RIGHT foot pushes; Goofy: RIGHT forward, LEFT pushes. The model and fast-plant were reversed. Fakie and the return from fakie keep the configured stance and the push foot.
+- DONE (tests/clamp-decade.test.ts, tests/clamp-grab.browser.mjs) #17 Clamp Grab: RT + RB in the air, same buttons in both stances; Regular right hand / Goofy left hand takes the clamp (ClampGrabAnchor on the scooter assembly), other hand stays on the bar; hold, release, lets go 0.17 s before touchdown; no extra jump or spin; names "Clamp Grab", "180 Clamp Grab", "Backflip + Clamp Grab".
+- DONE (tests/decade.browser.mjs, tests/decade-visual.browser.mjs) #16 Decade: A in the air; rider and bars go once round the steering axis while the deck stays put; lifecycle START/ACTIVE/CATCH/CAUGHT tracked in `Tricks.decade`; hop, higher hop, quarter air, 180 + Decade, flips + Decade land clean; a late A bails ("Unaligned landing"); Regular/Goofy mirror.
+
+Paused for the owner (the prompt conflicts with an existing rule, so it was left alone):
+- PAUSED Decade on A in Goofy Pro: A is Goofy's tailwhip button (src/input/riding.ts swaps A/X between Normal and Goofy). #16 says A, #17/#18 say buttons never change with stance. Decade is wired to A wherever A is not the whip button (Regular Pro, both stances in Arcade); Goofy Pro has no Decade input yet.
+- PAUSED #18 "the Push input must be the same button in both stances": the shipped Normal/Goofy control presets deliberately swap A (push) and X (push) with stance. Not changed. Only the push FOOT was fixed.
+- PAUSED Off-scooter scooter side: the scooter is always held on the rider's left while walking; the prompt does not say which side each stance should use.
+
+Still open:
+- TODO Wire the 27 Tripo animation clips (walk/run/ride/sit...) and an Emotes customization tab (6 wheel slots, all clips selectable for testing). Source: Downloads "christian+model+with+animations.glb" (27 clips, 65 joints).
+- TODO New mountain model (owner will supply); current mountains fade in and out. Female model not started.
+- TODO Trick poses whose hand cannot reach with Christian's 0.39 m arms: finger whip, Deck Grab, Superman (grab hand), Bri/Inward mid-spin. They need redesigning (deeper tuck / grab the front of the deck), not a new character.
+- TODO Small box: invisible sloped wall at x about -3.8 kicks riders sideways (~6 m/s) from the +-0.125 m margin in outdoorHeight (src/park/outdoor.ts).
+- TODO Consolidation: remove every extra copy of the game from the PC (work/, releases/, Desktop and Documents packaged copies; Documentsscooter-town is an unrelated Godot project, ask first), keeping one checkout in Documents and GitHub. Not done: needs the owner's go-ahead on the exact delete list.

@@ -272,6 +272,7 @@ export const TUNE = {
   deckTurnPoints: 150,
   barTurnPoints: 100,
   bodyTrickPoints: 100,
+  decadePoints: 200,
   contactTrickPoints: 75,
   hopMin: 3.7,
   hopMax: 7.2,
@@ -282,6 +283,12 @@ export const TUNE = {
   deckMaxSpeed: 21,
   barAcceleration: 220,
   barMaxSpeed: 26,
+  // The rider's revolution around the scooter for a Decade. Heavier than a deck
+  // whip: about 0.55 s for the full turn, so it needs a real hop or air.
+  decadeAcceleration: 120,
+  decadeMaxSpeed: 15,
+  // A Decade caught this close (radians) to the full turn still counts.
+  decadeCatchTolerance: 0.6,
   // --- Landing grades: PERFECT (internally "clean") / GOOD / SKETCHY / BAIL --
   // Every measurement is taken relative to the receiving surface, never world
   // up. Below the clean* limits is PERFECT; between clean* and good* is GOOD, a

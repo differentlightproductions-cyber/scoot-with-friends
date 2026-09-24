@@ -6,6 +6,7 @@ $runtime = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
 if (-not $runtime) { $runtime = 'C:\Users\NickO\AppData\Local\pi-node\current\node.exe' }
 if (-not (Test-Path -LiteralPath $runtime)) { throw 'Node 22 runtime not found. Install Node and retry.' }
 if (-not (Test-Path -LiteralPath "$projectRoot\dist\client\index.html")) { throw 'Build the game before packaging.' }
+if (-not (Test-Path -LiteralPath "$projectRoot\dist\lan\lan-runtime.cjs")) { throw 'Run node scripts/build-lan.mjs before packaging.' }
 $hasOwner = Test-Path -LiteralPath "$projectRoot\owner-private.json"
 $packages = @('Scoot-with-Friends-Windows')
 if ($hasOwner) { $packages += 'Scoot-with-Friends-Owner' }
@@ -19,6 +20,7 @@ foreach ($name in $packages) {
     Copy-Item -Path "$projectRoot\dist\client\*" -Destination "$destination\game" -Recurse -Force
     Copy-Item -LiteralPath "$projectRoot\portable\server.cjs", "$projectRoot\portable\Play Scoot with Friends.cmd", "$projectRoot\portable\READ ME.txt" -Destination $destination -Force
     Copy-Item -LiteralPath $runtime -Destination "$destination\runtime\node.exe" -Force
+    Copy-Item -LiteralPath "$projectRoot\dist\lan\lan-runtime.cjs", "$projectRoot\portable\lan-start.cjs", "$projectRoot\portable\Host LAN.cmd", "$projectRoot\portable\Join LAN.cmd", "$projectRoot\portable\LAN READ ME.txt" -Destination $destination -Force
     $zip = Join-Path $projectRoot "releases\$name.zip"
     if ($name -eq 'Scoot-with-Friends-Owner') {
         Copy-Item -LiteralPath "$projectRoot\owner-private.json", "$projectRoot\portable\Owner Editor.cmd", "$projectRoot\portable\OWNER READ ME.txt" -Destination $destination -Force

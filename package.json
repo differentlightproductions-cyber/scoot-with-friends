@@ -22,7 +22,8 @@
     "rooms": "tsx server/start-rooms.ts",
     "build:rooms": "tsc --noEmit -p tsconfig.rooms.json && node scripts/build-rooms.mjs",
     "start:rooms": "node dist/rooms/start.mjs",
-    "music:sync": "node scripts/music-sync.mjs"
+    "music:sync": "node scripts/music-sync.mjs",
+    "build:lan": "node scripts/build-lan.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.19.3",

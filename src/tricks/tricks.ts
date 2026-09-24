@@ -4,6 +4,8 @@ import { resolveTrick, TrickRecord, TrickPrimitives } from "./resolver";
 import type { InputFrame } from "../input/input";
 import { StickGesture } from "./gesture";
 import { ridingButtons } from "../input/riding";
+/** Clamp Grab hands back to the bar this many seconds before the wheels land. */
+const CLAMP_RELEASE_TIME = 0.17;
 // A torque-limited rotational channel. Inputs add angular targets; angle and angular
 // velocity remain continuous, and an unfinished catch remains a landing hazard.
 export class RotationChannel {
@@ -175,10 +177,64 @@ export class Tricks {
   get naturalDirection() {
     return this.stance === "regular" ? 1 : -1;
   }
+  /**
+   * Decade: the rider (with the bars) goes once around the front of the scooter
+   * while the deck stays put. Signed radians of that orbit; separate from the
+   * body spin (yaw), flips and deck/bar channels so they all compose.
+   */
+  decade = new RotationChannel(TUNE.decadeAcceleration, TUNE.decadeMaxSpeed);
+  private decadeStarted = false;
+  /** True from the input until the rider is back over the deck. */
+  get decadeActive() {
+    return this.decade.target !== 0 && this.decadePhase !== "caught";
+  }
+  /**
+   * START -> ACTIVE -> CATCH WINDOW -> CAUGHT, read from the tracked angle.
+   * Only "caught" (back over the deck, within tolerance of the full turn) can
+   * become a landed Decade; anything earlier at touchdown is a bail.
+   */
+  get decadePhase(): "idle" | "active" | "catch" | "caught" {
+    if (this.decade.target === 0) return "idle";
+    const remaining = Math.abs(this.decade.target - this.decade.angle);
+    if (remaining < 0.02 && Math.abs(this.decade.velocity) < 1) return "caught";
+    return remaining < 1.0 ? "catch" : "active";
+  }
+  /** Revolutions completed so far, credited when the rider is within tolerance of the full turn. */
+  get decadeCompleted() {
+    return Math.abs(this.decade.angle) >= TAU - TUNE.decadeCatchTolerance ? 1 : 0;
+  }
+  private decadeSettling = false;
+  /**
+   * Begins one Decade when the hands, deck and bars are all free, once per air.
+   * Direction follows the stance (mirrored for Goofy) like every other rotation:
+   * the deck turns against the rider by what a natural tailwhip would.
+   */
+  startDecade() {
+    if (
+      !this.airborne ||
+      this.decadeStarted ||
+      this.pendingBumper ||
+      this.poseBlend >= 0.05 ||
+      Math.abs(this.deck.velocity) >= 1 ||
+      this.deck.mismatch >= 0.3 ||
+      Math.abs(this.bars.velocity) >= 1 ||
+      this.bars.mismatch >= 0.3
+    )
+      return false;
+    this.decadeStarted = true;
+    this.decade.kick(-this.naturalDirection);
+    return true;
+  }
   bri = new RotationChannel(130, 15);
   kickless = new RotationChannel(110, 17);
   gesture = new StickGesture();
   finger = false;
+  /**
+   * Seconds until the wheels reach the surface below, written by the simulation
+   * each airborne frame. Clamp Grab lets go this long before touchdown so the
+   * hand is back on the bar when the landing is judged.
+   */
+  landingIn = 99;
   fingerTargets: { angle: number; direction: number; hand: number }[] = [];
   fingerHand = 1;
   fingerTime = 0;
@@ -201,7 +257,25 @@ export class Tricks {
   input(dt: number, input: InputFrame, flipChord=false) {
     const buttons = ridingButtons(this.stance, this.controlStyle);
     const heel = !flipChord && input.held.brake > 0.5;
-    const finger = !flipChord && input.held.pumpGrind > 0.5;
+    // RT + RB is Clamp Grab in every stance and control style: one hand stays on
+    // the bar, the stance-side hand reaches the clamp. It needs a free hand and
+    // an unspun bar, so it waits while a bar spin, finger whip, rewind or Bri /
+    // Kickless owns the hands, and lets go shortly before the wheels land.
+    const barsBusy = Math.abs(this.bars.velocity) > 1 || this.bars.mismatch > 0.3;
+    const handsBusy =
+      barsBusy ||
+      this.decadeActive ||
+      this.fingerTime > 0 ||
+      !!this.pendingBumper ||
+      Math.abs(this.bri.velocity) > 1 ||
+      Math.abs(this.kickless.velocity) > 1;
+    const clampWanted =
+      input.held.pumpGrind > 0.5 &&
+      input.held.rightModifier > 0.5 &&
+      !this.consumedBumpers.has("rightModifier") &&
+      !handsBusy &&
+      this.landingIn > CLAMP_RELEASE_TIME;
+    const finger = !flipChord && !clampWanted && input.held.pumpGrind > 0.5;
     const direction = this.naturalDirection * (heel ? -1 : 1);
     for (const action of ["leftModifier", "rightModifier"] as const)
       if (input.held[action] < 0.5 && !input.pressed[action])
@@ -271,7 +345,11 @@ export class Tricks {
       });
     }
     this.fingerTime = Math.max(0, this.fingerTime - dt);
-    if (!this.pendingBumper)
+    // Decade: A in the air. Where A is already the whip button (Goofy's Pro
+    // preset) the Decade has no input yet; that binding is an owner decision.
+    const decadeActive = this.decadeActive;
+    if (buttons.whip !== "hop" && input.pressed.hop && !clampWanted) this.startDecade();
+    if (!this.pendingBumper && !decadeActive)
       this.deck.input(
         dt,
         whipPressed,
@@ -286,14 +364,14 @@ export class Tricks {
       !this.consumedBumpers.has("leftModifier");
     this.bars.input(
       dt,
-      input.pressed[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"],
+      input.pressed[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"] && !clampWanted && !decadeActive,
       input.held[this.controlStyle === "arcade" ? "pushDeck" : "brakeBars"] >
-        0.5,
+        0.5 && !clampWanted && !decadeActive,
       this.naturalDirection * (rb ? -1 : 1),
     );
     this.deck.maxSpeed = TUNE.deckMaxSpeed * (this.fingerTime > 0 ? 0.72 : 1);
     let pose = "";
-    if (input.held.body > 0.5) {
+    if (input.held.body > 0.5 && !decadeActive) {
       this.gesture.reset();
       // Inside a flip the chord holds RT, so Y is a no-hander rather than Superman.
       pose = flipChord
@@ -312,8 +390,9 @@ export class Tricks {
                     ? "One-footer"
                     : "No-hander";
     } else {
+      if (clampWanted) pose = "Clamp Grab";
       const gesture = this.gesture.step(dt, input.rx, input.ry);
-      if (gesture?.kind === "bri") this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
+      if (gesture?.kind === "bri" && !clampWanted) this.bri.kick(gesture.direction*(gesture.short?this.naturalDirection:1));
       if(this.gesture.upFlick&&(Math.abs(this.deck.velocity)>1||this.pendingBumper))this.kicklessBuffer=.16;
       this.kicklessBuffer=Math.max(0,this.kicklessBuffer-dt);
       if(this.kicklessBuffer>0&&(this.deck.canRewind||this.pendingBumper)&&Math.abs(this.kickless.velocity)<1){
@@ -401,17 +480,22 @@ export class Tricks {
     this.completed = { deck: 0, bri: 0, kickless: 0 };
     this.deck.reset();
     this.bars.reset();
+    this.decade.reset();
+    this.decadeStarted = false;
+    this.decadeSettling = false;
     this.yaw = 0;
     this.flip = 0;this.flairContext=false;this.quarterAir=false;
     this.fastplant = false;
     this.body.clear();
     this.bodyTime = 0;
     this.airborne = true;
+    this.landingIn = 99;
     this.fromLink = fromLink;
   }
   step(dt: number, bodyState: string, manip: number) {
     this.deck.step(dt, manip);
     this.bars.step(dt, manip);
+    this.decade.step(dt);
     this.bri.step(dt);
     this.kickless.step(dt);
     for (const event of this.kicklessHistory)
@@ -436,7 +520,11 @@ export class Tricks {
     if (!this.airborne) return;
     this.airborne = false;
     this.landing = quality;
-    if (quality === "failed") return;
+    if (quality === "failed") {
+      this.decade.reset();
+      this.decadeStarted = false;
+      return;
+    }
     const raw = this.primitives();
     const resolved = resolveTrick(raw);
     if (resolved.name) {
@@ -447,6 +535,13 @@ export class Tricks {
     }
     this.deck.reset();
     this.bars.reset();
+    // A Decade caught just short of the full turn finishes its last few degrees
+    // on the ground (see tick) instead of snapping back over the deck.
+    if (this.decade.target !== 0 && this.decadePhase !== "caught" && this.decadeCompleted) this.decadeSettling = true;
+    else {
+      this.decade.reset();
+      this.decadeStarted = false;
+    }
     this.bodyState = "";
     this.bri.reset();
     this.kickless.reset();
@@ -494,6 +589,10 @@ export class Tricks {
     ).length;
     raw.briAngle = provisional ? count(this.bri) * TAU : this.bri.angle;
     raw.kicklessAngle = provisional ? count(this.kickless) * TAU : this.kickless.angle;
+    raw.decadeAngle = this.decade.angle;
+    raw.decadeTurns = provisional
+      ? (Math.abs(this.decade.angle) > 0.08 ? Math.sign(this.decade.target || this.decade.angle) : 0)
+      : this.decadeCompleted * Math.sign(this.decade.angle);
     raw.motionOrder = [...this.motionOrder];
     raw.kicklessHistory = this.kicklessHistory.map((event) => ({ ...event }));
     return raw;
@@ -512,6 +611,14 @@ export class Tricks {
     this.events.emit({ type: "line", names: [...this.line], ended: false });
   }
   tick(dt: number, linked: boolean) {
+    if (this.decadeSettling) {
+      this.decade.step(dt);
+      if (this.decadePhase === "caught") {
+        this.decade.reset();
+        this.decadeStarted = false;
+        this.decadeSettling = false;
+      }
+    }
     if (linked) this.ordinary = 0;
     else this.ordinary += dt;
     if (this.ordinary > TUNE.comboTimeout && this.line.length) {
@@ -528,6 +635,9 @@ export class Tricks {
     this.kicklessHistory = [];
     this.deck.reset();
     this.bars.reset();
+    this.decade.reset();
+    this.decadeStarted = false;
+    this.decadeSettling = false;
     this.bri.reset();
     this.kickless.reset();
     this.gesture.reset();

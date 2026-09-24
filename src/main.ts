@@ -22,7 +22,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Events } from "./core/events";
 import { TUNE } from "./core/config";
 import { Input, emptyInput, InputFrame } from "./input/input";
-import { OUTDOOR, Park, SPAWNS, selectPark } from "./park/park";
+import { OUTDOOR, Park, SPAWNS, selectPark, terrainHeight } from "./park/park";
 import { Simulation } from "./physics/simulation";
 import { RiderModel } from "./scooter/model";
 import { ChaseCamera } from "./camera/chase";
@@ -116,7 +116,8 @@ async function boot() {
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
-    {label:network.status,action:()=>{}},
+    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'Both players need this Windows release. Host LAN on one PC; Join LAN on the other. Two players per room.':network.lastError,action:()=>{}},
+    ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void navigator.clipboard.writeText(network.code)}]:[]),
     ...(network.id?[{label:'COPY INVITE',action:()=>void navigator.clipboard.writeText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
@@ -183,6 +184,10 @@ async function boot() {
     setEditedHeightQuery(null);
     startSession(id, true);
     if (id === "outdoor" && publicLayout) applyLayout(publicLayout, false);
+    // Hold the loading screen until the authored ramps, trees and clouds have
+    // replaced the simple stand-ins, so they never flash on screen first.
+    await loadingStage("Placing the ramps and trees",60);
+    await Promise.race([Promise.allSettled(scene.userData.assetLoads ?? []), new Promise((resolve) => setTimeout(resolve, 20000))]);
     await loadingStage("Preparing the view",80);
     await renderer.compileAsync(scene,camera.camera);
     await loadingStage("Ready to ride",100);finishLoading();
@@ -594,6 +599,7 @@ async function boot() {
       get sim() {
         return sim;
       },
+      terrainHeight,
       menu,
       editor,
       profile,
