@@ -63,6 +63,42 @@
       "genre": "Chill",
       "order": 6,
       "bytes": 10137644
+    },
+    {
+      "id": "just-joshin",
+      "title": "Just Joshin",
+      "artist": "Brendan Little",
+      "file": "/music/tracks/Just%20Joshin.mp3",
+      "genre": "Chill",
+      "order": 7,
+      "bytes": 2604047
+    },
+    {
+      "id": "under-the-beach-umbrella",
+      "title": "Under the Beach Umbrella",
+      "artist": "Brendan Little",
+      "file": "/music/tracks/Under%20the%20Beach%20Umbrella.mp3",
+      "genre": "Chill",
+      "order": 8,
+      "bytes": 3094731
+    },
+    {
+      "id": "the-rainbow",
+      "title": "The Rainbow",
+      "artist": "Brendan Little",
+      "file": "/music/tracks/The%20Rainbow.mp3",
+      "genre": "Chill",
+      "order": 9,
+      "bytes": 2612406
+    },
+    {
+      "id": "da-light",
+      "title": "Da Light",
+      "artist": "Brendan Little",
+      "file": "/music/tracks/Da%20Light.mp3",
+      "genre": "Chill",
+      "order": 10,
+      "bytes": 2833089
     }
   ]
 }

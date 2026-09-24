@@ -6,6 +6,10 @@
     "DESERT.mp3": { "artist": "N!CK & Dannylosangeles", "title": "DESERT", "genre": "Hip-Hop", "order": 3 },
     "Hollow.mp3": { "artist": "shrpnss", "title": "Hollow", "genre": "Electronic", "order": 4 },
     "Scraped My Knee.mp3": { "artist": "heymrnoodles VII", "title": "Scraped My Knee", "genre": "Chill", "order": 5 },
-    "Pride and Other Things.mp3": { "artist": "N!CK & Dayne Thomas", "title": "Pride and Other Things", "genre": "Chill", "order": 6 }
+    "Pride and Other Things.mp3": { "artist": "N!CK & Dayne Thomas", "title": "Pride and Other Things", "genre": "Chill", "order": 6 },
+    "Just Joshin.mp3": { "artist": "Brendan Little", "title": "Just Joshin", "genre": "Chill", "order": 7 },
+    "Under the Beach Umbrella.mp3": { "artist": "Brendan Little", "title": "Under the Beach Umbrella", "genre": "Chill", "order": 8 },
+    "The Rainbow.mp3": { "artist": "Brendan Little", "title": "The Rainbow", "genre": "Chill", "order": 9 },
+    "Da Light.mp3": { "artist": "Brendan Little", "title": "Da Light", "genre": "Chill", "order": 10 }
   }
 }
