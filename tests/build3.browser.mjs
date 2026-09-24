@@ -370,14 +370,17 @@ try {
         g.events.history.some((e) => e.type === "pop" && e.charge > 0.3) &&
         g.sim.state !== "Bail",
     );
-    for (const action of ["hop", "brakeBars"]) {
+    // The tailwhip button follows the controls preset (src/input/riding.ts):
+    // Normal = X (pushDeck), Goofy = A (hop). B is always the barspin.
+    const whipAction = g.profile.settings.controlStyle === "arcade" ? "brakeBars" : g.profile.settings.stance === "goofy" ? "hop" : "pushDeck";
+    for (const action of [whipAction, "brakeBars"].filter((x, i, all) => all.indexOf(x) === i)) {
       reset();
       place(-12, 9, -20, 0, 0, 5);
       g.sim.grounded = false;
       g.sim.state = "Airborne";
       g.sim.tricks.startAir(false);
       a(0.85, { held: { [action]: 1 }, pressed: { [action]: true } });
-      const channel = action === "hop" ? g.sim.tricks.deck : g.sim.tricks.bars;
+      const channel = action === "brakeBars" ? g.sim.tricks.bars : g.sim.tricks.deck;
       check(
         "Holding continues spinning " + action,
         Math.abs(channel.angle) > Math.PI * 4 && channel.velocity > 5,
