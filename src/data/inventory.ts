@@ -7,6 +7,7 @@ import { LONGBOARD_BRAND, LONGBOARD_CATEGORIES, LONGBOARD_PARTS } from "./longbo
 import { ownsSelection, type RideableKind } from "./catalog";
 import type { AlphaWallet } from "./credit";
 import { SHOPS } from "./shops";
+import { priceRarity, type Rarity } from "./progress";
 
 export type BrowseMode = "owned" | "shop";
 
@@ -22,6 +23,9 @@ export interface InventoryItem {
   rideable: RideableKind;
   price: number;
   owned: boolean;
+  /** Crate-only colourway: never for sale. */
+  exclusive: boolean;
+  rarity: Rarity;
 }
 
 export interface BrandSummary {
@@ -40,6 +44,7 @@ function allItems(wallet: AlphaWallet): InventoryItem[] {
       partId: p.id, variantId: v.id, partName: strip(p.name, p.brand), variantName: v.name,
       brandId: p.brandId, brand: p.brand, category: p.category, rideable: "scooter" as const,
       price: p.creditPrice ?? 0, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
+      exclusive: !!v.exclusive, rarity: v.exclusive ?? priceRarity(p.creditPrice ?? 0),
     })),
   );
   const board = LONGBOARD_PARTS.flatMap((p) =>
@@ -47,6 +52,7 @@ function allItems(wallet: AlphaWallet): InventoryItem[] {
       partId: p.id, variantId: v.id, partName: strip(p.name, p.brand), variantName: v.name,
       brandId: p.brandId, brand: p.brand, category: p.category, rideable: "longboard" as const,
       price: p.creditPrice, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
+      exclusive: false, rarity: priceRarity(p.creditPrice),
     })),
   );
   return [...scooter, ...board];
@@ -64,7 +70,7 @@ export function inventoryItems(
 ): InventoryItem[] {
   const stock = mode === "shop" ? SHOPS.find((s) => s.id === (filter.shopId ?? SHOPS[0].id))?.stock ?? [] : null;
   return allItems(wallet)
-    .filter((item) => (mode === "owned" ? item.owned : !item.owned && stock!.includes(item.partId)))
+    .filter((item) => (mode === "owned" ? item.owned : !item.owned && !item.exclusive && stock!.includes(item.partId)))
     .filter((item) => !filter.rideable || item.rideable === filter.rideable)
     .filter((item) => !filter.brandId || item.brandId === filter.brandId)
     .filter((item) => !filter.category || item.category === filter.category)

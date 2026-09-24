@@ -4,7 +4,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {readFileSync} from 'node:fs';
 import {authAPI, type AuthDB} from '../server/auth-api';
 test('hosted accounts: registration, secure sessions, login, recovery, limits and isolation from local saves',async()=>{
- const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../drizzle/0000_game_accounts.sql',import.meta.url),'utf8'));
+ const sql=new DatabaseSync(':memory:');sql.exec(readFileSync(new URL('../drizzle/0000_game_accounts.sql',import.meta.url),'utf8'));sql.exec(readFileSync(new URL('../drizzle/0001_game_saves.sql',import.meta.url),'utf8'));
  const db:AuthDB={prepare(query){let values:any[]=[];return {bind(...args){values=args;return this;},async first(){return sql.prepare(query).get(...values)??null;},async run(){return sql.prepare(query).run(...values);}} as any;},async batch(statements){sql.exec('BEGIN');try{const results=[];for(const s of statements)results.push(await s.run());sql.exec('COMMIT');return results;}catch(e){sql.exec('ROLLBACK');throw e;}}};
  const origin='https://game.example',password='test-only-strong-password',username='test_rider';let cookie='';
  const call=async(action:string,data?:unknown,otherOrigin=origin)=>authAPI(new Request(origin+'/api/account/'+action,{method:data?'POST':'GET',headers:{origin:otherOrigin,'content-type':'application/json',cookie},...(data?{body:JSON.stringify(data)}:{})}),{DB:db}) as Promise<Response>;

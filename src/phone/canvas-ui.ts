@@ -22,7 +22,7 @@ export const BODY = 'system-ui, "Segoe UI", Roboto, sans-serif';
 
 export type Action = () => void;
 export type IconName = 'music' | 'emote' | 'ride' | 'rider' | 'map' | 'items' | 'build' | 'messages' | 'play' | 'pause' | 'prev' | 'next' | 'dice' | 'lock'
-  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil';
+  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil' | 'trophy' | 'crate';
 export interface Tile { id: string; label: string; icon: IconName; color: string; action?: Action; disabled?: boolean; badge?: string }
 export interface Row { id: string; label: string; detail?: string; value?: string; action?: Action; disabled?: boolean; chosen?: boolean; adjust?: (step: -1 | 1) => void }
 export type Block =
@@ -148,6 +148,13 @@ export function icon(g: Ctx, name: IconName, x: number, y: number, s: number, co
       for (let i = 0; i < 10; i++) { const r = i % 2 ? 9 : 21, a = -Math.PI / 2 + (i * Math.PI) / 5; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
       g.closePath(); g.fill(); break;
     }
+    case 'trophy':
+      g.beginPath(); g.moveTo(-13, -18); g.lineTo(13, -18); g.lineTo(11, -2); g.quadraticCurveTo(0, 8, -11, -2); g.closePath(); g.fill();
+      g.lineWidth = 3.5; g.beginPath(); g.arc(-13, -10, 6, Math.PI * 0.5, Math.PI * 1.5); g.moveTo(13, -16); g.arc(13, -10, 6, -Math.PI * 0.5, Math.PI * 0.5); g.stroke();
+      g.fillRect(-3, 4, 6, 8); rounded(g, -11, 12, 22, 7, 2); g.fill(); break;
+    case 'crate':
+      rounded(g, -19, -10, 38, 28, 4); g.fill(); rounded(g, -21, -18, 42, 10, 3); g.fill();
+      g.fillStyle = '#00000066'; g.fillRect(-10, -6, 5, 22); g.fillRect(5, -6, 5, 22); break;
     case 'bench':
       g.fillRect(-20, -8, 40, 6); g.fillRect(-20, 2, 40, 6); g.fillRect(-16, 8, 5, 12); g.fillRect(11, 8, 5, 12); g.fillRect(-16, -18, 4, 10); g.fillRect(12, -18, 4, 10); break;
     case 'laugh':

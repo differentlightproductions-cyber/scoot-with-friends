@@ -17,6 +17,8 @@ export interface PartVariant {
   name: string;
   color: number;
   accent?:number;
+  /** Crate exclusive: only ever found in a parts crate, at this rarity; never sold. */
+  exclusive?: "common" | "rare" | "epic" | "legendary";
 }
 export interface ScooterPart {
   id: string;
@@ -182,6 +184,28 @@ PARTS.push(
     { id: "mafioso_grip_frost", name: "Frosted / White", color: 0x8c9496, accent: 0xe9e5d9 },
   ]),
 );
+// Crate exclusives: colourways found only in parts crates (data/progress.ts).
+// Colour only; the part's shape, weight and handling never change.
+const GOLD = 0xd6a93c;
+const exclusives: [string, PartVariant[]][] = [
+  ["pro-deck", [{ id: "x-gold-rush", name: "Gold Rush", color: GOLD, exclusive: "legendary" }, { id: "x-galaxy", name: "Galaxy", color: 0x2c2a5c, accent: 0x9b6bff, exclusive: "epic" }, { id: "x-mint", name: "Mint Chip", color: 0x9fd8c0, exclusive: "rare" }]],
+  ["street-deck", [{ id: "x-sunset", name: "Sunset", color: 0xf07f4f, exclusive: "rare" }, { id: "x-toxic", name: "Toxic", color: 0x9be33a, exclusive: "epic" }]],
+  ["light-deck", [{ id: "x-bubblegum", name: "Bubblegum", color: 0xf28cc0, exclusive: "rare" }]],
+  ["classic-bars", [{ id: "x-24k", name: "24K Gold", color: 0xdcb24c, exclusive: "legendary" }, { id: "x-ice", name: "Ice Blue", color: 0x9ad7ee, exclusive: "rare" }]],
+  ["y-bars", [{ id: "x-hot-pink", name: "Hot Pink", color: 0xe2508f, exclusive: "rare" }, { id: "x-purple-haze", name: "Purple Haze", color: 0x7b4bb3, exclusive: "epic" }]],
+  ["oversized-bars", [{ id: "x-lime", name: "Lime Rush", color: 0xb5e61d, exclusive: "epic" }]],
+  ["light-fork", [{ id: "x-gold", name: "Gold", color: GOLD, exclusive: "legendary" }]],
+  ["110-wheels", [{ id: "x-glow", name: "Glow", color: 0xd8f35a, exclusive: "epic" }, { id: "x-gold", name: "Gold Core", color: GOLD, exclusive: "legendary" }]],
+  ["120-wheels", [{ id: "x-purple", name: "Purple", color: 0x8052c9, exclusive: "rare" }]],
+  ["classic-grips", [{ id: "x-neon", name: "Neon Green", color: 0x6fe05a, exclusive: "rare" }, { id: "x-candy", name: "Candy Pink", color: 0xf07fb2, exclusive: "rare" }]],
+  ["double-clamp", [{ id: "x-gold", name: "Gold", color: GOLD, exclusive: "epic" }]],
+  ["triple-clamp", [{ id: "x-teal", name: "Teal", color: 0x2fbfb0, exclusive: "rare" }]],
+  ["sealed-headset", [{ id: "x-rainbow", name: "Rainbow Anodized", color: 0x9b6bff, exclusive: "epic" }]],
+  ["stripe-griptape", [{ id: "x-flame", name: "Flame", color: 0x2b3133, accent: 0xff6a1f, exclusive: "epic" }, { id: "x-galaxy", name: "Galaxy Stripe", color: 0x1a1a3a, accent: 0x9b6bff, exclusive: "epic" }]],
+  ["logo-griptape", [{ id: "x-gold-foil", name: "Black / Gold Foil", color: 0x1d2022, accent: GOLD, exclusive: "legendary" }]],
+];
+for (const [partId, variants] of exclusives) PARTS.find((p) => p.id === partId)!.variants.push(...variants);
+
 export type PartSelection = { partId: string; variantId: string };
 export type ScooterLoadout = Record<
   Exclude<Category, "wheels">,

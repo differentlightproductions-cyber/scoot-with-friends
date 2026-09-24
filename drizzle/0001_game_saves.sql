@@ -1,0 +1,1 @@
+CREATE TABLE game_saves (account_id TEXT PRIMARY KEY REFERENCES game_accounts(id) ON DELETE CASCADE, data TEXT NOT NULL, revision INTEGER NOT NULL, updated INTEGER NOT NULL);

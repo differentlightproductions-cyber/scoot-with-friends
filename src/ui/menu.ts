@@ -7,6 +7,13 @@ import { RiderCreator, type Framing } from './creator';
 import { creatorBackdrop, type BackdropMood } from './creator-backdrop';
 import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryItem,type BrowseMode} from '../data/inventory';
 import {AccountPanel} from './account';
+import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,type Rarity} from '../data/progress';
+import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
+interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean }
+/** The product on the counter: rarity frame, colour swatch, price sticker. */
+function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false){
+  return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>CREDIT</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
+}
 import {loadProfile} from '../data/loadout';
 import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN,TP_FOV_DEFAULT,TP_FOV_MAX,TP_FOV_MIN,TP_FOV_STEP} from '../camera/fov';
 import { version } from '../../package.json';
@@ -24,6 +31,7 @@ import { RiderModel } from "../scooter/model";
 import type { InputFrame } from "../input/input";
 import { presetName } from "../input/riding";
 import './theme.css';
+import './shop.css';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
 export class GameMenu {
@@ -136,7 +144,12 @@ export class GameMenu {
     selected?: boolean;
     cell?: boolean;
     swatch?: number;
+    extra?: ChoiceExtra;
   }[] = [];
+  /** A purchase went through (the menu plays its own screen; this adds the fanfare). */
+  onPurchased=(_item:{name:string;variant:string;rarity:Rarity;color:number})=>{};
+  /** Today's deal the pending purchase came from, if any. */
+  private pendingDeal:Deal|null=null;
   private pageTurn=(_step:number)=>{};
   constructor(
     public root: HTMLElement,
@@ -210,7 +223,11 @@ export class GameMenu {
     this.previewRider.applyProfile(profile);
     this.show("home");
   }
+  /** Where a purchase started (deals on the shop front, or a brand's shelf). */
+  private screenBeforePurchase='brand-items';
+  private swatchOf(partId:string,variantId:string){return (PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color)??0x888888;}
   show(screen: string) {
+    if(screen==='purchase'&&this.screen!=='purchase')this.screenBeforePurchase=this.screen;
     // Returning to a screen restores where focus was, so a category keeps its place.
     if(screen!==this.screen){this.memory.set(this.memoryKey(this.screen),this.index);this.index=this.memory.get(this.memoryKey(screen))??0;}
     if(this.screen==='creator'&&screen!=='creator')this.leaveCreator();
@@ -251,9 +268,14 @@ export class GameMenu {
       action: () => void,
       detail?: string,
       selected = false,
-    ) => this.choices.push({ label, action, detail, selected });
+      extra?: ChoiceExtra,
+    ) => this.choices.push({ label, action, detail, selected, extra });
     // Grid cells come first on a screen so their indices line up with the page's items.
-    const cell=(label:string,action:()=>void,detail?:string,selected=false,swatch?:number)=>this.choices.push({label,action,detail,selected,cell:true,swatch});
+    const cell=(label:string,action:()=>void,detail?:string,selected=false,swatch?:number,extra?:ChoiceExtra)=>this.choices.push({label,action,detail,selected,cell:true,swatch,extra});
+    // Shop screens open with the wallet strip: Credit, level and the collection.
+    let header='';
+    const walletStrip=(w:{credit:number;owned:string[]})=>{const c=collection(w.owned),lv=levelFor(loadProfile().progress.xp);
+      return `<div class="shop-strip"><span class="ss-credit"><i></i><b>${w.credit.toLocaleString('en-US')}</b><small>CREDIT</small></span><span class="ss-level">LV ${lv.level}</span><span class="ss-collect"><small>COLLECTION ${c.have}/${c.total}</small><i><s style="width:${Math.round(c.have/Math.max(1,c.total)*100)}%"></s></i></span></div>`;};
     const pager=(pages:number,page:number,set:(page:number)=>void)=>{if(pages<2)return;
       add('‹ PREVIOUS PAGE',()=>{set((page+pages-1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / LT');
       add('NEXT PAGE ›',()=>{set((page+1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / RT');};
@@ -336,10 +358,18 @@ export class GameMenu {
         for(const preset of AVATAR_PRESETS)add(preset.name.toUpperCase(),()=>{this.profile.avatar=structuredClone(preset.config);this.changed();this.render();},'Included',JSON.stringify(this.profile.avatar)===JSON.stringify(preset.config));
         break;
       case "shop":{
-        const wallet=loadProfile().wallet;title=this.activeShop.name.toUpperCase();subtitle='PICK A BRAND / '+wallet.credit+' CREDIT'+(wallet.testCredit?' + '+wallet.testCredit+' TEST':'');
-        const brands=inventoryBrands(wallet,'shop',{shopId:this.activeShop.id});
-        for(const b of brands)add(b.brand.toUpperCase(),()=>{this.browseBrand=b.brandId;this.catPage=0;this.show(b.rideable==='longboard'?'longboard':'brand');},plural(b.count,'colorway')+' you do not own yet / '+plural(b.categories.length,'category'));
+        const wallet=loadProfile().wallet;title=this.activeShop.name.toUpperCase();subtitle='TODAY\'S DEALS / NEW DROPS / '+wallet.credit+' CREDIT'+(wallet.testCredit?' + '+wallet.testCredit+' TEST':'');
+        header=walletStrip(wallet);
+        // Today's deals first: marked down until midnight, one of each.
+        const hours=Math.ceil(dealsRefreshIn()/3600);
+        for(const deal of dailyDeals(this.activeShop.id)){const entry=catalogEntry(deal.partId)!,variant=entry.variants.find(v=>v.id===deal.variantId)!,owned=owns(wallet,deal),color=PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color;
+          cell(entry.name.replace(/^(Mafioso|Sometimes Summer) /,'').toUpperCase()+' / '+variant.name.toUpperCase(),()=>{if(owned)return;this.product=deal.partId;this.pendingVariant=deal.variantId;this.pendingDeal=deal;this.show('purchase');},
+            owned?'Yours already':'Was '+deal.was+' · ends in '+hours+'h',false,color,{rarity:priceRarity(deal.was),badge:owned?'SOLD':'-'+deal.off+'%',tag:owned?'':String(deal.price),poor:!owned&&wallet.credit+wallet.testCredit<deal.price,sold:owned});}
+        const brands=inventoryBrands(wallet,'shop',{shopId:this.activeShop.id}),collected=collection(wallet.owned).brands;
+        for(const b of brands){const c=collected.find(x=>x.brand===b.brand);add(b.brand.toUpperCase(),()=>{this.browseBrand=b.brandId;this.catPage=0;this.show(b.rideable==='longboard'?'longboard':'brand');},plural(b.count,'colorway')+' left to collect / '+plural(b.categories.length,'category'),false,{meter:c?[c.have,c.total]:undefined});}
         if(!brands.length)add('ALL STOCK OWNED',()=>{},'Everything this shop sells is already yours. Equip it from Customization.');
+        const exclusive=collectibles().filter(c=>c.exclusive),found=exclusive.filter(c=>wallet.owned.includes(c.partId+':'+c.variantId)).length;
+        add('CRATE EXCLUSIVES',()=>{this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.';this.render();},`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
         add('LAZER',()=>{},'Every Lazer part is free and already in your Customization.');break;}
       case "longboard":{
         const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard),mode=this.browseMode();this.browseBrand=BOARD_BRAND_ID;
@@ -387,16 +417,31 @@ export class GameMenu {
         subtitle=(mode==='shop'?'NOT OWNED YET / '+wallet.credit+' CREDIT':this.seshOpen?'OWNED / CHOOSE, THEN APPLY':'OWNED / SELECT TO EQUIP')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'')+(this.browseCategory==='wheels'&&this.browseBrand!==BOARD_BRAND_ID?' / FRONT AND REAR':'');
         for(const item of items){const on=this.equippedSelection(item),equipped=on.partId===item.partId&&on.variantId===item.variantId;
           const swatch=item.rideable==='scooter'?PARTS.find(p=>p.id===item.partId)?.variants.find(v=>v.id===item.variantId)?.color:undefined;
-          cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{this.product=item.partId;this.pendingVariant=item.variantId;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
-            mode==='shop'?item.price+' Credit':equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch);}
+          const deal=mode==='shop'?dailyDeals(this.activeShop.id).find(d=>d.partId===item.partId&&d.variantId===item.variantId):undefined,price=deal?.price??item.price;
+          cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{this.product=item.partId;this.pendingVariant=item.variantId;this.pendingDeal=deal??null;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
+            mode==='shop'?RARITY_LABEL[item.rarity]+(deal?' · was '+deal.was:''):equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch,
+            {rarity:item.rarity,tag:mode==='shop'?String(price):undefined,badge:deal?'-'+deal.off+'%':item.exclusive?'CRATE':undefined,poor:mode==='shop'&&wallet.credit+wallet.testCredit<price});}
         if(!items.length)add(mode==='shop'?'SOLD OUT FOR YOU':'NOTHING OWNED HERE',()=>this.back(),mode==='shop'?'You own every colorway in this category.':'Buy these at Techno Gravity.');
         pager(pages,page,p=>{this.itemPage=p;});
         break;}
       case 'purchase':{
-        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!;title='CONFIRM PURCHASE';const wallet=loadProfile().wallet;subtitle=p.name+' / '+variant.name;
-        add(this.buying?'SAVING...':'BUY / '+p.creditPrice+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id}).then(result=>{this.buying=false;this.notice=result==='ok'?'Purchased. Saved on this device.':result;this.profile.wallet=loadProfile().wallet;this.show(result==='ok'||result==='Already owned'?'purchased':'brand-items');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
-        add('CANCEL',()=>this.show('brand-items'),'No charge');break;}
-      case 'purchased':{title='PART ADDED';subtitle=this.notice;add('EQUIP NOW',()=>{void this.equip(this.product,this.pendingVariant);this.show('brand-items');});add('KEEP IN INVENTORY',()=>this.show('brand-items'));break;}
+        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!;const wallet=loadProfile().wallet;
+        const deal=this.pendingDeal&&this.pendingDeal.partId===p.id&&this.pendingDeal.variantId===variant.id?this.pendingDeal:null,price=deal?deal.price:p.creditPrice,rarity=priceRarity(p.creditPrice),after=wallet.credit+wallet.testCredit-price;
+        title='ON THE COUNTER';subtitle=(deal?'DEAL -'+deal.off+'% / ':'')+RARITY_LABEL[rarity]+' / '+p.name.toUpperCase();
+        header=walletStrip(wallet)+productCard(p.name,variant.name,rarity,this.swatchOf(p.id,variant.id),price,deal?.was,after<0?'Need '+(-after)+' more Credit':'Leaves you '+after+' Credit');
+        const back=()=>this.show(this.shopRoot==='longboard'&&p.rideable==='longboard'?'brand-items':deal&&this.screenBeforePurchase==='shop'?'shop':'brand-items');
+        add(after<0?'NOT ENOUGH CREDIT':this.buying?'SAVING...':'BUY IT / '+price+' CREDIT',()=>{if(this.buying||after<0)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id},deal?this.activeShop.id:undefined,price).then(result=>{this.buying=false;this.notice=result==='ok'?'Saved on this device.':result;this.profile.wallet=loadProfile().wallet;
+          if(result==='ok')this.onPurchased({name:p.name,variant:variant.name,rarity,color:this.swatchOf(p.id,variant.id)});
+          if(result==='ok'||result==='Already owned')this.show('purchased');else back();});},after<0?'Land tricks and finish missions to earn Credit.':'Owned for good. Equip it any time.',false,{rarity,primary:after>=0});
+        add('NOT NOW',back,'No charge');break;}
+      case 'purchased':{
+        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!,wallet=loadProfile().wallet,rarity=priceRarity(p.creditPrice);
+        const brand=collection(wallet.owned).brands.find(b=>p.name.startsWith(b.brand));
+        title='IT\'S YOURS!';subtitle=brand?`${brand.brand.toUpperCase()} COLLECTION ${brand.have}/${brand.total}${brand.total>brand.have?' / '+(brand.total-brand.have)+' TO GO':' / COMPLETE!'}`:this.notice;
+        header=walletStrip(wallet)+productCard(p.name,variant.name,rarity,this.swatchOf(p.id,variant.id),0,undefined,'',true);
+        if(p.rideable==='scooter')add('EQUIP NOW',()=>{void this.equip(this.product,this.pendingVariant);this.show('brand-items');},'Swap it onto your scooter',false,{primary:true});
+        else add('BUILD YOUR BOARD',()=>this.show('longboard'),'Equip it from the board builder',false,{primary:true});
+        add('KEEP SHOPPING',()=>this.show(this.screenBeforePurchase==='shop'?'shop':'brand-items'),'More drops, more deals');break;}
       case 'test-controller':{
         title='TEST CONTROLLER';subtitle='PRESS BUTTONS AND MOVE THE STICKS';
         add('COPY DIAGNOSTICS',()=>{const text=JSON.stringify(this.controllerReport(),null,2);void navigator.clipboard?.writeText(text).then(()=>{this.notice='Diagnostics copied (no account or personal data).';this.render();},()=>{this.notice='Clipboard unavailable.';this.render();});},'Controller id, mapping, source, preset and live buttons. No personal data.');
@@ -480,9 +525,10 @@ export class GameMenu {
       );
     this.index=Math.min(this.index,Math.max(0,this.choices.length-1));
     this.cellCount=this.choices.filter(c=>c.cell).length;
-    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen" : ""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}</button>`;
+    const x=(c:(typeof this.choices)[number])=>c.extra??{};
+    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen " : ""}${x(c).rarity?"rarity-"+x(c).rarity+" ":""}${x(c).poor?"poor ":""}${x(c).sold?"sold ":""}${x(c).primary?"menu-primary ":""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}${x(c).badge?`<em class="menu-badge">${x(c).badge}</em>`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}${x(c).tag?`<b class="price-tag">${x(c).tag}</b>`:""}${x(c).meter?`<i class="menu-meter"><s style="width:${Math.round(x(c).meter![0]/Math.max(1,x(c).meter![1])*100)}%"></s></i>`:""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1><nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1>${title}</h1>${header}<nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||'Selections save on this device. Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {

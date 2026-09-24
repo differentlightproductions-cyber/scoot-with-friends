@@ -48,6 +48,9 @@ import { MessageStore } from './phone/messages';
 import { installApps, homePage, releasePhoneThumbnails, type PhoneDeps } from './phone/apps';
 import { ownsBoard } from './data/catalog';
 import { MAPS } from './data/maps';
+import { MissionTracker, RewardFx } from './ui/rewards';
+import { cloud } from './ui/account';
+import { B_HILL_LENGTH, routeProgress } from './park/bhill';
 async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
@@ -83,7 +86,11 @@ async function boot() {
     sim = new Simulation(world, park, events),
     rider = new RiderModel(scene);
   rider.root.userData.weatherDynamic=true;
-  const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;profile.wallet=loadProfile().wallet;const earned=profile.wallet.credit-before;if(earned>0)phone.notify('Credit earned','+'+earned+' Credit · '+profile.wallet.credit+' total','star');};window.addEventListener("storage",()=>{profile.wallet=loadProfile().wallet;});events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
+  const economy=new CreditEconomy();economy.onChange=()=>{const before=profile.wallet.credit;const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;const earned=profile.wallet.credit-before;if(earned>0)phone.notify('Credit earned','+'+earned+' Credit · '+profile.wallet.credit+' total','star');};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
+  // Missions, XP and crates (data/progress.ts): riding events count toward
+  // missions; completions, level-ups and crate openings play on screen.
+  const rewards=new RewardFx(economy,()=>profile.progress),missions=new MissionTracker(events,economy);
+  economy.onGains=gains=>rewards.celebrate(gains);events.on(e=>{if(e.type==="banked")void economy.reward(e.eventId,e.points);});
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park), daylight = new Daylight(park), weather = new Weather(scene);
@@ -119,6 +126,8 @@ async function boot() {
   network.onChat=(name,message)=>{messages.add('room',name,message,false);if(!(phone.ready&&phone.view?.title==='MESSAGES'))phone.notify('New message',name+': '+message,'messages');};
   messages.onChange=()=>phone.refresh();
   const menu = new GameMenu(document.querySelector("#start")!, profile);
+  // Cloud save starts once the account dialog exists to ask questions in.
+  void cloud.start();
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
     {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'Both players need this Windows release. Host LAN on one PC; Join LAN on the other. Two players per room.':network.lastError,action:()=>{}},
@@ -144,6 +153,7 @@ async function boot() {
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
   const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,
+    openCrate:id=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,crates);},
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim),
     openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
@@ -180,6 +190,9 @@ async function boot() {
       context:menu.root.hidden?(sim.walking?'on foot':'riding'):'menu',logicalHeld:held.join(' ')||'-',resolvedAction:resolved||'-',
       touchControls:profile.settings.touchControls+(touchPad.device?'':' (not a touch device)')};
   };
+  rewards.equip=async(partId,variantId)=>{const r=await economy.equip({partId,variantId},profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not equip.';};
+  rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  menu.onPurchased=item=>rewards.purchase(item);
   menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
@@ -337,6 +350,7 @@ async function boot() {
     if (hud.started) void audio.start();
   });
   function startSession(id: MapId, force = false) {
+    void economy.track({}, id);
     if (force || ACTIVE_MAP !== id) {
       phone.stow();phoneRig.model.removeFromParent();phoneMap.reset();
       interactions.dispose();builder.dispose();
@@ -546,6 +560,8 @@ async function boot() {
     else {renderer.setClearColor(0x15161a);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
+    rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
+    if(hud.started&&ACTIVE_MAP==='b_hill')missions.hillUpdate(routeProgress(sim.position.x,sim.position.z),B_HILL_LENGTH,sim.speed,!sim.walking&&sim.state!=='Bail');
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };
   renderer.setAnimationLoop(() => {
@@ -563,6 +579,8 @@ async function boot() {
       editor.update(frame, dt);
       return;
     }
+    missions.update(dt);
+    if(rewards.open){rewards.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if(menu.shopOpen||menu.seshOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if (!hud.started) {
       menu.update(frame, dt);
@@ -679,6 +697,9 @@ async function boot() {
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),
       renderer,
       fidelity,
+      economy, cloud,
+      rewards,
+      missions,
       snapshot: () => sim.snapshot(),
       testing: (value: boolean) => {
         testMode = value;

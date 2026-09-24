@@ -13,6 +13,7 @@ import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type I
 import type { Phone, View } from './phone';
 import type { PhoneMap } from './map';
 import { fictionalNumber, type MessageStore } from './messages';
+import { CRATE_NAME, collection, levelFor, missionBoard } from '../data/progress';
 
 /** What the apps reach in the game. Every app is a front end to an existing system. */
 export interface PhoneDeps {
@@ -34,6 +35,8 @@ export interface PhoneDeps {
   messages: MessageStore;
   network: () => { status: string; id: string; code: string; roster: { id: string; name: string; connected?: boolean }[] };
   map: PhoneMap;
+  /** Opens a crate on screen (the phone is put away first). */
+  openCrate: (id: string) => void;
 }
 
 const time = (s: number) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -299,6 +302,42 @@ function buildApp(d: PhoneDeps): View {
   };
 }
 
+// ---- MISSIONS -------------------------------------------------------------------
+function missionsApp(d: PhoneDeps): View {
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  return {
+    title: 'MISSIONS', live: true,
+    page: () => {
+      const p = d.profile(), prog = p.progress, { level, into, need } = levelFor(prog.xp), board = missionBoard(prog), owned = collection(p.wallet.owned);
+      const blocks: Block[] = [
+        { type: 'image', height: 96, draw: (g, x, y, w) => {
+          g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, w, 90, 14); g.fill();
+          g.textAlign = 'left'; g.font = `15px ${DISPLAY}`; g.fillStyle = LIME; g.fillText('LEVEL', x + 16, y + 28);
+          g.font = `44px ${DISPLAY}`; g.fillStyle = PAPER; g.fillText(String(level), x + 14, y + 72);
+          const bx = x + 96, bw = w - 112;
+          g.font = `800 12px ${BODY}`; g.fillStyle = '#cfd4d8'; g.fillText(`${fmt(into)} / ${fmt(need)} XP`, bx, y + 34);
+          g.textAlign = 'right'; g.fillStyle = '#ffd23f'; g.fillText(`${fmt(p.wallet.credit)} CREDIT`, x + w - 16, y + 34); g.textAlign = 'left';
+          g.fillStyle = '#ffffff22'; g.beginPath(); g.roundRect(bx, y + 46, bw, 14, 7); g.fill();
+          const grad = g.createLinearGradient(bx, 0, bx + bw, 0); grad.addColorStop(0, LIME); grad.addColorStop(1, '#ffd23f');
+          g.fillStyle = grad; g.beginPath(); g.roundRect(bx, y + 46, Math.max(14, bw * into / need), 14, 7); g.fill();
+          g.font = `700 11px ${BODY}`; g.fillStyle = '#9aa3a9'; g.fillText(`Collection ${owned.have}/${owned.total} · ${prog.crates.length} crate${prog.crates.length === 1 ? '' : 's'} waiting`, bx, y + 78);
+        } },
+      ];
+      if (prog.crates.length) {
+        blocks.push({ type: 'title', text: 'CRATES', sub: 'Open them for parts and Credit. Never a duplicate.' });
+        blocks.push({ type: 'list', rows: prog.crates.slice(0, 12).map(c => ({ id: 'crate-' + c.id, label: CRATE_NAME[c.tier].toUpperCase(), detail: 'From ' + c.source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(c.id)) })) });
+      }
+      blocks.push({ type: 'title', text: 'DAILY', sub: board.bonus ? 'All three done. New ones at midnight.' : 'Finish all three for a Pro Crate' });
+      blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Credit · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%', chosen: m.done })) });
+      blocks.push({ type: 'title', text: 'CAREER', sub: 'Each stage pays more. Stages II+ drop crates.' });
+      const career = board.career.slice().sort((a, b) => Number(a.complete) - Number(b.complete) || b.value / b.goal - a.value / a.goal);
+      blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Credit${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? '★' : Math.floor(m.value / m.goal * 100) + '%', chosen: m.complete })) });
+      blocks.push({ type: 'text', text: owned.brands.map(b => `${b.brand} ${b.have}/${b.total}`).join(' · '), muted: true });
+      return { blocks, initial: prog.crates.length ? 'crate-' + prog.crates[0].id : undefined };
+    },
+  };
+}
+
 // ---- MESSAGES -----------------------------------------------------------------
 function messagesApp(d: PhoneDeps): View {
   const thread = (id: string, name: string): View => ({
@@ -367,6 +406,7 @@ export function installApps(d: PhoneDeps) {
     ['items', 'ITEMS', 'items', '#ff7ab8', itemsApp],
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
+    ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
   ];
   for (const [id, label, ic, color, make, badge] of apps) d.phone.register({ id, label, icon: ic, color, open: () => make(d), badge });
 }

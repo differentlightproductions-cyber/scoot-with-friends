@@ -20,7 +20,7 @@ export interface CatalogEntry {
   category: string;
   unlockType: "free" | "credit";
   creditPrice: number;
-  variants: { id: string; name: string }[];
+  variants: { id: string; name: string; exclusive?: string }[];
 }
 
 export function catalogEntry(partId: string): CatalogEntry | undefined {
@@ -66,9 +66,14 @@ export function completeBoardSelections(deckVariant: string, starter: LongboardL
 
 export const ownershipKey = (s: { partId: string; variantId: string }) => s.partId + ":" + s.variantId;
 
-/** Free parts are always owned; everything else needs its colourway in the wallet. */
+/**
+ * Free parts are always owned, except their crate-exclusive colourways;
+ * everything else needs its colourway in the wallet.
+ */
 export function ownsSelection(wallet: AlphaWallet, s: { partId: string; variantId: string }) {
-  return catalogEntry(s.partId)?.unlockType === "free" || wallet.owned.includes(ownershipKey(s));
+  const entry = catalogEntry(s.partId);
+  if (entry?.unlockType === "free" && !entry.variants.find((v) => v.id === s.variantId)?.exclusive) return true;
+  return wallet.owned.includes(ownershipKey(s));
 }
 
 /** A rider owns a longboard when every slot of that build is theirs. */

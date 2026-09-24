@@ -484,3 +484,39 @@ body.ui-open header { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
   #start .game-menu button { transition: none; }
 }
+
+/* ---- Account dialog: a sticker on grip tape ---------------------------------- */
+#account-dialog {
+  max-width: 470px; padding: 24px 24px 18px; border: 4px solid var(--ink); border-radius: 20px;
+  background: var(--paper); color: var(--ink); box-shadow: 10px 10px 0 var(--lime), 0 30px 90px #000c;
+  font-family: var(--body); transform: rotate(-.6deg);
+}
+#account-dialog::backdrop { background: var(--grip); opacity: .94; }
+#account-dialog h2 {
+  display: inline-block; margin: 0 0 4px; padding: 6px 12px 4px; font: 26px/1 var(--display); letter-spacing: .02em;
+  background: var(--ink); color: var(--lime); border-radius: 8px; transform: rotate(-2deg);
+}
+#account-dialog .account-identity { margin: 10px 0 0; font: 20px/1.1 var(--marker); color: var(--orange); }
+#account-dialog p { color: #30343a; }
+#account-dialog label { font: 12px/1 var(--display); letter-spacing: .06em; color: var(--ink); }
+#account-dialog input, #account-dialog textarea { border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); box-shadow: inset 3px 3px 0 #0000000f; }
+#account-dialog small { display: block; margin-top: 6px; color: #5b6168; font-size: 12px; }
+#account-dialog button {
+  font: 14px/1.1 var(--display); letter-spacing: .03em; text-align: center; padding: 12px 14px 10px;
+  background: #fff; color: var(--ink); border: 3px solid var(--ink); border-radius: 12px; box-shadow: 4px 4px 0 var(--ink);
+  transition: transform .12s, box-shadow .12s;
+}
+#account-dialog form button[type=submit], #account-dialog [data-pick=cloud] { background: var(--lime); }
+#account-dialog [data-close] { background: var(--ink); color: var(--paper); box-shadow: 4px 4px 0 var(--orange); }
+#account-dialog button:hover:not(:disabled), #account-dialog button:focus-visible { outline: none; transform: translate(-2px, -2px); box-shadow: 6px 6px 0 var(--orange); }
+#account-dialog input:focus-visible, #account-dialog textarea:focus-visible { outline: 3px solid var(--orange); outline-offset: 1px; }
+#account-dialog [role=status] { font: 13px/1.3 var(--display); color: var(--orange); letter-spacing: .02em; }
+#account-dialog .recovery-code { border: 3px dashed var(--orange); border-radius: 12px; background: #fff7e8; }
+#account-dialog .account-save {
+  display: grid; gap: 3px; margin: 12px 0; padding: 12px 14px; border: 3px solid var(--ink); border-radius: 14px;
+  background: #fff; box-shadow: 5px 5px 0 var(--teal);
+}
+#account-dialog .account-save:first-of-type { box-shadow: 5px 5px 0 var(--lime); transform: rotate(-.8deg); }
+#account-dialog .account-save strong { font: 12px/1 var(--display); letter-spacing: .08em; color: var(--orange); }
+#account-dialog .account-save span { font: 17px/1.2 var(--display); }
+#account-dialog .account-save small { margin: 0; }

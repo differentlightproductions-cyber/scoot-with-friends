@@ -2,7 +2,8 @@ import {emptyWallet,validWallet,type AlphaWallet} from './credit';
 import {emptyPockets,validPockets,type Pockets} from './items';
 ﻿import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longboardParts";
-import { ownsBoard, type RideableKind } from "./catalog";
+import { ownsBoard, ownsSelection, type RideableKind } from "./catalog";
+import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
@@ -18,6 +19,8 @@ export interface LocalProfile {
   longboard: LongboardLoadout;
   /** What the rider takes out: switching never deletes the other build. */
   activeRideable: RideableKind;
+  /** XP, missions and unopened crates (data/progress.ts). */
+  progress: Progress;
   settings: {
     controlStyle: "pro" | "arcade";
     sound: boolean;
@@ -51,6 +54,8 @@ export interface LocalProfile {
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
+/** Called after every successful save (cloud sync listens). */
+export const profileSaved = new Set<() => void>();
 /**
  * A save from before the avatar keeps the spirit of its gear, once: body
  * build, headwear, top, bottoms and shoes (ids like "top-hoodie-red") map to
@@ -79,6 +84,7 @@ export function loadProfile(): LocalProfile {
     scooter: defaultScooter(),
     longboard: defaultLongboard(),
     activeRideable: "scooter",
+    progress: emptyProgress(),
     settings: {
       controlStyle: "pro",
       sound: true,
@@ -106,6 +112,7 @@ export function loadProfile(): LocalProfile {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3].includes(saved.version)) return profile;
     profile.wallet=validWallet(saved.wallet);
+    profile.progress=validProgress(saved.progress);
     profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
     profile.pockets=validPockets(saved.pockets);
     profile.avatar=saved.avatar?sanitizeAvatar(saved.avatar):migrateRider(saved);
@@ -133,7 +140,8 @@ export function loadProfile(): LocalProfile {
       const part = PARTS.find(
         (p) => p.id === s?.partId && p.category === category,
       );
-      if (part?.variants.some((v) => v.id === s?.variantId))
+      // A crate exclusive is only kept on the scooter while it is owned.
+      if (part?.variants.some((v) => v.id === s?.variantId && (!v.exclusive || ownsSelection(profile.wallet, s))))
         profile.scooter[slot] = { partId: s.partId, variantId: s.variantId };
     }
     profile.longboard = validLongboard(saved.longboard);
@@ -159,8 +167,11 @@ export function loadProfile(): LocalProfile {
 }
 export function saveProfile(profile: LocalProfile, walletTransaction=false) {
   try {
-    if(!walletTransaction){const saved=JSON.parse(localStorage.getItem(PROFILE_KEY)||"null");if(saved?.wallet)profile.wallet=validWallet(saved.wallet);}
+    // Credit and progress only change inside economy transactions: an ordinary
+    // save keeps whatever those last wrote rather than a stale in-memory copy.
+    if(!walletTransaction){const saved=JSON.parse(localStorage.getItem(PROFILE_KEY)||"null");if(saved?.wallet)profile.wallet=validWallet(saved.wallet);if(saved?.progress)profile.progress=validProgress(saved.progress);}
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    for (const listener of profileSaved) listener();
     return true;
   } catch {
     return false;
