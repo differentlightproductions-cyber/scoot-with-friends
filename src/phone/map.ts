@@ -188,13 +188,26 @@ export class PhoneMap {
     }
     const pin = radius * 0.075;
     g.textAlign = 'center'; g.textBaseline = 'middle';
+    // Pins of one kind that would overlap merge into one, with a count (a shop's
+    // shelves, a row of vending machines), so the circle stays readable.
+    const pins: { kind: MapFeature['kind']; sx: number; sy: number; n: number }[] = [];
     for (const f of features) {
-      const m = MARK[f.kind];
-      if (!m || f.kind === 'bench' || f.kind === 'spawn') continue;
+      if (!MARK[f.kind] || f.kind === 'bench' || f.kind === 'spawn') continue;
       const { sx, sy } = toScreen(f.x, f.z);
       if (Math.hypot(sx - cx, sy - cy) > radius - pin) continue;
+      const near = pins.find((q) => q.kind === f.kind && Math.hypot(q.sx - sx, q.sy - sy) < pin * 2.2);
+      if (near) { near.sx = (near.sx * near.n + sx) / (near.n + 1); near.sy = (near.sy * near.n + sy) / (near.n + 1); near.n++; }
+      else pins.push({ kind: f.kind, sx, sy, n: 1 });
+    }
+    for (const { kind, sx, sy, n } of pins) {
+      const m = MARK[kind]!;
       g.beginPath(); g.arc(sx, sy, pin, 0, Math.PI * 2); g.fillStyle = m[0]; g.fill(); g.lineWidth = pin * 0.3; g.strokeStyle = INK; g.stroke();
       g.fillStyle = INK; g.font = `${Math.round(pin * 1.15)}px ${DISPLAY}`; g.fillText(m[1], sx, sy + 0.5);
+      if (n > 1) {
+        const bx = sx + pin * 0.85, by = sy - pin * 0.85, br = pin * 0.62;
+        g.beginPath(); g.arc(bx, by, br, 0, Math.PI * 2); g.fillStyle = PAPER; g.fill(); g.lineWidth = pin * 0.2; g.strokeStyle = INK; g.stroke();
+        g.fillStyle = INK; g.font = `${Math.round(br * 1.3)}px ${DISPLAY}`; g.fillText(String(n), bx, by + 0.5);
+      }
     }
     // Friends: a lime dot, pinned to the rim when out of range.
     for (const f of features) {

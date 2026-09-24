@@ -79,6 +79,8 @@
   transform: skew(-6deg);
   transform-origin: left;
 }
+/* A single long word (ACCESSIBILITY) cannot wrap, so the whole title steps down a size. */
+#start .game-menu h1.long-title { font-size: clamp(26px, 2.8vw, 40px); }
 #start .game-menu nav { padding: 4px 8px 6px 2px; scrollbar-width: thin; scrollbar-color: var(--lime) transparent; }
 #start .game-menu button {
   position: relative;
