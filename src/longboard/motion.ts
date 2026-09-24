@@ -2,7 +2,11 @@ import * as THREE from "three";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 
 export interface BoardInput {
-  /** LS horizontal: lean toward the toe (+) or heel (-) edge. */
+  /**
+   * LS horizontal: carve right (+) or left (-) relative to the direction of
+   * travel, which is where the chase camera looks. Rolling tail first (fakie)
+   * does not reverse it; the board simply leans on its other edge (`edge`).
+   */
   steer: number;
   push: boolean;
   pushHeld: boolean;
@@ -24,7 +28,7 @@ export interface BoardInput {
  * it is rolling, and turning follows the direction of travel.
  */
 export class LongboardMotion {
-  /** Smoothed lean, -1..1. Lean is slower to build than scooter steering. */
+  /** Smoothed carve, -1..1, relative to travel (right +). Slower to build than scooter steering. */
   lean = 0;
   /** 0..1 how far into a slide the board has swung. */
   slide = 0;
@@ -40,6 +44,9 @@ export class LongboardMotion {
   switchStance = false;
   /** Roll that lays the board on the surface, separate from the carve lean. */
   surfaceRoll = 0;
+
+  /** The same carve on the board's own toe (+) / heel (-) edge: flips with travel. Drives deck roll, trucks and body lean. */
+  get edge() { return this.lean * this.travel; }
 
   reset() {
     this.lean = this.slide = this.slideSide = this.tuck = this.brake = 0;
@@ -88,11 +95,14 @@ export class LongboardMotion {
 
     // Truck steering: the tightest arc a lean allows is limited by how much
     // sideways acceleration the rider can lean against, so the same full lean
-    // that pivots a slow board draws a long, steady arc at speed.
+    // that pivots a slow board draws a long, steady arc at speed. Yaw rate turns
+    // the direction of travel the same way whichever end leads (a rotation is a
+    // left or right turn for either direction), so the carve needs no travel
+    // sign here: the old `* travel` made LS right carve left when rolling fakie.
     const curvature =
       -this.lean *
       Math.min(TUNE.boardMaxCurvature, TUNE.boardCarveAccel / Math.max(1, speed * speed));
-    let yawRate = curvature * speed * this.travel * (1 - this.slide);
+    let yawRate = curvature * speed * (1 - this.slide);
     // Nearly stopped, a rider can still pivot the board with their feet.
     if (speed < TUNE.boardPivotSpeed)
       yawRate += -this.lean * TUNE.boardPivotRate * (1 - speed / TUNE.boardPivotSpeed);
@@ -168,7 +178,7 @@ export class LongboardMotion {
     this.surfaceRoll = sideSlope;
     return {
       yaw: newYaw,
-      roll: sideSlope + this.lean * TUNE.boardLeanRoll * (1 - this.slide),
+      roll: sideSlope + this.edge * TUNE.boardLeanRoll * (1 - this.slide),
       pushed,
       tangent: newTangent,
     };

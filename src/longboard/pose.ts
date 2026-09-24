@@ -44,6 +44,11 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   // The end the rider is travelling toward: the nose, or the tail when riding switch.
   const lead = board.switchStance ? -1 : 1;
   const dir = nose * lead;
+  // Switching ends is a turn of the body, not a snap: the eased lead carries the
+  // rider from facing one end, through the sideways stance, to facing the other,
+  // and the feet (which keep their places on the deck) re-angle as it goes.
+  model.boardLead = damp(model.boardLead, s.walking ? 1 : lead, 4.5, dt);
+  const leadS = model.boardLead, dirS = nose * leadS;
   const riding = !s.walking;
   const assembly = model.boardAssembly!;
   model.boardStance = damp(model.boardStance, riding ? 1 : 0, 10, dt);
@@ -65,7 +70,7 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
     // the carve lean rolls only the deck, so the trucks keep their wheels down.
     model.board.position.set(0, 0, 0);
     model.board.rotation.set(s.pitch, 0, board.surfaceRoll);
-    assembly.setLean(s.roll - board.surfaceRoll, board.lean * 0.2 * (1 - board.slide));
+    assembly.setLean(s.roll - board.surfaceRoll, board.edge * 0.2 * (1 - board.slide));
     model.boardWheelAngle += (s.speed * dt) / 0.035;
   } else if (s.jumpOn) {
     // Pulled up under the feet for a jump-on.
@@ -82,7 +87,7 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
 
   // ---- Whole-body frame -------------------------------------------------
   const sideways = -nose * Math.PI / 2;
-  const downBoard = lead > 0 ? 0 : -nose * Math.PI;
+  const downBoard = -nose * Math.PI * (1 - leadS) / 2;
   const facing = riding ? THREE.MathUtils.lerp(sideways, downBoard, ps) * stance : 0;
   model.rider.position.set(
     0,
@@ -110,14 +115,14 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   const c = model.crouch;
 
   // ---- Torso, hips and head ----------------------------------------------
-  const twist = riding ? dir * (0.3 + board.tuck * 0.2 + pushEnvelope * 0.9) * (1 - ps) : 0;
+  const twist = riding ? dirS * (0.3 + board.tuck * 0.2 + pushEnvelope * 0.9) * (1 - ps) : 0;
   model.torso.position.set(0, 1.12 - c * 0.95, -0.03 + c * 0.14);
-  model.torso.rotation.set(0.07 + c * 0.85 - board.slide * 0.25, twist, riding ? -board.lean * 0.12 : 0);
+  model.torso.rotation.set(0.07 + c * 0.85 - board.slide * 0.25, twist, riding ? -board.edge * 0.12 : 0);
   pelvisFromChest(model.torso, model.hips.position);
   model.hips.rotation.set(model.torso.rotation.x * 0.5, twist * 0.4, model.torso.rotation.z);
   headFromChest(model.torso, model.head.position);
   // Look down the road: over the leading shoulder, against the torso's twist.
-  model.head.rotation.set(riding ? -c * 0.5 : 0, riding ? (dir * 1.15 - twist) * (1 - ps) : 0, 0);
+  model.head.rotation.set(riding ? -c * 0.5 : 0, riding ? (dirS * 1.15 - twist) * (1 - ps) : 0, 0);
 
   // ---- Legs ----------------------------------------------------------------
   model.root.updateMatrixWorld(true);
@@ -125,14 +130,17 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   for (let i = 0; i < 2; i++) {
     const sign = i === 0 ? -1 : 1;
     const front = sign === dir;
+    // How much this foot is the leading one right now (eased through a switch).
+    const f = clamp((sign * dirS + 1) / 2, 0, 1);
     let foot: THREE.Vector3;
     let footYaw = 0;
     if (riding) {
-      // Feet on the grip, in board space, then carried into rider space. In the
-      // push stance the front foot moves up over the front truck, toes forward.
-      const z = (front ? THREE.MathUtils.lerp(0.25, 0.3, ps) : -0.25) * lead;
+      // Feet on the grip, in board space, then carried into rider space: each
+      // foot keeps its own end of the deck whichever end leads. In the push
+      // stance the leading foot moves up over its truck, toes forward.
+      const z = sign * nose * THREE.MathUtils.lerp(0.25, 0.3, ps * f);
       foot = toRider(v(0, deckTop(0, z) + 0.035, z));
-      footYaw = front ? dir * (0.62 + pushEnvelope * 0.85) * (1 - ps) : -dir * 0.12 * (1 - ps);
+      footYaw = THREE.MathUtils.lerp(-dirS * 0.12, dirS * (0.62 + pushEnvelope * 0.85), f) * (1 - ps);
       if (!front && pushing >= 0) {
         // Sideways stance kick (rider-local, facing across the board).
         const across = [foot.clone(), v(dir * 0.06, 0.05, 0.24), v(-dir * 0.62, 0.04, 0.2), v(-dir * 0.42, 0.32, 0.12), foot.clone()];
@@ -179,17 +187,17 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   for (let i = 0; i < 2; i++) {
     const sign = i === 0 ? -1 : 1;
     const front = sign === dir;
+    const f = clamp((sign * dirS + 1) / 2, 0, 1);
     const shoulder = shoulderJoint(model.torso, sign as -1 | 1, model.avatar.shape);
     let hand: THREE.Vector3;
     let open = 0.75;
     let elbowOut = v(sign * 0.6, -0.35, -0.5);
     if (riding) {
-      const relaxed = front
-        ? v(dir * 0.34, 0.84 - c * 0.62, 0.15 + c * 0.1)
-        : v(-dir * 0.31, 0.8 - c * 0.6, 0.02);
+      // Leading hand forward and out, trailing hand back: eased through a switch.
+      const relaxed = v(-dirS * 0.31, 0.8 - c * 0.6, 0.02).lerp(v(dirS * 0.34, 0.84 - c * 0.62, 0.15 + c * 0.1), f);
       hand = relaxed;
       // Carving: the arms counter the lean a little.
-      hand.x += board.lean * 0.06;
+      hand.x += board.edge * 0.06;
       if (board.tuck > 0.01) {
         const knee = model.knees[i].position.clone().add(v(0, 0.06, 0.08));
         const tucked = front ? knee : v(-dir * 0.04, 0.92 - c * 0.6, -0.22);

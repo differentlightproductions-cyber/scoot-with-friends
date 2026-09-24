@@ -89,6 +89,8 @@ export class RiderModel {
   boardHold = 0;
   /** 1 while pushing a longboard facing down the board, 0 in the sideways carving stance. */
   boardPushStance = 0;
+  /** Longboard lead end, eased: 1 nose first, -1 riding switch (fakie); in between the body turns through sideways. */
+  boardLead = 1;
   boardWheelAngle = 0;
   deckPivot = new THREE.Group();
   barPivot = new THREE.Group();
