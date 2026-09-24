@@ -8,7 +8,7 @@ The owner supplied `dist.jpg`, `envy.webp`, `mgp.webp` and `rzr.jpg` as mechanic
 
 `src/scooter/assembly.ts` authors the actual shared gameplay/customization/rack assembly. `surfaces.ts` provides beveled extrusions, curved tubes, revolved profiles and fine material textures. Product colorways use the same geometry. Preserve deck/bar animation pivots and wheel centers. Change visual proportions independently of Rapier shapes, mass, timing and scoring.
 
-`character-skin.ts` generates weighted clothing around the existing animation drivers. Those hidden drivers are not the rendered character. Keep continuous hips/crotch/knees and shoulders/elbows/wrists. `model.ts` supplies current-frame grip targets, shoes, fingers, face and authored outfits. Preserve Fingerwhip routes when refining other grabs.
+Riders are original Mii-inspired avatars (owner direction, 2026-09-24; docs/AVATAR-DESIGN.md): a big round head that carries the personality, painted iconic face features, simple rounded body, tube limbs, mitten hands and chunky, properly shaped sneakers, all built procedurally in `src/avatar/` from the saved configuration. They stand against a realistic, detailed world: the scooter and park keep detailed stylized realism, and the outdoors go realistic (Boulder City, NV). `src/scooter/model.ts` supplies the semantic pose drivers (grip targets, shoes, chest, pelvis, head); the avatar follows them with fixed-length limbs. Preserve Fingerwhip routes when refining other grabs.
 
 `src/park/art.ts` authors planks, brackets, grain, layered foliage and stone silhouettes. Cosmetics must never create additional collision snags or move a riding line.
 

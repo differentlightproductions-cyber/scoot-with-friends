@@ -7,7 +7,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===un
 try{
  const page=await browser.newPage({viewport:{width:700,height:500}});
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');
- await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='christian-1',null,{timeout:120000});
+ await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='avatar-1',null,{timeout:120000});
  await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);document.querySelectorAll('body>*:not(canvas)').forEach(e=>e.style.display='none');});
  const image=await page.evaluate(async()=>{
   const g=window.__LAZER,s=g.sim,m=g.rider,T=await import('/node_modules/three/build/three.module.js');

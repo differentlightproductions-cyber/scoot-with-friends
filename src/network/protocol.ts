@@ -1,15 +1,15 @@
-﻿import {PARTS,CATEGORIES} from '../data/scooterParts';
-import {RIDERS} from '../data/riders';
-import {CLOTHING} from '../data/outfits';
+import {PARTS,CATEGORIES} from '../data/scooterParts';
+import {sanitizeAvatar} from '../avatar/config';
 import {validLongboard} from '../data/longboardParts';
-export const PROTOCOL=1,CONTENT='swf-2026-09-sesh-2';
+export const PROTOCOL=1,CONTENT='swf-2026-09-avatar-1';
 export function appearance(value:any){
- if(!value||!RIDERS.some(r=>r.id===value.riderId)||!['skinny','regular','chunky'].includes(value.bodyBuild))return null;
- const outfit:any={};for(const slot of ['head','top','bottom','shoes']){if(!CLOTHING.some(c=>c.category===slot&&c.id===value.outfit?.[slot]))return null;outfit[slot]=value.outfit[slot];}
+ if(!value||typeof value!=='object')return null;
+ // The rider is only a small configuration; anything unknown falls back to the default rider.
+ const avatar=sanitizeAvatar(value.avatar);
  const scooter:any={};for(const slot of [...CATEGORIES.filter(c=>c!=='wheels'),'frontWheel','rearWheel']){const category=slot.includes('Wheel')?'wheels':slot;const fallback=PARTS.find(p=>p.category===category);/* Griptape arrived later: a peer without it gets the default sheet. */const item=value.scooter?.[slot]??(category==='griptape'&&fallback?{partId:fallback.id,variantId:fallback.variants[0].id}:undefined);if(!PARTS.some(p=>p.id===item?.partId&&p.category===category&&p.variants.some(v=>v.id===item.variantId)))return null;scooter[slot]={partId:item.partId,variantId:item.variantId};}
  // Which rideable others see, and the board they see it as. Cosmetic only.
  const rideable=(value.rideable??value.activeRideable)==='longboard'?'longboard':'scooter';
- return {riderId:value.riderId,bodyBuild:value.bodyBuild,outfit,scooter,rideable,longboard:validLongboard(value.longboard)};
+ return {avatar,scooter,rideable,longboard:validLongboard(value.longboard)};
 }
 // Render state only. No wallet, ownership, scripts, URLs or claimed sender ID.
 export const POSE_KEYS=['airWeight','board','rideable','bodyFlip','charge','compression','crash','dropIn','elapsed','emote','fastplant','getUpTimer','grounded','heldItem','landTimer','landingCompression','manual','pitch','popTimer','position','pushTimer','rampLean','roll','running','sitting','speed','state','steer','tricks','walking','yaw'] as const;

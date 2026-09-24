@@ -4,6 +4,7 @@ import type { Simulation } from "../physics/simulation";
 import { poseRod, type RiderModel } from "../scooter/model";
 import { deckTop } from "./assembly";
 import { LONGBOARD_DIMENSIONS as D } from "../data/longboardParts";
+import { ARM_REACH, RIG, headFromChest, hipJoint, pelvisFromChest, shoulderJoint } from "../avatar/rig";
 
 const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 const ease = (t: number) => t * t * (3 - 2 * t);
@@ -112,18 +113,11 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   const twist = riding ? dir * (0.3 + board.tuck * 0.2 + pushEnvelope * 0.9) * (1 - ps) : 0;
   model.torso.position.set(0, 1.12 - c * 0.95, -0.03 + c * 0.14);
   model.torso.rotation.set(0.07 + c * 0.85 - board.slide * 0.25, twist, riding ? -board.lean * 0.12 : 0);
-  model.hips.position.copy(v(0, -0.21, 0).applyEuler(model.torso.rotation).add(model.torso.position)).add(v(0, -0.055, 0));
+  pelvisFromChest(model.torso, model.hips.position);
   model.hips.rotation.set(model.torso.rotation.x * 0.5, twist * 0.4, model.torso.rotation.z);
-  model.head.position.copy(v(0, 0.36, 0.01).applyEuler(model.torso.rotation).add(model.torso.position));
+  headFromChest(model.torso, model.head.position);
   // Look down the road: over the leading shoulder, against the torso's twist.
   model.head.rotation.set(riding ? -c * 0.5 : 0, riding ? (dir * 1.15 - twist) * (1 - ps) : 0, 0);
-  model.helmet.position.copy(model.head.position).add(v(0, 0.06, 0));
-  model.helmet.rotation.copy(model.head.rotation);
-  poseRod(
-    model.neck,
-    v(0, 0.225, 0).applyEuler(model.torso.rotation).add(model.torso.position),
-    model.head.position.clone().add(v(0, -0.09, 0)),
-  );
 
   // ---- Legs ----------------------------------------------------------------
   model.root.updateMatrixWorld(true);
@@ -162,9 +156,11 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
         Math.sin(s.elapsed * (s.running ? 13 : 9) + i * Math.PI) * Math.min(s.speed / TUNE.walkSpeed, 1);
       foot = v(sign * 0.12, 0.045 + Math.max(0, gait) * (s.running ? 0.24 : 0.13), -0.1 + gait * (s.running ? 0.43 : 0.28));
     }
+    // The avatar's ankle sits above the shoe point.
+    foot.y += model.avatar.ankleOffsets[i];
     model.shoes[i].position.copy(foot);
     model.shoes[i].quaternion.setFromAxisAngle(Y, footYaw);
-    const hip = v(sign * 0.095, -0.015, 0).applyEuler(model.hips.rotation).add(model.hips.position);
+    const hip = hipJoint(model.hips, sign as -1 | 1, model.avatar.shape);
     const delta = foot.clone().sub(hip),
       length = delta.length(),
       direction = delta.clone().normalize();
@@ -173,7 +169,7 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
     const knee = hip
       .clone()
       .lerp(foot, 0.5)
-      .addScaledVector(pole, Math.sqrt(Math.max(0.0001, 0.415 * 0.415 - Math.min(0.413, length / 2) ** 2)));
+      .addScaledVector(pole, Math.sqrt(Math.max(0.0001, RIG.thigh * RIG.thigh - Math.min(RIG.thigh - 0.002, length / 2) ** 2)));
     model.knees[i].position.copy(knee);
     poseRod(model.thighs[i], hip, knee);
     poseRod(model.shins[i], knee, foot);
@@ -183,7 +179,7 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
   for (let i = 0; i < 2; i++) {
     const sign = i === 0 ? -1 : 1;
     const front = sign === dir;
-    const shoulder = v(sign * 0.19, 0.17, 0).applyEuler(model.torso.rotation).add(model.torso.position);
+    const shoulder = shoulderJoint(model.torso, sign as -1 | 1, model.avatar.shape);
     let hand: THREE.Vector3;
     let open = 0.75;
     let elbowOut = v(sign * 0.6, -0.35, -0.5);
@@ -213,9 +209,9 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
     } else {
       hand = v(sign * 0.23, 0.8, -0.03 + Math.sin(s.elapsed * 9) * 0.12 * Math.min(1, s.speed / TUNE.walkSpeed));
     }
-    const reach = Math.min(0.66, shoulder.distanceTo(hand));
+    const reach = Math.min(ARM_REACH * 0.99, shoulder.distanceTo(hand));
     hand = shoulder.clone().addScaledVector(hand.clone().sub(shoulder).normalize(), reach);
-    const bend = Math.sqrt(Math.max(0.0004, 0.34 * 0.34 - Math.min(0.33, reach / 2) ** 2));
+    const half = (RIG.upperArm + RIG.forearm) / 2, bend = Math.sqrt(Math.max(0.0004, half * half - Math.min(half - 0.001, reach / 2) ** 2));
     const elbow = shoulder
       .clone()
       .lerp(hand, 0.5)
@@ -225,6 +221,8 @@ export function poseLongboard(model: RiderModel, s: Simulation, dt: number) {
     model.hands[i].position.copy(hand);
     model.hands[i].quaternion.setFromUnitVectors(Y, elbow.clone().sub(hand).normalize());
     model.hands[i].userData.openHand = open;
+    // No handlebar: the wrist follows the forearm (the avatar orients the mitten).
+    model.hands[i].userData.freeWrist = true;
   }
   model.finishPose(s.elapsed);
 }

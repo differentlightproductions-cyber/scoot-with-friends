@@ -2,7 +2,7 @@ import {chromium} from 'playwright';import assert from 'node:assert/strict';impo
 // artifacts/ is gitignored, so these output directories do not exist in a fresh clone.
 mkdirSync('artifacts/fit-pass/addendum',{recursive:true});
 const b=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
-try{const p=await b.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto('http://127.0.0.1:5180/');await p.waitForFunction(()=>window.__LAZER?.rider.human);
+try{const p=await b.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto('http://127.0.0.1:5180/');await p.waitForFunction(()=>window.__LAZER?.rider.avatar);
  const checks=await p.evaluate(async()=>{
   const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);
   const {emptyInput}=await import('/src/input/input.ts'),{saveProfile,loadProfile}=await import('/src/data/loadout.ts'),{emptyPockets,receiveItem}=await import('/src/data/items.ts');

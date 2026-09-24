@@ -5,7 +5,7 @@ import {createServer} from 'node:http';
 import {WebSocket} from 'ws';
 import {createRooms,attachLanRelay,privateAddress,LAN_ORIGIN} from '../server/lan';
 import {defaultScooter} from '../src/data/scooterParts';
-import {defaultOutfit} from '../src/data/outfits';
+import {defaultAvatar} from '../src/avatar/config';
 import {PROTOCOL,CONTENT} from '../src/network/protocol';
 
 test('LAN accepts only local IPv4 targets',()=>{
@@ -26,7 +26,7 @@ test('two localhost relays join, chat, isolate, reconnect, and reject foreign we
   const inbox:any[]=[];ws.on('message',data=>inbox.push(JSON.parse(data.toString())));await once(ws,'open');
   return {ws,send:(data:any)=>ws.send(JSON.stringify(data)),wait:async(type:string)=>{for(let i=0;i<200;i++){const at=inbox.findIndex(m=>m.type===type);if(at>=0)return inbox.splice(at,1)[0];await new Promise(r=>setTimeout(r,5));}throw Error('Missing '+type);},inbox};
  };
- const hello={protocol:PROTOCOL,content:CONTENT,mapRevision:'0'.repeat(64),name:'LAN rider',appearance:{riderId:'rider-01',bodyBuild:'regular',outfit:defaultOutfit(),scooter:defaultScooter()}};
+ const hello={protocol:PROTOCOL,content:CONTENT,mapRevision:'0'.repeat(64),name:'LAN rider',appearance:{avatar:defaultAvatar(),scooter:defaultScooter()}};
  try{
   const host=await connect(0);host.send({...hello,type:'create'});const a=await host.wait('welcome');
   const friend=await connect(1);friend.send({...hello,type:'join',code:a.code});const b=await friend.wait('welcome');assert.notEqual(a.id,b.id);

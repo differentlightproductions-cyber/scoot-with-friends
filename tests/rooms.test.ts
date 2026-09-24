@@ -1,5 +1,5 @@
-﻿import test from 'node:test';import assert from 'node:assert/strict';import {WebSocket} from 'ws';import {once} from 'node:events';import {createRooms} from '../server/rooms';import {defaultScooter} from '../src/data/scooterParts';import {defaultOutfit} from '../src/data/outfits';import {PROTOCOL,CONTENT} from '../src/network/protocol';
-const hello={protocol:PROTOCOL,content:CONTENT,mapRevision:'0'.repeat(64),name:'Tester',appearance:{riderId:'rider-01',bodyBuild:'regular',outfit:defaultOutfit(),scooter:defaultScooter()}};
+import test from 'node:test';import assert from 'node:assert/strict';import {WebSocket} from 'ws';import {once} from 'node:events';import {createRooms} from '../server/rooms';import {defaultScooter} from '../src/data/scooterParts';import {defaultAvatar} from '../src/avatar/config';import {PROTOCOL,CONTENT} from '../src/network/protocol';
+const hello={protocol:PROTOCOL,content:CONTENT,mapRevision:'0'.repeat(64),name:'Tester',appearance:{avatar:defaultAvatar(),scooter:defaultScooter()}};
 const delay=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 test('private room identity, permissions, limits, isolation, reconnect and eight simulated connections',async()=>{
  const service=createRooms({port:0,capacity:8,grace:100,origins:['http://test.local']});await once(service.server,'listening');const port=(service.server.address() as any).port;const clients:WebSocket[]=[];

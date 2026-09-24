@@ -2,7 +2,9 @@ import {SHOPS,shopStock} from '../data/shops';
 import {CreditEconomy,owns} from '../data/credit';
 import {catalogEntry,completeBoardSelections,bundlePrice,ownsBoard} from '../data/catalog';
 import {LONGBOARD_CATEGORIES,LONGBOARD_PARTS,longboardPart,type LongboardCategory} from '../data/longboardParts';
-import {BODY_BUILDS} from '../scooter/body-fit';
+import { AVATAR_PRESETS, randomAvatar } from '../avatar/config';
+import { RiderCreator, type Framing } from './creator';
+import { creatorBackdrop } from './creator-backdrop';
 import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryItem,type BrowseMode} from '../data/inventory';
 import {AccountPanel} from './account';
 import {loadProfile} from '../data/loadout';
@@ -10,7 +12,6 @@ import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN} from '../camera/fov';
 import { version } from '../../package.json';
 import * as THREE from "three";
 import { MAPS, type MapId } from "../data/maps";
-import { CLOTHING, OUTFIT_SLOTS, clothing, type OutfitSlot } from '../data/outfits';
 import {
   CATEGORIES,
   PARTS,
@@ -30,16 +31,38 @@ export class GameMenu {
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
   private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
   openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.longboard=structuredClone(latest.longboard);this.profile.activeRideable=latest.activeRideable;this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
-  private applySesh(){
-    const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return;}
-    for(const item of Object.values(this.profile.scooter))if(!owns(latest.wallet,item)){this.notice='An equipped item is not owned.';this.render();return;}
-    if(this.profile.activeRideable==='longboard'&&!ownsBoard(latest.wallet,this.profile.longboard)){this.notice='Own every part of this board before riding it.';this.render();return;}
+  private applySesh():boolean{
+    const latest=loadProfile();if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0)){this.notice='Setup changed in another tab. Cancel and reopen before applying.';this.render();return false;}
+    for(const item of Object.values(this.profile.scooter))if(!owns(latest.wallet,item)){this.notice='An equipped item is not owned.';this.render();return false;}
+    if(this.profile.activeRideable==='longboard'&&!ownsBoard(latest.wallet,this.profile.longboard)){this.notice='Own every part of this board before riding it.';this.render();return false;}
     const nextRevision=(this.profile.equipmentRevision??0)+1;this.profile.equipmentRevision=nextRevision;
-    if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return;}
-    Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes saved on this device.';this.saveFailed=false;this.render();
+    if(!saveProfile(this.profile)){this.profile.equipmentRevision=nextRevision-1;this.saveFailed=true;this.notice='Could not save. Retry or cancel.';this.render();return false;}
+    Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes saved on this device.';this.saveFailed=false;this.render();return true;
   }
+  /** The rider creator (src/ui/creator.ts) edits a draft avatar on the preview rider. */
+  readonly creator=new RiderCreator({
+    preview:config=>{this.previewRider.setAvatar(config);this.creatorFraming='';},
+    save:config=>{
+      const previous=this.profile.avatar;this.profile.avatar=structuredClone(config);
+      if(this.seshOpen){if(this.applySesh())return '';this.profile.avatar=previous;return this.notice||'Could not save. Try again.';}
+      if(!saveProfile(this.profile)){this.profile.avatar=previous;this.saveFailed=true;return 'Could not save. Try again.';}
+      this.saveFailed=false;this.previewRider.applyProfile(this.profile);this.onChange();return '';
+    },
+    close:()=>this.show('rider'),
+    resetView:()=>{this.creatorFraming='';this.pan.set(0,0,0);},
+  });
+  private creatorFraming:Framing|''='';
+  /** Frames the preview on the face, the whole body or the shoes as the creator's focus moves. */
+  private frameCreator(){
+    const framing=this.creator.framing;if(framing===this.creatorFraming)return;this.creatorFraming=framing;
+    this.pan.set(0,0,0);this.previewRider.root.updateMatrixWorld(true);
+    if(framing==='face'){this.previewRider.avatar.headRoot.getWorldPosition(this.focusTarget);this.focusTarget.y-=.015;this.zoomTarget=1.45;this.orbitGoal=.28;}
+    else if(framing==='feet'){this.previewRider.avatar.feet[1].getWorldPosition(this.focusTarget);this.focusTarget.y=.1;this.zoomTarget=1.25;this.orbitGoal=.75;}
+    else{this.focusTarget.set(0,.95,0);this.zoomTarget=3.8;this.orbitGoal=.5;}
+  }
+  private orbitGoal:number|null=null;
   /** Deliberate draft edits in the Sesh menu that Apply has not saved yet. */
-  private dirty(){if(!this.seshOpen||!this.savedProfile)return false;const pick=(p:LocalProfile)=>JSON.stringify([p.scooter,p.longboard,p.activeRideable,p.outfit,p.riderId,p.bodyBuild,p.settings,p.pockets]);return pick(this.profile)!==pick(this.savedProfile);}
+  private dirty(){if(!this.seshOpen||!this.savedProfile)return false;const pick=(p:LocalProfile)=>JSON.stringify([p.scooter,p.longboard,p.activeRideable,p.avatar,p.settings,p.pockets]);return pick(this.profile)!==pick(this.savedProfile);}
   private leaveReturn='rides';
   private closeSesh(){this.profile=this.savedProfile!;this.savedProfile=null;this.seshOpen=false;this.root.hidden=true;this.root.classList.remove('sesh-overlay');this.onCloseSesh();}
 
@@ -76,7 +99,6 @@ export class GameMenu {
 
   category: Category = "deck";
   product = "";
-  outfitSlot:OutfitSlot='head';
   index = 0;
   private cooldown = 0;
   previewScene = new THREE.Scene();
@@ -124,8 +146,11 @@ export class GameMenu {
     this.previewScene.add(this.isolatedProduct);
     this.focusBox.visible = false;
     let drag: { x: number; y: number; pan: boolean } | null = null;
+    // In the creator only the stage turns the rider (the panel scrolls); elsewhere the right half does.
+    const onStage=(e:{clientX:number;clientY:number})=>{const r=this.root.querySelector('.cr-stage')?.getBoundingClientRect();return !!r&&e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;};
     window.addEventListener("pointerdown", (e) => {
-      if (!this.root.hidden && e.clientX > innerWidth * 0.5) {
+      if (!this.root.hidden && (this.screen==='creator'?onStage(e)&&!(e.target as HTMLElement).closest?.('.creator,.cr-confirm'):e.clientX > innerWidth * 0.5)) {
+        if(this.screen==='creator')this.orbitGoal=null;
         drag = {
           x: e.clientX,
           y: e.clientY,
@@ -154,6 +179,7 @@ export class GameMenu {
       "wheel",
       (e) => {
         if (this.root.hidden) return;
+        if(this.screen==='creator'){if(onStage(e))this.zoomTarget=THREE.MathUtils.clamp(this.zoomTarget*(1+e.deltaY*.0012),.55,5.5);return;}
         this.zoomTarget = THREE.MathUtils.clamp(
           this.zoomTarget + e.deltaY * 0.003,
           this.shopOpen?.06:.8,
@@ -181,11 +207,15 @@ export class GameMenu {
   show(screen: string) {
     // Returning to a screen restores where focus was, so a category keeps its place.
     if(screen!==this.screen){this.memory.set(this.memoryKey(this.screen),this.index);this.index=this.memory.get(this.memoryKey(screen))??0;}
+    if(this.screen==='creator'&&screen!=='creator')this.leaveCreator();
+    const entering=screen==='creator'&&this.screen!=='creator';
     this.screen = screen;
+    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop();this.creator.start(this.root,this.profile.avatar);return;}
     // A direction still held from the previous screen waits before repeating here.
     this.repeatTimer=Math.max(this.repeatTimer,.38);
     this.render();
   }
+  private leaveCreator(){this.creator.stop();this.previewRider.setAvatar(this.profile.avatar);this.previewScene.background=new THREE.Color(0xc5cbc1);this.orbitGoal=null;this.focusKey='__creator';}
   private changed() {
     if(this.seshOpen){this.previewRider.applyProfile(this.profile);return;}
     this.saveFailed = !saveProfile(this.profile);
@@ -207,6 +237,7 @@ export class GameMenu {
   }
   private render() {
     this.root.classList.toggle('shop-overlay',this.shopOpen);this.root.classList.toggle('sesh-overlay',this.seshOpen);
+    if(this.screen==='creator'){this.root.dataset.screen='creator';this.creator.render();return;}
     const parkMaps=PARK_MAPS;
     this.root.dataset.screen=this.screen;
     const add = (
@@ -231,7 +262,7 @@ export class GameMenu {
         add("PLAY",()=>this.show("play"),"Find your next line");
         add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
         add("RIDES",()=>this.show("rides"),"Ride and customize your scooter or longboard");
-        add("RIDER",()=>this.show("rider"),"Character, clothing and body build");
+        add("RIDER",()=>this.show("rider"),"Your avatar: riders, body type, randomize");
         add("SETTINGS",()=>this.show("settings"),"Preferences and trick book");
         add("ACCOUNT",()=>{void this.accountPanel.open();},"Sign in / Create account");
         break;
@@ -286,21 +317,16 @@ export class GameMenu {
 
         break;
       case "rider":
+        add('CUSTOMIZE RIDER',()=>this.show('creator'),'Face, hair, eyes, body, outfit and accessories');
+        add('CHOOSE RIDER',()=>this.show('rider-presets'),'Sample riders and presets');
+        add('RANDOMIZE RIDER',()=>{this.profile.avatar=randomAvatar();this.changed();this.render();},'A new random rider, same physics');
         add('BACKPACK',()=>{this.profile.pockets.backpack=!this.profile.pockets.backpack;this.changed();this.render();},this.profile.pockets.backpack?'Equipped / same inventory':'Off / Pockets');
-        add('BODY BUILD',()=>this.show('body-build'),this.profile.bodyBuild.toUpperCase());
         title = "RIDER";
-        subtitle = "CHRISTIAN / SAME PHYSICS. YOUR STYLE.";
-        add('SIGNATURE OUTFIT',()=>{},'Original outfit supplied with Christian');
+        subtitle = "YOUR AVATAR / SAME PHYSICS. YOUR STYLE.";
         break;
-      case 'body-build':
-        title='BODY BUILD';subtitle='COSMETIC FIT / SAME RIDING';
-        for(const build of BODY_BUILDS)add(build.toUpperCase(),()=>{this.profile.bodyBuild=build;this.changed();this.render();},undefined,this.profile.bodyBuild===build);
-        break;
-      case "clothing":
-        title=this.outfitSlot.toUpperCase();subtitle='AUTHORED GEAR / ALL UNLOCKED';
-        for(const item of CLOTHING.filter(p=>p.category===this.outfitSlot))add(item.name,()=>{
-          this.profile.outfit[this.outfitSlot]=item.id;this.changed();this.render();
-        },'Included',this.profile.outfit[this.outfitSlot]===item.id);
+      case "rider-presets":
+        title='CHOOSE RIDER';subtitle='SAMPLE RIDERS / ALL UNLOCKED';
+        for(const preset of AVATAR_PRESETS)add(preset.name.toUpperCase(),()=>{this.profile.avatar=structuredClone(preset.config);this.changed();this.render();},'Included',JSON.stringify(this.profile.avatar)===JSON.stringify(preset.config));
         break;
       case "shop":{
         const wallet=loadProfile().wallet;title=this.activeShop.name.toUpperCase();subtitle='PICK A BRAND / '+wallet.credit+' CREDIT'+(wallet.testCredit?' + '+wallet.testCredit+' TEST':'');
@@ -394,9 +420,6 @@ export class GameMenu {
         break;
       case 'settings-graphics':
         title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';
-        add('CHARACTER QUALITY '+this.profile.settings.characterQuality.toUpperCase(),()=>{
-          const levels=['auto','low','medium','high'] as const;this.profile.settings.characterQuality=levels[(levels.indexOf(this.profile.settings.characterQuality)+1)%4];this.changed();this.render();
-        },'Auto follows the graphics preset. Override to prioritize your rider.');
         add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},'Visual detail, resolution and shadows; riding stays identical.');
         break;
       case 'settings-time':
@@ -553,11 +576,13 @@ export class GameMenu {
     }
   }
   select() {
+    if(this.screen==='creator'){this.creator.select();return;}
     this.choices[this.index]?.action();
   }
   private closeShop(){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();}
   back() {
     if(this.buying)return;
+    if(this.screen==='creator'){this.creator.back();return;}
     if(this.seshOpen&&["rides","rider","settings","maps","shops","online"].includes(this.screen)){if(this.dirty()){this.leaveReturn=this.screen;this.show('leave-sesh');return;}this.closeSesh();return;}
     if(this.screen==='leave-sesh'){this.show(this.leaveReturn);return;}
     if(this.screen.startsWith('settings-')||this.screen==='test-controller'){this.show('settings');return;}
@@ -571,7 +596,7 @@ export class GameMenu {
     if(this.screen==="board-purchase"){this.show("board-complete");return;}
     if(this.screen==="longboard"){this.show("rides");return;}
     this.show(
-      this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':['characters','clothing','body-build'].includes(this.screen)?'rider':['clothing','body-build'].includes(this.screen) ? 'rider' : "home",
+      this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
     );
   }
   /** One focus step. Grid cells move by column/row; the rows below move one at a time. */
@@ -598,6 +623,18 @@ export class GameMenu {
     if(this.screen==='test-controller'){let pre=this.root.querySelector<HTMLElement>('#controller-test');if(!pre){pre=document.createElement('pre');pre.id='controller-test';this.root.querySelector('nav')?.after(pre);}pre.textContent=JSON.stringify(this.controllerReport(),null,1).replace(/[{}"]/g,'');}
     else if(this.touchPreviewOn)this.touchPreview(false);
     if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
+    if(this.screen==='creator'){
+      this.creator.update(input,dt);this.frameCreator();
+      // RS turns the rider, the triggers zoom (LT out, RT in).
+      if(Math.abs(input.rx)>.05)this.orbitGoal=null;
+      if(this.orbitGoal!==null)this.orbit+=(this.orbitGoal-this.orbit)*(1-Math.exp(-6*dt));
+      this.orbit-=input.rx*dt*2.2;
+      const zoom=(input.held.brake-input.held.pumpGrind)*dt*1.8+input.ry*dt*1.2;
+      if(zoom)this.zoomTarget=THREE.MathUtils.clamp(this.zoomTarget+zoom*this.zoomTarget,.55,5.5);
+      this.focus.lerp(this.focusTarget,1-Math.exp(-7*dt));
+      this.zoom+=(this.zoomTarget-this.zoom)*(1-Math.exp(-7*dt));
+      return;
+    }
     this.cooldown = Math.max(0, this.cooldown - dt);
     const vertical=input.held.marker>.5?-1:input.held.menuDown>.5?1:Math.abs(input.lean)>.5?Math.sign(input.lean):0;
     const horizontal=vertical?0:input.held.menuLeft>.5?-1:input.held.menuRight>.5?1:Math.abs(input.steer)>.6?Math.sign(input.steer):0;
@@ -622,12 +659,17 @@ export class GameMenu {
     if (Math.abs(input.ry) > 0.05) this.zoomTarget = this.zoom;
   }
   preview(renderer: THREE.WebGLRenderer) {
-    this.previewRider.posePreviewHands();
+    this.previewRider.posePreviewHands(performance.now()/1000);
     const scooter=["rides","scooter","brand","brand-items","purchase","purchased","longboard","board-complete","board-purchase","shop"].includes(this.screen);
     this.previewRider.rider.visible=!scooter;
     const floor=this.previewScene.getObjectByName('Preview floor');if(floor)floor.visible=!this.shopOpen;
-    const compact=true;
-    const x=compact?Math.round(innerWidth*.40):0,w=compact?Math.round(innerWidth*.55):innerWidth,h=compact?Math.round(innerHeight*.62):innerHeight,y=compact?Math.round(innerHeight*.20):0;
+    const compact=true,stage=this.screen==='creator'?this.root.querySelector('.cr-stage')?.getBoundingClientRect():undefined;
+    let x=compact?Math.round(innerWidth*.40):0,w=compact?Math.round(innerWidth*.55):innerWidth,h=compact?Math.round(innerHeight*.62):innerHeight,y=compact?Math.round(innerHeight*.20):0;
+    if(stage&&stage.width>0){x=Math.round(stage.left);w=Math.round(stage.width);h=Math.round(stage.height);y=Math.round(innerHeight-stage.bottom);}
+    // The creator's painted backdrop covers the stage without stretching (keeps the horizon band).
+    const backdrop=this.previewScene.background;
+    if(backdrop instanceof THREE.Texture){const a=w/Math.max(1,h);if(a>=1){backdrop.repeat.set(1,1/a);backdrop.offset.set(0,(1-1/a)*.42);}else{backdrop.repeat.set(a,1);backdrop.offset.set((1-a)*.5,0);}}
+    if(floor instanceof THREE.Mesh)(floor.material as THREE.MeshStandardMaterial).color.setHex(this.screen==='creator'?0xd9c8ae:0xb6beb2);
     const center=this.focus.clone().add(this.pan);
     const distance=this.zoom*(scooter&&!this.shopOpen?.66:1);
     this.previewCamera.aspect=w/h;

@@ -12,15 +12,14 @@ try{
  const page=await browser.newPage({viewport:{width:700,height:500}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');
- await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='christian-1',null,{timeout:120000});
+ await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='avatar-1',null,{timeout:120000});
  await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);});
  const out=await page.evaluate(async()=>{
   const g=window.__LAZER,s=g.sim,m=g.rider,T=await import('/node_modules/three/build/three.module.js');
   const {terrainHeight,terrainNormal}=await import('/src/park/park.ts');
-  let sk;m.human.mesh.traverse(o=>{if(o.isSkinnedMesh&&!sk)sk=o;});
-  const bone=n=>sk.skeleton.bones.find(b=>b.name==='mixamorig'+n);
+    const bone=n=>m.avatar.bone(n);
   const measure=()=>{
-   m.root.updateMatrixWorld(true);sk.skeleton.update();
+   m.root.updateMatrixWorld(true);
    const inv=m.rider.matrixWorld.clone().invert(),pos=n=>new T.Vector3().setFromMatrixPosition(bone(n).matrixWorld.clone().premultiply(inv));
    const r={palm:[0,0],stretch:[0,0]};
    for(const S of ['Left','Right']){
@@ -28,7 +27,7 @@ try{
     const socket=m.rider.worldToLocal(m.assembly.gripSockets[k].getWorldPosition(new T.Vector3()));
     const cp=new T.Line3(wrist,mid).closestPointToPoint(socket,true,new T.Vector3());
     r.palm[k]=+(cp.distanceTo(socket)-(m.hands[k].userData.gripRadius??.02)).toFixed(3);
-    r.stretch[k]=+(sh.distanceTo(wrist)/m.human.armReach[k]).toFixed(3);
+    r.stretch[k]=+(sh.distanceTo(wrist)/m.avatar.armReach[k]).toFixed(3);
    }
    return r;
   };

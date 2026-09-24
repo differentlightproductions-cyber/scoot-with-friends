@@ -11,22 +11,21 @@ try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');
- await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='christian-1',null,{timeout:120000});
+ await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='avatar-1',null,{timeout:120000});
  await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);});
  const results=await page.evaluate(async()=>{
   const g=window.__LAZER,s=g.sim,m=g.rider,T=await import('/node_modules/three/build/three.module.js');
   const {terrainHeight,terrainNormal}=await import('/src/park/park.ts');
   const {modules,rampLips}=await import('/src/park/outdoor.ts');
   const a=(t,f={})=>g.advance(t,f,false);
-  let sk;m.human.mesh.traverse(o=>{if(o.isSkinnedMesh&&!sk)sk=o;});
-  const by=n=>sk.skeleton.bones.find(b=>b.name==='mixamorig'+n);
+    const by=n=>m.avatar.bone(n);
   const sample=()=>{
-   g.rider.update(s,1/120,1);m.root.updateMatrixWorld(true);sk.skeleton.update();
+   g.rider.update(s,1/120,1);m.root.updateMatrixWorld(true);
    const inv=m.rider.matrixWorld.clone().invert(),pos=n=>new T.Vector3().setFromMatrixPosition(by(n).matrixWorld.clone().premultiply(inv));
    const clampIdx=s.tricks.stance==='regular'?0:1,r={wrist:[null,null],barGap:null,clampGap:null,reach:[0,0]};
    for(const S of ['Left','Right']){
     const k=pos(S+'Arm').x<0?0:1,wrist=pos(S+'Hand'),mid=pos(S+'HandMiddle1'),sh=pos(S+'Arm');
-    r.wrist[k]=wrist;r.reach[k]=sh.distanceTo(wrist)/m.human.armReach[k];
+    r.wrist[k]=wrist;r.reach[k]=sh.distanceTo(wrist)/m.avatar.armReach[k];
     const seg=new T.Line3(wrist,mid);
     if(k!==clampIdx){const sock=m.rider.worldToLocal(m.assembly.gripSockets[k].getWorldPosition(new T.Vector3()));r.barGap=seg.closestPointToPoint(sock,true,new T.Vector3()).distanceTo(sock)-(m.hands[k].userData.gripRadius??.0165);}
     else{const an=m.rider.worldToLocal(m.assembly.clampGrabAnchor.getWorldPosition(new T.Vector3()));r.clampGap=seg.closestPointToPoint(an,true,new T.Vector3()).distanceTo(an)-(m.assembly.clampGrabAnchor.userData.radius??.03);}

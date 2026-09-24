@@ -1,23 +1,18 @@
 import {emptyWallet,validWallet,type AlphaWallet} from './credit';
-import {BODY_BUILDS,type BodyBuild} from '../scooter/body-fit';
 import {emptyPockets,validPockets,type Pockets} from './items';
-﻿import { RIDERS } from "./riders";
-import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
+﻿import { PARTS, defaultScooter, type ScooterLoadout } from "./scooterParts";
 import { defaultLongboard, validLongboard, type LongboardLoadout } from "./longboardParts";
 import { ownsBoard, type RideableKind } from "./catalog";
-import { CLOTHING, OUTFIT_SLOTS, defaultOutfit, type Outfit } from './outfits';
+import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
   version: 1 | 2 | 3;
   equipmentRevision?:number;
   wallet:AlphaWallet;
-  outfit: Outfit;
-  riderOutfits:Record<string,Outfit>;
-  riderId: string;
-  bodyBuild:BodyBuild;
+  /** The rider (docs/AVATAR-DESIGN.md §9): a small configuration, never a mesh. */
+  avatar: AvatarConfig;
   pockets:Pockets;
-  outfitId: string;
   scooter: ScooterLoadout;
   /** The saved Sometimes Summer build; kept whether or not it is being ridden. */
   longboard: LongboardLoadout;
@@ -33,7 +28,6 @@ export interface LocalProfile {
     daylight: 'day'|'sunset'|'night'|'sunrise'|'snow';
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
-    characterQuality:'auto'|'low'|'medium'|'high';
     /** Personal camera; never networked. */
     cameraView: 'third'|'first';
     /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
@@ -51,16 +45,31 @@ export interface LocalProfile {
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
+/**
+ * A save from before the avatar keeps the spirit of its gear, once: body
+ * build, headwear, top, bottoms and shoes (ids like "top-hoodie-red") map to
+ * the nearest avatar items and colours; everything else is the default rider.
+ */
+function migrateRider(saved:any):AvatarConfig{
+  const avatar=defaultAvatar(),part=(id:unknown)=>typeof id==='string'?id.split('-'):[];
+  const color:Record<string,string>={black:'black',gray:'gray',forest:'green',red:'red',sand:'khaki',navy:'navy'};
+  avatar.bodyType=({skinny:'slim',regular:'standard',chunky:'stocky'} as const)[saved?.bodyBuild as 'skinny'|'regular'|'chunky']??'standard';
+  const [,head,...headColor]=part(saved?.outfit?.head),[,top,...topColor]=part(saved?.outfit?.top),[,bottom,...bottomColor]=part(saved?.outfit?.bottom),[,...shoes]=part(saved?.outfit?.shoes);
+  if(head)avatar.headwear=head==='none'?'none':['helmet','vented','visor'].includes(head)?'helmet':head;
+  if(headColor.length)avatar.headwearColor=color[headColor.join('-')]??avatar.headwearColor;
+  if(top)avatar.top=top==='long'?'long-sleeve':top;
+  if(topColor.length)avatar.topColor=color[topColor.at(-1)!]??avatar.topColor;
+  if(bottom)avatar.bottom=bottom==='jeans'?'straight-jeans':bottom==='chinos'?'straight-jeans':bottom;
+  if(bottomColor.length)avatar.bottomColor=bottom==='jeans'&&bottomColor[0]==='navy'?'denim':color[bottomColor[0]]??avatar.bottomColor;
+  if(shoes.length){avatar.shoes=shoes[0]==='high'?'high-top':'skate';avatar.shoeColor=color[shoes.at(-1)!]??avatar.shoeColor;}
+  return sanitizeAvatar(avatar);
+}
 export function loadProfile(): LocalProfile {
   const profile: LocalProfile = {
     version: 3,
     wallet:emptyWallet(),
-    outfit: defaultOutfit(),
-    riderOutfits:{},
-    riderId: RIDERS[0].id,
-    bodyBuild:'regular',
+    avatar: defaultAvatar(),
     pockets:emptyPockets(),
-    outfitId: RIDERS[0].outfitId,
     scooter: defaultScooter(),
     longboard: defaultLongboard(),
     activeRideable: "scooter",
@@ -72,7 +81,6 @@ export function loadProfile(): LocalProfile {
       controlsVersion: CONTROLS_VERSION,
       daylight: 'day',
       mountFlourish: true,
-      characterQuality:'auto',
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
       firstPersonViewVersion:2,
@@ -91,11 +99,9 @@ export function loadProfile(): LocalProfile {
     profile.wallet=validWallet(saved.wallet);
     profile.equipmentRevision=Number.isSafeInteger(saved.equipmentRevision)?saved.equipmentRevision:0;
     profile.pockets=validPockets(saved.pockets);
-    if(BODY_BUILDS.includes(saved.bodyBuild))profile.bodyBuild=saved.bodyBuild;
-    for(const slot of OUTFIT_SLOTS)if(CLOTHING.some(p=>p.category===slot&&p.id===saved.outfit?.[slot]))profile.outfit[slot]=saved.outfit[slot];
+    profile.avatar=saved.avatar?sanitizeAvatar(saved.avatar):migrateRider(saved);
     if(['day','sunset','night','sunrise','snow'].includes(saved.settings?.daylight))profile.settings.daylight=saved.settings.daylight;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
-    if(['auto','low','medium','high'].includes(saved.settings?.characterQuality))profile.settings.characterQuality=saved.settings.characterQuality;
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));
     // Version 2 widened the range (70-110 became 100-150): the old defaults (90, then 110) and anything below the new minimum move to the new default.
@@ -106,14 +112,6 @@ export function loadProfile(): LocalProfile {
     if(Number.isFinite(saved.settings?.touchSize))profile.settings.touchSize=Math.min(130,Math.max(80,Math.round(saved.settings.touchSize)));
     if(Number.isFinite(saved.settings?.touchOpacity))profile.settings.touchOpacity=Math.min(85,Math.max(20,Math.round(saved.settings.touchOpacity)));
     if(Number.isFinite(saved.settings?.filterStrength))profile.settings.filterStrength=Math.min(100,Math.max(0,Math.round(saved.settings.filterStrength)));
-    const rider = RIDERS.find((r) => r.id === saved.riderId);
-    // Retain the inactive characters' saved outfits while Christian is the only
-    // selectable rider. Switching models must not erase a player's old gear choices.
-    for(const id of ['rider-01','rider-02','rider-03']){const entry=saved.riderOutfits?.[id];if(entry&&OUTFIT_SLOTS.every(s=>CLOTHING.some(c=>c.id===entry[s]&&c.category===s)))profile.riderOutfits[id]={...entry};}
-    if (rider) {
-      profile.riderId = rider.id;
-      profile.outfitId = rider.outfitId;
-    }
     for (const slot of Object.keys(
       profile.scooter,
     ) as (keyof ScooterLoadout)[]) {

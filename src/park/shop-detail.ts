@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {tube} from '../scooter/surfaces';
-import {fittedHeadwear} from '../scooter/headwear';
-import {sneakerGeometry} from '../scooter/character-skin';
+import {buildHeadwear,buildShoe} from '../avatar/parts';
+import {defaultAvatar} from '../avatar/config';
 type Box=(x:number,y:number,z:number,w:number,h:number,l:number,c?:number,solid?:boolean)=>THREE.Mesh;
 export function refineShop(scene:THREE.Scene,box:Box){
  const steel=new THREE.MeshStandardMaterial({color:0x475456,metalness:.55,roughness:.42}),rubber=new THREE.MeshStandardMaterial({color:0x232b2b,roughness:.95});
@@ -22,9 +22,9 @@ export function refineShop(scene:THREE.Scene,box:Box){
   const hanger=new THREE.Mesh(tube([new THREE.Vector3(-.17,.23,0),new THREE.Vector3(0,.32,0),new THREE.Vector3(.17,.23,0),new THREE.Vector3(-.17,.23,0)],.003),steel);root.add(hanger);
   root.rotation.y=Math.PI/2;root.position.set(-7.62,1.91,-2.5+i*1.1);scene.add(root);box(-7.73,2.28,-2.5+i*1.1,.25,.014,.014,0x566362,false);
  }
- const skull=[new THREE.Vector3(-.086,.04,-.08),new THREE.Vector3(.086,.04,.11),new THREE.Vector3(0,.134,.01)];
- for(let i=0;i<5;i++){const helmet=fittedHeadwear(skull,i===2?'vented':'helmet',[0x354746,0xae6a50,0xaeb1a0][i%3],'medium');helmet.position.set(-7.57,2.60,-2+i*1.25);helmet.rotation.y=Math.PI/2;scene.add(helmet);box(-7.6,2.40,-2+i*1.25,.35,.025,.43,0x5a6863,false);}
- for(let i=0;i<4;i++){const shoe=new THREE.Mesh(sneakerGeometry(false),new THREE.MeshStandardMaterial({color:i%2?0x8e8978:0x26363b,roughness:.85}));shoe.position.set(-7.56,.97,-2+i*.95);shoe.rotation.y=Math.PI/2;scene.add(shoe);const sole=new THREE.Mesh(new THREE.BoxGeometry(.12,.021,.255),rubber);sole.position.copy(shoe.position).y-=.045;sole.rotation.y=Math.PI/2;scene.add(sole);box(-7.6,.89,-2+i*.95,.37,.025,.6,0x5a6863,false);}
+ // Display stock is built from the same avatar parts the riders wear.
+ for(let i=0;i<5;i++){const helmet=buildHeadwear({...defaultAvatar(),headwear:i===2?'beanie':i===4?'cap':'helmet'},new THREE.MeshPhysicalMaterial({color:[0x354746,0xae6a50,0xaeb1a0][i%3],roughness:.35,clearcoat:.7}),rubber,'high');helmet.position.set(-7.57,2.55,-2+i*1.25);helmet.rotation.y=Math.PI/2;scene.add(helmet);box(-7.6,2.40,-2+i*1.25,.35,.025,.43,0x5a6863,false);}
+ for(let i=0;i<4;i++){const shoe=buildShoe(['skate','chunky','sneaker','high-top'][i],new THREE.MeshStandardMaterial({color:i%2?0x8e8978:0x26363b,roughness:.8}),new THREE.MeshStandardMaterial({color:0xefece4,roughness:.8}),new THREE.MeshStandardMaterial({color:0xf4f2ec,roughness:.8}),'high');shoe.position.set(-7.56,.98,-2+i*.95);shoe.rotation.y=Math.PI/2;scene.add(shoe);box(-7.6,.89,-2+i*.95,.37,.025,.6,0x5a6863,false);}
  // Counter joints, workbench drawers, wall service board and clear aisle edges.
  for(const x of [1.35,2.4,3.45])box(x,.53,7.11,.018,.91,.025,0x59625b,false);
  for(const z of [-2,2,6])for(const x of [-3,3])box(x,3.22,z,1.12,.026,.025,0x6e7770,false);

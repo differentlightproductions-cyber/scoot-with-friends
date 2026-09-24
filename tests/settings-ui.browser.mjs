@@ -5,7 +5,7 @@ import { mkdir } from 'node:fs/promises';
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined)});
 const page=await browser.newPage({viewport:{width:1440,height:900}});
 await mkdir('artifacts/settings-pause',{recursive:true});
-await page.goto('http://127.0.0.1:5186',{waitUntil:'networkidle'});
+await page.goto(process.env.LAZER_URL??'http://127.0.0.1:5186',{waitUntil:'networkidle'});
 await page.getByRole('button',{name:/SETTINGS/}).click();
 for(const name of ['RIDING & CONTROLS','CAMERA','GRAPHICS','TIME & WEATHER','AUDIO','ACCESSIBILITY & TOUCH'])
   assert.equal(await page.getByRole('button',{name:new RegExp(name)}).count(),1,name+' category missing');
@@ -19,7 +19,8 @@ assert.equal(await page.locator('.game-menu h1').textContent(),'SETTINGS');
 await page.getByRole('button',{name:'BACK',exact:true}).click();
 await page.getByRole('button',{name:/RIDER/}).click();
 assert.equal(await page.getByRole('button',{name:/CHANGE CHARACTER/}).count(),0);
-assert.match(await page.getByRole('button',{name:/SIGNATURE OUTFIT/}).innerText(),/Original outfit supplied with Christian/);
+assert.match(await page.getByRole('button',{name:/CHOOSE RIDER/}).innerText(),/Sample riders and presets/);
+assert.match(await page.getByRole('button',{name:/CUSTOMIZE RIDER/}).innerText(),/Face, hair, eyes/);
 await page.screenshot({path:'artifacts/settings-pause/rider.png'});
 await page.getByRole('button',{name:/SAVE & BACK/}).click();
 await page.getByRole('button',{name:/^PLAY/}).click();

@@ -9,7 +9,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===un
 try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');
- await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='christian-1',null,{timeout:120000});
+ await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='avatar-1',null,{timeout:120000});
  await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);document.querySelectorAll('body>*:not(canvas)').forEach(e=>e.style.display='none');});
  const out=await page.evaluate(async([stance,style])=>{
   const g=window.__LAZER,s=g.sim,m=g.rider,T=await import('/node_modules/three/build/three.module.js');
@@ -23,10 +23,9 @@ try{
   const comp=document.createElement('canvas');comp.width=W*moments.length;comp.height=H*4;const ctx=comp.getContext('2d');
   const prev=renderer.getSize(new T.Vector2()),ratio=renderer.getPixelRatio();renderer.setPixelRatio(1);renderer.setSize(W,H,false);
   const rows=[];let airStart=null,t=0,pressed=false,tapLeft=0,shot=0;
-  let sk;m.human.mesh.traverse(o=>{if(o.isSkinnedMesh&&!sk)sk=o;});
-  const by=n=>sk.skeleton.bones.find(b=>b.name==='mixamorig'+n);
+    const by=n=>m.avatar.bone(n);
   const measure=()=>{
-   m.root.updateMatrixWorld(true);sk.skeleton.update();
+   m.root.updateMatrixWorld(true);
    const inv=m.rider.matrixWorld.clone().invert(),pos=n=>new T.Vector3().setFromMatrixPosition(by(n).matrixWorld.clone().premultiply(inv));
    const r={ang:+s.tricks.decade.angle.toFixed(2),palm:[0,0],stretch:[0,0]};
    for(const S of ['Left','Right']){
@@ -34,7 +33,7 @@ try{
     const socket=m.rider.worldToLocal(m.assembly.gripSockets[k].getWorldPosition(new T.Vector3()));
     const cp=new T.Line3(wrist,mid).closestPointToPoint(socket,true,new T.Vector3());
     r.palm[k]=+(cp.distanceTo(socket)-(m.hands[k].userData.gripRadius??.02)).toFixed(3);
-    r.stretch[k]=+(sh.distanceTo(wrist)/m.human.armReach[k]).toFixed(3);
+    r.stretch[k]=+(sh.distanceTo(wrist)/m.avatar.armReach[k]).toFixed(3);
    }
    return r;
   };

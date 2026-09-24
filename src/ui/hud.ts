@@ -178,7 +178,9 @@ export class HUD {
     document.querySelector("#score")!.textContent =
       `SESH ${s.score.total.toLocaleString()}`;
     this.feedbackAge += dt;
-    document.querySelector("#connection")!.textContent = input.pad
+    // Screens such as the rider creator have no connection line.
+    const connection = document.querySelector("#connection");
+    if (connection) connection.textContent = input.pad
       ? "Controller connected · Press A to ride"
       : "Connect a controller · Enter or click Ride for keyboard";
     document.querySelector("#pad-status")!.textContent = input.pad

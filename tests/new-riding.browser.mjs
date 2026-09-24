@@ -1,6 +1,6 @@
 import {chromium} from 'playwright';import {mkdirSync,writeFileSync} from 'node:fs';
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH===undefined?'C:/Program Files/Google/Chrome/Application/chrome.exe':(process.env.CHROME_PATH||undefined),headless:true});
-try{const page=await browser.newPage();await page.goto('http://127.0.0.1:5182/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.rider.human);
+try{const page=await browser.newPage();await page.goto('http://127.0.0.1:5182/?map=outdoor');await page.waitForFunction(()=>window.__LAZER?.rider.avatar);
  const result=await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);g.startSession('outdoor',true);const {terrainHeight,terrainNormal}=await import('/src/park/park.ts');const checks=[],data=[];const check=(n,p,d)=>{if(!p)throw Error(n+' '+JSON.stringify(d??g.snapshot()));checks.push(n);};const a=(t,f={})=>g.advance(t,f,false);
   function place(x,z,speed=0){const s=g.sim;s.reset(0,true);a(.25);s.normal.copy(terrainNormal(x,z));s.position.set(x,terrainHeight(x,z)+.22/Math.max(.55,s.normal.y),z);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.yaw=s.previousYaw=0;s.velocity.set(0,0,speed).projectOnPlane(s.normal).normalize().multiplyScalar(speed);s.body.setLinvel(s.velocity,true);s.grounded=true;s.lastGround=s.elapsed;return s;}
   for(const style of ['pro','arcade'])for(const stance of ['regular','goofy']){

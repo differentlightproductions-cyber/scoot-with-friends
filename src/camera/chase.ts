@@ -235,7 +235,7 @@ export class ChaseCamera {
     // A small rearward eye offset keeps the grips in front of the lens even
     // when the preload pose brings the rider's chin over the crossbar; it stays
     // small so the front of the deck shows past the rider's hips.
-    const eye = new THREE.Vector3(0, 0.075 + flipping * 0.04, (onFoot ? 0.1 : -this.fpTune.eyeBack) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    const eye = new THREE.Vector3(0, 0.01 + flipping * 0.04, (onFoot ? 0.1 : -this.fpTune.eyeBack) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
     // Trick focus: while a scooter trick or grab is under way the view turns
     // towards the scooter (quickly), then eases back to the heads-up view once
     // the trick is caught. Flips keep their own rotation, so focus fades out

@@ -12,16 +12,15 @@ try{
  const page=await browser.newPage({viewport:{width:900,height:700}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto((process.env.LAZER_URL??'http://127.0.0.1:5190')+'/?map=outdoor');
- await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='christian-1',null,{timeout:120000});
+ await page.waitForFunction(()=>window.__LAZER?.rider.root.userData.characterRevision==='avatar-1',null,{timeout:120000});
  await page.evaluate(async()=>{const g=window.__LAZER;g.testing(true);await g.startSession('outdoor',true);});
  const results=await page.evaluate(async()=>{
   const g=window.__LAZER,s=g.sim,m=g.rider,T=await import('/node_modules/three/build/three.module.js');
   const {terrainHeight}=await import('/src/park/park.ts');
   const {ridingButtons}=await import('/src/input/riding.ts');
   const a=(t,f={})=>g.advance(t,f,false);
-  let sk;m.human.mesh.traverse(o=>{if(o.isSkinnedMesh&&!sk)sk=o;});
-  const bone=n=>sk.skeleton.bones.find(b=>b.name==='mixamorig'+n);
-  const feet=(settle=false)=>{for(let k=0;k<(settle?40:1);k++)g.rider.update(s,1/120,1);m.root.updateMatrixWorld(true);sk.skeleton.update();const inv=m.rider.matrixWorld.clone().invert();
+    const bone=n=>m.avatar.bone(n);
+  const feet=(settle=false)=>{for(let k=0;k<(settle?40:1);k++)g.rider.update(s,1/120,1);m.root.updateMatrixWorld(true);const inv=m.rider.matrixWorld.clone().invert();
    const p=n=>new T.Vector3().setFromMatrixPosition(bone(n).matrixWorld.clone().premultiply(inv));
    // Sort by lateral side rather than by bone name: index 0 = rider's right (-x).
    const l=p('LeftFoot'),r=p('RightFoot');return l.x<r.x?{right:l,left:r}:{right:r,left:l};};

@@ -39,7 +39,6 @@ import { WarehouseBuilder } from './editor/warehouse';
 import { Daylight } from './park/daylight';
 import { Weather } from './park/weather';
 import { ACTIVE_MAP } from './park/park';
-import {loadImportedHuman} from './scooter/imported-human';
 import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
 import { MusicPlayer } from './ui/music-player';
@@ -47,7 +46,6 @@ async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
-  await loadImportedHuman();
   const events = new Events(),
     hud = new HUD(events),
     input = new Input(),
@@ -484,7 +482,7 @@ async function boot() {
     const cameraBlocked=musicPlayer.open||menu.shopOpen||hud.paused||!hud.started||!social.wheel.hidden||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     rider.hideHead=camera.firstPersonActive&&camera.view==='first';
-    rider.human?.setFirstPerson(rider.hideHead);
+    rider.avatar.setFirstPerson(rider.hideHead);
     }
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside

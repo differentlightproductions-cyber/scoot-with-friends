@@ -1,4 +1,4 @@
-﻿# Scoot with Friends
+# Scoot with Friends
 
 **ALPHA 0.9.0-alpha.2 — PUBLIC TEST BUILD, NOT A FINISHED COMMERCIAL RELEASE**
 
@@ -44,3 +44,7 @@ The local `releases/Scoot-with-Friends-Windows.zip` contains the player build, l
 ## Collaboration
 
 Read [DEVELOPMENT.md](DEVELOPMENT.md), [SYSTEMS.md](SYSTEMS.md), [AGENTS.md](AGENTS.md) and [DEPLOYMENT.md](DEPLOYMENT.md). Use separate clones/task branches for Codex and Claude Code. `main` is tested alpha, `develop` is integration. GitHub Actions only builds/tests; no automatic public deployment or DNS changes. The source remains private.
+
+## License
+
+Proprietary. Copyright (c) 2025-2026 Different Light Productions. All rights reserved. No permission is granted to copy, modify, redistribute, host or reuse this code or its assets; see [LICENSE](LICENSE). Third-party components keep their own licenses ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).

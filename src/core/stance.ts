@@ -7,8 +7,8 @@
 //
 // Rider-local space faces +z with +y up, so the rider's RIGHT side is -x and the
 // LEFT side is +x. Limb arrays in the model (hands, shoes, grip sockets) are
-// indexed by that side: index 0 is -x (right), index 1 is +x (left). Bone
-// names on the imported skeleton are NOT used for this; they are mirrored.
+// indexed by that side: index 0 is -x (right), index 1 is +x (left).
+// Avatar.bone() maps conventional Left/Right bone names onto these indices.
 export type Stance = "regular" | "goofy";
 export type Side = "left" | "right";
 export const oppositeSide = (side: Side): Side => (side === "left" ? "right" : "left");

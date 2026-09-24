@@ -45,11 +45,8 @@ test("a saved griptape choice persists and an invalid one falls back", () => {
 });
 
 test("network appearance from a client without griptape is accepted with the default", () => {
-  const base = { riderId: "", bodyBuild: "regular", outfit: {} as Record<string, string>, scooter: defaultScooter() as Record<string, unknown> };
-  const riders = readFileSync("src/data/riders.ts", "utf8");
-  const riderId = /id:\s*["']([^"']+)["']/.exec(riders)?.[1];
   const profile = loadProfile();
-  const value = { ...base, riderId: profile.riderId ?? riderId, bodyBuild: profile.bodyBuild, outfit: profile.outfit, scooter: { ...profile.scooter } as Record<string, unknown> };
+  const value = { avatar: profile.avatar, scooter: { ...profile.scooter } as Record<string, unknown> };
   delete value.scooter.griptape;
   const accepted = appearance(value);
   assert(accepted, "appearance without griptape must still be accepted");
@@ -73,9 +70,7 @@ test("griptape is cosmetic: physics never reads it", () => {
 
 test("appearance tells other players which rideable and board to show", async () => {
   const { pose } = await import("../src/network/protocol.ts");
-  const riders = readFileSync("src/data/riders.ts", "utf8");
   const profile = { ...loadProfile() } as Record<string, any>;
-  profile.riderId ??= /id:\s*["']([^"']+)["']/.exec(riders)?.[1];
   const board = defaultLongboard();
   board.deck = { partId: board.deck.partId, variantId: "palms" };
   const shared = appearance({ ...profile, activeRideable: "longboard", longboard: board })!;

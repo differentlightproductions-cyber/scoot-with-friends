@@ -2,25 +2,30 @@ import { ridingButtons } from '../src/input/riding.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadProfile, saveProfile, PROFILE_KEY } from '../src/data/loadout';
-import { RIDERS } from '../src/data/riders';
-test('versioned profile migrates old saves and preserves authored gear/settings',()=>{
+import { AVATAR_PRESETS, defaultAvatar } from '../src/avatar/config';
+test('versioned profile migrates old saves and preserves the avatar and settings',()=>{
  const store=new Map<string,string>();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
  store.set(PROFILE_KEY,JSON.stringify({version:1,riderId:'rider-02',settings:{stance:'goofy',controlStyle:'arcade',sound:false}}));
- const p=loadProfile();assert.equal(p.version,3);assert.equal(p.riderId,'rider-01');assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
- assert.equal(p.bodyBuild,'regular');
- p.bodyBuild='chunky';p.outfit.head='head-vented-forest';p.outfit.top='top-hoodie-red';p.settings.daylight='night';
+ const p=loadProfile();assert.equal(p.version,3);assert.deepEqual(p.avatar,defaultAvatar());assert.equal(p.settings.stance,'goofy');assert.equal(p.settings.sound,false);
+ p.avatar={...AVATAR_PRESETS[3].config};p.avatar.bodyType='stocky';p.settings.daylight='night';
  assert.equal(saveProfile(p),true);assert.deepEqual(loadProfile(),p);
- const bad={...p,outfit:{...p.outfit,head:'../../secret'}};store.set(PROFILE_KEY,JSON.stringify(bad));assert.equal(loadProfile().outfit.head,'head-helmet-red');
+ // Anything unknown or out of range falls back per field; the rest of the rider is kept.
+ const bad={...p,avatar:{...p.avatar,hairStyle:'../../secret',eyeY:99,skinTone:7}};store.set(PROFILE_KEY,JSON.stringify(bad));
+ const loaded=loadProfile().avatar;assert.equal(loaded.hairStyle,defaultAvatar().hairStyle);assert.equal(loaded.eyeY,3);assert.equal(loaded.skinTone,defaultAvatar().skinTone);assert.equal(loaded.top,p.avatar.top);
 });
-test('Christian is the only selectable rider while inactive outfits and scooter parts survive migration',()=>{
+test('a pre-avatar save migrates its gear once and keeps its scooter',()=>{
  const store=new Map<string,string>();
  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
- const original=loadProfile();original.riderId='rider-03';original.riderOutfits['rider-03']={...original.outfit};original.settings.daylight='snow';
+ const original=loadProfile() as any;delete original.avatar;
+ Object.assign(original,{riderId:'rider-03',bodyBuild:'chunky',outfit:{head:'head-vented-forest',top:'top-hoodie-red',bottom:'bottom-shorts-gray',shoes:'shoes-high-top-navy'}});original.settings.daylight='snow';
  store.set(PROFILE_KEY,JSON.stringify(original));
- const migrated=loadProfile();assert.deepEqual(RIDERS.map(r=>r.name),['Christian']);assert.equal(migrated.riderId,'rider-01');
- assert.deepEqual(migrated.riderOutfits['rider-03'],original.outfit);assert.deepEqual(migrated.scooter,original.scooter);assert.equal(migrated.settings.daylight,'snow');
- assert.equal(saveProfile(migrated),true);assert.deepEqual(loadProfile().riderOutfits,migrated.riderOutfits);
+ const migrated=loadProfile();
+ assert.equal(migrated.avatar.bodyType,'stocky');assert.equal(migrated.avatar.headwear,'helmet');assert.equal(migrated.avatar.headwearColor,'green');
+ assert.equal(migrated.avatar.top,'hoodie');assert.equal(migrated.avatar.topColor,'red');assert.equal(migrated.avatar.bottom,'shorts');assert.equal(migrated.avatar.shoes,'high-top');assert.equal(migrated.avatar.shoeColor,'navy');
+ assert.deepEqual(migrated.scooter,original.scooter);assert.equal(migrated.settings.daylight,'snow');
+ assert.equal('riderId' in migrated||'outfit' in migrated||'bodyBuild' in migrated,false);
+ assert.equal(saveProfile(migrated),true);assert.deepEqual(loadProfile().avatar,migrated.avatar);
 });
 test('controls version 2: Normal is the default and old presets keep their physical buttons once',()=>{
  const store=new Map<string,string>();

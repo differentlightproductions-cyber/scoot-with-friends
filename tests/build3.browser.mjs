@@ -1,4 +1,4 @@
-﻿import { chromium } from "playwright";
+import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 const browser = await chromium.launch({
   executablePath:
@@ -53,22 +53,23 @@ try {
     g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
     check("A opens Rider", g.menu.screen === "rider");
-    g.menu.index = g.menu.choices.findIndex((c) => c.label === "CHANGE CHARACTER");
+    g.menu.index = g.menu.choices.findIndex((c) => c.label === "CHOOSE RIDER");
     g.menu.update(f(), 0.1);
     g.menu.update(f({ hop: true }), 0.1);
-    check("A opens the rider list", g.menu.screen === "characters");
-    const riderButton=[...document.querySelectorAll('[data-menu-index]')].find(b=>b.querySelector('span')?.textContent==='Justin');
-    check("The rider list names its characters", !!riderButton);
+    check("A opens the rider list", g.menu.screen === "rider-presets");
+    const riderButton=[...document.querySelectorAll('[data-menu-index]')].find(b=>b.querySelector('span')?.textContent==='PUNK RIDER');
+    check("The rider list names its riders", !!riderButton);
     riderButton.click();
     // The live model is rebuilt on the next safe frame rather than immediately,
     // so the swap can never happen mid-trick. Render one frame first.
     g.render();
     check(
       "Rider preset updates the live model",
-      g.profile.riderId === "rider-02" &&
-        g.rider.root.userData.riderId === "rider-02",
+      g.profile.avatar.hairStyle === "spiky" &&
+        g.rider.root.userData.avatar?.hairStyle === "spiky",
     );
-    check("Choosing a character opens that rider", g.menu.screen === "rider");
+    g.menu.update(f({ brakeBars: true }), 0.1);
+    check("B steps back from the rider list to Rider", g.menu.screen === "rider");
     g.menu.update(f({ brakeBars: true }), 0.1);
     check("B steps back from Rider to the main menu", g.menu.screen === "home");
     g.menu.show("rides");
@@ -266,8 +267,10 @@ try {
     );
     for (let i = 0; i < 30; i++) g.render();
     check(
-      "Carry pose lifts scooter to waist level without lifting rider",
-      g.rider.scooter.position.y > 0.9 && g.rider.rider.position.y < 0.1,
+      // The scooter rolls alongside a running rider, hand on the bars (model.ts:
+      // "it is never lifted onto its side"); the rider is not lifted either.
+      "Running keeps the scooter rolling alongside without lifting the rider",
+      g.rider.scooter.position.y < 0.3 && g.rider.rider.position.y < 0.1,
     );
     const runSpeed = g.sim.speed;
     a(0.01, { pressed: { body: true } });
@@ -431,7 +434,7 @@ try {
     g.startSession("outdoor");
     check(
       "New map clears marker and keeps loadout",
-      !g.sim.marker.saved && g.rider.root.userData.riderId === "rider-02",
+      !g.sim.marker.saved && g.rider.root.userData.avatar?.hairStyle === "spiky",
     );
     // Ride up to the actual coping, without teleporting above it or disabling collision.
     for (const x of [-8, 4]) {

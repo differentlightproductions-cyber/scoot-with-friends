@@ -20,29 +20,34 @@ readable, lightweight, easy to rig and animate, stable during tricks.
 - Smooth shading, clean materials, curated colours. Simple does not mean unfinished.
 - Original shapes only: no Nintendo meshes, textures, proportions tables or names.
 
-## 2. Proportions (standard body, metres, rider space, sole on the deck)
+## 2. Proportions (standard body, metres, rider space)
 
 The rider root sits on the ground under the scooter. Deck top ≈ 0.11, grips at y 1.01,
 z 0.26, x ±0.24 (±0.30 oversized bars). Front foot z +0.04, rear (push) foot z −0.19.
+Standing on the ground (sole at y 0), the implemented skeleton (`src/avatar/rig.ts`):
 
-| Joint / point            | Rest position (x, y, z)        | Segment to next        |
-|--------------------------|--------------------------------|------------------------|
-| sole                     | (±0.08, 0.11, …)               | ankle 0.07 above sole  |
-| ankle                    | (±0.08, 0.18, …)               | shin 0.36              |
-| knee                     | (±0.085, 0.54, …)              | thigh 0.36             |
-| hip joint                | (±0.09, 0.90, 0)               |                        |
-| pelvis centre            | (0, 0.93, 0)                   | spine 0.34             |
-| chest / shoulder line    | (0, 1.27, 0)                   |                        |
-| shoulder joint           | (±0.165, 1.25, 0)              | upper arm 0.26         |
-| elbow                    |                                | forearm 0.24           |
-| wrist                    |                                | mitten 0.10 to tip     |
-| neck base → head pivot   | (0, 1.30) → (0, 1.36)          |                        |
-| head centre / crown      | (0, 1.51) / (0, 1.67)          | head 0.31 tall         |
+| Joint / point            | Rest position (x, y)  | Segment to next             |
+|--------------------------|-----------------------|-----------------------------|
+| sole                     | (±0.11, 0)            | ankle 0.075 above the sole  |
+| ankle                    | (±0.11, 0.075)        | shin 0.38                   |
+| knee                     | (±0.10, ≈0.45)        | thigh 0.38                  |
+| hip joint                | (±0.09, 0.82)         |                             |
+| pelvis centre            | (0, 0.835)            | 0.21 along the spine + 0.055 drop |
+| chest bone               | (0, 1.10)             |                             |
+| shoulder joint           | (±0.165, ≈1.29)       | upper arm 0.245             |
+| elbow                    |                       | forearm 0.215               |
+| wrist                    |                       | palm 0.055 to the bar centre |
+| neck base                | (0, ≈1.315)           |                             |
+| head centre / crown      | (0, ≈1.545) / (0, ≈1.745) | head 0.40 tall, 0.365 wide |
 
-- Height ≈ 1.56 m sole to crown, head ≈ 1/5 of height (stylised, not realistic 1/7.5).
-- Arm reach shoulder→wrist 0.50 m: the riding shoulders (≈1.25–1.30 m, just behind the
-  bars) reach the grips with bent elbows; no pose may ask for more than 0.50 m.
-- Leg hip→ankle 0.72 m: standing on the deck the knees stay soft (~25°).
+- Height ≈ 1.74 m sole to crown, head ≈ 1/4.4 of height: a big, readable head on a
+  near-realistic torso and legs. The first draft (1.56 m, 0.31 head, 0.50 arms) could not
+  reach the scooter's fixed 1.01 m grips with bent elbows *and* keep soft knees on the
+  deck, so the body grew to fit the scooter and the head stayed large (§5).
+- Arm reach shoulder→wrist 0.46 m. Riding at rest (chest 1.183 on the deck, leaning 0.15)
+  the elbows bend about 120° and the knees about 30°; a full preload folds the chest
+  over the bars at about 90° elbows and knees.
+- Leg hip→ankle 0.76 m.
 - **Everyone is the same height** (brief: skip height if it complicates scooter fitting).
 
 ## 3. Skeleton — one rig for every avatar
@@ -64,23 +69,23 @@ toward a pole, never lengthens.
 
 ### Named anchors (attachments never position themselves per animation)
 
-| Anchor        | Bone     | Used by                                   |
-|---------------|----------|-------------------------------------------|
-| `crown`       | head     | hair, beanie, cap, helmet                 |
-| `face`        | head     | face features, glasses, sunglasses        |
-| `wrist.L/R`   | forearm  | wristband                                 |
-| `grip.L/R`    | hand     | palm centre that meets a bar/deck/clamp   |
-| `sole.L/R`    | foot     | shoe sole that meets the deck or ground   |
-| `back`        | spine    | backpack                                  |
-| `eye`         | head     | first-person camera                       |
+| Anchor / point | Bone   | Used by                                                 |
+|----------------|--------|---------------------------------------------------------|
+| `crown`        | head   | hair, beanie, cap, helmet (built on the head surface)   |
+| `eye`          | head   | first-person camera                                     |
+| `back`         | chest  | backpack                                                |
+| palm           | hand   | `RIG.palm` ahead of the wrist: meets a bar, deck or clamp |
+| sole           | foot   | `RIG.ankle` below the ankle: meets the deck or ground   |
+
+The face decal, glasses and wristband are built directly on the head and forearm.
 
 ## 4. Body types (same skeleton)
 
-| Type     | Torso w × d | Limb radius | Stance data                         |
-|----------|-------------|-------------|-------------------------------------|
-| slim     | 0.28 × 0.17 | ×0.85       | feet ±0.075                         |
-| standard | 0.32 × 0.20 | ×1.00       | feet ±0.08                          |
-| stocky   | 0.38 × 0.25 | ×1.22       | feet ±0.09, shoulders ±0.175        |
+| Type     | Torso w × d   | Limb radius | Shoulders / hips (x) | Belly |
+|----------|---------------|-------------|----------------------|-------|
+| slim     | 0.30 × 0.185  | ×0.86       | ±0.155 / ±0.082      | 0     |
+| standard | 0.345 × 0.21  | ×1.00       | ±0.165 / ±0.09       | 0.01  |
+| stocky   | 0.40 × 0.26   | ×1.20       | ±0.18 / ±0.10        | 0.035 |
 
 Only girth and the small stance numbers change. Joint heights, arm/leg lengths, hand
 targets and every physics dimension are identical, so a cosmetic change never alters
@@ -136,7 +141,7 @@ white, blue, green, purple, pink.
 
 ## 8. Outfit and accessories
 
-Early-2000s scooter / skate / punk. Curated clothing palette (16 colours), no free RGB.
+Early-2000s scooter / skate / punk. Curated clothing palette (19 colours), no free RGB.
 
 - **Tops (6):** basic tee, oversized tee, long sleeve, hoodie, zip hoodie, simple jacket.
 - **Bottoms (5):** loose jeans, straight jeans, cargo pants, shorts, skate shorts.
@@ -176,18 +181,38 @@ Randomize picks a valid rider with matched brow/hair colours and no headwear/hai
 
 ## 11. Creator (Part 2)
 
-Rider → Customize Rider → Face, Hair, Eyes, Brows, Nose, Mouth, Body, Outfit,
-Accessories → Save ("RIDER SAVED"). Large live 3D preview, rotate/zoom/reset, head framing
-for face categories and full body for body/outfit. Controller-first (D-pad/LS navigate,
-A select, B back, LB/RB category, RS rotate, triggers zoom), mouse and touch friendly
-(large targets, drag to rotate, no hover), randomize, presets.
+`src/ui/creator.ts` (styles in `creator.css`, backdrop in `creator-backdrop.ts`, tile
+images from `src/avatar/thumbnails.ts`). Rider → **CUSTOMIZE RIDER** opens it from the
+main menu and from the in-game Sesh menu (there SAVE also applies the Sesh draft).
+
+- Tabs: PRESETS (the seven sample riders + Randomize), FACE (head shape, skin, head
+  size, ears, facial hair), HAIR, EYES (style, colour, lashes, height, spacing, size),
+  BROWS (style, colour, height, angle, spacing), NOSE, MOUTH, BODY, OUTFIT (top, bottoms,
+  shoes, each with a colour), ACCESSORIES (headwear, eyewear, wristband, each with a
+  colour; colour rows hide while the item is "none").
+- Controls: LB/RB tab, D-pad/LS move (down walks the lines of a wrapped grid first),
+  A pick, left/right on a fader row changes it, X randomize, Y save, B back, RS turn,
+  LT/RT zoom, R3 reset view. Keyboard: arrows, Space, Shift/E, X, Y, B, Esc. Mouse and
+  touch: tap any tile, fader notch or tab; drag the preview to turn it; wheel to zoom.
+- Live preview: the draft is shown on the menu's preview rider; the camera frames the
+  face (FACE CAM), the whole body (FULL BODY) or the shoes (KICKS CAM) for the focused row.
+- Save: RIDER SAVED toast; leaving with unsaved changes asks SAVE & EXIT / DISCARD /
+  KEEP EDITING. The saved rider is `profile.avatar` (§9).
+- Thumbnails show each option on the rider being edited, in their colours: face features
+  are cropped from a painted face, 3D items are rendered one per frame on a small
+  off-screen renderer that exists only while the creator is open.
+- Look: 2000s scooter-mag style. Grip-tape panel, sticker tabs and tiles with hard
+  offset shadows, masking-tape row labels (Permanent Marker), chrome Bungee title,
+  mixing-board faders, camcorder viewfinder round the preview over a Boulder City dusk.
+  This is the style the phone and the Sesh menus will adopt.
 
 ## 12. Performance
 
-One shared vertex-coloured material for all body/garment/hair geometry, merged per bone
-(about 16 draw calls a rider plus the face), one small face texture, no skinning. Low
-quality uses fewer segments. First person hides head, hair, neck, chest and upper arms
-from the colour pass only; the full body still casts its shadow.
+Rigid meshes parented to the 16 bones (no skinning), about a dozen small materials per
+rider (skin, hair, top, bottom, trims, shoe, sole, accessories) and one 512 px face canvas
+with its blink twin. Low detail uses fewer segments; park visitors switch to low detail at
+24 m and disappear at 80 m. First person swaps the head, hair, neck, chest and upper arms
+to depth-less ghost materials, so they leave the colour pass but still cast their shadow.
 
 ## 13. Verification
 

@@ -1,0 +1,33 @@
+Scoot with Friends
+Copyright (c) 2025-2026 Different Light Productions. All rights reserved.
+
+PROPRIETARY SOFTWARE. NO LICENSE IS GRANTED.
+
+This repository and everything in it that is not listed in THIRD_PARTY_NOTICES.md
+(the source code, game design, rider avatar system, scooter and park models,
+textures, audio, user interface, level layouts, text and documentation) is the
+exclusive property of the copyright holder.
+
+Being able to see this repository, or to download the game from its website,
+does not give you any right to use it. Without prior written permission from
+the copyright holder you may not:
+
+  - copy, reproduce, mirror or redistribute any part of it;
+  - modify it, translate it, or create derivative works from it;
+  - publish, host, sell, sublicense, or offer it as a service;
+  - use any part of it in another game, application, or product;
+  - use it to train or evaluate machine learning models.
+
+Playing the official public build of the game in a web browser for personal,
+non-commercial enjoyment is permitted. That permission can be withdrawn at any
+time and grants no rights in the underlying code or assets.
+
+Third-party components (Three.js, Rapier, the Bungee and Permanent Marker
+fonts, the lawn texture, and the others listed in THIRD_PARTY_NOTICES.md) remain
+under their own licenses, which are included in the licenses/ and public/fonts/
+folders. Nothing here restricts the rights those licenses give you in those
+components.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+For permission requests, contact the repository owner through GitHub.
