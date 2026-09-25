@@ -162,6 +162,8 @@ export class CreditEconomy {
    profile.activeRideable=kind;profile.equipmentRevision=expectedRevision+1;if(!saveProfile(profile))return {error:'Could not save. Your rideable is unchanged.'};return {profile};};
   const op=this.queue.then(()=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('swf-alpha-wallet',run):run());this.queue=op.then(()=>{},()=>{});return op;
  }
+ /** A vending machine sale (#88): the price in Coins, or why it was declined. Nothing is granted here; the machine hands over the product. */
+ spend(price:number){if(!Number.isSafeInteger(price)||price<=0)return Promise.resolve('Invalid price');return this.transact(w=>pay(w,price,'coins')??'ok');}
  setTestCredit(amount:number,owner:boolean){if(!owner)return Promise.resolve('Owner access required');return this.transact(w=>{w.testCredit=Math.max(0,Math.min(CREDIT_POLICY.maxBalance,Math.floor(amount)||0));return 'ok';});}
 }
 /**

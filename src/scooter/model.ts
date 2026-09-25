@@ -109,6 +109,8 @@ export class RiderModel {
   /** Head pitch while reading the phone, and the phone arm pose (set by the game for the local rider). */
   phoneTilt = 0;
   phonePose: ((rider: RiderModel) => void) | null = null;
+  /** Walking, the hand on the scooter's side keeps hold of its bar; off while both hands are busy (a vending machine, #88). */
+  holdScooter = true;
   /** Longboard carry: 0 held by the top truck while moving, 1 tucked under the arm standing still. */
   boardHold = 0;
   /** 1 while pushing a longboard facing down the board, 0 in the sideways carving stance. */
@@ -484,7 +486,8 @@ export class RiderModel {
     );
     this.walkOffset = damp(
       this.walkOffset,
-      s.sitting?.id ? 0.78 : s.walking && !placing ? 0.48 : 0,
+      // Let go of (at a vending machine), it stands a little further off, out of the way.
+      s.sitting?.id ? 0.78 : s.walking && !placing ? (this.holdScooter ? 0.48 : 0.82) : 0,
       placing ? 1 / Math.max(.05, TUNE.jumpOnPullTime * .35) : 14,
       dt,
     );
@@ -965,7 +968,7 @@ export class RiderModel {
       // Toboggan: the same stance-side hand goes back to the rear of the deck.
       const tobogganHand=pose==='Toboggan'&&i===sideIndex(clampGrabHand(s.tricks.stance));
       // Walking or running, the hand on the scooter's side keeps hold of its bar.
-      const walkingGrip=s.walking&&!s.sitting&&!s.emote&&!s.heldItem&&sign===sideSign(walkSide(s.tricks.stance))&&this.walkOffset>.3;
+      const walkingGrip=s.walking&&!s.sitting&&!s.emote&&!s.heldItem&&this.holdScooter&&sign===sideSign(walkSide(s.tricks.stance))&&this.walkOffset>.3;
       // Bar Twist: the hand opposite the throwing (stance-side) hand catches the
       // bar over its last half-turn, before the throwing hand comes back.
       const twistCatch=s.tricks.twisting&&!s.grounded&&i!==sideIndex(clampGrabHand(s.tricks.stance))&&Math.abs(s.tricks.bars.target-s.tricks.bars.angle)<.6;

@@ -67,7 +67,7 @@ import {MobileGate} from './ui/mobile';
 import { music } from './audio/music';
 import { Phone } from './phone/phone';
 import { HoldButton } from './phone/hold';
-import { PhoneRig, READ_TILT } from './phone/rig';
+import { PhoneRig, READ_TILT, armTo } from './phone/rig';
 import { PhoneMap, type MapFeature } from './phone/map';
 import { MessageStore } from './phone/messages';
 import { installApps, homePage, releasePhoneThumbnails, type PhoneDeps } from './phone/apps';
@@ -211,6 +211,15 @@ async function boot() {
   holdRing.id = 'phone-hold'; holdRing.hidden = true; holdRing.setAttribute('aria-hidden', 'true'); holdRing.innerHTML = '<i></i>';
   document.querySelector('#app')!.append(holdRing);
   interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
+  // Vending machines (#88): paid in Coins from the wallet, the reader's beeps, and
+  // the phone asking to add funds after a decline (adding funds comes later).
+  const vendHooks:typeof interactions.vendHooks={
+   pay:price=>economy.spend(price),
+   sound:(kind,at)=>audio.vend(kind,at),
+   declined:(_slot,reason)=>phone.sheet('DECLINED',[{label:'Add funds',detail:'Coming soon',disabled:true,action:()=>{}},{label:'Not now',detail:reason==='Not enough Coins'?'Earn Coins by landing tricks':reason,action:()=>{}}],'Transaction declined — add funds?'),
+   phoneScreen:(state,slot)=>phone.payScreen(state,slot?.price??0,slot?`${slot.brand} ${slot.flavor}`:''),
+  };
+  interactions.vendHooks=vendHooks;
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
   const touchPad=new TouchPad();input.touch=touchPad;
@@ -624,7 +633,7 @@ async function boot() {
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
       interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);playful=makeFriends();doves=makeDoves();interactions.onAte=ate;
-      interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
+      interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);interactions.vendHooks=vendHooks;
     }
     sim.reset(0, true);
     sim.rideable = profile.activeRideable;
@@ -802,21 +811,26 @@ async function boot() {
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
     if (sim.swim && !sim.swim.out) waterEffects.swimmer(sim.position.x, sim.position.z, Math.hypot(sim.velocity.x, sim.velocity.z) > 0.6, dt);
-    camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first';
+    // At a vending machine (#88) the machine's own camera frames the rider from behind.
+    const vending=interactions.vending;
+    camera.rider=rider;rider.hideHead=camera.firstPersonActive&&camera.view==='first'&&!vending;rider.holdScooter=!vending;
     // Phone: arm and head follow its raise; in first person the hand is placed from the eye below.
     phone.tick(dt);
     hud.phoneHint = phone.active ? 'PHONE · LS MOVE · A SELECT · B BACK · Y HOME · HOLD D-PAD DOWN PUT AWAY' : '';
-    const phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0, raise = phone.raise * phone.raise * (3 - 2 * phone.raise);
-    const firstPersonPhone = camera.view === 'first' && camera.firstPersonActive && raise > 0;
+    const phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0, tap = vending ? vending.tapRaise * vending.tapRaise * (3 - 2 * vending.tapRaise) : 0;
+    const raise = Math.max(tap, phone.raise * phone.raise * (3 - 2 * phone.raise));
+    const firstPersonPhone = camera.view === 'first' && camera.firstPersonActive && raise > 0 && !vending;
     phone.firstPerson = firstPersonPhone;
-    rider.phoneTilt = raise * (firstPersonPhone ? READ_TILT.first : READ_TILT.third);
-    rider.phonePose = raise > 0 ? (r: RiderModel) => phoneRig.pose(r, raise, phoneHand, null) : null;
-    camera.phonePitch = raise * READ_TILT.first;
+    rider.phoneTilt = vending ? 0 : raise * (firstPersonPhone ? READ_TILT.first : READ_TILT.third);
+    rider.phonePose = vending && !phone.active ? (r: RiderModel) => { const hold = vending.pose(r, (hand, wrist, rotation, weight) => armTo(r, hand, wrist, rotation, weight)); if (hold) phoneRig.pose(r, tap, phoneHand, null, hold); }
+      : raise > 0 ? (r: RiderModel) => phoneRig.pose(r, raise, phoneHand, null) : null;
+    camera.phonePitch = vending ? 0 : raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
     if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
     interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0],camera.camera.position);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    if(!cameraBlocked&&vending)vending.frame(camera.camera,dt);
     // Sounds placed in the world (doves) are heard from the camera (#71).
     audio.setListener(camera.camera.position,camera.camera.getWorldDirection(lampDir),camera.camera.up);
     // The headlamp (#64): worn and lit only at night with the setting on; the beam

@@ -111,12 +111,16 @@ export class PhoneRig {
    * camera (first person) the phone is placed in front of that eye; otherwise
    * in front of the face in rider space.
    */
-  pose(rider: RiderModel, raise: number, hand: 0 | 1, eye: THREE.Camera | null) {
+  pose(rider: RiderModel, raise: number, hand: 0 | 1, eye: THREE.Camera | null, hold?: { at: THREE.Vector3; rotation: THREE.Quaternion }) {
     if (raise <= 0) return;
     const sign = hand === 0 ? -1 : 1;
     const group = rider.rider;
     const target = V(), rotation = new THREE.Quaternion();
-    if (eye) {
+    if (hold) {
+      // Held somewhere in particular (to a card reader, #88), in rider space.
+      target.copy(hold.at);
+      rotation.copy(hold.rotation);
+    } else if (eye) {
       eye.updateMatrixWorld();
       const at = FP_OFFSET.clone();
       at.x *= -sign;
@@ -142,29 +146,7 @@ export class PhoneRig {
     const phoneRotation = pocketRotation.slerp(rotation, lift);
     const handRotation = phoneRotation.clone().multiply(PHONE_TO_HAND);
     const wrist = phoneAt.clone().sub(IN_HAND.clone().applyQuaternion(handRotation));
-    const weight = smooth(0, 0.3, raise);
-    const driver = rider.hands[hand];
-    driver.position.lerp(wrist, weight);
-    driver.quaternion.slerp(handRotation, weight);
-    if (weight > 0.5) {
-      driver.userData.freeWrist = false;
-      driver.userData.barLift = 0;
-      driver.userData.openHand = 1;
-    }
-    // Elbow hint: down and out from the shoulder.
-    const shoulder = shoulderJoint(rider.torso, sign as -1 | 1, rider.avatar.shape);
-    const toHand = driver.position.clone().sub(shoulder);
-    const reach = Math.max(0.001, toHand.length()), dir = toHand.clone().divideScalar(reach);
-    const pole = V(sign * 0.55, -0.8, -0.15);
-    pole.addScaledVector(dir, -pole.dot(dir)).normalize();
-    const along = Math.min(reach, RIG.upperArm + RIG.forearm - 1e-4);
-    const a = (RIG.upperArm ** 2 - RIG.forearm ** 2 + along ** 2) / (2 * along);
-    const elbow = shoulder.clone().addScaledVector(dir, a).addScaledVector(pole, Math.sqrt(Math.max(0, RIG.upperArm ** 2 - a * a)));
-    const rod = rider.upperArms[hand];
-    const blendElbow = rod.position.clone().add(V(0, rod.scale.y / 2, 0).applyQuaternion(rod.quaternion)).lerp(elbow, weight);
-    rod.position.copy(shoulder).add(blendElbow).multiplyScalar(0.5);
-    rod.scale.y = shoulder.distanceTo(blendElbow);
-    rod.quaternion.setFromUnitVectors(V(0, 1, 0), blendElbow.clone().sub(shoulder).normalize());
+    armTo(rider, hand, wrist, handRotation, smooth(0, 0.3, raise));
   }
 
   /** Puts the phone, hand and forearm on the close-up layer (first person) or back in the world. */
@@ -231,4 +213,34 @@ export class PhoneRig {
     this.geometries.forEach(g => g.dispose());
     this.materials.forEach(m => { (m as THREE.MeshStandardMaterial).map?.dispose?.(); m.dispose(); });
   }
+}
+
+/**
+ * Puts a hand driver at `wrist` turned to `handRotation` (rider space), blended
+ * in by `weight`, and bends the upper arm to meet it: the elbow down and out
+ * from the shoulder. Shared by the phone and by pressing buttons (#88).
+ */
+export function armTo(rider: RiderModel, hand: 0 | 1, wrist: THREE.Vector3, handRotation: THREE.Quaternion, weight: number) {
+  const sign = hand === 0 ? -1 : 1;
+  const driver = rider.hands[hand];
+  driver.position.lerp(wrist, weight);
+  driver.quaternion.slerp(handRotation, weight);
+  if (weight > 0.5) {
+    driver.userData.freeWrist = false;
+    driver.userData.barLift = 0;
+    driver.userData.openHand = 1;
+  }
+  const shoulder = shoulderJoint(rider.torso, sign as -1 | 1, rider.avatar.shape);
+  const toHand = driver.position.clone().sub(shoulder);
+  const reach = Math.max(0.001, toHand.length()), dir = toHand.clone().divideScalar(reach);
+  const pole = V(sign * 0.55, -0.8, -0.15);
+  pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+  const along = Math.min(reach, RIG.upperArm + RIG.forearm - 1e-4);
+  const a = (RIG.upperArm ** 2 - RIG.forearm ** 2 + along ** 2) / (2 * along);
+  const elbow = shoulder.clone().addScaledVector(dir, a).addScaledVector(pole, Math.sqrt(Math.max(0, RIG.upperArm ** 2 - a * a)));
+  const rod = rider.upperArms[hand];
+  const blendElbow = rod.position.clone().add(V(0, rod.scale.y / 2, 0).applyQuaternion(rod.quaternion)).lerp(elbow, weight);
+  rod.position.copy(shoulder).add(blendElbow).multiplyScalar(0.5);
+  rod.scale.y = shoulder.distanceTo(blendElbow);
+  rod.quaternion.setFromUnitVectors(V(0, 1, 0), blendElbow.clone().sub(shoulder).normalize());
 }

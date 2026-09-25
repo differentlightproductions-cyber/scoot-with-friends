@@ -8,16 +8,16 @@ import { surfaceMaterial } from "./art";
 import { woodRampMaterials } from "./wood-ramps";
 
 /**
- * Park furniture in the stylized-realism look (#39): vending machines, scooter
- * racks, drinking fountains, lamp posts, pavilions and the park's monument
- * sign. Each prop's parts are merged per material, so the added detail costs
- * a handful of draw calls rather than one per piece.
+ * Park furniture in the stylized-realism look (#39): scooter racks, drinking
+ * fountains, lamp posts, pavilions and the park's monument sign (vending
+ * machines are in vending.ts). Each prop's parts are merged per material, so
+ * the added detail costs a handful of draw calls rather than one per piece.
  */
 
-const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+export const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 type Part = { g: THREE.BufferGeometry; m: THREE.Material };
 /** Collects transformed geometry per material, then merges it into one mesh each. */
-class Kit {
+export class Kit {
   private parts: Part[] = [];
   constructor(private origin: THREE.Vector3, private yaw = 0) {}
   add(g: THREE.BufferGeometry, m: THREE.Material, at: THREE.Vector3, rot: THREE.Euler = new THREE.Euler(), scale = V(1, 1, 1)) {
@@ -49,7 +49,7 @@ class Kit {
   }
 }
 /** A static box collider in world space, like Park.box's. */
-function solid(park: Park, centre: THREE.Vector3, size: THREE.Vector3, yaw = 0) {
+export function solid(park: Park, centre: THREE.Vector3, size: THREE.Vector3, yaw = 0) {
   park.world.createCollider(
     RAPIER.ColliderDesc.cuboid(size.x / 2, size.y / 2, size.z / 2)
       .setTranslation(centre.x, centre.y, centre.z)
@@ -58,22 +58,22 @@ function solid(park: Park, centre: THREE.Vector3, size: THREE.Vector3, yaw = 0) 
       .setCollisionGroups(GROUPS.surface),
   );
 }
-const turn = (origin: THREE.Vector3, yaw: number, local: THREE.Vector3) => local.clone().applyAxisAngle(V(0, 1, 0), yaw).add(origin);
+export const turn = (origin: THREE.Vector3, yaw: number, local: THREE.Vector3) => local.clone().applyAxisAngle(V(0, 1, 0), yaw).add(origin);
 
 // ---- Shared materials -------------------------------------------------------
 const cache = new Map<string, THREE.Material>();
-function mat(key: string, make: () => THREE.Material) {
+export function mat(key: string, make: () => THREE.Material) {
   let m = cache.get(key);
   if (!m) { m = make(); m.name = key; cache.set(key, m); }
   return m;
 }
-const paint = (color: number, roughness = 0.42, metalness = 0.35) => mat(`paint ${color.toString(16)} ${roughness} ${metalness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness }));
-const galvanized = () => woodRampMaterials().steel;
+export const paint = (color: number, roughness = 0.42, metalness = 0.35) => mat(`paint ${color.toString(16)} ${roughness} ${metalness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness }));
+export const galvanized = () => woodRampMaterials().steel;
 const concrete = () => mat("prop concrete", () => surfaceMaterial(0xcfc8b8, "concrete", 1.2, 1.2));
 const timber = () => mat("prop timber", () => surfaceMaterial(0x9b6c41, "wood", 0.6, 3));
-const rubber = () => paint(0x1b1d1f, 0.8, 0);
+export const rubber = () => paint(0x1b1d1f, 0.8, 0);
 
-function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat = false) {
+export function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D) => void, repeat = false) {
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   draw(c.getContext("2d")!);
@@ -84,7 +84,7 @@ function canvasTexture(w: number, h: number, draw: (g: CanvasRenderingContext2D)
   return t;
 }
 /** Seeded 0..1 noise for the canvas painters. */
-function rng(seed: number) { return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); }
+export function rng(seed: number) { return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296); }
 
 /** Asphalt roof shingles: staggered tabs in rows, weathered unevenly. */
 const shingles = () => mat("roof shingles", () => {
@@ -122,78 +122,6 @@ const stone = () => mat("stone veneer", () => {
   t.repeat.set(1.4, 1);
   return new THREE.MeshStandardMaterial({ map: t, bumpMap: t, bumpScale: 0.03, roughness: 0.95 });
 });
-
-// ---- Vending machine ---------------------------------------------------------
-/** The backlit product wall: four shelves of cans and bottles with price tags. */
-const products = () => mat("vending products", () => {
-  const t = canvasTexture(256, 512, (g) => {
-    const r = rng(19);
-    const grad = g.createLinearGradient(0, 0, 0, 512); grad.addColorStop(0, "#f4fbff"); grad.addColorStop(1, "#cfe6ee");
-    g.fillStyle = grad; g.fillRect(0, 0, 256, 512);
-    const colors = ["#d7322e", "#f2a228", "#2e7fd0", "#35a852", "#7c3fb6", "#f0e3c2", "#e05a8c", "#1e2a36"];
-    for (let s = 0; s < 4; s++) {
-      const y0 = 20 + s * 122;
-      for (let i = 0; i < 5; i++) {
-        const c = colors[Math.floor(r() * colors.length)], x = 14 + i * 48, bottle = r() < 0.4;
-        g.fillStyle = c;
-        if (bottle) { g.fillRect(x + 10, y0 + 22, 22, 68); g.fillRect(x + 15, y0 + 6, 12, 18); }
-        else g.fillRect(x + 6, y0 + 34, 30, 56);
-        g.fillStyle = "rgba(255,255,255,.55)"; g.fillRect(x + (bottle ? 13 : 9), y0 + 38, 4, 46);
-        g.fillStyle = "rgba(255,255,255,.85)"; g.fillRect(x + (bottle ? 12 : 8), y0 + 60, bottle ? 18 : 26, 10);
-      }
-      g.fillStyle = "#39434a"; g.fillRect(0, y0 + 92, 256, 10);
-      for (let i = 0; i < 5; i++) { g.fillStyle = "#fff6c8"; g.fillRect(20 + i * 48, y0 + 104, 30, 10); g.fillStyle = "#333"; g.font = "bold 9px sans-serif"; g.fillText(`${String.fromCharCode(65 + s)}${i + 1}`, 26 + i * 48, y0 + 113); }
-    }
-  });
-  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.55, roughness: 0.6 });
-});
-const vendingHeader = () => mat("vending header", () => {
-  const t = canvasTexture(512, 160, (g) => {
-    const grad = g.createLinearGradient(0, 0, 512, 0); grad.addColorStop(0, "#0e8c96"); grad.addColorStop(1, "#1dbfb0");
-    g.fillStyle = grad; g.fillRect(0, 0, 512, 160);
-    g.strokeStyle = "rgba(255,255,255,.35)"; g.lineWidth = 6;
-    for (let i = 0; i < 3; i++) { g.beginPath(); for (let x = 0; x <= 512; x += 8) g.lineTo(x, 118 + i * 12 + Math.sin(x * 0.03 + i) * 5); g.stroke(); }
-    g.fillStyle = "#ffffff"; g.font = "italic 900 84px sans-serif"; g.textAlign = "center"; g.fillText("REFRESH", 256, 92);
-    g.font = "bold 22px sans-serif"; g.fillText("ICE COLD  ·  DRINKS & SNACKS", 256, 150);
-  });
-  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.7, roughness: 0.4 });
-});
-const glass = () => mat("vending glass", () => new THREE.MeshStandardMaterial({ color: 0xcfe4ec, transparent: true, opacity: 0.16, roughness: 0.04, metalness: 0.2, depthWrite: false }));
-const screen = () => mat("vending screen", () => new THREE.MeshStandardMaterial({ color: 0x0c1a12, emissive: 0x4dff9a, emissiveIntensity: 0.6, roughness: 0.3 }));
-
-/**
- * A glass-front drinks machine facing +z (turned by `yaw`), 1.05 x 1.9 x 0.75 m.
- * Returns the mesh group; adds its collider.
- */
-export function vendingMachine(park: Park, base: THREE.Vector3, yaw = 0) {
-  const k = new Kit(base, yaw), body = paint(0x1b5961, 0.36, 0.5), trim = paint(0x2c3439, 0.4, 0.6), dark = paint(0x11171b, 0.6, 0.2);
-  k.box(V(1.02, 1.8, 0.72), body, V(0, 0.95, 0), 0.05);
-  k.box(V(1.06, 0.1, 0.76), trim, V(0, 1.88, 0), 0.03);
-  k.box(V(1.04, 0.1, 0.74), dark, V(0, 0.05, 0), 0.02);
-  for (const x of [-0.46, 0.46]) for (const z of [-0.3, 0.3]) k.add(new THREE.CylinderGeometry(0.035, 0.04, 0.05, 10), rubber(), V(x, 0.01, z));
-  // Lit header, glass front with the product wall behind it, and its frame.
-  k.add(new THREE.PlaneGeometry(0.96, 0.3), vendingHeader(), V(0, 1.7, 0.362));
-  k.add(new THREE.PlaneGeometry(0.62, 1.12), products(), V(-0.14, 1.0, 0.33));
-  k.add(new THREE.PlaneGeometry(0.64, 1.14), glass(), V(-0.14, 1.0, 0.366));
-  for (const [x, y, w, h] of [[-0.14, 1.575, 0.7, 0.04], [-0.14, 0.425, 0.7, 0.04], [-0.47, 1.0, 0.04, 1.19], [0.19, 1.0, 0.04, 1.19]] as const) k.box(V(w, h, 0.03), trim, V(x, y, 0.36), 0.01);
-  // Control column: display, keypad, coin and card slots, the change cup.
-  k.box(V(0.24, 1.12, 0.02), dark, V(0.32, 1.0, 0.362), 0.01);
-  k.add(new THREE.PlaneGeometry(0.16, 0.07), screen(), V(0.32, 1.44, 0.374));
-  for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) k.box(V(0.04, 0.032, 0.012), trim, V(0.275 + col * 0.047, 1.33 - row * 0.045, 0.376), 0.006);
-  k.box(V(0.1, 0.018, 0.012), galvanized(), V(0.32, 1.09, 0.376), 0.004);
-  k.box(V(0.12, 0.07, 0.02), galvanized(), V(0.32, 0.98, 0.378), 0.008);
-  k.box(V(0.12, 0.08, 0.05), trim, V(0.32, 0.62, 0.38), 0.01);
-  // Delivery bin with its push flap, and a vented kick plate.
-  k.box(V(0.66, 0.2, 0.05), dark, V(-0.08, 0.27, 0.36), 0.015);
-  k.box(V(0.6, 0.15, 0.02), paint(0x3a454c, 0.3, 0.6), V(-0.08, 0.28, 0.39), 0.01, new THREE.Euler(-0.18, 0, 0));
-  for (let i = 0; i < 4; i++) k.box(V(0.8, 0.012, 0.01), trim, V(0, 0.07 + i * 0.022, 0.366), 0.004);
-  // Side vents and a seam down the back.
-  for (const s of [-1, 1]) for (let i = 0; i < 8; i++) k.box(V(0.012, 0.012, 0.4), trim, V(s * 0.512, 1.45 - i * 0.03, -0.05), 0.004);
-  k.box(V(0.02, 1.7, 0.01), trim, V(0, 0.95, -0.362), 0.004);
-  const group = k.build(park.scene, "Refresh vending machine");
-  solid(park, turn(base, yaw, V(0, 0.95, 0)), V(1.06, 1.9, 0.76), yaw);
-  return group;
-}
 
 // ---- Trash can (#58) ------------------------------------------------------------
 /**

@@ -1,5 +1,6 @@
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { drinkingFountain, scooterRack, servicePad, trashCan, vendingMachine } from './props';
+import { drinkingFountain, scooterRack, servicePad, trashCan } from './props';
+import { VendingMachine, VendingSession, type VendHooks } from './vending';
 import { DIVE_DOCK } from "./dive-dock";
 import { DIY, PARK_BINS, PAVILIONS } from "./memorial";
 import * as THREE from 'three';
@@ -12,7 +13,7 @@ import { ScooterAssembly } from '../scooter/assembly';
 import type { RiderModel } from '../scooter/model';
 import type { LocalProfile } from '../data/loadout';
 import {saveProfile} from '../data/loadout';
-import {ITEM_KINDS,VENDING_KINDS,SINGLE_USE,isNovelty,receiveItem,consumeItem,itemLabel,type ItemKind,type NoveltyKind} from '../data/items';
+import {ITEM_KINDS,SINGLE_USE,isNovelty,receiveItem,consumeItem,itemLabel,type ItemKind,type NoveltyKind} from '../data/items';
 import {tube} from '../scooter/surfaces';
 import type { ScooterLoadout } from '../data/scooterParts';
 import { LongboardAssembly } from '../longboard/assembly';
@@ -40,8 +41,13 @@ export class WorldInteractions {
  private sequence=0;
  private propKey='';private current:Simulation|null=null;private water=new THREE.Group();
  get waterActive(){return this.water.visible;}
- /** Shows a choice on the rider's phone (vending machines, notices). */
- openOptions:(title:string,options:{label:string;detail?:string;action:()=>void}[],sub?:string)=>void=()=>{};
+ /** Shows a choice on the rider's phone (notices, a declined payment). */
+ openOptions:(title:string,options:{label:string;detail?:string;disabled?:boolean;action:()=>void}[],sub?:string)=>void=()=>{};
+ /** The vending machines (#88), and the one being used right now. */
+ readonly machines:VendingMachine[]=[];
+ vending:VendingSession|null=null;
+ /** The wallet, sounds and phone a machine needs; set by the game. */
+ vendHooks:Omit<VendHooks,'canReceive'|'receive'>={pay:async()=>'Payments are unavailable',sound:()=>{},declined:()=>{},phoneScreen:()=>{}};
  /** Someone finished eating or drinking `kind` at `at` (chips leave crumbs for the doves, #71). */
  onAte:(kind:string,at:THREE.Vector3)=>void=()=>{};
  constructor(public park:Park,profile:LocalProfile){
@@ -83,9 +89,8 @@ export class WorldInteractions {
    const rackId=`rack-${index}`;
    this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab '+rideName(this.stored.rideable):s.hasScooter?'Store '+rideName(s.rideable):rideName(this.stored?.rideable??s.rideable)+' stored at another rack',action:s=>this.rack(s,rackId,base,false,yaw)});
    if(cluster.vending){
-   const machine=at(base,spread,0,0);
-   vendingMachine(park,machine,yaw);
-   this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Choose Drink / Snack · Free',action:s=>this.openOptions('VENDING',[...VENDING_KINDS.map(kind=>({label:kind as string,detail:'Free · tap to pay with your phone',action:()=>this.vend(s,kind,machine)})),{label:'Cancel',detail:'',action:()=>{}}],'Pick a drink or snack')});
+   const machine=at(base,spread,0,0),vm=new VendingMachine(park,machine,yaw);this.machines.push(vm);
+   this.items.push({id:`vending-${index}`,interactionType:'vending',position:machine,radius:1.8,prompt:()=> 'Use the vending machine',action:s=>this.startVending(s,vm)});
    }
    if(cluster.fountain===false)continue;
    const fountain=at(base,-spread,0,0);
@@ -103,7 +108,7 @@ export class WorldInteractions {
   for(const bench of park.benches)this.items.push({id:bench.id,interactionType:'bench',position:new THREE.Vector3(bench.x,bench.base,bench.z),radius:Math.max(1.3,bench.length/2+.3),prompt:()=> 'Sit',action:()=>{}});
   scene.add(this.prop,this.water);this.prop.visible=false;this.water.visible=false;
  }
- dispose(){this.prompt.remove();for(const group of [this.prop,this.water]){group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});group.removeFromParent();}}
+ dispose(){this.vending?.end();this.vending=null;for(const m of this.machines)m.dispose();this.prompt.remove();for(const group of [this.prop,this.water]){group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});group.removeFromParent();}}
  /**
   * Into the water: the ride is left lying at the water's edge where the rider
   * went in, and is grabbed back like a rack (B beside it). Works online too:
@@ -148,7 +153,21 @@ export class WorldInteractions {
   s.emote={id:'place',time:0,duration:.65};
  }
  private action(s:Simulation,type:string,duration:number){s.running=false;s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);s.emote={id:type,time:0,duration};this.active={type,time:0,duration,start:new THREE.Vector3(),end:new THREE.Vector3(),from:new THREE.Quaternion(),to:new THREE.Quaternion()};return this.active;}
- private vend(s:Simulation,kind:ItemKind,source:THREE.Vector3){if(this.active||this.profile.pockets.entries.length>=48)return;const a=this.action(s,'vend',.75);a.source=source;a.finish=()=>{receiveItem(this.profile.pockets,kind);saveProfile(this.profile);s.events.emit({type:'worldInteraction',interaction:'vend',item:kind});};}
+ /**
+  * Steps up to a machine (#88): the rider stands at its column, facing it, and
+  * the session takes the controls until they walk away (B). What they buy goes
+  * into the pockets and into the hand.
+  */
+ private startVending(s:Simulation,vm:VendingMachine){
+  if(this.active||this.vending)return;
+  const session=new VendingSession(vm,{...this.vendHooks,
+   canReceive:()=>this.profile.pockets.entries.length<48,
+   receive:slot=>{const item=receiveItem(this.profile.pockets,slot.kind);if(item)this.profile.pockets.held=item.id;saveProfile(this.profile);s.events.emit({type:'worldInteraction',interaction:'vend',item:slot.kind});}});
+  const {at,yaw}=session.stand;
+  s.running=false;s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);
+  s.position.set(at.x,terrainHeight(at.x,at.z)+.22,at.z);s.previousPosition.copy(s.position);s.body.setTranslation(s.position,true);s.yaw=s.previousYaw=yaw;
+  this.vending=session;
+ }
  /** Pocket contents grouped for the phone's ITEMS app: one entry per kind and state. */
  itemGroups(){const pockets=this.profile.pockets;return ITEM_KINDS.flatMap(kind=>(['sealed','opened','empty'] as const).map(state=>pockets.entries.filter(i=>i.kind===kind&&i.state===state))).filter(g=>g.length).map(items=>({items,label:itemLabel(items[0]),kind:items[0].kind,state:items[0].state,held:items.some(i=>i.id===pockets.held)}));}
  hold(id:string|null){this.profile.pockets.held=id;saveProfile(this.profile);}
@@ -218,6 +237,13 @@ export class WorldInteractions {
   if(!enabled){this.water.visible=false;return input;}
   if(!s.hasScooter && !s.walking){s.walking=true;s.running=false;}
   if(!s.hasScooter)input={...input,pressed:{...input.pressed,body:false}};
+  if(this.vending){
+   if(!s.walking||s.state==='Bail'){this.vending.end();this.vending=null;return input;}
+   this.prompt.hidden=false;this.prompt.textContent=this.vending.hint();
+   s.velocity.set(0,0,0);s.body.setLinvel(s.velocity,true);
+   if(!this.vending.update(input,dt))this.vending=null;
+   return emptyInput();
+  }
   if(this.active){
    const a=this.active;
    const interrupted=!s.walking||s.state==='Bail'||Math.hypot(input.steer,input.lean)>.15||input.pressed.hop||input.pressed.body;
@@ -238,6 +264,7 @@ export class WorldInteractions {
   return input;
  }
  render(rider:RiderModel){
+  if(this.current)for(const m of this.machines)m.lod(this.current.position);
   if(this.stored){
    const board=this.stored.rideable==='longboard',current=board?this.profile.longboard:this.profile.scooter;
    if(JSON.stringify(this.stored.loadout)!==JSON.stringify(current)){this.stored.mesh.clear();if(board)new LongboardAssembly(this.stored.mesh,this.profile.longboard);else new ScooterAssembly(this.stored.mesh).build(this.profile.scooter);this.stored.loadout=structuredClone(current);}

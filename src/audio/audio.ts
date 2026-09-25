@@ -340,6 +340,47 @@ export class AudioEngine {
       a.disconnect();
     };
   }
+  /**
+   * Vending machine sounds (#88), placed at the machine: a keypad blip, the
+   * reader's approval beep, the declined buzz, the coil motor, the product
+   * landing in the bin and the flap. All synthesised.
+   */
+  vend(kind: "key" | "error" | "approved" | "declined" | "motor" | "drop" | "flap", at: { x: number; y: number; z: number }) {
+    const c = this.context, out = this.ambience ?? this.master;
+    if (!c || !out || !this.enabled) return;
+    const t0 = c.currentTime, panner = c.createPanner();
+    panner.panningModel = "HRTF"; panner.distanceModel = "inverse"; panner.refDistance = 1.5; panner.maxDistance = 40;
+    if (panner.positionX) { panner.positionX.value = at.x; panner.positionY.value = at.y; panner.positionZ.value = at.z; } else panner.setPosition(at.x, at.y, at.z);
+    panner.connect(out);
+    let end = 0;
+    const tone = (type: OscillatorType, from: number, to: number, at: number, length: number, gain: number) => {
+      const o = c.createOscillator(), a = c.createGain(), t = t0 + at;
+      o.type = type; o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(Math.max(30, to), t + length);
+      a.gain.setValueAtTime(0.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + 0.006); a.gain.setValueAtTime(gain, t + length * 0.8); a.gain.exponentialRampToValueAtTime(0.0001, t + length);
+      o.connect(a).connect(panner); o.start(t); o.stop(t + length + 0.03);
+      o.onended = () => { o.disconnect(); a.disconnect(); };
+      end = Math.max(end, at + length);
+    };
+    const noise = (at: number, length: number, gain: number, freq: number, type: BiquadFilterType = "lowpass") => {
+      const buffer = c.createBuffer(1, Math.ceil(c.sampleRate * length), c.sampleRate), data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 3);
+      const src = c.createBufferSource(), filter = c.createBiquadFilter(), a = c.createGain();
+      src.buffer = buffer; filter.type = type; filter.frequency.value = freq; a.gain.value = gain;
+      src.connect(filter).connect(a).connect(panner); src.start(t0 + at);
+      src.onended = () => { src.disconnect(); filter.disconnect(); a.disconnect(); };
+      end = Math.max(end, at + length);
+    };
+    if (kind === "key") tone("square", 1180, 1180, 0, 0.06, 0.05);
+    else if (kind === "error") { tone("square", 330, 330, 0, 0.12, 0.05); tone("square", 330, 330, 0.16, 0.12, 0.05); }
+    // One clean beep as the reader takes the payment.
+    else if (kind === "approved") { tone("sine", 1850, 1850, 0, 0.2, 0.22); tone("sine", 3700, 3700, 0, 0.2, 0.03); }
+    else if (kind === "declined") { tone("square", 440, 415, 0, 0.16, 0.08); tone("square", 330, 311, 0.2, 0.3, 0.08); }
+    // The coil motor turning once: a low whirr and a gear chatter.
+    else if (kind === "motor") { tone("sawtooth", 85, 95, 0, 1.1, 0.05); noise(0, 1.1, 0.12, 900, "bandpass"); }
+    else if (kind === "drop") { noise(0, 0.16, 0.9, 420); tone("sine", 140, 55, 0, 0.14, 0.35); }
+    else { noise(0, 0.05, 0.4, 2400, "bandpass"); noise(0.18, 0.08, 0.5, 700); }
+    setTimeout(() => panner.disconnect(), (end + 0.3) * 1000);
+  }
   /** Novelty items (#55): a squeak, a kazoo tune, a whoosh, a pop, bubbles. All synthesised. */
   novelty(kind: string) {
     const c = this.context;

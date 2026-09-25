@@ -282,6 +282,43 @@ export class Phone {
     else this.push(view);
   }
 
+  /**
+   * The wallet while the phone is held flat to a card reader (#88), drawn
+   * straight onto the screen without taking the phone out: the amount, then a
+   * tick or a cross. null hands the screen back to whatever it showed.
+   */
+  payScreen(state: 'pay' | 'approved' | 'declined' | null, price = 0, label = '') {
+    if (!state) { this.dirty = true; return; }
+    const clock = new Date().toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+    this.screen.chrome = { title: 'WALLET', time: clock, battery: 0.72, canBack: false };
+    const ok = state === 'approved', bad = state === 'declined';
+    this.screen.draw({ blocks: [
+      { type: 'title', text: ok ? 'Paid' : bad ? 'Declined' : 'Hold near reader', sub: label },
+      { type: 'image', height: 380, frame: false, draw: (g, x, y, w) => {
+        // The card, then the waves or the result under it.
+        const cw = w - 20, ch = cw * 0.62, cx = x + 10, cy = y + 10;
+        const grad = g.createLinearGradient(cx, cy, cx + cw, cy + ch); grad.addColorStop(0, '#19bcd6'); grad.addColorStop(1, '#0b5f7a');
+        g.fillStyle = grad; g.beginPath(); g.roundRect(cx, cy, cw, ch, 18); g.fill();
+        g.fillStyle = 'rgba(255,255,255,.9)'; g.font = '900 26px sans-serif'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        g.fillText('SWF PAY', cx + 20, cy + 42);
+        g.font = '800 34px sans-serif'; g.fillText(price + ' Coins', cx + 20, cy + ch - 26);
+        g.fillStyle = '#e8c64a'; g.beginPath(); g.roundRect(cx + cw - 70, cy + 22, 48, 36, 6); g.fill();
+        const my = cy + ch + 100, mx = x + w / 2;
+        if (ok || bad) {
+          g.fillStyle = ok ? '#2fbf5a' : '#e0402e'; g.beginPath(); g.arc(mx, my, 56, 0, Math.PI * 2); g.fill();
+          g.strokeStyle = '#ffffff'; g.lineWidth = 12; g.lineCap = 'round'; g.beginPath();
+          if (ok) { g.moveTo(mx - 26, my + 2); g.lineTo(mx - 6, my + 22); g.lineTo(mx + 28, my - 20); }
+          else { g.moveTo(mx - 22, my - 22); g.lineTo(mx + 22, my + 22); g.moveTo(mx + 22, my - 22); g.lineTo(mx - 22, my + 22); }
+          g.stroke();
+        } else {
+          g.strokeStyle = '#19bcd6'; g.lineWidth = 8; g.lineCap = 'round';
+          for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(mx - 40, my, 20 + i * 18, -0.75, 0.75); g.stroke(); }
+        }
+      } },
+    ] });
+    this.texture.needsUpdate = true;
+  }
+
   /** Small, non-blocking notification. Never opens the phone. */
   notify(title: string, body: string, icon: IconName | '' = '') {
     if (!this.notificationsEnabled) return;
