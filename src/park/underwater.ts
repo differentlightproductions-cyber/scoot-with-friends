@@ -11,7 +11,7 @@ import { WATER, inWater } from "./water";
  * sound. From above the opaque lake hides all of it.
  */
 /** Where the surface is drawn from below, and where the eye counts as under. */
-const UNDERSIDE = -0.2;
+const UNDERSIDE = -0.3;
 
 export function buildLakeBasin(scene: THREE.Scene) {
   const group = new THREE.Group();
@@ -26,7 +26,7 @@ export function buildLakeBasin(scene: THREE.Scene) {
     for (let j = 0; j < segments; j++) {
       const a = (j / segments) * Math.PI * 2, x = WATER.x + Math.cos(a) * WATER.radiusX * r, z = WATER.z + Math.sin(a) * WATER.radiusZ * r;
       const floor = -WATER.depth * Math.pow(Math.max(0, 1 - r * r), 0.7);
-      position.push(x, i === rings ? -0.24 : Math.min(-0.24, floor + bump(x, z) * (1 - r)), z);
+      position.push(x, i === rings ? -0.34 : Math.min(-0.34, floor + bump(x, z) * (1 - r)), z);
       c.copy(sand).lerp(silt, THREE.MathUtils.smoothstep(-floor, 0.4, 2.2)).multiplyScalar(0.9 + 0.2 * Math.sin(x * 3.1 + z * 2.3) * Math.sin(z * 1.7));
       color.push(c.r, c.g, c.b);
       if (i < rings) {
@@ -105,8 +105,8 @@ void main() {
   underside.name = "Lake surface from below";
   underside.rotation.x = -Math.PI / 2;
   underside.scale.set(WATER.radiusX, WATER.radiusZ, 1);
-  // Below the park's ground layers, which run on under the lake down to y -0.1
-  // (one faces down) and would otherwise hide the surface from below.
+  // Below the park's ground layers, which run on under the lake: the lawn is a
+  // 20 cm slab down to y -0.25 whose underside would otherwise hide the surface from below.
   underside.position.set(WATER.x, UNDERSIDE, WATER.z);
   group.add(underside);
   scene.add(group);
