@@ -192,7 +192,8 @@ async function boot() {
   const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   const syncRoomBuilds=()=>builder.setShared(network.status==='Connected'&&network.map==='warehouse'&&ACTIVE_MAP==='warehouse',network.id,m=>network.send({type:'build',generation:network.generation,...m}));
-  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();};
+  let showRoomConfirmation=false;
+  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();if(showRoomConfirmation){showRoomConfirmation=false;hud.setPaused(false);menu.root.hidden=false;menu.show('online');}};
   network.onBuilds=pieces=>builder.applySharedSnapshot(pieces);
   network.onBuild=message=>builder.applySharedChange(message);
   events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
@@ -201,16 +202,17 @@ async function boot() {
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   // Cloud save starts once the account dialog exists to ask questions in.
   void cloud.start();
-  network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
+  network.prepare=async()=>{showRoomConfirmation=menu.screen==='online'&&!menu.root.hidden;if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
-    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':network.lastError,action:()=>{}},
+    {label:network.status==='Connected'?'ROOM CONNECTED':(network.lan?'LAN / ':'')+network.status,detail:network.status==='Connected'?'Your private room is ready. Share an invite, then enter the park.':network.lastError||(network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':''),action:()=>{}},
+    ...(network.status==='Connected'?[{label:'ENTER PARK',action:()=>{menu.root.hidden=true;hud.setPaused(false);input.clear();pending=emptyInput();accumulator=0;}},{label:'COPY ROOM CODE',detail:network.code,action:()=>void copyText(network.code)}]:[]),
     ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void copyText(network.code)}]:[]),
     ...(network.id?[{label:'COPY INVITE',action:()=>void copyText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
-  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(showRoomConfirmation&&network.lastError&&network.status!=='Connecting'&&network.status!=='Loading'){showRoomConfirmation=false;hud.setPaused(false);menu.root.hidden=false;}if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   const mapFeatures=():MapFeature[]=>{
     const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
     for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
@@ -287,7 +289,7 @@ async function boot() {
   menu.overlayOwnsInput=()=>rewards.open;
   menu.onOpenCrate=(id,all=false)=>{if(rewards.open)return;const crates=[...profile.progress.crates],crate=crates.find(c=>c.id===id);if(!crate)return;input.clear();pending=emptyInput();accumulator=0;if(all)void rewards.openAll(crates);else rewards.openCrate(crate);};
   menu.onPurchased=item=>rewards.purchase(item);
-  menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
+  menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:riderAppearance(profile)});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
@@ -672,7 +674,7 @@ async function boot() {
     testMode = false;
   const lampAt=new THREE.Vector3(),lampDir=new THREE.Vector3();
   const render = (dt: number, alpha = 1) => {
-    const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen || rewards.open);
+    const worldFrozen = hud.started && (hud.paused || !menu.root.hidden || menu.seshOpen || menu.shopOpen || rewards.open);
     if (!worldFrozen) {
     if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
@@ -760,7 +762,7 @@ async function boot() {
     if(replay.open){replay.update(frame,dt);audio.update(0,false,false,true);replay.draw(dt);return;}
     if(rewards.open){rewards.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if(menu.shopOpen||menu.seshOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
-    if (!hud.started) {
+    if (!hud.started || !menu.root.hidden) {
       menu.update(frame, dt);
       render(dt);
       return;

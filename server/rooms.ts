@@ -22,6 +22,9 @@ export function createRooms({port=8787,host='127.0.0.1',capacity=8,grace=30000,o
  const roster=(r:Room)=>({type:'roster',owner:r.owner,locked:r.locked,generation:r.generation,players:[...r.players.values()].map(p=>({id:p.id,friendId:p.friendId,name:p.name,appearance:p.appearance,connected:!!p.ws}))});
  const remove=(r:Room,p:Player)=>{contacts(r).remove(p.id);r.players.delete(p.id);for(const [id,piece]of r.builds)if(piece.owner===p.id){r.builds.delete(id);broadcast(r,{type:'build',generation:r.generation,action:'delete',id});}if(r.owner===p.id)r.owner=[...r.players.values()].find(x=>x.ws)?.id??[...r.players.keys()][0]??'';if(!r.players.size)rooms.delete(r.code);else broadcast(r,roster(r));};
  wss.on('connection',(ws,req)=>{
+  // ws emits a per-connection error for oversized frames before closing with 1009.
+  // Handle it here so one bad client cannot crash the room server.
+  ws.on('error',()=>{if(ws.readyState===WebSocket.OPEN)ws.terminate();});
   if(!origins.includes(req.headers.origin??'')||wss.clients.size>128){ws.close(1008,'Connection unavailable');return;}
   const ip=req.socket.remoteAddress??'unknown';let room:Room|null=null,player:Player|null=null,windowAt=Date.now(),messages=0,chatAt=0;
   const authTimeout=setTimeout(()=>{if(!player&&!social.isAuthed(ws))ws.close(1008,'Join timeout');},10000);
