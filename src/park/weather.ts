@@ -6,7 +6,7 @@ import type { LiveConditions } from './liveSky';
 import type { DesertWind } from './dust';
 import { setWindStrength } from '../art/flora';
 export type WeatherMode='sunny'|'fall'|'snow'|'rain';
-type Hook={compile:THREE.Material['onBeforeCompile'];cache:()=>string};
+type Hook={compile:THREE.Material['onBeforeCompile'];cache:()=>string;ownCompile:boolean;ownCache:boolean};
 /** What the weather needs to know about the rider this frame (all optional). */
 export interface WeatherRider{camera?:THREE.Vector3;velocity?:THREE.Vector3;yaw?:number;riding?:boolean;grounded?:boolean;landing?:number;
  /** Real wind, cloud and dust when the sky is live (#74); null or absent for the settings' weather. */
@@ -355,9 +355,11 @@ export class Weather {
   // source text, which after wrapping is this same wrapper for every material,
   // so materials with their own shader code (the lake) were handed another
   // material's compiled program.
+  const own=(k:string)=>Object.prototype.hasOwnProperty.call(material,k),ownCompile=own('onBeforeCompile'),ownCache=own('customProgramCacheKey');
   const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),key=cache(),coverage=this.coverage,wet=this.wet,litter=this.litter;
   // Plant cards (art/flora.ts names them "<kind> foliage") turn autumn colours instead of gathering litter.
   const foliage=/foliage/.test(material.name);
+  material.userData.weatherHooked=true;
   material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;shader.uniforms.uWet=wet;shader.uniforms.uLitter=litter;shader.uniforms.uShelter=shelterBoxes;shader.uniforms.uShelterTop=shelterTops;
    // The park's lamps light what is around them (#75).
    shader.uniforms.uParkLamps=particleLight.uParkLamps;shader.uniforms.uParkLampTint=parkLampLight.uParkLampTint;shader.uniforms.uParkLampPower=parkLampLight.uParkLampPower;
@@ -426,7 +428,7 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
 }
 #endif
 #include <lights_physical_fragment>`);
-  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v6-foliage':'|swf-weather-v6');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
+  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v6-foliage':'|swf-weather-v6');material.needsUpdate=true;this.hooked.set(material,{compile,cache,ownCompile,ownCache});
  }
  private buildFlakes(){
   if(this.flakes){this.flakes.removeFromParent();this.flakes.geometry.dispose();(this.flakes.material as THREE.Material).dispose();}
@@ -476,6 +478,12 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
   this.desert?.dispose();delete this.scene.userData.cloudCover;delete this.scene.userData.dustHaze;setWindStrength(1);
   for(const points of [this.flakes,this.spray,this.leaves,this.drops])if(points){points.geometry.dispose();(points.material as THREE.Material).dispose();}
   this.disc.dispose();this.leafTex.dispose();this.applyFog(0);this.setSky(0,0,0);
-  for(const [material,hook]of this.hooked){material.onBeforeCompile=hook.compile;material.customProgramCacheKey=hook.cache;material.needsUpdate=true;}this.hooked.clear();this.group.removeFromParent();
+  for(const [material,hook]of this.hooked){
+   // Put back exactly what was there: a hook of the material's own, or none (the prototype's).
+   const m=material as unknown as Record<string,unknown>;
+   if(hook.ownCompile)material.onBeforeCompile=hook.compile;else delete m.onBeforeCompile;
+   if(hook.ownCache)material.customProgramCacheKey=hook.cache;else delete m.customProgramCacheKey;
+   material.needsUpdate=true;delete material.userData.weatherHooked;
+  }this.hooked.clear();this.group.removeFromParent();
  }
 }

@@ -22,13 +22,21 @@ try {
       const info = () => ({ programs: R.info.programs.length, textures: R.info.memory.textures, geometries: R.info.memory.geometries });
       const atLoad = info();
       await new Promise((res) => { let n = 0; const f = () => { if (++n < 4) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
-      return { atLoad, after: info(), labels };
+      // Static batching (render/static-batch.ts): lots merged, interactive props and night lenses intact.
+      const scene = g.park.scene, used = new Set(); scene.traverse((o) => { if (o.isMesh) used.add(o.material); });
+      const kept = (name) => { const o = scene.getObjectByName(name); let n = 0; o?.traverse((c) => { if (c.isMesh) n++; }); return n; };
+      const lenses = [...(scene.userData.lampLenses ?? []), ...(scene.userData.amberLights ?? []).map((a) => a.lens)];
+      const batch = { report: scene.userData.staticBatch, vending: kept('Refresh vending machine'), trash: map === 'outdoor' ? kept('Trash can') : 1, lenses: lenses.length, lensesDrawn: lenses.filter((m) => used.has(m)).length };
+      return { atLoad, after: info(), labels, batch };
     }, { map, weather });
     check(`${map}: no shader compiles after loading`, r.after.programs === r.atLoad.programs, r);
     check(`${map}: no texture or mesh uploads after loading`, r.after.textures === r.atLoad.textures && r.after.geometries === r.atLoad.geometries, r);
     const values = r.labels.map((l) => l[1]).filter((v) => typeof v === 'number'), text = r.labels.map((l) => l[0]).join(' | ');
     check(`${map}: the bar follows the real stages`, /Loading textures \(\d+\/\d+\)/.test(text) && /Compiling shaders/.test(text) && /Preparing the view \(4\/4\)/.test(text) && /Drawing the map/.test(text), text);
     check(`${map}: the bar only moves forward`, values.every((v, i) => i === 0 || v >= values[i - 1] || v === 10), values);
+    check(`${map}: static meshes batched`, r.batch.report?.merged >= (map === 'outdoor' ? 500 : 100) && r.batch.report.batches < r.batch.report.merged / 2, r.batch.report);
+    check(`${map}: interactive props left whole (vending, trash cans)`, r.batch.vending > 0 && r.batch.trash > 0, r.batch);
+    check(`${map}: every lamp lens still lights a mesh at night`, r.batch.lensesDrawn === r.batch.lenses, r.batch);
     check(`${map}: no page errors`, errors.length === 0, errors);
     await page.close();
   }

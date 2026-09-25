@@ -127,8 +127,42 @@ export class Npc implements PlayfulTarget {
     return due;
   }
 
-  /** Poses the model for this frame. */
-  render(dt: number, elapsed: number) {
+  /**
+   * Distance detail (#85): past NPC_DETAIL.near the smallest parts (laces,
+   * eyelets, strands, bolts) and every shadow drop out, a few draw calls each
+   * that no one can see at that range; past NPC_DETAIL.far the local is not
+   * drawn or posed at all. Only parts that were showing are put back.
+   */
+  private level = 2;
+  private coarse = false;
+  private fine: THREE.Mesh[] = [];
+  private shadows: THREE.Mesh[] = [];
+  private detail(eye: THREE.Vector3 | undefined) {
+    const d = eye ? eye.distanceTo(this.position) : 0, level = d > NPC_DETAIL.far ? 0 : d > NPC_DETAIL.near ? 1 : 2;
+    if (level === this.level) return level;
+    this.level = level;
+    const root = this.model.root, coarse = level < 2;
+    root.visible = level > 0;
+    if (coarse && !this.coarse) {
+      root.updateMatrixWorld(true);
+      root.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.visible || NPC_DETAIL.keep.test(mesh.name) || NPC_DETAIL.keep.test(mesh.parent?.name ?? "")) return;
+        if (mesh.castShadow) { mesh.castShadow = false; this.shadows.push(mesh); }
+        const g = mesh.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+        if (g.boundingSphere!.radius * mesh.matrixWorld.getMaxScaleOnAxis() < NPC_DETAIL.fine) { mesh.visible = false; this.fine.push(mesh); }
+      });
+    } else if (!coarse && this.coarse) {
+      for (const mesh of this.fine) mesh.visible = true;
+      for (const mesh of this.shadows) mesh.castShadow = true;
+      this.fine = []; this.shadows = [];
+    }
+    this.coarse = coarse;
+    return level;
+  }
+  /** Poses the model for this frame; `eye` is the camera, for distance detail. */
+  render(dt: number, elapsed: number, eye?: THREE.Vector3) {
+    if (this.detail(eye) === 0) return;
     const s = this.state;
     s.position = this.position.toArray(); s.yaw = this.yaw; s.speed = this.speed; s.elapsed = elapsed;
     s.emote = this.emote ? { ...this.emote, hand: 0 } : null;
@@ -143,4 +177,6 @@ export class Npc implements PlayfulTarget {
   dispose() { this.model.dispose(); }
 }
 
+/** Distance detail for the locals (metres): fine parts under `fine` m across hide past `near`; nothing past `far`. */
+export const NPC_DETAIL = { near: 25, far: 70, fine: 0.05, keep: /headlamp|phone|item|drink|cup|bottle|food|held|throw/i };
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)];

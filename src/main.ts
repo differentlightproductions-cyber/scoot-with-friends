@@ -41,6 +41,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Events } from "./core/events";
 import { TUNE } from "./core/config";
 import { Input, emptyInput, InputFrame } from "./input/input";
+import { batchStatic } from "./render/static-batch";
 import { OUTDOOR, Park, SPAWNS, selectPark, terrainHeight, terrainSurface } from "./park/park";
 import { Simulation } from "./physics/simulation";
 import { RiderModel } from "./scooter/model";
@@ -417,7 +418,10 @@ async function boot() {
    */
   const warmUp=async(from:number,to:number)=>{
     const at=(f:number)=>from+(to-from)*f;
-    await loadingStage("Lighting the sky",at(0));
+    // Static meshes that look alike merge into a few batches (render/static-batch.ts).
+    // The Warehouse builder adds and removes pieces live, so it keeps its own.
+    if(ACTIVE_MAP!=="warehouse"){await loadingStage("Batching the park",at(0));const report=batchStatic(scene);scene.userData.staticBatch=report;}
+    await loadingStage("Lighting the sky",at(.02));
     weather.prepare();
     render(1/60);
     const textures=new Set<THREE.Texture>();
@@ -601,6 +605,10 @@ async function boot() {
       });
       weather.dispose();
       playful?.dispose();playful=null;doves?.dispose();doves=null;
+      // The scene object is reused: what one map's builders listed on it (lamp
+      // lenses and heads, shelters, perches, pending loads) must not carry into
+      // the next map, where old lamp positions lit phantom spots (#85).
+      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch"])delete scene.userData[key];
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -799,7 +807,7 @@ async function boot() {
     camera.phonePitch = raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
     if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
-    interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0]);
+    interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0],camera.camera.position);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     // Sounds placed in the world (doves) are heard from the camera (#71).

@@ -273,10 +273,10 @@ export class WithFriends {
     // Network-only props expire; they never create inventory or local pickup copies.
     t.rest=-4;
   }
-  render(dt: number, elapsed: number, hand?: THREE.Object3D) {
+  render(dt: number, elapsed: number, hand?: THREE.Object3D, eye?: THREE.Vector3) {
     for(const t of this.things)if(t.thrower.startsWith('network:')){t.rest+=dt;if(t.rest>=0)t.mesh.removeFromParent();}
     this.things=this.things.filter(t=>!t.thrower.startsWith('network:')||t.rest<0);
-    for (const npc of this.npcs) npc.render(dt, elapsed);
+    for (const npc of this.npcs) npc.render(dt, elapsed, eye);
     if (this.carried && hand) { this.carried.mesh.visible = true; hand.getWorldPosition(this.carried.mesh.position); }
   }
 
