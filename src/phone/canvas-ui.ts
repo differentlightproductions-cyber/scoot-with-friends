@@ -26,7 +26,7 @@ export const BODY = 'system-ui, "Segoe UI", Roboto, "Noto Sans Arabic", "Noto Sa
 
 export type Action = () => void;
 export type IconName = 'music' | 'emote' | 'ride' | 'rider' | 'map' | 'items' | 'build' | 'messages' | 'play' | 'pause' | 'prev' | 'next' | 'dice' | 'lock'
-  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil' | 'trophy' | 'crate' | 'chart';
+  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil' | 'trophy' | 'crate' | 'chart' | 'camera';
 export interface Tile { id: string; label: string; icon: IconName; color: string; action?: Action; disabled?: boolean; badge?: string }
 export interface Row { id: string; label: string; detail?: string; value?: string; action?: Action; disabled?: boolean; chosen?: boolean; adjust?: (step: -1 | 1) => void }
 export type Block =
@@ -160,6 +160,10 @@ export function icon(g: Ctx, name: IconName, x: number, y: number, s: number, co
       // Three climbing bars over a baseline, with a tick for the best.
       rounded(g, -18, 2, 9, 16, 2); g.fill(); rounded(g, -5, -7, 9, 25, 2); g.fill(); rounded(g, 8, -16, 9, 34, 2); g.fill();
       g.lineWidth = 3; g.beginPath(); g.moveTo(-21, 20); g.lineTo(21, 20); g.stroke(); break;
+    case 'camera':
+      // A body with a raised viewfinder hump, a ringed lens and a flash.
+      rounded(g, -21, -11, 42, 29, 6); g.fill(); rounded(g, -9, -18, 16, 9, 3); g.fill();
+      g.fillStyle = PAPER; circle(0, 3, 10); g.fillStyle = color; circle(0, 3, 6.5); g.fillStyle = PAPER; circle(-2.5, 0.5, 2); circle(14, -5, 2.5); break;
     case 'crate':
       rounded(g, -19, -10, 38, 28, 4); g.fill(); rounded(g, -21, -18, 42, 10, 3); g.fill();
       g.fillStyle = '#00000066'; g.fillRect(-10, -6, 5, 22); g.fillRect(5, -6, 5, 22); break;

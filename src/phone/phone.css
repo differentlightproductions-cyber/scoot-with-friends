@@ -123,3 +123,29 @@ body.rtl .phone-overlay { right: auto; left: max(18px, 3vw); }
 .phone-toast-music { background-image: radial-gradient(circle, #ff5a1f 0 45%, #0b0c0d 46% 56%, transparent 57%); }
 .phone-toast-messages { background-image: radial-gradient(circle, #c6ff00 0 45%, #0b0c0d 46% 56%, transparent 57%); }
 @media (prefers-reduced-motion: reduce) { .phone-toast { transition: opacity 0.2s; transform: none; } }
+
+/* The phone camera's viewfinder (#77): drawn over the game view, never into photos or clips. */
+.phone-camera { position: fixed; inset: 0; z-index: 38; pointer-events: none; color: #fff; font: 400 13px Bungee, Impact, sans-serif; }
+.phone-camera[hidden] { display: none; }
+/* Looking through the lens: the riding HUD steps aside (phone toasts stay). */
+body.camera-up :is(#app > header, #app > footer, #trick-line, #feedback, #balance, #minimap, #now-playing, #phone-hold, .remote-name, .network-status, .world-prompt, #shop-prompt) { visibility: hidden !important; }
+.pc-corners i { position: absolute; width: 38px; height: 38px; border: 0 solid #ffffffd9; filter: drop-shadow(0 1px 1px #0008); }
+.pc-corners i:nth-child(1) { top: 7vh; left: 6vw; border-top-width: 4px; border-left-width: 4px; }
+.pc-corners i:nth-child(2) { top: 7vh; right: 6vw; border-top-width: 4px; border-right-width: 4px; }
+.pc-corners i:nth-child(3) { bottom: 16vh; left: 6vw; border-bottom-width: 4px; border-left-width: 4px; }
+.pc-corners i:nth-child(4) { bottom: 16vh; right: 6vw; border-bottom-width: 4px; border-right-width: 4px; }
+.phone-camera.recording .pc-corners i { border-color: #ff3b30e6; }
+.pc-rec { position: absolute; top: calc(7vh + 8px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 5px 12px; background: #0b0c0dcc; border: 3px solid #0b0c0d; border-radius: 10px; letter-spacing: 0.04em; }
+.pc-rec b { width: 12px; height: 12px; border-radius: 50%; background: #ff3b30; animation: pc-blink 1s steps(2) infinite; }
+@keyframes pc-blink { 50% { opacity: 0.2; } }
+.pc-zoom { position: absolute; top: calc(7vh + 10px); right: calc(6vw + 12px); padding: 3px 9px; background: #0b0c0dcc; border-radius: 8px; }
+.pc-flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+.pc-flash.on { animation: pc-flash 0.35s ease-out; }
+@keyframes pc-flash { from { opacity: 0.85; } to { opacity: 0; } }
+.pc-controls { position: absolute; left: 50%; bottom: calc(16vh - 70px); transform: translateX(-50%); display: flex; align-items: center; gap: 22px; pointer-events: auto; }
+.pc-controls button { width: 46px; height: 46px; border-radius: 50%; border: 3px solid #0b0c0d; background: #f4f1e8; color: #0b0c0d; font: 400 18px Bungee, Impact, sans-serif; box-shadow: 3px 3px 0 #0b0c0d; cursor: pointer; }
+.pc-controls .pc-shutter { width: 64px; height: 64px; background: #fff; box-shadow: 0 0 0 5px #ffffffaa, 3px 3px 0 5px #0b0c0d; }
+.pc-controls .pc-record { background: #ff3b30; }
+.phone-camera.recording .pc-record { border-radius: 12px; }
+.pc-hint { position: absolute; left: 0; right: 0; bottom: 10px; margin: 0; text-align: center; font-size: 12px; letter-spacing: 0.05em; text-shadow: 0 1px 2px #000; }
+@media (prefers-reduced-motion: reduce) { .pc-flash.on { animation-duration: 0.15s; } .pc-rec b { animation: none; } }

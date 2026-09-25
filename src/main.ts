@@ -70,7 +70,8 @@ import { HoldButton } from './phone/hold';
 import { PhoneRig, READ_TILT, armTo } from './phone/rig';
 import { PhoneMap, type MapFeature } from './phone/map';
 import { MessageStore } from './phone/messages';
-import { installApps, homePage, releasePhoneThumbnails, type PhoneDeps } from './phone/apps';
+import { installApps, homePage, galleryView, releasePhoneThumbnails, type PhoneDeps } from './phone/apps';
+import { PhoneCamera } from './phone/camera';
 import { ownsBoard } from './data/catalog';
 import { MAPS } from './data/maps';
 import { MissionTracker, RewardFx } from './ui/rewards';
@@ -238,7 +239,7 @@ async function boot() {
   // Held buttons that put the phone away must not become a hop, push or trick.
   phone.onClose = () => { input.clear(); pending = emptyInput(); releasePhoneThumbnails(); };
   // Taking the phone out ends an emote that needs the phone hand; a one-hand emote on the other hand plays on.
-  phone.onOpen = () => { const e = sim.emote, phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0; if (e && e.id !== 'sit' && !(EMOTES.find(x => x.id === e.id)?.phoneCompatible && e.hand !== phoneHand)) sim.emote = null; sim.running = false; };
+  phone.onOpen = () => { phoneCamera.exit(); const e = sim.emote, phoneHand = profile.settings.phoneHand === 'left' ? 1 : 0; if (e && e.id !== 'sit' && !(EMOTES.find(x => x.id === e.id)?.phoneCompatible && e.hand !== phoneHand)) sim.emote = null; sim.running = false; };
   music.onNowPlaying = (track) => {
     if (!music.settings.notifications || (phone.ready && phone.view?.title === 'SESH MUSIC')) return;
     phone.notify('Now playing', track.title + ' · ' + track.artist, 'music');
@@ -301,7 +302,15 @@ async function boot() {
   const nowPlaying=new NowPlaying(music,document.querySelector('#app')!,document.querySelector('#pause .np-player')!);
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
-  const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,
+  // The phone camera (#77): the view through the lens, and this session's photos and clips.
+  let viewBeforeCamera=camera.view;
+  const phoneCamera=new PhoneCamera({canvas:renderer.domElement,sound:()=>audio.recordStream(),
+    place:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Scoot',
+    view:on=>{if(on){viewBeforeCamera=camera.view;camera.view='first';}else camera.view=viewBeforeCamera;},
+    gallery:()=>{if(phoneAllowed())phone.open(galleryView(phoneDeps));},
+    notify:(title,body)=>phone.notify(title,body)});
+  phoneCamera.onChange=()=>phone.refresh();
+  const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,camera:phoneCamera,
     openCrate:(id,all=false)=>menu.onOpenCrate(id,all),
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim,profile.settings.phoneHand==='left'?1:0),
@@ -387,6 +396,7 @@ async function boot() {
   void latestPark();
   let destinationLoading:Promise<void>|null=null;
   const loadDestination = async (id:MapId) => {
+    phoneCamera.exit();
     // Callers must await a real load, never receive a false "ready" while another map loads.
     while(destinationLoading)await destinationLoading;
     const loading=(async()=>{input.clear();
@@ -773,6 +783,7 @@ async function boot() {
       rider.root.visible=!hidden;for(const r of network.remotes.values()){r.model.root.visible=!hidden;r.label.hidden=hidden;}
       document.body.classList.toggle('replay-open',hidden);
       if(hidden&&phone.active)phone.stow();
+      if(hidden)phoneCamera.exit();
     }});
   /** Opens the last 15-60 s in the Replay Editor; the live history carries on untouched. */
   function captureReplay(){
@@ -829,6 +840,7 @@ async function boot() {
     if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
     interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0],camera.camera.position);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
+    camera.zoom=phoneCamera.active?phoneCamera.zoom:1;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     if(!cameraBlocked&&vending)vending.frame(camera.camera,dt);
     // Sounds placed in the world (doves) are heard from the camera (#71).
@@ -856,14 +868,14 @@ async function boot() {
     touchPad.suspended=(overlayOpen||phone.active||!social.chat.hidden)&&!touchPad.preview;
     // Keep the last world pose/camera underneath translucent pause menus. Rendering
     // that unchanged scene also survives resize/context compositing without a screenshot.
-    if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
+    if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);phoneCamera.afterRender();if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
     else {renderer.setClearColor(0x15161a);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
     const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Coins";
-    rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
+    rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!phoneCamera.active);
     // Minimap: only over live riding, never over menus, the phone, loading or building.
     camera.camera.getWorldDirection(minimapView);
-    const liveHud=hud.started&&!hud.paused&&menu.root.hidden&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!phone.active&&!editor.active&&!rewards.open;
+    const liveHud=hud.started&&!hud.paused&&menu.root.hidden&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!phone.active&&!phoneCamera.active&&!editor.active&&!rewards.open;
     minimap.update(dt,liveHud&&!builder.placement,ACTIVE_MAP,Math.atan2(minimapView.x,minimapView.z),mapRide());
     nowPlaying.update(liveHud);
     if(hud.started&&!hud.paused){missions.sample(sim,dt);if(phone.active)missions.first('phone');}
@@ -899,6 +911,7 @@ async function boot() {
     // Pausing puts the phone straight away: the Sesh menu is then the only input owner.
     if (frame.pressed.pause) {
       if (phone.active) phone.stow();
+      phoneCamera.exit();
       hud.setPaused(!hud.paused);
       accumulator = 0;
     }
@@ -919,6 +932,11 @@ async function boot() {
     // The phone owns controller input while it is out (the chat field, when
     // composing, owns it first). Gameplay receives nothing, so a rider coasts on.
     frame = phoneStep(frame, dt);
+    // The phone camera (#77) owns the face buttons while it is up; the sticks still move the rider.
+    if (phoneCamera.active) {
+      if (sim.state === "Bail") phoneCamera.exit();
+      else frame = phoneCamera.update(frame, dt);
+    }
     shopPrompt.hidden=true;
     if(sim.walking){const shop=shopForMap(ACTIVE_MAP);const nearest=shop?.displays.find(d=>Math.hypot(sim.position.x-d.x,sim.position.z-d.z)<1.6);if(shop&&nearest){shopPrompt.hidden=false;shopPrompt.textContent='B / Browse '+nearest.label+' / '+shop.name;if(frame.pressed.brakeBars){if(nearest.category==='longboard')menu.openBoardShop(shop.id);else menu.openShop(nearest.category,shop.id);input.clear();accumulator=0;render(dt);return;}}}
     if(builder.placement)frame=builder.update(sim,frame,dt);
@@ -1038,7 +1056,7 @@ async function boot() {
       audio,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},underwater,
-      music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),
+      music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(), phoneCamera,
       replay, replayBuffer, captureReplay: () => captureReplay(),
       renderer,
       fidelity,

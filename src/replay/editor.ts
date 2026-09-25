@@ -7,6 +7,7 @@ import type { Simulation } from "../physics/simulation";
 import { REPLAY_RATE, type ReplayClip, type ReplayView } from "./buffer";
 import { ReplayPlayer } from "./player";
 import { newReplayId, ReplayStore, type ReplayMeta, type SavedReplay } from "./store";
+import { canRecord, fileName, saveToDevice, videoExtension, videoMime } from "../render/video";
 
 /** What the editor needs from the game (main.ts). */
 export interface ReplayHost {
@@ -88,13 +89,7 @@ export class ReplayEditor {
   }
 
   /** Browsers that can record the canvas to a video file (WebM through MediaRecorder). */
-  static canExport(canvas: HTMLCanvasElement) {
-    return typeof MediaRecorder !== "undefined" && typeof canvas.captureStream === "function" && !!ReplayEditor.mime();
-  }
-  private static mime() {
-    if (typeof MediaRecorder === "undefined") return "";
-    return ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-  }
+  static canExport(canvas: HTMLCanvasElement) { return canRecord(canvas); }
 
   // ---- Opening --------------------------------------------------------------
   /** Opens a fresh capture (the live history, copied) in the editor. */
@@ -285,7 +280,7 @@ export class ReplayEditor {
   // ---- Export -------------------------------------------------------------------
   /** Records the trimmed range from the chosen camera, in real time, to a WebM file. */
   startExport() {
-    const canvas = this.host.renderer.domElement, mime = ReplayEditor.mime();
+    const canvas = this.host.renderer.domElement, mime = videoMime();
     if (!this.player || !ReplayEditor.canExport(canvas)) { this.say("VIDEO EXPORT IS NOT SUPPORTED IN THIS BROWSER"); return false; }
     const stream = canvas.captureStream(REPLAY_RATE), recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
     const job = { recorder, chunks: [] as Blob[], cancelled: false };
@@ -293,10 +288,8 @@ export class ReplayEditor {
     recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
       if (job.cancelled) return;
-      const blob = new Blob(job.chunks, { type: mime.split(";")[0] }), url = URL.createObjectURL(blob), a = document.createElement("a");
-      const name = (this.meta?.name ?? "Scoot replay").replace(/[^\w\- ]+/g, "").trim() || "Scoot replay";
-      a.href = url; a.download = `${name}.${mime.includes("mp4") ? "mp4" : "webm"}`; document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const blob = new Blob(job.chunks, { type: mime.split(";")[0] });
+      void saveToDevice(blob, `${fileName(this.meta?.name ?? "", "Scoot replay")}.${videoExtension(mime)}`);
       (window as unknown as { __replayExport?: { bytes: number; type: string } }).__replayExport = { bytes: blob.size, type: blob.type };
       this.say(`EXPORTED ${(blob.size / 1e6).toFixed(1)} MB`);
       this.render();
@@ -385,7 +378,7 @@ export class ReplayEditor {
         <div class="re-info"><b>${esc(m.name)}</b><small>${esc(m.mapName.toUpperCase())} · ${(m.trimOut - m.trimIn).toFixed(1)} S · ${m.camera === "first" ? "FIRST PERSON" : "THIRD PERSON"} · ${esc(date(m.createdAt))}</small></div>
         <div class="re-actions">${ReplayEditor.ACTIONS.map((a, c) => `<button data-library="${a}" data-row="${i}" class="${i === this.row && c === this.column ? "focus" : ""}">${a}</button>`).join("")}</div>
       </li>`).join("");
-    return `<div class="re-library"><div class="re-head"><span class="re-eyebrow">REPLAYS</span><h2>SAVED REPLAYS</h2><small>${this.library.length} SAVED · WATCH, EDIT, RENAME OR DELETE</small></div>
+    return `<div class="re-library"><div class="re-head"><span class="re-eyebrow">REPLAYS</span><h2>SAVED REPLAYS</h2><small>${this.library.length} SAVED · WATCH, EDIT, RENAME OR DELETE · KEPT UNTIL YOU CLOSE THE GAME: EXPORT VIDEO SAVES ONE TO YOUR DEVICE</small></div>
       <button class="re-library-back" data-library-back>◀ BACK</button>
       ${this.library.length ? `<ul>${rows}</ul>` : `<p class="re-empty">No replays yet. Ride a line, then CAPTURE REPLAY from the phone's REPLAYS app or the Sesh menu.</p>`}
       <p class="re-legend">LS / D-PAD PICK · A SELECT · B BACK</p><div class="re-notice${this.notice && this.noticeAge < 3 ? " on" : ""}">${esc(this.notice)}</div></div>`;

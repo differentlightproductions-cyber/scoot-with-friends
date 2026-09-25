@@ -1,7 +1,7 @@
 import { GameEvent } from "../core/events";
 /** Mixer levels, 0..1 (#71). Music is mixed by the music player, under the same master. */
 export interface Volumes { master: number; effects: number; ui: number; ambience: number }
-export type UiSound = "move" | "select" | "back" | "tab";
+export type UiSound = "move" | "select" | "back" | "tab" | "shutter" | "rec" | "stop";
 /** The running engine, so menus, the phone and reward screens can use the UI bus. */
 let active: AudioEngine | null = null;
 /** A short UI click on the UI bus (menus, phone, tabs); silent before the first user gesture. */
@@ -36,6 +36,13 @@ export class AudioEngine {
   /** Head under water: the world goes dull and far away (#62). */
   setUnderwater(on:boolean){this.underwater=on;if(this.context&&this.muffle)this.muffle.frequency.setTargetAtTime(on?520:20000,this.context.currentTime,.06);}
   filter: BiquadFilterNode | null = null;
+  private tap: MediaStreamAudioDestinationNode | null = null;
+  /** The world's sound as a stream, for the phone camera's clips (#77); null before audio starts. */
+  recordStream() {
+    if (!this.context || !this.muffle) return null;
+    if (!this.tap) { this.tap = this.context.createMediaStreamDestination(); this.muffle.connect(this.tap); }
+    return this.tap.stream;
+  }
   private nextFootstep = 0;
   enabled = true;
   async start() {
@@ -160,6 +167,10 @@ export class AudioEngine {
     if (kind === "move") blip(2300, 1900, 0, 0.028, 0.05, "sine");
     else if (kind === "tab") { blip(1500, 1300, 0, 0.035, 0.06); blip(2100, 1900, 0.03, 0.03, 0.04, "sine"); }
     else if (kind === "select") { blip(880, 1320, 0, 0.05, 0.09); blip(1760, 2100, 0.045, 0.06, 0.05, "sine"); }
+    // The phone camera (#77): a two-blade shutter, and the record beeps.
+    else if (kind === "shutter") { blip(3400, 700, 0, 0.03, 0.12, "square"); blip(2800, 600, 0.07, 0.035, 0.1, "square"); }
+    else if (kind === "rec") blip(1180, 1180, 0, 0.14, 0.08, "sine");
+    else if (kind === "stop") { blip(1180, 1180, 0, 0.07, 0.07, "sine"); blip(880, 880, 0.1, 0.09, 0.07, "sine"); }
     else blip(760, 420, 0, 0.07, 0.07);
   }
   /** How hard it is raining (0..1): the hiss follows it. */

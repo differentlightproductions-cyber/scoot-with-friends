@@ -18,6 +18,7 @@ import { ThumbnailStudio } from '../avatar/thumbnails';
 import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type IconName, type Page, type Row, type Tile } from './canvas-ui';
 import { HOME_COLS, HOME_ROWS, type Phone, type View } from './phone';
 import type { PhoneMap } from './map';
+import type { PhoneCamera, Shot } from './camera';
 import { fictionalNumber, type MessageStore } from './messages';
 import {uiColors} from '../ui/palette';
 import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, levelFor, missionBoard, trickBook } from '../data/progress';
@@ -57,6 +58,8 @@ export interface PhoneDeps {
   replays: { capture: () => boolean; library: () => void; seconds: () => number };
   /** Loads a spot's district (if it is not the current one) and puts the rider at the spot. */
   fastTravel: (spot: Spot) => Promise<void>;
+  /** The phone camera (#77): the viewfinder mode and this session's photos and clips. */
+  camera: PhoneCamera;
 }
 
 const time = (s: number) => (Number.isFinite(s) && s > 0 ? `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '0:00');
@@ -692,6 +695,68 @@ export function homePage(d: PhoneDeps): Page {
   };
 }
 
+// ---- CAMERA (#77) ---------------------------------------------------------------
+const clock = (at: Date) => at.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+/** A shot's first frame, fitted; a clip gets a play mark and its length. */
+function shotImage(shot: Shot): Block {
+  return { type: 'image', height: 176, draw: (g, x, y, w, h) => {
+    const img = shot.thumb, scale = Math.min(w / img.width, h / img.height), iw = img.width * scale, ih = img.height * scale;
+    g.fillStyle = INK; g.fillRect(x, y, w, h);
+    g.drawImage(img, x + (w - iw) / 2, y + (h - ih) / 2, iw, ih);
+    if (shot.kind !== 'clip') return;
+    g.fillStyle = '#0b0c0daa'; g.beginPath(); g.arc(x + w / 2, y + h / 2, 26, 0, Math.PI * 2); g.fill();
+    icon(g, 'play', x + w / 2 + 2, y + h / 2, 30, PAPER);
+    g.font = `800 13px ${BODY}`; g.fillStyle = PAPER; g.textAlign = 'right'; g.fillText(time(shot.seconds), x + w - 8, y + h - 8); g.textAlign = 'left';
+  } };
+}
+function shotView(d: PhoneDeps, shot: Shot): View {
+  const cam = d.camera;
+  return {
+    title: translate('phone.camera'),
+    page: () => ({ blocks: [
+      { type: 'title', text: shot.name, sub: `${shot.place} · ${clock(shot.at)}` },
+      shotImage(shot),
+      { type: 'list', rows: [
+        { id: 'save', label: translate('camera.save'), detail: translate(shot.kind === 'photo' ? 'camera.save_photo' : 'camera.save_clip'), value: shot.saved ? translate('camera.saved') : undefined,
+          action: () => void cam.save(shot).then((how) => d.phone.notify(translate('phone.camera'), translate(how === 'shared' ? 'camera.shared' : 'camera.saved_note'))) },
+        { id: 'delete', label: translate('camera.delete'), action: () => d.phone.sheet(translate('camera.delete_question'), [{ label: translate('camera.keep'), action: () => {} }, { label: translate('camera.delete'), action: () => { cam.remove(shot); d.phone.back(); d.phone.back(); } }]) },
+      ] },
+    ] }),
+  };
+}
+/** This session's photos and clips, newest first. */
+export function galleryView(d: PhoneDeps): View {
+  const cam = d.camera;
+  return {
+    title: translate('camera.gallery'),
+    page: () => ({ blocks: [
+      { type: 'title', text: translate('camera.gallery'), sub: translate('camera.count', { photos: cam.photos, clips: cam.clips }) },
+      cam.shots.length
+        ? { type: 'list', rows: cam.shots.map((s) => ({ id: 'shot-' + s.id, label: s.name, detail: `${s.place} · ${clock(s.at)}` + (s.kind === 'clip' ? ' · ' + time(s.seconds) : ''), value: s.saved ? translate('camera.saved') : undefined, action: () => d.phone.push(shotView(d, s)) })) }
+        : { type: 'text', text: translate('camera.empty'), muted: true },
+      { type: 'text', text: translate('camera.session_note'), muted: true },
+    ] }),
+  };
+}
+function cameraApp(d: PhoneDeps): View {
+  const cam = d.camera;
+  return {
+    title: translate('phone.camera'),
+    page: () => {
+      const latest = cam.shots[0];
+      return { blocks: [
+        { type: 'title', text: translate('phone.camera'), sub: translate('camera.count', { photos: cam.photos, clips: cam.clips }) },
+        ...(latest ? [shotImage(latest)] : []),
+        { type: 'list', rows: [
+          { id: 'open-camera', label: translate('camera.open'), detail: translate('camera.open_detail'), action: () => d.phone.close(() => cam.enter()) },
+          { id: 'gallery', label: translate('camera.gallery'), detail: translate('camera.gallery_detail'), value: String(cam.shots.length), action: () => d.phone.push(galleryView(d)) },
+        ] },
+        { type: 'text', text: translate('camera.session_note'), muted: true },
+      ] };
+    },
+  };
+}
+
 // ---- REPLAYS --------------------------------------------------------------------
 function replaysApp(d: PhoneDeps): View {
   return {
@@ -723,6 +788,7 @@ export function installApps(d: PhoneDeps) {
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['shop', 'SHOP', 'crate', '#35b6ff', shopApp, () => { const n = d.profile().wallet.packages.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['replays', 'REPLAYS', 'play', '#ff5a1f', replaysApp],
+    ['camera', 'CAMERA', 'camera', '#ff4fa3', cameraApp],
   ];
   for (const [id, label, ic, color, make, badge] of apps) d.phone.register({ id, label, icon: ic, color, open: () => make(d), badge });
 }

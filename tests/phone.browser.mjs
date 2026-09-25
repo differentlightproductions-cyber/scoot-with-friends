@@ -20,10 +20,13 @@ const check = (name, ok, data) => {
 try {
   await page.goto((process.env.LAZER_URL || "http://127.0.0.1:5174") + "/?map=outdoor");
   await page.waitForFunction(() => window.__LAZER, null, { timeout: 120000 });
-  await page.evaluate(async () => {
+  await page.evaluate(async (shots) => {
     const g = window.__LAZER;
     g.testing(true);
     await g.startSession("outdoor", true);
+    // No check here reads pixels: without SHOTS the frame runs in full (phone, rig, poses) but skips the GPU draw,
+    // which a software renderer takes seconds over for the whole park.
+    if (!shots) g.renderer.render = () => {};
     g.advance(0.6);
     await document.fonts.ready;
     window.__phone = {
@@ -31,7 +34,7 @@ try {
       // The main loop's phone step: input to the phone, then a rendered frame.
       step: (f, n = 1) => { for (let i = 0; i < n; i++) { if (f && i === 0) g.phone.update(f, 1 / 60); g.render(); } },
     };
-  });
+  }, !!process.env.SHOTS);
   const run = (fn, arg) => page.evaluate(fn, arg);
   const settle = (n = 30) => run((n) => window.__phone.step(null, n), n);
   const press = (action) => run(async (action) => { const f = await window.__phone.frame(); f.pressed[action] = true; f.held[action] = 1; window.__phone.step(f, 2); }, action);

@@ -44,6 +44,8 @@ export class ChaseCamera {
   thirdPersonFov = TP_FOV_DEFAULT;
   /** Looking down at the phone on foot (radians); riding, the head's own tilt does it. */
   phonePitch = 0;
+  /** The phone camera's zoom (#77): first person narrows its field of view by this much. */
+  zoom = 1;
   motion: "reduced" | "full" = "reduced";
   /**
    * Mounted first-person framing. tilt: heads-up pitch from the head's forward
@@ -316,7 +318,7 @@ export class ChaseCamera {
     this.camera.quaternion.copy(rootQuaternion).multiply(this.fpQuaternion);
     this.camera.near = 0.05;
     const horizontal = THREE.MathUtils.degToRad(clamp(this.firstPersonFov, FP_FOV_MIN, FP_FOV_MAX));
-    this.camera.fov = Math.min(FP_MAX_VERTICAL_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(horizontal / 2) / this.camera.aspect)));
+    this.camera.fov = Math.min(FP_MAX_VERTICAL_FOV, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(horizontal / 2) / Math.max(1, this.zoom) / this.camera.aspect)));
     this.camera.updateProjectionMatrix();
     // Walking moves relative to where the rider looks.
     this.heading = onFoot ? this.fpYaw : s.yaw; this.orbit = 0;

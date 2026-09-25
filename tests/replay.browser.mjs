@@ -69,9 +69,12 @@ try {
 
   // Trim, save, reopen, rename.
   const saved = await page.evaluate(async () => {
-    const r = window.__LAZER.replay;
+    const g = window.__LAZER, r = g.replay;
     r.setTrim(1, 5); r.setView('first');
+    // Playback time only: drawing is stubbed (each frame of the park takes a while in a software renderer).
+    const real = g.renderer.render; g.renderer.render = () => {};
     for (let i = 0; i < 200; i++) r.draw(1 / 30);
+    g.renderer.render = real;
     const inside = r.time >= 1 - 1e-6 && r.time <= 5 + 1e-6;
     const saveStart = performance.now(), id = await r.save(), saveMs = performance.now() - saveStart;
     const list = await r.store.list();
@@ -95,8 +98,12 @@ try {
     const r = window.__LAZER.replay; r.setView('third');
     const supported = r.constructor.canExport(window.__LAZER.renderer.domElement);
     if (!supported) return { supported };
+    // Cheap frames: a software renderer takes seconds over one frame of the park, too slow to feed the recorder.
+    const g = window.__LAZER, gl = g.renderer.getContext(), real = g.renderer.render;
+    g.renderer.render = () => { gl.clearColor(0.2 + Math.random() * 0.1, 0.4, 0.6, 1); gl.clear(gl.COLOR_BUFFER_BIT); };
     const started = r.startExport(), t0 = performance.now();
     while (window.__replayExport === undefined && performance.now() - t0 < 20000) { r.draw(1 / 30); await new Promise((q) => setTimeout(q, 34)); }
+    g.renderer.render = real;
     return { supported, started, result: window.__replayExport ?? null, elapsedMs: performance.now() - t0 };
   });
   check('EXPORT VIDEO writes the trimmed clip as a video file (or reports it unsupported)', !exp.supported || (exp.started && exp.result?.bytes > 1000), exp);
@@ -125,7 +132,15 @@ try {
   await page.getByRole('button', { name: /^REPLAY HISTORY/ }).click();
   const label = await page.getByRole('button', { name: /^REPLAY HISTORY/ }).textContent();
   await page.getByRole('button', { name: /^APPLY \/ SAVE CHANGES/ }).first().click();
+  // The library lasts for the session (#77): keep one, reload, and it is gone; nothing is left in IndexedDB.
+  await page.evaluate(async () => {
+    const r = window.__LAZER.replay, id = 'kept-for-reload';
+    await r.store.put({ meta: { id, name: 'Kept', createdAt: Date.now(), map: 'outdoor', mapName: 'Veterans', rideable: 'scooter', trimIn: 0, trimOut: 1, camera: 'third', thumbnail: null }, clip: { frames: [] } });
+  });
+  const keptBefore = await page.evaluate(async () => (await window.__LAZER.replay.store.list()).length);
   await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
+  const session = await page.evaluate(async () => ({ kept: (await window.__LAZER.replay.store.list()).length, databases: (await indexedDB.databases?.() ?? []).map((d) => d.name) }));
+  check('Replays last for the session: reopening the game starts an empty library, nothing kept in the browser', keptBefore === 1 && session.kept === 0 && !session.databases.includes('swf-replays'), { keptBefore, ...session });
   const history = await page.evaluate(() => window.__LAZER.profile.settings.replayHistory);
   check('Settings / Gameplay: REPLAY HISTORY steps 15-30-45-60 and is saved', /60 SEC/.test(label ?? '') && history === 60, { label, history });
   check('No page errors', errors.length === 0, errors.slice(0, 4));
