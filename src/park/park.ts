@@ -13,6 +13,7 @@ import { clamp } from "../core/config";
 import { buildOutdoor, outdoorHeight, outdoorSpawns, modules, surfaceSpan } from "./outdoor";
 import { buildBHill, bHillHeight, bHillSurface, B_HILL_SPAWNS } from "./bhill";
 import { PILLAR_HALF, WAREHOUSE_PILLARS } from "../data/builds";
+import { simplifyGrid } from "./terrain-lod";
 export let OUTDOOR =
   typeof window !== "undefined" &&
   !["warehouse","shop","urban-gravity","techno-gravity","techno_gravity","b_hill","church"].includes(new URLSearchParams(window.location.search).get("map") ?? "outdoor");
@@ -224,6 +225,8 @@ export class Park {
   rails: Rail[] = [];
   railHandles = new Set<number>();
   solids: THREE.Object3D[] = [];
+  /** The full-detail ground surface, rebuilt on request, where the drawn one is simplified. */
+  terrainGeometry?: () => THREE.BufferGeometry;
   constructor(
     public scene: THREE.Scene,
     public world: RAPIER.World,
@@ -378,7 +381,8 @@ export class Park {
         nz = Math.round(88 / step),
         p: number[] = [],
         c: number[] = [],
-        idx: number[] = [];
+        idx: number[] = [],
+        kind: number[] = [];
       const base = new THREE.Color();
       for (let j = 0; j <= nz; j++)
         for (let i = 0; i <= nx; i++) {
@@ -386,17 +390,17 @@ export class Park {
             z = -44 + j * step,
             y = brushHeight(x, z, baseTerrainHeight(x, z));
           p.push(x, y, z);
-          base.set(
-            OUTDOOR
-              ? y > 0.015
-                ? 0xcba368
-                : Math.abs(x) > 24 || Math.abs(z) > 33
-                  ? 0x719253
-                  : 0xb6b8ad
-              : y > 0.12
-                ? 0xb8b8a7
-                : 0x9daaa1,
-          );
+          const look = OUTDOOR
+            ? y > 0.015
+              ? 0xcba368
+              : Math.abs(x) > 24 || Math.abs(z) > 33
+                ? 0x719253
+                : 0xb6b8ad
+            : y > 0.12
+              ? 0xb8b8a7
+              : 0x9daaa1;
+          kind.push(look);
+          base.set(look);
           const shade = 1 + 0.025 * Math.sin(x * 1.2 + z * 0.7);
           base.multiplyScalar(shade);
           c.push(base.r, base.g, base.b);
@@ -415,11 +419,15 @@ export class Park {
       g.computeVertexNormals();
       if (colors)
         g.setAttribute("color", new THREE.Float32BufferAttribute(c, 3));
-      return { g, p, idx };
+      return { g, p, idx, kind, nx, nz };
     };
     const step = OUTDOOR ? 0.125 : 2;
-    const { g } = make(step, true);
-    const uv:number[]=[];const vertices=g.getAttribute('position');for(let i=0;i<vertices.count;i++)uv.push(vertices.getX(i),vertices.getZ(i));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    const surface = () => {
+      const made = make(step, true), g = made.g;
+      const uv:number[]=[];const vertices=g.getAttribute('position');for(let i=0;i<vertices.count;i++)uv.push(vertices.getX(i),vertices.getZ(i));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+      return made;
+    };
+    const { g, kind, nx, nz } = surface();
     const terrainMaterial=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.91,map:surfaceTexture('concrete')});
     terrainMaterial.onBeforeCompile=shader=>{
       shader.uniforms.woodGrain={value:surfaceTexture('wood')};
@@ -438,10 +446,30 @@ export class Park {
       }
       shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`vec4 groundSample=texture2D(map,vMapUv*.55);\n#ifdef USE_COLOR\nif(vColor.r>vColor.g*1.12 && vColor.g>vColor.b*1.16)groundSample=texture2D(woodGrain,vec2(vMapUv.x*3.3,vMapUv.y*.5));\nelse if(vColor.g>vColor.r*1.1 && vColor.g>vColor.b*1.25)groundSample=vec4(texture2D(lawnGrain,vMapUv*.33).rgb/max(vColor.rgb,vec3(.05))*.92,1.0);\n#endif\ndiffuseColor*=groundSample;`);
     };
-    const mesh = new THREE.Mesh(g,terrainMaterial);
+    // Veterans' ground is sampled every 12.5 cm for its brushed-in shapes, 720k
+    // triangles; its flat open stretches draw from a 1 m grid instead, in chunks
+    // the camera can cull (terrain-lod.ts). The collision below keeps every sample.
+    const chunks = OUTDOOR ? simplifyGrid(g, nx, nz, kind) : [g];
+    let mesh: THREE.Object3D;
+    if (chunks.length === 1 && chunks[0] === g) {
+      mesh = new THREE.Mesh(g, terrainMaterial);
+      (mesh as THREE.Mesh).receiveShadow = true;
+    } else {
+      g.dispose();
+      mesh = new THREE.Group();
+      mesh.userData.noBatch = true;
+      for (const chunk of chunks) {
+        const part = new THREE.Mesh(chunk, terrainMaterial);
+        part.name = "Terrain surface chunk";
+        part.receiveShadow = true;
+        mesh.add(part);
+      }
+      // The owner's base editor splits the full-detail surface (base-assets.ts).
+      this.terrainGeometry = () => surface().g;
+    }
     mesh.name = "Terrain surface";
     mesh.userData.terrainSurface = true;
-    mesh.receiveShadow = true;
+    mesh.userData.material = terrainMaterial;
     this.scene.add(mesh);
     this.solids.push(mesh);
     const collision = make(step, false);

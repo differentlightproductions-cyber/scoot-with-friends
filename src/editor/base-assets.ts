@@ -14,16 +14,20 @@ export function buildBaseAssets(
   const scene = park.scene,
     result: THREE.Object3D[] = [];
   // Split the original sampled surface along obstacle footprints, retaining its exact vertices.
+  // The drawn ground may be simplified chunks (terrain-lod.ts); this works on the full surface.
   const terrain = scene.children.find(
     (o) =>
-      o instanceof THREE.Mesh &&
-      (o.geometry.getAttribute("position")?.count ?? 0) > 300000,
-  ) as THREE.Mesh | undefined;
+      o.userData.terrainSurface &&
+      (park.terrainGeometry ||
+        (o instanceof THREE.Mesh && (o.geometry.getAttribute("position")?.count ?? 0) > 300000)),
+  );
   const moduleMeshes = new Map<string, THREE.Mesh>();
   if (terrain) {
+    const surface = park.terrainGeometry?.() ?? (terrain as THREE.Mesh).geometry,
+      material = terrain.userData.material as THREE.Material;
     const buckets = new Map<string, number[]>();
-    const p = terrain.geometry.getAttribute("position"),
-      idx = terrain.geometry.index!;
+    const p = surface.getAttribute("position"),
+      idx = surface.index!;
     for (let i = 0; i < idx.count; i += 3) {
       const a = idx.getX(i),
         b = idx.getX(i + 1),
@@ -49,7 +53,7 @@ export function buildBaseAssets(
         colors: number[] = [],
         map = new Map<number, number>(),
         compact: number[] = [];
-      const color = terrain.geometry.getAttribute("color");
+      const color = surface.getAttribute("color");
       for (const old of indices) {
         if (!map.has(old)) {
           map.set(old, map.size);
@@ -66,7 +70,7 @@ export function buildBaseAssets(
       g.setIndex(compact);
       g.computeVertexNormals();
       g.computeBoundingBox();
-      const mesh = new THREE.Mesh(g, terrain.material);
+      const mesh = new THREE.Mesh(g, material);
       mesh.receiveShadow = true;
       mesh.name = key;
       mesh.userData.collider = park.world.createCollider(
@@ -79,7 +83,8 @@ export function buildBaseAssets(
       park.solids.push(mesh);
       moduleMeshes.set(key, mesh);
     }
-    terrain.geometry.dispose();
+    surface.dispose();
+    terrain.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
   }
   // Individual trees, shrubs and rocks remain independently editable even when the public scene uses instancing.
   for (const o of scene.children.slice())
