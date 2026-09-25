@@ -42,17 +42,12 @@ try {
       held: { ...g.input.previous.held, ...held },
       released: { ...g.input.previous.released },
     });
-    // Home is PLAY / SHOPS / RIDES / RIDER / SETTINGS / ACCOUNT. Riders are
-    // named people now, not "Rider 0N".
+    // Home is the PLAY tab. D-pad stays within its choices; RB opens LOCKER.
     g.menu.update(f({}, { menuDown: 1 }), 0.3);
-    check("D-pad navigates main menu", g.menu.index === 1);
-    g.menu.update(f(), 0.1);
-    g.menu.update(f({}, { menuDown: 1 }), 0.3);
-    check("D-pad reaches Rides", g.menu.index === 2);
-    g.menu.update(f(), 0.1);
-    g.menu.update(f({}, { menuDown: 1 }), 0.3);
-    check("D-pad reaches Rider", g.menu.index === 3);
-    g.menu.update(f(), 0.1);
+    check("D-pad navigates PLAY choices", g.menu.index === 1 && g.menu.choices[g.menu.index].label === "PRIVATE FREE-RIDE");
+    g.menu.update(f({ rightModifier: true }), 0.1);
+    check("RB opens LOCKER", g.menu.screen === "rides");
+    g.menu.index = g.menu.choices.findIndex((c) => c.label === "RIDER");
     g.menu.update(f({ hop: true }), 0.1);
     check("A opens Rider", g.menu.screen === "rider");
     g.menu.index = g.menu.choices.findIndex((c) => c.label === "CHOOSE RIDER");
