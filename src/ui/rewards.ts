@@ -79,6 +79,8 @@ export class MissionTracker {
     if (!this.grindRun) this.longGrind = false;
   }
   private best(stat: Stat, value: number) { this.pending[stat] = Math.max(this.pending[stat] ?? 0, value); if (!this.flushIn) this.flushIn = 0.6; }
+  /** Someone else's litter went in a trash can (Clean-Up Crew, #58). */
+  litter() { this.add("litter", 1); }
   /** A map was ridden. */
   visit(count: number) { this.best("maps", count); }
   /**

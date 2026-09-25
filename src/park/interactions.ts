@@ -208,7 +208,8 @@ export class WorldInteractions {
    return emptyInput();
   }
   if(!s.walking||!s.grounded||s.state==='Bail'||s.sitting)return input;
-  if(this.profile.pockets.held){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · Hold D-pad Down / Phone';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
+  // An empty can or wrapper has no use: With Friends offers the trash can or a throw instead (#58).
+  if(this.profile.pockets.entries.some(i=>i.id===this.profile.pockets.held&&i.state!=='empty')){this.prompt.hidden=false;this.prompt.textContent=({pushDeck:'X',leftModifier:'LB',rightModifier:'RB'})[this.profile.pockets.useAction]+' / Use held item · Hold D-pad Down / Phone';if(input.pressed[this.profile.pockets.useAction]){this.useHeld(s);return emptyInput();}}
   const near=this.items.filter(i=>i.position.distanceTo(s.position)<i.radius).sort((a,b)=>a.position.distanceToSquared(s.position)-b.position.distanceToSquared(s.position))[0];
   if(near){this.prompt.hidden=false;this.prompt.textContent=`B / keyboard B · ${near.prompt(s)}`;
    if(input.pressed.brakeBars&&near.interactionType!=='bench'){near.action(s);return {...input,pressed:{...input.pressed,brakeBars:false}};}

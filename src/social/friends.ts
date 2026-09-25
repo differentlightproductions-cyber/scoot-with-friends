@@ -25,7 +25,11 @@ const LOOK: Record<ThrowableKind, { color: number; size: number; shape: "ball" |
 };
 const NAME: Record<ThrowableKind, string> = { acorn: "acorn", pinecone: "pinecone", rock: "rock", can: "empty can", paper: "paper ball" };
 
-interface Thing { kind: ThrowableKind; mesh: THREE.Mesh; velocity: THREE.Vector3; state: "ground" | "carried" | "flying"; thrower: string; rest: number; hit: Set<string> }
+interface Thing { kind: ThrowableKind; mesh: THREE.Mesh; velocity: THREE.Vector3; state: "ground" | "carried" | "flying" | "binned"; thrower: string; rest: number; hit: Set<string>; own?: boolean }
+/** Litter (#58): the kinds that go in a trash can. */
+const LITTER: ThrowableKind[] = ["can", "paper"];
+/** Most litter lying around at once; the locals stop dropping more past it. */
+const LITTER_MAX = 10;
 
 /** The local player as a playful target: a flinch shows as a camera bump and a word on the HUD. */
 export class LocalTarget implements PlayfulTarget {
@@ -46,6 +50,13 @@ export class WithFriends {
   readonly local = new LocalTarget();
   private things: Thing[] = [];
   carried: Thing | null = null;
+  /** Trash can mouths (#58): B beside one throws litter away. */
+  bins: THREE.Vector3[] = [];
+  /** A piece of litter went in a bin; `fromOthers` when it was someone else's trash (it counts toward Clean-Up Crew). */
+  onBinned: (fromOthers: boolean) => void = () => {};
+  private binning: { thing: Thing; from: THREE.Vector3; to: THREE.Vector3; time: number }[] = [];
+  /** Seconds until one of the locals drops a can or a wrapper. */
+  private litterIn = 30 + Math.random() * 40;
   readonly events: PlayfulEvent[] = [];
   readonly prompt = document.createElement("div");
   private geometries: Partial<Record<ThrowableKind, THREE.BufferGeometry>> = {};
@@ -145,13 +156,26 @@ export class WithFriends {
       const near = this.carried ? null : this.things.filter((t) => t.state === "ground" && t.mesh.position.distanceTo(s.position) < 1.3).sort((a, b) => a.mesh.position.distanceTo(s.position) - b.mesh.position.distanceTo(s.position))[0];
       const npc = this.nearestNpc(s, 1.6, heading);
       const throwing = this.carried?.kind ?? heldEmpty;
-      if (throwing) this.show(`RT · Throw ${NAME[throwing]}`);
+      // Beside a trash can, B throws litter away peacefully (RT still throws it at someone).
+      const bin = throwing && LITTER.includes(throwing) ? this.bins.find((b) => Math.hypot(b.x - s.position.x, b.z - s.position.z) < 1.5) : undefined;
+      if (bin) this.show(`B · Throw it away · RT · Throw ${NAME[throwing!]}`);
+      else if (throwing) this.show(`RT · Throw ${NAME[throwing]}`);
       else if (npc) this.show("RT · Shove");
       else if (near && !heldEmpty) this.show(`B · Pick up ${NAME[near.kind]}`);
-      if (input.pressed.pumpGrind && throwing) {
+      if (bin && input.pressed.brakeBars) {
+        const hand = s.position.clone().add(new THREE.Vector3(Math.sin(heading) * 0.3, 1.2, Math.cos(heading) * 0.3));
+        const thing = this.carried ?? this.spawn(throwing!, hand);
+        if (!this.carried) { thing.own = true; dropHeld(); }
+        this.carried = null;
+        thing.state = "binned"; thing.velocity.set(0, 0, 0);
+        this.binning.push({ thing, from: hand, to: bin.clone(), time: 0 });
+        s.emote = { id: "place", time: 0, duration: 0.6 };
+        this.onBinned(!thing.own);
+        out = { ...out, pressed: { ...out.pressed, brakeBars: false } };
+      } else if (input.pressed.pumpGrind && throwing) {
         const hand = s.position.clone().add(new THREE.Vector3(Math.sin(heading) * 0.35, 1.45, Math.cos(heading) * 0.35));
-        this.throwFrom("local", throwing, hand, heading, this.aimFor(s.position, heading, "local"), this.carried ?? undefined);
-        if (!this.carried) dropHeld();
+        const thrown = this.throwFrom("local", throwing, hand, heading, this.aimFor(s.position, heading, "local"), this.carried ?? undefined);
+        if (!this.carried) { thrown.own = true; dropHeld(); }
         this.carried = null;
         out = { ...out, pressed: { ...out.pressed, pumpGrind: false } };
       } else if (input.pressed.pumpGrind && npc) {
@@ -173,10 +197,40 @@ export class WithFriends {
       }
     }
     this.fly(dt);
+    this.stepBinning(dt);
+    this.dropLitter(dt);
     return out;
   }
 
   private show(text: string) { this.prompt.hidden = false; this.prompt.textContent = text; }
+  /** Litter arcs from the hand into the can's mouth, then it is gone. */
+  private stepBinning(dt: number) {
+    for (const b of this.binning) {
+      b.time += dt;
+      const t = Math.min(1, b.time / 0.45);
+      b.thing.mesh.visible = true;
+      b.thing.mesh.position.lerpVectors(b.from, b.to, t).setY(THREE.MathUtils.lerp(b.from.y, b.to.y, t) + Math.sin(t * Math.PI) * 0.35);
+      b.thing.mesh.rotation.x += dt * 8;
+    }
+    for (const b of this.binning.filter((b) => b.time >= 0.45)) {
+      b.thing.mesh.removeFromParent();
+      this.things = this.things.filter((t) => t !== b.thing);
+    }
+    this.binning = this.binning.filter((b) => b.time < 0.45);
+  }
+  /** Now and then a local leaves a can or a wrapper on the ground by them. */
+  private dropLitter(dt: number) {
+    this.litterIn -= dt;
+    if (this.litterIn > 0 || !this.npcs.length) return;
+    this.litterIn = 45 + Math.random() * 45;
+    if (this.things.filter((t) => LITTER.includes(t.kind) && t.state === "ground").length >= LITTER_MAX) return;
+    const npc = this.npcs[Math.floor(Math.random() * this.npcs.length)], a = Math.random() * Math.PI * 2;
+    const x = npc.position.x + Math.cos(a) * 0.7, z = npc.position.z + Math.sin(a) * 0.7;
+    const thing = this.spawn(Math.random() < 0.55 ? "can" : "paper", new THREE.Vector3(x, this.ground(x, z), z));
+    thing.thrower = npc.id;
+  }
+  /** Litter lying on the ground now (tests). */
+  get litter() { return this.things.filter((t) => LITTER.includes(t.kind) && t.state === "ground").length; }
   private drop(s: Simulation) {
     const t = this.carried!;
     this.carried = null;

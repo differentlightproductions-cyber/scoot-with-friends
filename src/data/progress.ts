@@ -23,7 +23,7 @@ export const CRATE_COLOR: Record<CrateTier, string> = { street: "#35b6ff", pro: 
 export interface Crate { id: string; tier: CrateTier; source: string }
 
 /** Lifetime counters and bests. Daily missions keep their own copy for the day. */
-export const STATS = ["tricks", "perfect", "grinds", "flips", "spins", "whips", "bestLine", "bestLinePoints", "points", "bhillRuns", "bhillTop", "maps", "purchases", "cratesOpened", "combos"] as const;
+export const STATS = ["tricks", "perfect", "grinds", "flips", "spins", "whips", "bestLine", "bestLinePoints", "points", "bhillRuns", "bhillTop", "maps", "purchases", "cratesOpened", "combos", "litter"] as const;
 export type Stat = (typeof STATS)[number];
 /** Stats that keep the best value instead of adding up. */
 const BEST: Stat[] = ["bestLine", "bestLinePoints", "bhillTop", "maps"];
@@ -190,6 +190,7 @@ export const CAREER: CareerChain[] = [
   { id: "bhill", stat: "bhillRuns", goals: [1, 3, 10, 25], title: (n) => (n === 1 ? "Bomb B Hill top to bottom" : `Finish ${n} B Hill runs`), detail: "Start at the top banner, finish at the bottom" },
   { id: "velocity", stat: "bhillTop", goals: [18, 22, 26, 28], title: (n) => `Hit ${Math.round(n * 3.6)} km/h on B Hill`, detail: "Tuck, hold your line, trust it" },
   { id: "explorer", stat: "maps", goals: [2, 4, 6], title: (n) => `Ride ${n} different spots`, detail: "Every map counts once" },
+  { id: "cleanup", stat: "litter", goals: [10, 50, 100, 250, 500], title: (n) => `Bin ${n} pieces of litter`, detail: "Pick up other people's trash and throw it away" },
   { id: "collector", stat: "purchases", goals: [1, 5, 15, 30], title: (n) => (n === 1 ? "Buy your first part" : `Buy ${n} parts`), detail: "Any shop, any colourway" },
 ];
 export const careerTitle = (chain: CareerChain, stage: number) => `${chain.title(chain.goals[Math.min(stage, chain.goals.length - 1)])} ${ROMAN[stage] ?? ""}`.trim();

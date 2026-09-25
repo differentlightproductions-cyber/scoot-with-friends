@@ -195,6 +195,31 @@ export function vendingMachine(park: Park, base: THREE.Vector3, yaw = 0) {
   return group;
 }
 
+// ---- Trash can (#58) ------------------------------------------------------------
+/**
+ * A park litter receptacle, 0.95 m tall: a powder-coated steel basket of flat
+ * vertical slats between two hoops, a black liner showing between them, and a
+ * domed rain lid with a front opening. Returns where litter goes in (the mouth).
+ */
+export function trashCan(park: Park, base: THREE.Vector3, yaw = 0) {
+  const k = new Kit(base, yaw), steel = paint(0x2c4a3b, 0.55, 0.35), liner = paint(0x131617, 0.8, 0), lid = paint(0x27382f, 0.45, 0.4);
+  const r = 0.29, slats = 22;
+  k.add(new THREE.CylinderGeometry(r + 0.02, r + 0.03, 0.05, 28), paint(0x9a978f, 0.9, 0), V(0, 0.025, 0));
+  k.add(new THREE.CylinderGeometry(r - 0.03, r - 0.03, 0.8, 24, 1, true), liner, V(0, 0.45, 0));
+  for (let i = 0; i < slats; i++) {
+    const a = (i / slats) * Math.PI * 2;
+    k.box(V(0.052, 0.8, 0.014), steel, V(Math.sin(a) * r, 0.45, Math.cos(a) * r), 0.005, new THREE.Euler(0, a, 0));
+  }
+  for (const y of [0.12, 0.47, 0.83]) k.add(new THREE.TorusGeometry(r + 0.006, 0.012, 6, 36), steel, V(0, y, 0), new THREE.Euler(Math.PI / 2, 0, 0));
+  // Rain lid: a shallow dome on a band, open at the front where litter goes in.
+  k.add(new THREE.CylinderGeometry(r + 0.02, r + 0.02, 0.07, 28, 1, true, 0.45, Math.PI * 2 - 0.9), lid, V(0, 0.9, 0));
+  k.add(new THREE.SphereGeometry(r + 0.02, 28, 8, 0, Math.PI * 2, 0, Math.PI * 0.32), lid, V(0, 0.9, 0), new THREE.Euler(), V(1, 0.55, 1));
+  k.add(new THREE.CylinderGeometry(0.028, 0.028, 0.02, 12), paint(0x9aa1a3, 0.3, 0.8), V(0, 1.075, 0));
+  const group = k.build(park.scene, "Trash can");
+  solid(park, turn(base, yaw, V(0, 0.5, 0)), V(0.64, 1, 0.64), yaw);
+  return { group, mouth: turn(base, yaw, V(0, 0.95, r)) };
+}
+
 // ---- Scooter rack -------------------------------------------------------------
 /** Three galvanised inverted-U hoops on a footing, 2.3 m long, running along x. */
 export function scooterRack(park: Park, base: THREE.Vector3, yaw = 0) {
