@@ -5,9 +5,10 @@ import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import type { RiderModel } from "../scooter/model";
 import { terrainHeight } from "../park/park";
+import { WATER } from "../park/water";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, thirdPersonVertical } from "./fov";
 
-const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0);
+const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0), FORWARD = new THREE.Vector3(0, 0, 1);
 /** Very wide horizontal settings on a tall screen would become a fisheye; cap the vertical angle. */
 const FP_MAX_VERTICAL_FOV = 120;
 const channelBusy = (c: { angle: number; target: number; velocity: number }) => Math.abs(c.target - c.angle) > 0.08 || Math.abs(c.velocity) > 1;
@@ -56,6 +57,10 @@ export class ChaseCamera {
   private fpCrash = 0;
   private fpYaw = 0;
   private fpPitch = 0;
+  /** A plunge under the surface after a dive (#62): how deep and how far in. */
+  private fpPlunge: { depth: number; time: number } | null = null;
+  /** Diving or jumping in: the first-person view goes under for a moment. */
+  plunge(depth: number) { this.fpPlunge = depth > 0 ? { depth, time: 0 } : null; }
   private fpLookYaw = 0;
   private fpLookPitch = 0;
   private fpCharge = 0;
@@ -231,7 +236,13 @@ export class ChaseCamera {
       // RS looks; the body walks where the player looks (via heading below).
       this.fpYaw -= input.rx * 2.3 * dt;
       this.fpPitch = clamp(this.fpPitch - input.ry * 1.5 * dt, -1.15, 0.9);
-      look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw + Math.PI).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12 - this.phonePitch));
+      look = new THREE.Quaternion().setFromAxisAngle(UP, this.fpYaw);
+      // A flip, side flip or twist on foot (a jump off the dock, a gainer into
+      // the lake) turns the view with the body, in the same order the rider
+      // model turns (model.ts): the world goes over the top like a frontflip on the scooter (#62).
+      const d = s.diveFlip;
+      if (d) look.multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, d.angle)).multiply(new THREE.Quaternion().setFromAxisAngle(FORWARD, d.side ?? 0)).multiply(new THREE.Quaternion().setFromAxisAngle(UP, d.twist ?? 0));
+      look.multiply(new THREE.Quaternion().setFromAxisAngle(UP, Math.PI)).multiply(new THREE.Quaternion().setFromAxisAngle(SIDE, this.fpPitch - 0.12 - this.phonePitch));
     } else {
       // Mounted: RS belongs to tricks. The heads-up view looks forward along the
       // head, tipped down enough to see hands, bars and deck with the line ahead
@@ -246,6 +257,14 @@ export class ChaseCamera {
     // when the preload pose brings the rider's chin over the crossbar; it stays
     // small so the front of the deck shows past the rider's hips.
     const eye = new THREE.Vector3(0, 0.01 + flipping * 0.04, (onFoot ? 0.1 : -this.fpTune.eyeBack) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
+    // In the water (#62): a swimmer's eyes ride just above the surface; a dive or a
+    // jump in plunges the view under for a moment before it comes back up.
+    if (this.fpPlunge) {
+      this.fpPlunge.time += dt;
+      const t = this.fpPlunge.time / 1.3;
+      if (t >= 1 || !s.swim) this.fpPlunge = null;
+      else eye.y = Math.min(eye.y, WATER.surface + 0.1) - this.fpPlunge.depth * Math.sin(Math.PI * Math.min(1, t * 1.15)) ** 0.8;
+    } else if (s.swim && !s.swim.out) eye.y = Math.max(eye.y, WATER.surface + 0.08);
     // Trick focus: while a scooter trick or grab is under way the view turns
     // towards the scooter (quickly), then eases back to the heads-up view once
     // the trick is caught. Flips keep their own rotation, so focus fades out

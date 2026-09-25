@@ -313,7 +313,12 @@ export class Simulation {
    * Swimming in the lake. Entered on foot or off the ride (the ride is left at
    * the water's edge); `out` is the climb back onto the shore.
    */
-  swim: { time: number; stroke: number; out: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null; celebrate?: number } | null = null;
+  /**
+   * Swimming: `fast` while LS was clicked on the move (it drops when the swimmer
+   * stops); `lift` and `liftSpeed` are a hop up out of the water on A, metres
+   * above the float line and m/s.
+   */
+  swim: { time: number; stroke: number; out: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null; celebrate?: number; fast?: boolean; lift?: number; liftSpeed?: number } | null = null;
   /**
    * On-foot water-trick rotation in a foot jump (tricks/water.ts names it on
    * entry): `angle` about the side axis (LT+RT with LS up / down, front +),
@@ -1694,7 +1699,7 @@ export class Simulation {
     this.events.emit({ type: "swim", phase: "enter", fromRide, shore: [shore.x, shore.z], yaw: this.yaw, trick });
     if (trick?.points !== undefined) this.events.emit({ type: "trick", name: trick.name, points: trick.points });
   }
-  /** Swimming: LS strokes relative to the camera (A strokes harder); swim into the edge to climb out. */
+  /** Swimming: LS strokes relative to the camera; click LS on the move to swim fast, A hops up with a splash; swim into the edge to climb out. */
   private swimStep(dt: number, input: InputFrame) {
     const sw = this.swim!;
     sw.time += dt;
@@ -1716,7 +1721,20 @@ export class Simulation {
     const desired = new THREE.Vector3(-Math.sin(h) * input.lean - Math.cos(h) * input.steer, 0, -Math.cos(h) * input.lean + Math.sin(h) * input.steer);
     if (desired.length() > 1) desired.normalize();
     const moving = desired.lengthSq() > 0.02;
-    desired.multiplyScalar(input.held.hop > 0.5 ? TUNE.swimSprint : TUNE.swimSpeed);
+    // Clicking LS on the move swims fast, like running on foot; stopping drops back to a steady stroke.
+    if (input.pressed.sprint && moving) sw.fast = !sw.fast;
+    if (!moving) sw.fast = false;
+    desired.multiplyScalar(sw.fast ? TUNE.swimSprint : TUNE.swimSpeed);
+    // A: kick up out of the water (a little over a third of a metre) and drop back in with a splash.
+    if (input.pressed.hop && !sw.lift) {
+      sw.liftSpeed = 2.7; sw.lift = 0.001;
+      this.events.emit({ type: "splash", x: this.position.x, z: this.position.z });
+    }
+    if (sw.lift) {
+      sw.liftSpeed = (sw.liftSpeed ?? 0) - 9.81 * dt;
+      sw.lift += sw.liftSpeed * dt;
+      if (sw.lift <= 0) { sw.lift = 0; sw.liftSpeed = 0; this.events.emit({ type: "splash", x: this.position.x, z: this.position.z }); }
+    }
     this.velocity.x = damp(this.velocity.x, desired.x, TUNE.swimResponse, dt);
     this.velocity.z = damp(this.velocity.z, desired.z, TUNE.swimResponse, dt);
     this.velocity.y = 0;
@@ -1753,7 +1771,7 @@ export class Simulation {
       next.copy(this.position).addScaledVector(this.velocity, dt);
       if (!inWater(next.x, next.z, 0.985)) next.copy(this.position).lerp(centre.setY(this.position.y), 0.01);
     }
-    this.position.set(next.x, floatY + Math.sin(sw.time * 2.1) * 0.02, next.z);
+    this.position.set(next.x, floatY + Math.sin(sw.time * 2.1) * 0.02 + (sw.lift ?? 0), next.z);
     this.body.setTranslation(this.position, true);
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw), true);

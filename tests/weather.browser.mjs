@@ -2,6 +2,8 @@
 // Rain at any time of day. Rain soaks the ground, clouds the sky, dims the sun
 // and brings lightning with thunder after it; Fall drops leaves, gathers litter
 // and turns the canopies. Old saves with snow as a time of day migrate.
+// #63: storms pace flashes like a medium thunderstorm, ground strikes draw a
+// visible channel, thunder waits for the speed of sound; shooting stars on clear nights.
 //   LAZER_URL=http://127.0.0.1:5195 BROWSER_EXECUTABLE=... OUT=artifacts/weather node tests/weather.browser.mjs
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -35,18 +37,50 @@ try {
   check('Sunny: clear sky, dry ground, nothing falling', sunny.overcast < 0.01 && sunny.wet < 0.01 && !sunny.drops && !sunny.leaves, sunny);
 
   // Rain: count strikes and thunder while it rains.
-  await page.evaluate(() => { const w = window.__LAZER.weather; window.__thunder = []; const prev = w.onThunder; w.onThunder = (d, s) => { window.__thunder.push({ d, s }); prev?.(d, s); }; });
+  await page.evaluate(() => { const w = window.__LAZER.weather; window.__thunder = []; const prev = w.onThunder; w.onThunder = (d, s, km) => { window.__thunder.push({ d, s, km }); prev?.(d, s, km); }; });
   const rain = await scene('rain', 'day', 40, 'rain-day'); await shot('rain-day');
   const thunder = await page.evaluate(() => window.__thunder);
   check('Rain: streaks fall and the ground soaks through', rain.drops && rain.rain > 0.99 && rain.wet > 0.9, rain);
   check('Rain: storm clouds grey and darken the sky; the sun dims', rain.overcast > 0.99 && rain.storm > 0.99 && rain.sun < sunny.sun * 0.5, { rain: rain.sun, sunny: sunny.sun });
-  check('Rain: lightning strikes, thunder follows 1-4 s later', thunder.length >= 1 && thunder.every((t) => t.d >= 0.9 && t.d <= 4 && t.s > 0.3 && t.s <= 1), thunder);
+  check('Rain: lightning flashes; thunder follows at the speed of sound (2.9 s a km), 1-15 km off', thunder.length >= 1 && thunder.every((t) => Math.abs(t.d - t.km * 2.9) < 1e-6 && t.km >= 1 && t.km <= 15 && t.s >= 0.1 && t.s <= 1), thunder);
   // The flash lights the scene through the park's ambient light; no extra light joins every shader.
   await page.evaluate(() => { const g = window.__LAZER; let hemi = null; g.park.scene.traverse((o) => { if (!hemi && o.isHemisphereLight) hemi = o; }); window.__ambient = () => hemi.intensity / 4.2; for (let i = 0; i < 30; i++) g.daylight.update(0.1, 'day', g.sim.position); window.__ambientBase = window.__ambient(); });
   const lights = await page.evaluate(() => { let n = 0; window.__LAZER.park.scene.traverse((o) => { if (o.isLight) n++; }); return n; });
   check('Rain adds no lights: the park keeps its light count (every shader pays for each light)', lights <= 3, lights);
-  const flash = await page.evaluate(() => { const g = window.__LAZER, w = g.weather, s = g.sim; w.nextBolt = 0.05; let peak = 0; for (let i = 0; i < 20; i++) { w.update(0.02, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.02, 'day', s.position); peak = Math.max(peak, Math.min(g.park.scene.userData.lightning, window.__ambient() - window.__ambientBase)); } return peak; });
+  const flash = await page.evaluate(() => { const g = window.__LAZER, w = g.weather, s = g.sim; w.strike(true, 1.2); let peak = 0; for (let i = 0; i < 20; i++) { w.update(0.02, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.02, 'day', s.position); peak = Math.max(peak, Math.min(g.park.scene.userData.lightning, window.__ambient() - window.__ambientBase)); } return peak; });
   check('Rain: a strike flashes the scene and the cloud deck', flash > 0.9, flash);
+  // A ground strike draws its channel in the sky, flickering with the return strokes, then it is gone.
+  const bolt = await page.evaluate(() => {
+    const g = window.__LAZER, w = g.weather, s = g.sim, ev = g.park.scene.userData.sky.events, before = ev.bolts;
+    w.strike(true, 3); let seen = false, peak = 0, dips = 0, last = 0;
+    for (let i = 0; i < 60; i++) {
+      w.update(0.01, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.01, 'day', s.position);
+      const a = ev.coreMaterial.uniforms.uAlpha.value; seen ||= ev.showing.bolt; peak = Math.max(peak, a); if (a < last - 0.3) dips++; last = a;
+    }
+    for (let i = 0; i < 80; i++) { w.update(0.02, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.02, 'day', s.position); }
+    return { made: ev.bolts - before, seen, peak, dips, gone: !ev.showing.bolt };
+  });
+  check('A ground strike draws a lightning channel that flickers and goes', bolt.made === 1 && bolt.seen && bolt.peak > 0.8 && bolt.gone, bolt);
+  // Ten minutes of storm: a medium thunderstorm's pace, about a third of flashes to the ground.
+  const pace = await page.evaluate(() => {
+    const g = window.__LAZER, w = g.weather, s = g.sim, ev = g.park.scene.userData.sky.events, keep = w.onThunder, strikes = w.strikes, bolts = ev.bolts, gaps = [];
+    let at = 0, prev = null; w.onThunder = () => { if (prev !== null) gaps.push(at - prev); prev = at; };
+    for (let i = 0; i < 12000; i++) { at += 0.05; w.update(0.05, 'rain', s.position, g.profile.settings.fidelity, {}); }
+    w.onThunder = keep;
+    const n = w.strikes - strikes;
+    return { perMinute: n / 10, ground: +((ev.bolts - bolts) / n).toFixed(2), shortest: Math.min(...gaps), longest: Math.max(...gaps) };
+  });
+  check('Storm pace: 2-6 flashes a minute, 4-40 s apart, about a third reach the ground', pace.perMinute >= 2 && pace.perMinute <= 6 && pace.shortest >= 3.9 && pace.longest <= 40.1 && pace.ground > 0.15 && pace.ground < 0.5, pace);
+  // A picture of a strike ahead of the camera, at its brightest.
+  await page.evaluate(() => {
+    const g = window.__LAZER, w = g.weather, s = g.sim, ev = g.park.scene.userData.sky.events, cam = g.camera.camera;
+    cam.position.set(-18, 7, -52); cam.lookAt(0, 1, -20); cam.updateMatrixWorld(); g.renderer.render(g.park.scene, cam);
+    const ahead = Math.atan2(ev.view.x, ev.view.z);
+    w.strike(true, 3.5); ev.strike(3500, ahead + 0.15);
+    for (let i = 0; i < 3; i++) { w.update(0.01, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.01, 'day', s.position); }
+    g.renderer.render(g.park.scene, cam);
+  });
+  await shot('rain-lightning');
   const rainNight = await scene('rain', 'night', 20, 'rain-night'); await shot('rain-night');
   check('Rain works at night too', rainNight.drops && rainNight.wet > 0.9, rainNight);
 
@@ -58,6 +92,20 @@ try {
 
   const snow = await scene('snow', 'day', 60, 'snow-day'); await shot('snow-day');
   check('Snow: still snows and settles as before', snow.snow > 0.9 && !snow.leaves && snow.overcast > 0.99, snow);
+  // A clear night: now and then a shooting star, rarer than the storm's visible strikes.
+  await scene('sunny', 'night', 30);
+  const meteors = await page.evaluate(() => {
+    const g = window.__LAZER, s = g.sim, sky = g.park.scene.userData.sky, ev = sky.events, before = ev.meteors;
+    for (let i = 0; i < 3600; i++) sky.step(0.5);
+    const perHalfHour = ev.meteors - before;
+    // One in flight, for the picture.
+    ev.shootingStar(() => 0.17); for (let i = 0; i < 12; i++) sky.step(0.03);
+    const cam = g.camera.camera, d = ev.meteor.start; cam.position.set(0, 2, 0); cam.lookAt(d.x * 100, 2 + d.y * 100, d.z * 100); cam.updateMatrixWorld();
+    g.renderer.render(g.park.scene, cam);
+    return { perHalfHour, flying: ev.showing.meteor };
+  });
+  await shot('clear-night-shooting-star');
+  check('Clear nights: a shooting star every one to three minutes (rarer than visible strikes)', meteors.perHalfHour >= 8 && meteors.perHalfHour <= 32 && meteors.flying, meteors);
   const clear = await scene('sunny', 'day', 20);
   check('Back to Sunny: the storm and snow clear away', clear.overcast < 0.01 && clear.storm < 0.01 && !clear.drops && !clear.leaves, clear);
 

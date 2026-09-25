@@ -7,6 +7,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
 import { WATER, buildShoreline, dressLake } from "./water";
+import { buildLakeBasin } from "./underwater";
 import { floodlight, monumentSign, pavilion as buildPavilion, veteransPanel } from "./props";
 import { buildDiveDock } from "./dive-dock";
 import { surfaceMaterial } from "./art";
@@ -565,6 +566,8 @@ export function buildMemorialGrounds(park: Park) {
   lake.scale.set(WATER.radiusX, WATER.radiusZ, 1);
   lake.position.set(WATER.x, WATER.surface, WATER.z);
   scene.add(lake);
+  // Under the surface: the basin, its stones and the surface seen from below (#62).
+  scene.userData.lakeBasin = buildLakeBasin(scene);
   const shoreline = surfaceMaterial(0xdedad0, "concrete", 2.4, 2.4);
   shoreline.polygonOffset = true;
   shoreline.polygonOffsetUnits = -40;

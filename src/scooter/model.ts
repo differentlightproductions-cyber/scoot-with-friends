@@ -412,7 +412,9 @@ export class RiderModel {
         this.swimProne = damp(this.swimProne, s.swim.out || s.swim.celebrate ? 0 : THREE.MathUtils.clamp(speed / TUNE.swimSpeed, 0, 1), 3.5, dt);
         a = this.swimProne * 1.3;
         const bob = Math.sin(s.swim.time * 2.1) * 0.03;
-        hip = v(this.root.position.x, WATER.surface - THREE.MathUtils.lerp(0.5, 0.09, this.swimProne) + bob, this.root.position.z);
+        // A hop on A (#62) lifts the whole swimmer out of the water for a moment.
+        const lift = (s.swim as { lift?: number }).lift ?? 0;
+        hip = v(this.root.position.x, WATER.surface - THREE.MathUtils.lerp(0.5, 0.09, this.swimProne) + bob + lift, this.root.position.z);
         if (s.swim.out) hip.y = THREE.MathUtils.lerp(hip.y, this.root.position.y + 0.9, THREE.MathUtils.smoothstep(s.swim.out.time, 0, 0.7));
         this.root.position.copy(hip).addScaledVector(f, -0.9 * Math.sin(a)).add(v(0, -0.9 * Math.cos(a), 0));
         this.root.rotation.x = a;

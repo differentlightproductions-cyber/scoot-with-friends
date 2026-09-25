@@ -31,6 +31,7 @@ import { Minimap } from "./ui/minimap";
 import { NowPlaying } from "./ui/now-playing";
 import { buildBaseAssets } from "./editor/base-assets";
 import { WaterEffects } from "./park/water";
+import { Underwater } from "./park/underwater";
 import "./style.css";
 import * as THREE from "three";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -82,6 +83,9 @@ async function boot() {
   const scene = new THREE.Scene();
   scene.userData.parkGeneration=0;
   const waterEffects = new WaterEffects(scene);
+  // The eye under the lake (#62): murky water, motes and bubbles, and muffled sound.
+  const underwater = new Underwater(scene);
+  underwater.onChange = (under) => audio.setUnderwater(under);
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     powerPreference: "high-performance",
@@ -117,7 +121,7 @@ async function boot() {
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
   /** Weather for the loaded map; its lightning schedules thunder in the audio engine. */
-  function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength) => audio.thunder(delay, strength); return w; }
+  function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength, km) => audio.thunder(delay, strength, km); return w; }
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
   // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
   let tracks = new WheelTracks(scene);
@@ -408,6 +412,8 @@ async function boot() {
   events.on((e) => {
     audio.event(e);
     if (e.type === "splash") waterEffects.splash(e.x, e.z);
+    // Diving or jumping in takes the first-person view under for a moment; wading in does not.
+    if (e.type === "swim" && e.phase === "enter") camera.plunge(e.trick ? 1.3 : e.fromRide ? 0.9 : 0);
     if (e.type === "swim" && e.phase === "enter") {
       // The ride waits at the water's edge; the first swim gets its moment.
       interactions.parkAtShore(sim, e.shore[0], e.shore[1], e.yaw);
@@ -703,6 +709,9 @@ async function boot() {
     rider.hideHead=camera.firstPersonActive&&camera.view==='first';
     rider.avatar.setFirstPerson(rider.hideHead);
     }
+    // Under the lake (#62): the basin's ripples and caustics move on; with the eye under, the water closes in.
+    {const light=1-.85*daylight.nightLevel;(scene.userData.lakeBasin as {update(dt:number,sky?:THREE.Color,light?:number):void}|undefined)?.update(dt,(scene.userData.sky as {horizon?:THREE.Color}|undefined)?.horizon,light);
+     underwater.update(camera.camera,dt,light,ACTIVE_MAP==='outdoor'&&hud.started);}
     const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
     // (and releases everything) while they own input, except in the controller test view.
@@ -885,7 +894,7 @@ async function boot() {
       /** With Friends playful interactions (#47): locals, throwables, shoves. */
       get playful() { return playful; },
       social,
-      get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
+      get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},underwater,
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),
       replay, replayBuffer, captureReplay: () => captureReplay(),
       renderer,
