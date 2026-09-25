@@ -140,6 +140,7 @@ export const ZH_CN: Record<string, string> = {
   "phone.ui.tracks_channels": "曲目和频道", "phone.ui.tracks_count": "{count} 首曲目", "phone.ui.music_settings": "音乐设置", "phone.ui.music_hint": "X 播放/暂停 · LB/RB 切歌 · 收起手机后继续播放",
   "phone.ui.room_all": "房间中的所有人", "phone.ui.room_local": "附近的骑手", "phone.ui.direct": "私聊",
   "phone.ui.message_empty": "还没有消息，打个招呼吧。", "phone.ui.new_message": "新消息", "phone.ui.message_type": "输入后按 Enter 发送",
+  "phone.ui.home_rearrange": "X 或长按应用：重新排列", "phone.ui.home_pick": "A：拿起应用  ·  X：完成", "phone.ui.home_moving": "LS：移动  ·  A：放下  ·  X：完成",
   "phone.ui.room_chat": "房间聊天", "phone.ui.local_chat": "本地聊天", "phone.ui.you_prefix": "你：", "phone.ui.no_messages": "暂无消息",
   "phone.ui.new_count": "{count} 条新消息", "phone.ui.reconnecting": "重新连接中", "phone.ui.your_number": "你的号码 {number}",
   "phone.ui.join_room": "加入私人房间与朋友聊天。每人获得虚构的 702-555 号码；不会使用真实号码。",

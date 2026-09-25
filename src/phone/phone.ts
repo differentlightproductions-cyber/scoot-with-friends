@@ -39,7 +39,14 @@ export interface SheetOption { label: string; detail?: string; action: () => voi
 
 const DRAW_TIME = 0.34, AWAY_TIME = 0.26;
 const REPEAT_FIRST = 0.36, REPEAT_NEXT = 0.11;
-const HOME_SIZE = 6, HOME_ORDER_KEY = 'swf-phone-app-order-v1';
+/**
+ * The home screen (#86): a 4 x 4 grid of apps fills the space under the clock
+ * widget. LS turns the page at the grid's edge (and a swipe does); there are
+ * no page buttons. X rearranges: A picks an app up, LS carries it, A puts it
+ * down, X is done. On touch a long press starts rearranging and taps move apps.
+ */
+export const HOME_COLS = 4, HOME_ROWS = 4;
+const HOME_SIZE = HOME_COLS * HOME_ROWS, HOME_ORDER_KEY = 'swf-phone-app-order-v1', LONG_PRESS = 0.55;
 
 export class Phone {
   state: PhoneState = 'hidden';
@@ -108,6 +115,16 @@ export class Phone {
       e.preventDefault();
       this.pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: false, swipe: false };
       canvas.setPointerCapture(e.pointerId);
+      // A long press on an app starts rearranging with that app picked up.
+      const pointer = this.pointer, r = canvas.getBoundingClientRect();
+      const px = ((e.clientX - r.left) / r.width) * SCREEN_W, py = ((e.clientY - r.top) / r.height) * SCREEN_H;
+      window.setTimeout(() => {
+        if (this.pointer !== pointer || pointer.moved || this.view || this.homeEditing) return;
+        const t = this.screen.hit(px, py);
+        if (!t?.id.startsWith('app-')) return;
+        this.homeEditing = true; this.editingAppId = t.id.slice(4); this.screen.focusId = t.id;
+        pointer.moved = true; uiSound('select'); this.refresh();
+      }, LONG_PRESS * 1000);
     });
     canvas.addEventListener('pointermove', e => {
       const p = this.pointer;
@@ -141,7 +158,17 @@ export class Phone {
   get homeApps() { return this.apps.slice(this.homePageIndex * HOME_SIZE, (this.homePageIndex + 1) * HOME_SIZE); }
   setHomePage(index: number) { const next=Math.max(0,Math.min(this.homePageCount-1,index));if(next===this.homePageIndex)return;this.homePageIndex=next;if(this.homeEditing&&!this.homeApps.some(a=>a.id===this.editingAppId))this.editingAppId='';this.screen.focusId='';this.screen.resetScroll();this.dirty=true; }
   shiftHomePage(step: number) { this.setHomePage(this.homePageIndex+step); }
-  moveApp(id: string, step: -1 | 1) { const from=this.apps.findIndex(a=>a.id===id),to=from+step;if(from<0||to<0||to>=this.apps.length)return false;[this.apps[from],this.apps[to]]=[this.apps[to],this.apps[from]];this.savedOrder=this.apps.map(a=>a.id);try{localStorage.setItem(HOME_ORDER_KEY,JSON.stringify(this.savedOrder));}catch{}this.setHomePage(Math.floor(to/HOME_SIZE));this.refresh();return true; }
+  /** Moves an app `step` places along the home order (a row is HOME_COLS), saving the order. */
+  moveApp(id: string, step: number) { const from=this.apps.findIndex(a=>a.id===id);return from>=0&&this.moveAppTo(id,from+step); }
+  moveAppTo(id: string, index: number) {
+    const from=this.apps.findIndex(a=>a.id===id),to=Math.max(0,Math.min(this.apps.length-1,index));
+    if(from<0||to===from)return false;
+    const [app]=this.apps.splice(from,1);this.apps.splice(to,0,app);
+    this.savedOrder=this.apps.map(a=>a.id);try{localStorage.setItem(HOME_ORDER_KEY,JSON.stringify(this.savedOrder));}catch{}
+    this.setHomePage(Math.floor(to/HOME_SIZE));this.screen.focusId='app-'+id;this.refresh();return true;
+  }
+  /** Rearranging on or off (X on the home screen). */
+  setHomeEditing(on: boolean) { if(this.view)return;this.homeEditing=on;this.editingAppId='';this.refresh(); }
   get active() { return this.state !== 'hidden'; }
   /** Accepting input: fully out. */
   get ready() { return this.state === 'open'; }
@@ -282,6 +309,7 @@ export class Phone {
     if (f.pressed.brakeBars) { uiSound('back'); this.back(); return; }
     if (f.pressed.body) { uiSound('back'); this.home(); return; }
     if (f.pressed.hop) { uiSound('select'); this.screen.activate(); this.dirty = true; return; }
+    if (f.pressed.pushDeck && !view) { uiSound('select'); this.setHomeEditing(!this.homeEditing); return; }
     const x = f.steer, y = f.lean;
     const dir = Math.abs(x) > 0.5 && Math.abs(x) >= Math.abs(y) ? (x > 0 ? 'right' : 'left') : Math.abs(y) > 0.5 ? (y > 0 ? 'down' : 'up') : '';
     if (!dir) { this.heldDir = ''; return; }
@@ -291,6 +319,12 @@ export class Phone {
       this.repeat = REPEAT_NEXT;
     } else { this.heldDir = dir; this.repeat = REPEAT_FIRST; }
     const focused = this.screen.focusId;
+    // Rearranging with an app picked up: LS carries it through the grid.
+    if (!view && this.homeEditing && this.editingAppId) {
+      if (this.moveApp(this.editingAppId, dir === 'left' ? -1 : dir === 'right' ? 1 : dir === 'up' ? -HOME_COLS : HOME_COLS)) uiSound('move');
+      this.dirty = true;
+      return;
+    }
     if (dir === 'left' || dir === 'right') {
       if (!this.screen.adjust(dir === 'left' ? -1 : 1)) { const before=this.screen.focusId;this.screen.move(dir === 'left' ? -1 : 1, 0);if(!this.view&&before===this.screen.focusId)this.shiftHomePage(dir==='left'?-1:1); }
       else uiSound('move');

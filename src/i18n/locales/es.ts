@@ -140,6 +140,7 @@ export const ES: Record<string, string> = {
   "phone.ui.tracks_channels": "CANCIONES Y CANALES", "phone.ui.tracks_count": "{count} canciones", "phone.ui.music_settings": "AJUSTES DE MÚSICA", "phone.ui.music_hint": "X reproduce/pausa · LB/RB cambia · sigue sonando al guardar el teléfono",
   "phone.ui.room_all": "Todos en tu sala", "phone.ui.room_local": "Local: riders cercanos", "phone.ui.direct": "Directo",
   "phone.ui.message_empty": "Todavía nada. Saluda.", "phone.ui.new_message": "NUEVO MENSAJE", "phone.ui.message_type": "Escribe y pulsa Enter para enviar",
+  "phone.ui.home_rearrange": "X o mantén una app: reordenar", "phone.ui.home_pick": "A: toma una app  ·  X: listo", "phone.ui.home_moving": "LS: mover  ·  A: soltar  ·  X: listo",
   "phone.ui.room_chat": "CHAT DE SALA", "phone.ui.local_chat": "CHAT LOCAL", "phone.ui.you_prefix": "Tú: ", "phone.ui.no_messages": "Aún no hay mensajes",
   "phone.ui.new_count": "{count} NUEVOS", "phone.ui.reconnecting": "reconectando", "phone.ui.your_number": "Tu número {number}",
   "phone.ui.join_room": "Únete a una sala privada para escribir a tus amigos. Todos reciben un número ficticio 702-555; nunca se usan números reales.",

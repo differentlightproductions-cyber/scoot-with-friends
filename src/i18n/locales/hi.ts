@@ -140,6 +140,7 @@ export const HI: Record<string, string> = {
   "phone.ui.build_summary": "{room}{count} / {limit} हिस्से · {used} / {budget} बजट", "phone.ui.room_prefix": "कमरा · ", "phone.ui.room_builds_note": "कमरे के हिस्से लॉबी खत्म होने तक साझा रहते हैं। आपका निजी सहेजा निर्माण सोलो में रहता है।",
   "phone.ui.room_all": "आपके कमरे में सभी", "phone.ui.room_local": "पास के राइडर", "phone.ui.direct": "सीधा संदेश",
   "phone.ui.message_empty": "अभी कुछ नहीं। नमस्ते कहें।", "phone.ui.new_message": "नया संदेश", "phone.ui.message_type": "लिखें, फिर Enter से भेजें",
+  "phone.ui.home_rearrange": "X या ऐप दबाए रखें: क्रम बदलें", "phone.ui.home_pick": "A: ऐप उठाएँ  ·  X: हो गया", "phone.ui.home_moving": "LS: खिसकाएँ  ·  A: रखें  ·  X: हो गया",
   "phone.ui.room_chat": "रूम चैट", "phone.ui.local_chat": "लोकल चैट", "phone.ui.you_prefix": "आप: ", "phone.ui.no_messages": "अभी कोई संदेश नहीं",
   "phone.ui.new_count": "{count} नए", "phone.ui.reconnecting": "फिर जुड़ रहे हैं", "phone.ui.your_number": "आपका नंबर {number}",
   "phone.ui.join_room": "दोस्तों को संदेश देने के लिए निजी कमरे में जुड़ें। सबको काल्पनिक 702-555 नंबर मिलता है; असली नंबर कभी नहीं लगते।",

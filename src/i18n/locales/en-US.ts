@@ -146,6 +146,7 @@ export const EN_US: Record<string, string> = {
   "phone.ui.tracks_channels": "TRACKS & CHANNELS", "phone.ui.tracks_count": "{count} tracks", "phone.ui.music_settings": "MUSIC SETTINGS", "phone.ui.music_hint": "X play/pause · LB/RB skip · keeps playing when the phone is away",
   "phone.ui.room_all": "Everyone in your room", "phone.ui.room_local": "Local: riders near you", "phone.ui.direct": "Direct",
   "phone.ui.message_empty": "Nothing yet. Say hi.", "phone.ui.new_message": "NEW MESSAGE", "phone.ui.message_type": "Type, then Enter to send",
+  "phone.ui.home_rearrange": "X or hold an app: rearrange", "phone.ui.home_pick": "A: pick up an app  ·  X: done", "phone.ui.home_moving": "LS: move  ·  A: put down  ·  X: done",
   "phone.ui.room_chat": "ROOM CHAT", "phone.ui.local_chat": "LOCAL CHAT", "phone.ui.you_prefix": "You: ", "phone.ui.no_messages": "No messages yet",
   "phone.ui.new_count": "{count} NEW", "phone.ui.reconnecting": "reconnecting", "phone.ui.your_number": "Your number {number}",
   "phone.ui.join_room": "Join a Private Free-ride room to text your crew. Everyone gets a made-up 702-555 number; real numbers are never used.",

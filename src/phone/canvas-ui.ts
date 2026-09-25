@@ -346,7 +346,7 @@ export class PhoneScreen {
           icon(g, t.icon, cx + lift + cell / 2, cy + lift + cell / 2, cell * 0.52, t.disabled ? '#2a2d31' : INK);
           if (focused) { g.lineWidth = 3; g.strokeStyle = LIME; rounded(g, cx + lift - 4, cy + lift - 4, cell + 8, cell + 8, 19); g.stroke(); }
           if (t.badge) { g.fillStyle = ORANGE; g.beginPath(); g.arc(cx + cell - 4, cy + 4, 11, 0, Math.PI * 2); g.fill(); g.strokeStyle = INK; g.lineWidth = 2.5; g.stroke(); g.fillStyle = '#fff'; g.font = `700 11px ${BODY}`; g.textAlign = 'center'; g.fillText(t.badge, cx + cell - 4, cy + 8); }
-          g.textAlign = 'center'; g.font = `13px ${DISPLAY}`; g.fillStyle = focused ? LIME : '#fff'; g.lineWidth = 4; g.strokeStyle = INK;
+          g.textAlign = 'center'; g.font = `${Math.min(13, Math.round(cell * 0.16))}px ${DISPLAY}`; g.fillStyle = focused ? LIME : '#fff'; g.lineWidth = 4; g.strokeStyle = INK;
           g.strokeText(t.label, cx + cell / 2, cy + cell + 23); g.fillText(t.label, cx + cell / 2, cy + cell + 23);
           this.targets.push({ id: t.id, x: cx, y: cy, w: cell, h: cell + 28, action: t.action, disabled: t.disabled });
         });
@@ -505,8 +505,10 @@ export class PhoneScreen {
     if (t && !t.disabled) t.action?.();
   }
   /** A tap or click in screen pixels (0..SCREEN_W, 0..SCREEN_H). */
+  /** The control under a point in screen pixels, if any. */
+  hit(x: number, y: number) { return [...this.targets].reverse().find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h); }
   tap(x: number, y: number) {
-    const t = [...this.targets].reverse().find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
+    const t = this.hit(x, y);
     if (!t) return;
     if (t.set && t.w > 0) { t.set(Math.max(0, Math.min(1, (x - t.x) / t.w))); return; }
     if (!t.id.startsWith('__')) { this.focusId = t.id; this.manualScroll = false; }

@@ -140,6 +140,7 @@ export const AR: Record<string, string> = {
   "phone.ui.build_summary": "{room}{count} / {limit} جزء · {used} / {budget} ميزانية", "phone.ui.room_prefix": "الغرفة · ", "phone.ui.room_builds_note": "تظل أجزاء الغرفة مشتركة حتى تنتهي الجلسة. يبقى بناؤك المحفوظ في اللعب الفردي.",
   "phone.ui.room_all": "كل من في غرفتك", "phone.ui.room_local": "الركاب القريبون", "phone.ui.direct": "مباشر",
   "phone.ui.message_empty": "لا شيء بعد. ألقِ التحية.", "phone.ui.new_message": "رسالة جديدة", "phone.ui.message_type": "اكتب ثم اضغط Enter للإرسال",
+  "phone.ui.home_rearrange": "X أو اضغط مطولًا على تطبيق: إعادة ترتيب", "phone.ui.home_pick": "A: التقط تطبيقًا  ·  X: تم", "phone.ui.home_moving": "LS: حرّك  ·  A: ضع  ·  X: تم",
   "phone.ui.room_chat": "دردشة الغرفة", "phone.ui.local_chat": "دردشة محلية", "phone.ui.you_prefix": "أنت: ", "phone.ui.no_messages": "لا رسائل بعد",
   "phone.ui.new_count": "{count} جديدة", "phone.ui.reconnecting": "جارٍ إعادة الاتصال", "phone.ui.your_number": "رقمك {number}",
   "phone.ui.join_room": "انضم إلى غرفة خاصة لمراسلة أصدقائك. يحصل الجميع على رقم وهمي 702-555؛ لا تُستخدم أرقام حقيقية.",

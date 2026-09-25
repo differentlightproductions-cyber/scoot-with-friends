@@ -16,7 +16,7 @@ import { LONGBOARD_CATEGORIES, longboardPart } from '../data/longboardParts';
 import { AVATAR_PRESETS, type AvatarConfig } from '../avatar/config';
 import { ThumbnailStudio } from '../avatar/thumbnails';
 import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type IconName, type Page, type Row, type Tile } from './canvas-ui';
-import type { Phone, View } from './phone';
+import { HOME_COLS, HOME_ROWS, type Phone, type View } from './phone';
 import type { PhoneMap } from './map';
 import { fictionalNumber, type MessageStore } from './messages';
 import {uiColors} from '../ui/palette';
@@ -659,18 +659,14 @@ export function homePage(d: PhoneDeps): Page {
   const phone=d.phone;
   const palette=uiColors(),recolor=document.documentElement.dataset.uiPalette!=='default'&&!!document.documentElement.dataset.uiPalette;
   const accents=[palette.orange,palette.lime,palette.teal,palette.sun,palette.pink];
-  const tiles: Tile[] = phone.homeApps.map((a,i) => ({ id: 'app-' + a.id, label: translate('phone.'+a.id) || a.label, icon: a.icon, color: recolor?accents[(phone.homePageIndex*6+i)%accents.length]:a.color, badge: phone.homeEditing&&phone.editingAppId===a.id?'✓':a.badge?.(), action: () => { if(phone.homeEditing){phone.editingAppId=a.id;phone.refresh();}else phone.push(a.open()); } }));
-  const selected=phone.apps.find(a=>a.id===phone.editingAppId);
-  const rows:Row[]=[];
-  if(phone.homePageCount>1){
-    rows.push({id:'home-prev',label:'◀ PREVIOUS APPS',disabled:phone.homePageIndex===0,action:()=>phone.shiftHomePage(-1)});
-    rows.push({id:'home-next',label:'NEXT APPS ▶',disabled:phone.homePageIndex===phone.homePageCount-1,action:()=>phone.shiftHomePage(1)});
-  }
-  if(phone.homeEditing){
-    rows.push({id:'home-earlier',label:'MOVE EARLIER',detail:selected?.label??'Select an app above',disabled:!selected||phone.apps[0]===selected,action:()=>phone.moveApp(selected!.id,-1)});
-    rows.push({id:'home-later',label:'MOVE LATER',detail:selected?.label??'Select an app above',disabled:!selected||phone.apps.at(-1)===selected,action:()=>phone.moveApp(selected!.id,1)});
-    rows.push({id:'home-edit',label:'DONE',action:()=>{phone.homeEditing=false;phone.editingAppId='';phone.refresh();}});
-  }else rows.push({id:'home-edit',label:'EDIT APP ORDER',action:()=>{phone.homeEditing=true;phone.refresh();}});
+  // Rearranging (X): A (or a tap) picks an app up; LS or a tap on another spot moves it; A again puts it down.
+  const tiles: Tile[] = phone.homeApps.map((a,i) => ({ id: 'app-' + a.id, label: translate('phone.'+a.id) || a.label, icon: a.icon, color: recolor?accents[(phone.homePageIndex*HOME_COLS*HOME_ROWS+i)%accents.length]:a.color, badge: phone.homeEditing&&phone.editingAppId===a.id?'✓':a.badge?.(), action: () => {
+    if(!phone.homeEditing){phone.push(a.open());return;}
+    if(!phone.editingAppId||phone.editingAppId===a.id){phone.editingAppId=phone.editingAppId===a.id?'':a.id;phone.refresh();return;}
+    const held=phone.editingAppId;phone.moveAppTo(held,phone.apps.findIndex(x=>x.id===a.id));
+  } }));
+  const pages=phone.homePageCount>1?`${phone.homePageIndex+1} / ${phone.homePageCount}  ·  `:'';
+  const hint=phone.homeEditing?(phone.editingAppId?translate('phone.ui.home_moving'):translate('phone.ui.home_pick')):translate('phone.ui.home_rearrange');
   const now = new Date();
   return {
     wallpaper: 'dusk',
@@ -690,9 +686,8 @@ export function homePage(d: PhoneDeps): Page {
           g.fillText(line, x + 34, y + 118);
         }
       } },
-      { type: 'grid', cols: 3, tiles },
-      { type: 'text', text: `APPS ${phone.homePageIndex+1} / ${phone.homePageCount}`, muted: true },
-      { type: 'list', rows },
+      { type: 'grid', cols: HOME_COLS, tiles },
+      { type: 'text', text: pages + hint, muted: true },
     ],
   };
 }

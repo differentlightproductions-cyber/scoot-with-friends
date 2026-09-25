@@ -140,6 +140,7 @@ export const PT_BR: Record<string, string> = {
   "phone.ui.build_summary": "{room}{count} / {limit} peças · {used} / {budget} orçamento", "phone.ui.room_prefix": "SALA · ", "phone.ui.room_builds_note": "As peças da sala são compartilhadas até o fim do lobby. Sua construção pessoal salva fica no modo Solo.",
   "phone.ui.room_all": "Todos na sua sala", "phone.ui.room_local": "Riders por perto", "phone.ui.direct": "Direto",
   "phone.ui.message_empty": "Nada ainda. Diga oi.", "phone.ui.new_message": "NOVA MENSAGEM", "phone.ui.message_type": "Digite e pressione Enter para enviar",
+  "phone.ui.home_rearrange": "X ou segure um app: reorganizar", "phone.ui.home_pick": "A: pegar um app  ·  X: pronto", "phone.ui.home_moving": "LS: mover  ·  A: soltar  ·  X: pronto",
   "phone.ui.room_chat": "CHAT DA SALA", "phone.ui.local_chat": "CHAT LOCAL", "phone.ui.you_prefix": "Você: ", "phone.ui.no_messages": "Ainda não há mensagens",
   "phone.ui.new_count": "{count} NOVAS", "phone.ui.reconnecting": "reconectando", "phone.ui.your_number": "Seu número {number}",
   "phone.ui.join_room": "Entre em uma sala privada para falar com seus amigos. Cada pessoa recebe um número fictício 702-555; números reais nunca são usados.",
