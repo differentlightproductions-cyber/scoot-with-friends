@@ -25,7 +25,7 @@ export function pose(value:any){
  if(value.rideable!==undefined&&!['scooter','longboard'].includes(value.rideable))return null;
  if(value.board!==undefined&&(typeof value.board!=='object'||!Object.values(value.board).every(n=>typeof n==='number'&&Number.isFinite(n))))return null;
  if(value.emote&&!numeric(value.emote,['time','duration']))return null;
- if(value.emote&&!['wave','nod','shake','point','clap','celebrate','sit','laugh','facepalm','drink','eat','drink-fountain','vend','place'].includes(value.emote.id))return null;
+ if(value.emote&&!['wave','nod','shake','point','clap','celebrate','sit','laugh','facepalm','cheer','shrug','drink','eat','drink-fountain','vend','place'].includes(value.emote.id))return null;
  if(value.crash&&(!numeric(value.crash,['age','rest'])||!['rider','scooter'].every(k=>numeric(value.crash[k]?.position,['x','y','z'])&&numeric(value.crash[k]?.rotation,['x','y','z','w']))))return null;
  if(value.flipYaw0!==undefined&&typeof value.flipYaw0!=='number'||value.flipRoll0!==undefined&&typeof value.flipRoll0!=='number'||value.jumpOn!==undefined&&typeof value.jumpOn!=='boolean'||value.grinding!==undefined&&typeof value.grinding!=='boolean')return null;
  if(value.swim&&(!numeric(value.swim,['time','stroke','speed'])||(value.swim.out!==null&&value.swim.out!==undefined)))return null;

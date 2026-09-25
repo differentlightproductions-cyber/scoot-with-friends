@@ -42,3 +42,20 @@ test('private room identity, permissions, limits, isolation, reconnect and eight
  host.send({type:'leave'});await delay(30);assert.equal([...service.rooms.values()][0].owner,f.id);
  }finally{clients.forEach(c=>c.terminate());service.close();}
 });
+
+test('every phone emote survives pose validation, so a rider emoting online never freezes for the others', async () => {
+  const { register } = await import('node:module');
+  register("data:text/javascript,export async function load(url,ctx,next){return url.endsWith('.css')?{format:'module',source:'',shortCircuit:true}:next(url,ctx);}");
+  const { EMOTES } = await import('../src/ui/social.ts');
+  const { pose } = await import('../src/network/protocol.ts');
+  for (const e of EMOTES) {
+    const channel = { angle: 0, velocity: 0, mismatch: 0 };
+    const sample = { position: [0, 0, 0], state: 'Walking', yaw: 0, pitch: 0, roll: 0, speed: 0, elapsed: 1, charge: 0, compression: 0, getUpTimer: 0, landTimer: 0, landingCompression: 0, popTimer: 0, pushTimer: 0, rampLean: 0, steer: 0,
+      bodyFlip: { angle: 0, velocity: 0 }, airWeight: { shift: 0 }, manual: { pitch: 0 }, dropIn: {},
+      tricks: { deck: channel, bars: channel, bri: channel, kickless: channel, stance: 'regular', naturalDirection: 1, poseBlend: 0, poseSide: 1, fingerTime: 0, fingerHand: 0 },
+      emote: { id: e.id, time: 0.2, duration: e.duration } };
+    const { emote: _, ...still } = sample;
+    assert.ok(pose(still), 'the sample pose itself is valid');
+    assert.ok(pose(sample), e.id + ' is accepted');
+  }
+});
