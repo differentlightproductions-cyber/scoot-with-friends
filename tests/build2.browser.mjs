@@ -204,7 +204,7 @@ try {
   });
   checks.forEach((n) => console.log("PASS " + n));
   await page.evaluate(() => window.__LAZER.hud.setPaused(true));
-  await page.locator('[data-action="map"]').click();
+  await page.evaluate(() => { const g = window.__LAZER; g.hud.setPaused(false); g.menu.openSesh('maps'); });
   await page.waitForURL("**/?map=outdoor");
   await page.waitForFunction(() => window.__LAZER);
   const outdoor = await page.evaluate(() => {
@@ -257,7 +257,7 @@ try {
   outdoor.forEach((n) => console.log("PASS " + n));
   await page.screenshot({ path: "artifacts/outdoor-park.png" });
   await page.evaluate(() => window.__LAZER.hud.setPaused(true));
-  await page.locator('[data-action="map"]').click();
+  await page.evaluate(() => { const g = window.__LAZER; g.hud.setPaused(false); g.menu.openSesh('maps'); });
   await page.waitForURL((u) => !u.searchParams.has("map"));
   await page.waitForFunction(() => window.__LAZER);
   if (errors.length) throw Error(errors.join("\n"));

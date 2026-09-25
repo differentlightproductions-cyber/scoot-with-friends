@@ -78,11 +78,10 @@ try {
   // A on a control of the phone screen (the same activation the controller uses).
   const choose = (id) => page.evaluate((id) => window.__LAZER.phone.select(id), id);
 
-  // ---- Open from the pause menu: Sesh Music is the phone's MUSIC app --------------
-  await page.evaluate(() => window.__LAZER.hud.setPaused(true));
-  await page.click('[data-action="music"]');
+  // ---- Sesh Music is the phone's MUSIC app (the pause menu keeps only the mini player, #65) ----
+  await page.evaluate(() => window.__LAZER.phone.open('music'));
   await waitFor(() => window.__LAZER.phone.ready && window.__LAZER.phone.view?.title === 'SESH MUSIC');
-  check('Music opens from the Sesh pause menu on the phone', (await state()).open);
+  check('Music opens on the phone', (await state()).open);
   await page.screenshot({ path: 'artifacts/music/now-playing-empty-selection.png' }).catch(() => {});
 
   // ---- Tracks page: choose a track ---------------------------------------------

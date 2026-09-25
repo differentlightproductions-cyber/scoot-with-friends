@@ -512,7 +512,6 @@ async function boot() {
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
     ).join("");
-    document.querySelector('[data-action="map"]')!.textContent = "Parks";
     (document.querySelector('[data-action="hillstart"]') as HTMLElement).hidden = id !== "b_hill";
     hud.started = false;
     hud.start();
@@ -585,23 +584,13 @@ async function boot() {
             );
             reset();
             break;
-          case "map":
-          case "rides":
-          case "shops":
-          case "rider":
+          // Parks, shops, rides, rider and music moved to the phone and the main menu (#65).
           case "scooter":
           case "online":
           case "settings":
-            menu.openSesh(button.dataset.action==="map"?"maps":button.dataset.action!,ACTIVE_MAP as MapId);
+            menu.openSesh(button.dataset.action!,ACTIVE_MAP as MapId);
             (document.querySelector("#pause") as HTMLElement).hidden=true;
             input.clear();pending=emptyInput();accumulator=0;
-            break;
-          case "music":
-            // Sesh Music lives on the phone: resume and take it out, if the rider is steady.
-            hud.setPaused(false);
-            input.clear();pending=emptyInput();accumulator=0;
-            if (phoneAllowed()) phone.open('music');
-            else phone.notify('Phone', 'Land first, then hold D-pad Down for Sesh Music.');
             break;
           case "sound":
             audio.enabled = !audio.enabled;
@@ -662,6 +651,7 @@ async function boot() {
     fps = 60,
     frame = emptyInput(),
     testMode = false;
+  const lampAt=new THREE.Vector3(),lampDir=new THREE.Vector3();
   const render = (dt: number, alpha = 1) => {
     const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen);
     if (!worldFrozen) {
@@ -693,6 +683,12 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0]);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    // The headlamp (#64): worn and lit only at night with the setting on; the beam
+    // leaves the lamp on the head (or the eye in first person, so the trick camera carries it).
+    {const lampOn=profile.settings.flashlight&&daylight.nightLevel>.02;rider.avatar.setHeadlamp(lampOn);
+     if(lampOn){const eye=camera.view==='first'&&camera.firstPersonActive;
+      if(eye)daylight.aimLamp(lampAt.copy(camera.camera.position),camera.camera.getWorldDirection(lampDir));
+      else{const housing=rider.avatar.headlamp.housing;housing.updateWorldMatrix(true,false);daylight.aimLamp(housing.getWorldPosition(lampAt),housing.getWorldDirection(lampDir));}}}
     // Placing a build piece: the build camera frames the ghost instead.
     if(builder.placement)builder.frame(camera.camera,dt);
     if (firstPersonPhone && camera.firstPersonActive) { phoneRig.pose(rider, raise, phoneHand, camera.camera); rider.avatar.update(sim.elapsed); }
