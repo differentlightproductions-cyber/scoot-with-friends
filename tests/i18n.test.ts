@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { LOCALES, missingKeys, t, tn, direction, TABLES } from "../src/i18n/index.ts";
+import { loadProfile, saveProfile, PROFILE_KEY } from '../src/data/loadout.ts';
 
 test("every language covers every English key", () => {
   for (const { code } of LOCALES) assert.deepEqual(missingKeys(code), [], code);
@@ -31,4 +32,25 @@ test("plurals follow each language's rules", () => {
 test("Arabic reads right to left, the rest left to right", () => {
   assert.equal(direction("ar"), "rtl");
   for (const code of ["en-US", "es", "zh-CN", "hi", "pt-BR"] as const) assert.equal(direction(code), "ltr");
+});
+test('language defaults from browser, validates saved values, and persists', () => {
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+  const data = new Map<string,string>();
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{languages:['es-MX'],language:'es-MX'}});
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(key:string)=>data.get(key)??null,setItem:(key:string,value:string)=>data.set(key,value)}});
+  try {
+    assert.equal(loadProfile().settings.language,'es');
+    data.set(PROFILE_KEY,JSON.stringify({version:4,settings:{language:'made-up'}}));
+    assert.equal(loadProfile().settings.language,'es');
+    data.set(PROFILE_KEY,JSON.stringify({version:4,settings:{language:'ar'}}));
+    const profile=loadProfile();
+    assert.equal(profile.settings.language,'ar');
+    profile.settings.language='zh-CN';
+    assert.equal(saveProfile(profile),true);
+    assert.equal(loadProfile().settings.language,'zh-CN');
+  } finally {
+    if(originalNavigator)Object.defineProperty(globalThis,'navigator',originalNavigator);else delete (globalThis as any).navigator;
+    if(originalStorage)Object.defineProperty(globalThis,'localStorage',originalStorage);else delete (globalThis as any).localStorage;
+  }
 });

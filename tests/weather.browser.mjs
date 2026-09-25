@@ -7,11 +7,11 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const url = process.env.LAZER_URL || 'http://127.0.0.1:5186', out = process.env.OUT || 'artifacts/weather';
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
 const results = [];
 const check = (label, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${label} ${ok ? '' : JSON.stringify(detail)}`); };
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } }), errors = [];
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, locale: 'en-US' }), errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER?.weather, null, { timeout: 900000 });
@@ -65,10 +65,13 @@ try {
   await page.evaluate(() => { const g = window.__LAZER; g.profile.settings.weather = 'sunny'; g.profile.settings.daylight = 'day'; g.menu.openSesh('settings-time', 'outdoor'); });
   await page.waitForSelector('.game-menu');
   const labels = [];
-  for (let i = 0; i < 3; i++) { await page.getByRole('button', { name: /^WEATHER/ }).click(); labels.push(await page.getByRole('button', { name: /^WEATHER/ }).textContent()); }
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole('button', { name: /^WEATHER/ }).click();
+    labels.push({ stored: await page.evaluate(() => window.__LAZER.menu.profile.settings.weather), visible: await page.getByRole('button', { name: /^WEATHER/ }).locator('span').textContent() });
+  }
   await page.getByRole('button', { name: /^TIME OF DAY/ }).click();
-  const time = await page.getByRole('button', { name: /^TIME OF DAY/ }).textContent();
-  check('Settings: WEATHER cycles Fall, Snow, Rain; TIME OF DAY is its own row', /FALL/.test(labels[0]) && /SNOW/.test(labels[1]) && /RAIN/.test(labels[2]) && /SUNSET/.test(time ?? ''), { labels, time });
+  const time = { stored: await page.evaluate(() => window.__LAZER.menu.profile.settings.daylight), visible: await page.getByRole('button', { name: /^TIME OF DAY/ }).locator('span').textContent() };
+  check('Settings: WEATHER cycles Fall, Snow, Rain; TIME OF DAY is its own row', labels.every((v, i) => v.stored === ['fall','snow','rain'][i] && v.visible?.trim() === `WEATHER ${['FALL','SNOW','RAIN'][i]}`) && time.stored === 'sunset' && time.visible?.trim() === 'TIME OF DAY SUNSET', { labels, time });
   await page.locator('button', { hasText: 'APPLY / SAVE CHANGES' }).first().click();
   await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
   const saved = await page.evaluate(() => window.__LAZER.profile.settings);

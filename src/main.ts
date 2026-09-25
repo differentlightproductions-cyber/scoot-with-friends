@@ -46,6 +46,8 @@ import { HUD } from "./ui/hud";
 import { EMOTES, SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
+import {setLocale,t} from './i18n';
+import {networkPlayful} from './network/playful';
 import type { MapId } from "./data/maps";
 import { VisualFidelity } from './render/fidelity';
 import { WorldInteractions } from './park/interactions';
@@ -71,6 +73,7 @@ import { B_HILL_LENGTH, routeProgress } from './park/bhill';
 async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
+  setLocale(profile.settings.language);
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
   if(ACTIVE_MAP==="church"){const church=await import("./park/church");church.installChurch();setActiveLayout(church.churchLayout);selectPark("church");}
   const events = new Events(),
@@ -130,8 +133,8 @@ async function boot() {
     const scatter: [number, number, ThrowableKind][] = [[-31.5, 1.5, "acorn"], [-29, 5.5, "acorn"], [-32, 4, "pinecone"], [-83, 11, "rock"], [-85.5, 5, "acorn"], [-44.5, -119, "can"], [-47.5, -123, "rock"], [-45, -124.5, "paper"], [30, -42, "acorn"], [33, -38.5, "rock"], [-22, -34, "paper"], [-25.5, -39.5, "can"]];
     f.populate(VETERANS_LOCALS, capture(sim), profile, scatter);
     f.local.onHit = (hit) => {
-      const what = hit.item === "paper" ? "A PAPER BALL" : hit.item === "can" ? "A CAN" : hit.item === "rock" ? "A PEBBLE" : hit.item === "pinecone" ? "A PINECONE" : "AN ACORN";
-      hud.feedback(hit.strength === "cosmetic" ? `${what} BOUNCES OFF` : `BONK! ${what}`, "warn");
+      const item=t('item.'+(hit.item??'acorn'));
+      hud.feedback(hit.kind==='shove'?t('playful.shoved'):t(hit.strength==='cosmetic'?'playful.bounce':'playful.bonk',{item}), "warn");
     };
     return f;
   }
@@ -168,6 +171,7 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
+  const updateNetworkPlayful=networkPlayful(network,()=>playful,profile,()=>sim);
   const friends=new SocialClient(()=>network.endpoint);
   network.socialCredential=friends.credential;
   friends.onState=()=>phone.refresh();
@@ -270,7 +274,7 @@ async function boot() {
   rewards.equip=async(partId,variantId)=>{const r=await economy.equip({partId,variantId},profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not equip.';};
   rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;};
   menu.onPurchased=item=>rewards.purchase(item);
-  menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
+  menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
@@ -280,10 +284,10 @@ async function boot() {
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
     document.querySelector("#sound")!.textContent = audio.enabled
-      ? "ON"
-      : "OFF";
+      ? t('common.on')
+      : t('common.off');
   };
-  document.querySelector("#sound")!.textContent = audio.enabled ? "ON" : "OFF";
+  document.querySelector("#sound")!.textContent = audio.enabled ? t('common.on') : t('common.off');
   let publicLayout: ParkLayout | null = null;
   async function latestPark() {
     try {
@@ -598,8 +602,8 @@ async function boot() {
             profile.settings.sound = audio.enabled;
             saveProfile(profile);
             document.querySelector("#sound")!.textContent = audio.enabled
-              ? "ON"
-              : "OFF";
+              ? t('common.on')
+              : t('common.off');
             break;
         }
       }),
@@ -772,6 +776,7 @@ async function boot() {
     else {
       frame = social.update(sim, frame, dt);
       if(playful){
+        updateNetworkPlayful();
         playful.rules.contact=profile.settings.playfulContact;
         const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
         const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'||held.kind==='Party Popper'?'paper':'can'):null;

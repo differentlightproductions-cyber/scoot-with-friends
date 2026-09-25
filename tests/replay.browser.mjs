@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 const url = process.env.LAZER_URL || 'http://127.0.0.1:5186', out = process.env.OUT || 'artifacts/replay';
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
 const results = [];
 const check = (label, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${label} ${ok ? '' : JSON.stringify(detail)}`); };
 try {
@@ -15,6 +15,7 @@ try {
   page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text().slice(0, 200)); });
   await page.goto(url + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER?.replay, null, { timeout: 900000 });
+  console.log('Renderer:', await page.evaluate(() => { const gl = window.__LAZER.renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); }));
 
   // Ride a line: push off, up the back quarter, an air, back down, part of it in first person.
   // Frames are recorded by the game's own render step; drawing is stubbed while riding to keep it quick.
@@ -72,12 +73,13 @@ try {
     r.setTrim(1, 5); r.setView('first');
     for (let i = 0; i < 200; i++) r.draw(1 / 30);
     const inside = r.time >= 1 - 1e-6 && r.time <= 5 + 1e-6;
-    const id = await r.save();
+    const saveStart = performance.now(), id = await r.save(), saveMs = performance.now() - saveStart;
     const list = await r.store.list();
-    return { id, inside, trim: r.trim, list: list.map((m) => ({ name: m.name, trimIn: m.trimIn, trimOut: m.trimOut, camera: m.camera, map: m.map, thumb: !!m.thumbnail })) };
+    return { id, saveMs, inside, trim: r.trim, list: list.map((m) => ({ name: m.name, trimIn: m.trimIn, trimOut: m.trimOut, camera: m.camera, map: m.map, thumb: !!m.thumbnail })) };
   });
   check('Trimming keeps playback inside IN-OUT (1-5 s: a 4 s clip)', saved.inside && Math.abs(saved.trim.length - 4) < 1e-6, saved);
   check('SAVE stores it with its map, trim, camera and a thumbnail', saved.id && saved.list.length === 1 && saved.list[0].name === 'Veterans Memorial Park - Replay 01' && saved.list[0].trimIn === 1 && saved.list[0].camera === 'first' && saved.list[0].thumb, saved.list);
+  console.log(`SAVE ${saved.saveMs.toFixed(0)} ms`);
   const reopened = await page.evaluate(async (id) => {
     const r = window.__LAZER.replay; r.close(); const closed = !r.open && window.__LAZER.rider.root.visible;
     await r.openSaved(id, 'edit');
@@ -93,11 +95,12 @@ try {
     const r = window.__LAZER.replay; r.setView('third');
     const supported = r.constructor.canExport(window.__LAZER.renderer.domElement);
     if (!supported) return { supported };
-    const started = r.startExport(); const t0 = performance.now();
-    while (window.__replayExport === undefined && performance.now() - t0 < 240000) { r.draw(1 / 30); await new Promise((q) => setTimeout(q, 0)); }
-    return { supported, started, result: window.__replayExport ?? null };
+    const started = r.startExport(), t0 = performance.now();
+    while (window.__replayExport === undefined && performance.now() - t0 < 20000) { r.draw(1 / 30); await new Promise((q) => setTimeout(q, 34)); }
+    return { supported, started, result: window.__replayExport ?? null, elapsedMs: performance.now() - t0 };
   });
   check('EXPORT VIDEO writes the trimmed clip as a video file (or reports it unsupported)', !exp.supported || (exp.started && exp.result?.bytes > 1000), exp);
+  console.log(`EXPORT ${exp.elapsedMs?.toFixed(0) ?? 'unsupported'} ms, ${exp.result?.bytes ?? 0} bytes`);
 
   // Library: list, then delete.
   const lib = await page.evaluate(async (id) => {

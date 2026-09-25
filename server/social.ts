@@ -84,5 +84,5 @@ export function createSocial({file,send,inviteActive}:SocialOptions){
   cleanupInvites();if([...invites.values()].filter(i=>i.to===to).length>=10)return 'Too many pending invites.';
   const i={id:randomUUID(),from,to,code,generation,expiresAt:Date.now()+300000};if(!inviteActive(i))return 'Room unavailable for invite.';invites.set(i.id,i);refresh(to);send(ws??null,{type:'invite-sent',friendId:to});return null;
  }
- return {auth,handle,disconnect,invite,isAuthed:(ws:WebSocket)=>identities.has(ws),isOnline,close:()=>{sockets.clear();invites.clear();},persistent:!!file};
+ return {auth,handle,disconnect,invite,areFriends:(a:string,b:string)=>!!people.get(a)?.friends.has(b)&&!!people.get(b)?.friends.has(a),isAuthed:(ws:WebSocket)=>identities.has(ws),isOnline,close:()=>{sockets.clear();invites.clear();},persistent:!!file};
 }

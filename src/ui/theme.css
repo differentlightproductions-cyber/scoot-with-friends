@@ -10,6 +10,14 @@
      trick book ...... photocopied zine with highlighter
      pause ........... clipboard, sticker-bombed
    Fonts come from creator.css (@font-face Bungee, Marker). */
+html:lang(ar), html:lang(hi), html:lang(zh-CN) {
+  --display: "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif;
+  --body: "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif;
+}
+body.rtl #start .game-menu, body.rtl #pause .pause-sheet { direction: rtl; text-align: right; }
+body.rtl #start .game-menu { left: auto; right: clamp(18px, 4vw, 76px); }
+body.rtl #pause .pause-sheet { margin-left: auto; margin-right: 0; }
+#start[data-screen="settings"] .game-menu nav button:first-child { background: #1ecbe1; color: #0b0c0d; }
 :root {
   --ink: #0b0c0d;
   --paper: #f4f1e8;

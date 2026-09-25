@@ -17,8 +17,10 @@ export const PAPER = '#f4f1e8';
 export const LIME = '#c6ff00';
 export const ORANGE = '#ff5a1f';
 export const TEAL = '#1ecbe1';
-export const DISPLAY = 'Bungee, ParkDisplay, Impact, "Arial Black", sans-serif';
-export const BODY = 'system-ui, "Segoe UI", Roboto, sans-serif';
+import { direction } from '../i18n';
+import { t } from '../i18n';
+export const DISPLAY = 'Bungee, ParkDisplay, Impact, "Arial Black", "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif';
+export const BODY = 'system-ui, "Segoe UI", Roboto, "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif';
 
 export type Action = () => void;
 export type IconName = 'music' | 'emote' | 'ride' | 'rider' | 'map' | 'items' | 'build' | 'messages' | 'play' | 'pause' | 'prev' | 'next' | 'dice' | 'lock'
@@ -204,6 +206,7 @@ export class PhoneScreen {
   draw(page: Page) {
     const g = this.g;
     g.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    g.direction = direction();
     this.drawWallpaper(page.wallpaper ?? 'grip');
     this.targets = [];
     // Layout pass (measure) then draw inside the scrolled content area.
@@ -290,10 +293,10 @@ export class PhoneScreen {
     const navY = SCREEN_H - NAV_H / 2;
     g.fillStyle = c.canBack ? '#fff' : '#ffffff44'; g.font = `12px ${DISPLAY}`; g.textAlign = 'center';
     g.beginPath(); g.moveTo(SCREEN_W * 0.25 - 26, navY); g.lineTo(SCREEN_W * 0.25 - 16, navY - 8); g.lineTo(SCREEN_W * 0.25 - 16, navY + 8); g.closePath(); g.fill();
-    g.fillText('BACK', SCREEN_W * 0.25 + 10, navY + 1);
+    g.fillText(t('common.back'), SCREEN_W * 0.25 + 10, navY + 1);
     g.fillStyle = '#fff';
     g.lineWidth = 2.5; g.strokeStyle = '#fff'; g.beginPath(); g.arc(SCREEN_W * 0.75 - 30, navY, 8, 0, Math.PI * 2); g.stroke();
-    g.fillText('HOME', SCREEN_W * 0.75 + 4, navY + 1);
+    g.fillText(t('phone.home'), SCREEN_W * 0.75 + 4, navY + 1);
     this.targets.push({ id: '__back', x: 0, y: SCREEN_H - NAV_H, w: SCREEN_W / 2, h: NAV_H, action: () => this.onBack() });
     this.targets.push({ id: '__home', x: SCREEN_W / 2, y: SCREEN_H - NAV_H, w: SCREEN_W / 2, h: NAV_H, action: () => this.onHome() });
   }
@@ -319,20 +322,20 @@ export class PhoneScreen {
   }
 
   private drawBlock(b: Block, y: number) {
-    const g = this.g, inner = SCREEN_W - PAD * 2, x0 = PAD;
+    const g = this.g, inner = SCREEN_W - PAD * 2, x0 = PAD, rtl = direction() === 'rtl';
     g.textBaseline = 'alphabetic';
     switch (b.type) {
       case 'title': {
-        g.textAlign = 'left'; g.font = `26px ${DISPLAY}`;
-        g.lineWidth = 5; g.strokeStyle = INK; g.strokeText(b.text, x0, y + 38);
-        g.fillStyle = PAPER; g.fillText(b.text, x0, y + 38);
-        if (b.sub) { g.font = `700 13px ${BODY}`; g.fillStyle = '#c9d2dc'; g.fillText(ellipsize(g, b.sub.toUpperCase(), SCREEN_W - PAD * 2), x0, y + 62); }
+        g.textAlign = rtl ? 'right' : 'left'; g.font = `26px ${DISPLAY}`;
+        g.lineWidth = 5; g.strokeStyle = INK; g.strokeText(b.text, rtl ? x0 + inner : x0, y + 38);
+        g.fillStyle = PAPER; g.fillText(b.text, rtl ? x0 + inner : x0, y + 38);
+        if (b.sub) { g.font = `700 13px ${BODY}`; g.fillStyle = '#c9d2dc'; g.fillText(ellipsize(g, b.sub.toUpperCase(), SCREEN_W - PAD * 2), rtl ? x0 + inner : x0, y + 62); }
         break;
       }
       case 'grid': {
         const cell = (inner - (b.cols - 1) * 14) / b.cols;
         b.tiles.forEach((t, i) => {
-          const cx = x0 + (i % b.cols) * (cell + 14), cy = y + 4 + Math.floor(i / b.cols) * (cell + 34), focused = t.id === this.focusId;
+          const cx = x0 + (rtl ? b.cols - 1 - i % b.cols : i % b.cols) * (cell + 14), cy = y + 4 + Math.floor(i / b.cols) * (cell + 34), focused = t.id === this.focusId;
           const lift = focused ? -3 : 0;
           sticker(g, cx + lift, cy + lift, cell, cell, t.disabled ? '#5a5f66' : t.color, 16, focused ? ORANGE : INK, focused ? 6 : 4);
           icon(g, t.icon, cx + lift + cell / 2, cy + lift + cell / 2, cell * 0.52, t.disabled ? '#2a2d31' : INK);
@@ -349,11 +352,11 @@ export class PhoneScreen {
         for (const r of b.rows) {
           const h = r.detail ? 66 : 52, focused = r.id === this.focusId;
           sticker(g, x0, ry, inner, h, focused ? LIME : r.disabled ? '#3a3e44' : PAPER, 12, focused ? ORANGE : INK, focused ? 5 : 3);
-          g.textAlign = 'left'; g.fillStyle = r.disabled ? '#9aa1a8' : INK; g.font = `15px ${DISPLAY}`;
-          g.fillText(ellipsize(g, r.label, inner - (r.value ? 120 : r.chosen ? 52 : 28)), x0 + 14, ry + (r.detail ? 28 : 33));
-          if (r.detail) { g.font = `600 13px ${BODY}`; g.fillStyle = r.disabled ? '#8a9198' : '#3b4148'; g.fillText(ellipsize(g, r.detail, inner - (r.chosen ? 52 : 28)), x0 + 14, ry + 50); }
-          if (r.value) { g.textAlign = 'right'; g.font = `800 14px ${BODY}`; g.fillStyle = INK; g.fillText(r.adjust ? `◀ ${r.value} ▶` : r.value, x0 + inner - 14, ry + (r.detail ? 28 : 33)); }
-          if (r.chosen) { g.fillStyle = INK; g.beginPath(); g.arc(x0 + inner - 20, ry + h / 2, 9, 0, Math.PI * 2); g.fill(); g.strokeStyle = LIME; g.lineWidth = 3; g.beginPath(); g.moveTo(x0 + inner - 25, ry + h / 2); g.lineTo(x0 + inner - 21, ry + h / 2 + 4); g.lineTo(x0 + inner - 14, ry + h / 2 - 4); g.stroke(); }
+          g.textAlign = rtl ? 'right' : 'left'; g.fillStyle = r.disabled ? '#9aa1a8' : INK; g.font = `15px ${DISPLAY}`;
+          g.fillText(ellipsize(g, r.label, inner - (r.value ? 120 : r.chosen ? 52 : 28)), rtl ? x0 + inner - 14 : x0 + 14, ry + (r.detail ? 28 : 33));
+          if (r.detail) { g.font = `600 13px ${BODY}`; g.fillStyle = r.disabled ? '#8a9198' : '#3b4148'; g.fillText(ellipsize(g, r.detail, inner - (r.chosen ? 52 : 28)), rtl ? x0 + inner - 14 : x0 + 14, ry + 50); }
+          if (r.value) { g.textAlign = rtl ? 'left' : 'right'; g.font = `800 14px ${BODY}`; g.fillStyle = INK; g.fillText(r.adjust ? `◀ ${r.value} ▶` : r.value, rtl ? x0 + 14 : x0 + inner - 14, ry + (r.detail ? 28 : 33)); }
+          if (r.chosen) { const checkX = rtl ? x0 + 20 : x0 + inner - 20; g.fillStyle = INK; g.beginPath(); g.arc(checkX, ry + h / 2, 9, 0, Math.PI * 2); g.fill(); g.strokeStyle = LIME; g.lineWidth = 3; g.beginPath(); g.moveTo(checkX - 5, ry + h / 2); g.lineTo(checkX - 1, ry + h / 2 + 4); g.lineTo(checkX + 6, ry + h / 2 - 4); g.stroke(); }
           this.targets.push({ id: r.id, x: x0, y: ry, w: inner, h, action: r.action, adjust: r.adjust, disabled: r.disabled });
           ry += h + 8;
         }

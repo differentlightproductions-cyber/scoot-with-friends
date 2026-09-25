@@ -1,5 +1,6 @@
 /* The phone in third person: the same screen canvas the 3D phone shows, held up
    in a translucent 2000s candy case. --raise (0..1) follows the rider's arm. */
+body.rtl .phone-overlay { right: auto; left: max(18px, 3vw); }
 .phone-overlay {
   --raise: 0;
   position: fixed;

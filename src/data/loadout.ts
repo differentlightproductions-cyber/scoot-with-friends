@@ -6,6 +6,7 @@ import { ownershipKey, ownsBoard, ownsSelection, type RideableKind } from "./cat
 import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
+import { isLocale, LOCALES, type Locale } from "../i18n";
 import { validBuild, type SavedBuild } from "./builds";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
@@ -25,6 +26,7 @@ export interface LocalProfile {
   /** Player builds, saved compactly (data/builds.ts): the Warehouse layout. */
   builds?: { warehouse?: SavedBuild };
   settings: {
+    language: Locale;
     controlStyle: "pro" | "arcade";
     sound: boolean;
     grindAssist: boolean;
@@ -73,6 +75,17 @@ export interface LocalProfile {
 export const PROFILE_KEY = "lazer-profile-v1";
 /** Called after every successful save (cloud sync listens). */
 export const profileSaved = new Set<() => void>();
+export function browserLocale(): Locale {
+  const preferred = typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const language of preferred) {
+    const exact = LOCALES.find(l => l.code.toLowerCase() === language.toLowerCase());
+    if (exact) return exact.code;
+    const base = language.split('-')[0].toLowerCase();
+    const matched = LOCALES.find(l => l.code.split('-')[0].toLowerCase() === base);
+    if (matched) return matched.code;
+  }
+  return 'en-US';
+}
 /**
  * A save from before the avatar keeps the spirit of its gear, once: body
  * build, headwear, top, bottoms and shoes (ids like "top-hoodie-red") map to
@@ -103,6 +116,7 @@ export function loadProfile(): LocalProfile {
     activeRideable: "scooter",
     progress: emptyProgress(),
     settings: {
+      language: browserLocale(),
       controlStyle: "pro",
       sound: true,
       grindAssist: true,
@@ -136,6 +150,7 @@ export function loadProfile(): LocalProfile {
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3,4].includes(saved.version)) return profile;
+    if(isLocale(saved.settings?.language))profile.settings.language=saved.settings.language;
     profile.wallet=validWallet(saved.wallet);
     profile.progress=validProgress(saved.progress);
     const warehouse=validBuild(saved.builds?.warehouse);if(warehouse)profile.builds={warehouse};

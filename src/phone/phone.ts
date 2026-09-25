@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { InputFrame } from '../input/input';
 import { PhoneScreen, SCREEN_H, SCREEN_W, type IconName, type Page } from './canvas-ui';
 import './phone.css';
+import { locale, onLocale, t } from '../i18n';
 
 /**
  * The rider's phone (docs/briefs/PHONE-SYSTEM.md): one state machine, one app
@@ -93,6 +94,7 @@ export class Phone {
     document.body.append(this.overlay, this.toasts);
     this.screen.onBack = () => this.back();
     this.screen.onHome = () => this.home();
+    onLocale(() => this.refresh());
     const canvas = this.screen.canvas;
     canvas.addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -304,14 +306,15 @@ export class Phone {
     }
     if (this.state === 'hidden') return;
     const now = new Date();
-    const clock = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const clock = now.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
     if (clock !== this.clock) { this.clock = clock; this.dirty = true; }
     const view = this.view;
     this.liveTimer -= dt;
     if ((view ? view.live : true) && this.liveTimer <= 0) { this.dirty = true; this.liveTimer = 0.25; }
     if (this.dirty) {
       this.dirty = false;
-      this.screen.chrome = { title: view?.title ?? '', time: clock, battery: 0.72, canBack: true };
+      const titleKey = view?.title === 'SESH MUSIC' ? 'phone.music' : view?.title === 'PIECE' ? 'phone.ui.piece' : view?.title === 'PLACED' ? 'phone.ui.placed' : this.apps.find(a => a.label === view?.title)?.id;
+      this.screen.chrome = { title: titleKey ? t(titleKey.startsWith('phone.') ? titleKey : 'phone.'+titleKey) : view?.title ?? '', time: clock, battery: 0.72, canBack: true };
       this.screen.draw(view ? view.page() : this.homePage());
       this.pendingUpload = true;
     }

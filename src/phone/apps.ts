@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { locale, t as translate } from '../i18n';
 import { music, MUSIC_GENRES } from '../audio/music';
 import type { Simulation } from '../physics/simulation';
 import type { LocalProfile } from '../data/loadout';
@@ -77,10 +78,10 @@ function musicApp(d: PhoneDeps): View {
     return false;
   };
   const toggle = (key: 'enabled' | 'resumeOnEnter' | 'pauseWhenHidden' | 'notifications', label: string, detail: string): Row => ({
-    id: 'set-' + key, label, detail, value: music.settings[key] ? 'ON' : 'OFF', action: () => music.setSetting(key, !music.settings[key]),
+    id: 'set-' + key, label, detail, value: translate(music.settings[key] ? 'common.on' : 'common.off'), action: () => music.setSetting(key, !music.settings[key]),
   });
   const volume = (): Block => ({
-    type: 'slider', id: 'volume', label: music.settings.muted ? 'VOLUME (MUTED)' : 'VOLUME', value: music.settings.volume,
+    type: 'slider', id: 'volume', label: translate(music.settings.muted ? 'phone.ui.volume_muted' : 'phone.ui.volume'), value: music.settings.volume,
     text: Math.round(music.settings.volume * 100) + '%', adjust: step => music.setVolume(music.settings.volume + step * 0.05), set: v => music.setVolume(v),
   });
   const tracks: View = {
@@ -89,16 +90,16 @@ function musicApp(d: PhoneDeps): View {
       const channel = music.channelTracks();
       return {
         blocks: [
-          { type: 'title', text: 'TRACKS', sub: channel.length + ' in ' + music.settings.genre },
+          { type: 'title', text: translate('phone.ui.tracks'), sub: translate('phone.ui.tracks_in',{count:channel.length,genre:music.settings.genre}) },
           { type: 'list', rows: [{
-            id: 'genre', label: 'CHANNEL', value: music.settings.genre, adjust: step => {
+            id: 'genre', label: translate('phone.ui.channel'), value: music.settings.genre, adjust: step => {
               const i = MUSIC_GENRES.indexOf(music.settings.genre);
               music.setGenre(MUSIC_GENRES[(i + step + MUSIC_GENRES.length) % MUSIC_GENRES.length]);
             }, action: () => { const i = MUSIC_GENRES.indexOf(music.settings.genre); music.setGenre(MUSIC_GENRES[(i + 1) % MUSIC_GENRES.length]); },
           }] },
           channel.length
-            ? { type: 'list', rows: channel.map(t => ({ id: 'track-' + t.id, label: t.title, detail: music.unavailable.has(t.id) ? 'Unavailable' : [t.artist, t.genre].filter(Boolean).join(' · '), chosen: music.current?.id === t.id, action: () => music.select(t.id) })) }
-            : { type: 'text', text: music.catalogLoaded ? 'No tracks on this channel yet.' : 'Loading music…', muted: true },
+            ? { type: 'list', rows: channel.map(t => ({ id: 'track-' + t.id, label: t.title, detail: music.unavailable.has(t.id) ? translate('phone.ui.unavailable') : [t.artist, t.genre].filter(Boolean).join(' · '), chosen: music.current?.id === t.id, action: () => music.select(t.id) })) }
+            : { type: 'text', text: translate(music.catalogLoaded ? 'phone.ui.no_tracks' : 'phone.ui.loading_music'), muted: true },
         ],
       };
     },
@@ -106,14 +107,14 @@ function musicApp(d: PhoneDeps): View {
   const settings: View = {
     title: 'SESH MUSIC', input: shortcuts,
     page: () => ({ blocks: [
-      { type: 'title', text: 'SETTINGS', sub: 'Sesh Music' },
+      { type: 'title', text: translate('settings.title'), sub: 'Sesh Music' },
       volume(),
       { type: 'list', rows: [
-        toggle('enabled', 'MUSIC', 'Background music in the sesh'),
-        { id: 'mute', label: 'MUTE', value: music.settings.muted ? 'ON' : 'OFF', action: () => music.toggleMute() },
-        toggle('resumeOnEnter', 'RESUME ON ENTER', 'Pick up where you left off'),
-        toggle('pauseWhenHidden', 'PAUSE WHEN HIDDEN', 'When the tab is in the background'),
-        toggle('notifications', 'NOW PLAYING POP-UPS', 'Small notification on each new track'),
+        toggle('enabled', translate('phone.music'), translate('phone.ui.music_enabled')),
+        { id: 'mute', label: translate('phone.ui.mute'), value: translate(music.settings.muted ? 'common.on' : 'common.off'), action: () => music.toggleMute() },
+        toggle('resumeOnEnter', translate('phone.ui.resume_on_enter'), translate('phone.ui.resume_desc')),
+        toggle('pauseWhenHidden', translate('phone.ui.pause_hidden'), translate('phone.ui.pause_hidden_desc')),
+        toggle('notifications', translate('phone.ui.music_popups'), translate('phone.ui.music_popups_desc')),
       ] },
     ] }),
   };
@@ -121,25 +122,25 @@ function musicApp(d: PhoneDeps): View {
     title: 'SESH MUSIC', input: shortcuts, live: true,
     page: () => {
       const t = music.current, status = music.status, playing = status === 'playing' || status === 'loading';
-      const statusText = status === 'loading' ? 'Loading…' : status === 'playing' ? 'Playing' : status === 'paused' ? 'Paused'
-        : status === 'blocked' ? 'Tap Play to allow audio' : status === 'error' ? music.errorMessage || 'Track unavailable' : status === 'empty' ? 'No music added yet' : 'Ready';
+      const statusText = status === 'loading' ? translate('phone.ui.loading_music') : status === 'playing' ? translate('phone.ui.playing') : status === 'paused' ? translate('phone.ui.paused')
+        : status === 'blocked' ? translate('phone.ui.allow_audio') : status === 'error' ? music.errorMessage || translate('phone.ui.unavailable') : status === 'empty' ? translate('phone.ui.no_music') : translate('pause.marker.ready');
       const blocks: Block[] = [
-        { type: 'title', text: 'NOW PLAYING', sub: music.settings.genre === 'All' ? 'All channels' : music.settings.genre + ' channel' },
-        { type: 'card', title: t?.title ?? (music.catalogLoaded ? 'Nothing queued' : 'Loading music…'), lines: [[t?.artist, t?.genre].filter(Boolean).join(' · ') || ' ', statusText], art: GENRE_COLOURS[t?.genre ?? ''] ?? ORANGE, picture: cover(t?.cover) },
+        { type: 'title', text: translate('phone.ui.now_playing'), sub: music.settings.genre === 'All' ? translate('phone.ui.all_channels') : translate('phone.ui.genre_channel',{genre:music.settings.genre}) },
+        { type: 'card', title: t?.title ?? translate(music.catalogLoaded ? 'phone.ui.nothing_queued' : 'phone.ui.loading_music'), lines: [[t?.artist, t?.genre].filter(Boolean).join(' · ') || ' ', statusText], art: GENRE_COLOURS[t?.genre ?? ''] ?? ORANGE, picture: cover(t?.cover) },
         { type: 'progress', value: music.duration ? music.position / music.duration : 0, left: time(music.position), right: music.duration ? time(music.duration) : '--:--' },
         { type: 'buttons', buttons: [
-          { id: 'prev', icon: 'prev', label: 'Previous', action: () => music.previous() },
-          { id: 'play', icon: playing ? 'pause' : 'play', label: playing ? 'Pause' : 'Play', big: true, action: () => void music.togglePlay() },
-          { id: 'next', icon: 'next', label: 'Next', action: () => music.next() },
+          { id: 'prev', icon: 'prev', label: translate('phone.ui.previous'), action: () => music.previous() },
+          { id: 'play', icon: playing ? 'pause' : 'play', label: translate(playing ? 'phone.ui.pause' : 'phone.ui.play'), big: true, action: () => void music.togglePlay() },
+          { id: 'next', icon: 'next', label: translate('phone.ui.next'), action: () => music.next() },
         ] },
         volume(),
         { type: 'list', rows: [
-          { id: 'shuffle', label: 'SHUFFLE', value: music.settings.shuffle ? 'ON' : 'OFF', action: () => music.setSetting('shuffle', !music.settings.shuffle) },
-          { id: 'repeat', label: 'REPEAT', value: music.settings.repeat.toUpperCase(), action: () => music.cycleRepeat() },
-          { id: 'tracks', label: 'TRACKS & CHANNELS', detail: music.tracks.length + ' tracks', action: () => d.phone.push(tracks) },
-          { id: 'msettings', label: 'MUSIC SETTINGS', action: () => d.phone.push(settings) },
+          { id: 'shuffle', label: translate('phone.ui.shuffle'), value: translate(music.settings.shuffle ? 'common.on' : 'common.off'), action: () => music.setSetting('shuffle', !music.settings.shuffle) },
+          { id: 'repeat', label: translate('phone.ui.repeat'), value: music.settings.repeat.toUpperCase(), action: () => music.cycleRepeat() },
+          { id: 'tracks', label: translate('phone.ui.tracks_channels'), detail: translate('phone.ui.tracks_count',{count:music.tracks.length}), action: () => d.phone.push(tracks) },
+          { id: 'msettings', label: translate('phone.ui.music_settings'), action: () => d.phone.push(settings) },
         ] },
-        { type: 'text', text: 'X play/pause · LB/RB skip · keeps playing when the phone is away', muted: true },
+        { type: 'text', text: translate('phone.ui.music_hint'), muted: true },
       ];
       return { blocks, initial: 'play' };
     },
@@ -155,13 +156,13 @@ function emotesApp(d: PhoneDeps): View {
     page: () => {
       const ok = onFoot(d.sim());
       const tiles: Tile[] = EMOTES.map((e, i) => ({
-        id: 'emote-' + e.id, label: e.label.toUpperCase(), icon: EMOTE_ICONS[e.id] ?? 'emote', color: EMOTE_COLOURS[i % EMOTE_COLOURS.length], disabled: !ok,
+        id: 'emote-' + e.id, label: translate('phone.emote.'+e.id), icon: EMOTE_ICONS[e.id] ?? 'emote', color: EMOTE_COLOURS[i % EMOTE_COLOURS.length], disabled: !ok,
         // One-hand and head emotes play with the phone still in hand; two-hand and
         // full-body ones put it away first.
         action: () => e.phoneCompatible ? d.emote(e.id) : d.phone.close(() => d.emote(e.id)),
       }));
       return { blocks: [
-        { type: 'title', text: 'EMOTES', sub: ok ? 'One-hand emotes keep your phone out' : 'Step off your ride to emote' },
+        { type: 'title', text: translate('phone.emotes'), sub: translate(ok ? 'phone.ui.emotes_phone' : 'phone.ui.emotes_foot') },
         { type: 'grid', cols: 3, tiles },
       ] };
     },
@@ -176,9 +177,9 @@ function ridesApp(d: PhoneDeps): View {
     page: () => {
       const p = d.profile(), board = p.activeRideable === 'longboard';
       const rows: Row[] = board
-        ? LONGBOARD_CATEGORIES.map(c => { const sel = p.longboard[c as keyof typeof p.longboard]; let name = '—'; try { const lp = longboardPart(sel as never); name = lp.part.name + (lp.variant.name ? ' · ' + lp.variant.name : ''); } catch { /* unknown part */ } return { id: 'part-' + c, label: c.toUpperCase(), detail: name }; })
-        : CATEGORIES.map(c => { const sel = c === 'wheels' ? p.scooter.frontWheel : p.scooter[c]; const sp = selectedPart(sel); return { id: 'part-' + c, label: c.toUpperCase(), detail: sp.part.name + (sp.variant.name ? ' · ' + sp.variant.name : '') }; });
-      return { blocks: [{ type: 'title', text: 'CURRENT SETUP', sub: board ? 'Longboard' : 'Scooter' }, { type: 'list', rows }] };
+        ? LONGBOARD_CATEGORIES.map(c => { const sel = p.longboard[c as keyof typeof p.longboard]; let name = '—'; try { const lp = longboardPart(sel as never); name = lp.part.name + (lp.variant.name ? ' · ' + lp.variant.name : ''); } catch { /* unknown part */ } return { id: 'part-' + c, label: translate('phone.part.'+c), detail: name }; })
+        : CATEGORIES.map(c => { const sel = c === 'wheels' ? p.scooter.frontWheel : p.scooter[c]; const sp = selectedPart(sel); return { id: 'part-' + c, label: translate('phone.part.'+c), detail: sp.part.name + (sp.variant.name ? ' · ' + sp.variant.name : '') }; });
+      return { blocks: [{ type: 'title', text: translate('phone.ui.current_setup'), sub: translate(board ? 'phone.ui.longboard' : 'phone.ui.scooter') }, { type: 'list', rows }] };
     },
   };
   return {
@@ -186,18 +187,18 @@ function ridesApp(d: PhoneDeps): View {
     page: () => {
       const p = d.profile(), active = p.activeRideable, owns = d.ownsBoard();
       const deck = selectedPart(p.scooter.deck);
-      let boardName = 'Not owned yet';
-      try { if (owns) boardName = longboardPart(p.longboard.deck).variant.name + ' build'; } catch { /* keep default */ }
+      let boardName = translate('phone.ui.not_owned');
+      try { if (owns) boardName = translate('phone.ui.board_build',{name:longboardPart(p.longboard.deck).variant.name}); } catch { /* keep default */ }
       const blocks: Block[] = [
-        { type: 'title', text: 'RIDES', sub: active === 'longboard' ? 'Riding the longboard' : 'Riding the scooter' },
-        { type: 'card', title: active === 'longboard' ? 'LONGBOARD' : 'SCOOTER', icon: active === 'longboard' ? 'board' : 'ride', art: active === 'longboard' ? TEAL : ORANGE,
+        { type: 'title', text: translate('phone.rides'), sub: translate(active === 'longboard' ? 'phone.ui.riding_board' : 'phone.ui.riding_scooter') },
+        { type: 'card', title: translate(active === 'longboard' ? 'phone.ui.longboard' : 'phone.ui.scooter'), icon: active === 'longboard' ? 'board' : 'ride', art: active === 'longboard' ? TEAL : ORANGE,
           lines: active === 'longboard' ? [boardName, 'Sometimes Summer'] : [deck.part.name, deck.variant.name] },
         { type: 'list', rows: [
-          { id: 'ride-scooter', label: 'SCOOTER', detail: active === 'scooter' ? 'Riding now' : 'Switch on the ground', chosen: active === 'scooter', action: () => void switchTo('scooter') },
-          { id: 'ride-board', label: 'LONGBOARD', detail: !owns ? 'Buy a complete board at Techno Gravity' : active === 'longboard' ? 'Riding now' : 'Switch on the ground', chosen: active === 'longboard', disabled: !owns, action: () => void switchTo('longboard') },
-          { id: 'setup', label: 'CURRENT SETUP', detail: 'Every part on your ride', action: () => d.phone.push(setup) },
-          { id: 'custom-scooter', label: 'CUSTOMIZE SCOOTER', detail: 'Opens the Sesh builder', action: () => d.phone.close(() => d.openSesh('scooter')) },
-          { id: 'custom-board', label: 'CUSTOMIZE LONGBOARD', detail: 'Opens the Sesh builder', action: () => d.phone.close(() => d.openSesh('longboard')) },
+          { id: 'ride-scooter', label: translate('phone.ui.scooter'), detail: translate(active === 'scooter' ? 'phone.ui.riding_now' : 'phone.ui.switch_ground'), chosen: active === 'scooter', action: () => void switchTo('scooter') },
+          { id: 'ride-board', label: translate('phone.ui.longboard'), detail: translate(!owns ? 'phone.ui.buy_board' : active === 'longboard' ? 'phone.ui.riding_now' : 'phone.ui.switch_ground'), chosen: active === 'longboard', disabled: !owns, action: () => void switchTo('longboard') },
+          { id: 'setup', label: translate('phone.ui.current_setup'), detail: translate('phone.ui.every_part'), action: () => d.phone.push(setup) },
+          { id: 'custom-scooter', label: translate('phone.ui.custom_scooter'), detail: translate('phone.ui.opens_builder'), action: () => d.phone.close(() => d.openSesh('scooter')) },
+          { id: 'custom-board', label: translate('phone.ui.custom_board'), detail: translate('phone.ui.opens_builder'), action: () => d.phone.close(() => d.openSesh('longboard')) },
         ] },
       ];
       if (notice) blocks.push({ type: 'text', text: notice, muted: true });
@@ -206,10 +207,10 @@ function ridesApp(d: PhoneDeps): View {
   };
   async function switchTo(kind: 'scooter' | 'longboard') {
     if (d.profile().activeRideable === kind) return;
-    notice = 'Switching…';
+    notice = translate('phone.ui.switching');
     d.phone.refresh();
     const error = await d.switchRide(kind);
-    notice = error || (kind === 'longboard' ? 'Longboard ready. It swaps in on the ground.' : 'Scooter ready. It swaps in on the ground.');
+    notice = error || translate(kind === 'longboard' ? 'phone.ui.board_ready' : 'phone.ui.scooter_ready');
     d.phone.refresh();
   }
 }
@@ -234,11 +235,11 @@ function riderApp(d: PhoneDeps): View {
       const a = d.profile().avatar, preset = AVATAR_PRESETS.find(p => JSON.stringify(p.config) === JSON.stringify(a));
       const words = (v: string) => v.replace(/-/g, ' ');
       return { blocks: [
-        { type: 'title', text: 'RIDER', sub: preset ? preset.name : 'Your custom rider' },
-        { type: 'card', title: preset?.name.toUpperCase() ?? 'CUSTOM RIDER', art: TEAL, icon: 'rider', picture: riderPicture(d, a), lines: [words(a.hairStyle) + ' hair · ' + words(a.bodyType), words(a.top) + ' · ' + words(a.shoes)] },
+        { type: 'title', text: translate('phone.rider'), sub: preset ? preset.name : translate('phone.ui.your_custom_rider') },
+        { type: 'card', title: preset?.name.toUpperCase() ?? translate('phone.ui.custom_rider'), art: TEAL, icon: 'rider', picture: riderPicture(d, a), lines: [words(a.hairStyle) + ' · ' + words(a.bodyType), words(a.top) + ' · ' + words(a.shoes)] },
         { type: 'list', rows: [
-          { id: 'customize', label: 'CUSTOMIZE RIDER', detail: 'Face, hair, eyes, outfit, accessories', action: () => d.phone.close(() => d.openSesh('creator')) },
-          { id: 'presets', label: 'CHOOSE RIDER', detail: 'Sample riders and presets', action: () => d.phone.close(() => d.openSesh('rider-presets')) },
+          { id: 'customize', label: translate('phone.ui.customize_rider'), detail: translate('phone.ui.customize_rider_desc'), action: () => d.phone.close(() => d.openSesh('creator')) },
+          { id: 'presets', label: translate('phone.ui.choose_rider'), detail: translate('phone.ui.choose_rider_desc'), action: () => d.phone.close(() => d.openSesh('rider-presets')) },
         ] },
       ] };
     },
@@ -258,7 +259,7 @@ function mapApp(d: PhoneDeps): View {
     },
     page: () => ({ blocks: [
       { type: 'image', height: 470, draw: (g, x, y, w, h) => d.map.draw(g, x, y, w, h, d.mapId(), d.mapName()) },
-      { type: 'text', text: 'LS pan · LB/RB zoom · A centre on you · ★ starts · V vending · $ shop · W water · R rack', muted: true },
+      { type: 'text', text: translate('phone.ui.map_hint'), muted: true },
     ] }),
   };
 }
@@ -289,7 +290,7 @@ function drawCity(g: CanvasRenderingContext2D, x: number, y: number, w: number, 
     g.font = `13px ${DISPLAY}`; g.textAlign = dist.origin.x < -200 ? 'left' : 'right'; g.fillStyle = PAPER;
     const lx = dist.origin.x < -200 ? cx - dw / 2 : cx - dw / 2 - 8, ly = dist.origin.x < -200 ? cy + dh / 2 + 16 : cy + 4;
     g.fillText(dist.name.toUpperCase().replace('THE ', ''), lx, ly);
-    if (dist.id === here) { g.font = `800 10px ${BODY}`; g.fillStyle = LIME; g.fillText('YOU ARE HERE', lx, ly + 13); }
+    if (dist.id === here) { g.font = `800 10px ${BODY}`; g.fillStyle = LIME; g.fillText(translate('phone.ui.you_are_here'), lx, ly + 13); }
   }
   // North arrow.
   g.fillStyle = PAPER; g.font = `12px ${DISPLAY}`; g.textAlign = 'center'; g.fillText('N', x + w - 20, y + 20);
@@ -304,12 +305,12 @@ function spotsApp(d: PhoneDeps): View {
       const here = districtOf(d.mapId());
       return { blocks: [
         { type: 'image', height: 236, draw: (g, x, y, w, h) => drawCity(g, x, y, w, h, here?.id ?? null) },
-        { type: 'title', text: 'FAST TRAVEL', sub: 'Pick a spot · your ride, rider and music come too' },
+        { type: 'title', text: translate('phone.ui.fast_travel'), sub: translate('phone.ui.fast_travel_desc') },
         { type: 'list', rows: SPOTS.map(s => ({
-          id: 'spot-' + s.id, label: s.label, detail: s.detail + (s.map === d.mapId() ? ' · this district' : ''), value: 'GO',
-          action: () => d.phone.sheet(s.label, [{ label: 'FAST TRAVEL', action: () => d.phone.close(() => void d.fastTravel(s)) }, { label: 'CANCEL', action: () => {} }], s.detail),
+          id: 'spot-' + s.id, label: s.label, detail: s.detail + (s.map === d.mapId() ? ' · '+translate('phone.ui.this_district') : ''), value: translate('phone.ui.go'),
+          action: () => d.phone.sheet(s.label, [{ label: translate('phone.ui.fast_travel'), action: () => d.phone.close(() => void d.fastTravel(s)) }, { label: translate('common.cancel'), action: () => {} }], s.detail),
         })) },
-        { type: 'text', text: 'One Boulder City: riding the streets between districts is on the way. For now each spot loads its district.', muted: true },
+        { type: 'text', text: translate('phone.ui.spots_note'), muted: true },
       ] };
     },
   };
@@ -317,21 +318,21 @@ function spotsApp(d: PhoneDeps): View {
 
 // ---- ITEMS --------------------------------------------------------------------
 /** What USE NOW does with each novelty (#55). */
-const NOVELTY_USE: Record<NoveltyKind, string> = { 'Rubber Duck': 'Squeeze it: squeak', 'Kazoo': 'Play a little tune', 'Foam Finger': 'Wave it: you are number one', 'Party Popper': 'Pop it: confetti (once)', 'Bubble Wand': 'Blow bubbles' };
+const NOVELTY_USE: Record<NoveltyKind, string> = { 'Rubber Duck': 'duck', 'Kazoo': 'kazoo', 'Foam Finger': 'foam', 'Party Popper': 'popper', 'Bubble Wand': 'bubbles' };
 function itemsApp(d: PhoneDeps): View {
   const item = (id: string): View => ({
     title: 'ITEMS',
     page: () => {
       const w = d.items(), group = w.itemGroups().find(g => g.items.some(i => i.id === id));
-      if (!group) return { blocks: [{ type: 'title', text: 'GONE', sub: 'Used up or discarded' }] };
+      if (!group) return { blocks: [{ type: 'title', text: translate('phone.ui.gone'), sub: translate('phone.ui.used_or_discarded') }] };
       const held = group.items.find(i => i.id === d.profile().pockets.held) ?? group.items[0], walking = onFoot(d.sim());
       return { blocks: [
-        { type: 'title', text: group.label.toUpperCase(), sub: '×' + group.items.length + (group.held ? ' · in your hand' : '') },
+        { type: 'title', text: group.label.toUpperCase(), sub: translate('phone.ui.item_count',{count:group.items.length}) + (group.held ? ' · '+translate('phone.ui.in_hand') : '') },
         { type: 'list', rows: [
-          { id: 'hold', label: group.held ? 'IN HAND' : 'HOLD', detail: 'Carry it; ' + useButton(d) + ' uses it', chosen: group.held, action: () => w.hold(held.id) },
-          { id: 'use', label: held.state === 'empty' ? 'EMPTY' : 'USE NOW', detail: walking ? (isNovelty(group.kind) ? NOVELTY_USE[group.kind] : 'Drink or eat it') : 'Step off your ride first', disabled: held.state === 'empty' || !walking, action: () => d.phone.close(() => w.use(d.sim(), held.id)) },
-          { id: 'stow', label: 'STOW', detail: 'Back in your pocket', disabled: !group.held, action: () => w.hold(null) },
-          { id: 'discard', label: 'DISCARD…', action: () => d.phone.sheet('DISCARD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'DISCARD ' + group.label.toUpperCase(), action: () => w.discard(held.id) }]) },
+          { id: 'hold', label: translate(group.held ? 'phone.ui.in_hand' : 'phone.ui.hold'), detail: translate('phone.ui.carry_use',{button:useButton(d)}), chosen: group.held, action: () => w.hold(held.id) },
+          { id: 'use', label: translate(held.state === 'empty' ? 'phone.ui.empty' : 'phone.ui.use_now'), detail: walking ? (isNovelty(group.kind) ? translate('phone.ui.novelty_'+NOVELTY_USE[group.kind]) : translate('phone.ui.drink_eat')) : translate('phone.ui.step_off'), disabled: held.state === 'empty' || !walking, action: () => d.phone.close(() => w.use(d.sim(), held.id)) },
+          { id: 'stow', label: translate('phone.ui.stow'), detail: translate('phone.ui.back_pocket'), disabled: !group.held, action: () => w.hold(null) },
+          { id: 'discard', label: translate('phone.ui.discard'), action: () => d.phone.sheet(translate('phone.ui.discard_question'), [{ label: translate('phone.ui.keep_it'), action: () => {} }, { label: translate('phone.ui.discard_item',{item:group.label.toUpperCase()}), action: () => w.discard(held.id) }]) },
         ] },
       ] };
     },
@@ -341,10 +342,10 @@ function itemsApp(d: PhoneDeps): View {
     page: () => {
       const p = d.profile(), groups = d.items().itemGroups(), heldItem = p.pockets.entries.find(i => i.id === p.pockets.held);
       return { blocks: [
-        { type: 'title', text: p.pockets.backpack ? 'BACKPACK' : 'POCKETS', sub: heldItem ? 'Holding ' + heldItem.kind : 'Nothing in hand' },
+        { type: 'title', text: translate(p.pockets.backpack ? 'phone.ui.backpack' : 'phone.ui.pockets'), sub: heldItem ? translate('phone.ui.holding_item',{item:heldItem.kind}) : translate('phone.ui.nothing_hand') },
         groups.length
-          ? { type: 'list', rows: groups.map(g => ({ id: 'group-' + g.items[0].id, label: g.label.toUpperCase(), detail: '×' + g.items.length + (g.held ? ' · in hand' : ''), chosen: g.held, action: () => d.phone.push(item(g.items[0].id)) })) }
-          : { type: 'text', text: 'Empty. The vending machines around the park are free: walk up and press B.', muted: true },
+          ? { type: 'list', rows: groups.map(g => ({ id: 'group-' + g.items[0].id, label: g.label.toUpperCase(), detail: translate('phone.ui.item_count',{count:g.items.length}) + (g.held ? ' · '+translate('phone.ui.in_hand') : ''), chosen: g.held, action: () => d.phone.push(item(g.items[0].id)) })) }
+          : { type: 'text', text: translate('phone.ui.pockets_empty'), muted: true },
       ] };
     },
   };
@@ -361,8 +362,8 @@ function buildApp(d: PhoneDeps): View {
     page: () => {
       const b = d.builder();
       return { blocks: [
-        { type: 'title', text: group, sub: b.used + ' / ' + BUILD_LIMITS.budget + ' budget used' },
-        { type: 'list', rows: BUILD_CATALOG.filter(a => a.group === group).map(a => ({ id: 'add-' + a.id, label: a.label.toUpperCase(), detail: `${m(a.width)} × ${m(a.length)} m · ${m(a.height)} m tall`, value: a.cost + ' PTS', action: () => d.phone.close(() => d.builder().add(a, d.sim())) })) },
+        { type: 'title', text: group, sub: translate('phone.ui.budget_used',{used:b.used,budget:BUILD_LIMITS.budget}) },
+        { type: 'list', rows: BUILD_CATALOG.filter(a => a.group === group).map(a => ({ id: 'add-' + a.id, label: a.label.toUpperCase(), detail: translate('phone.ui.piece_size',{width:m(a.width),length:m(a.length),height:m(a.height)}), value: translate('phone.ui.pts',{count:a.cost}), action: () => d.phone.close(() => d.builder().add(a, d.sim())) })) },
       ] };
     },
   });
@@ -370,14 +371,14 @@ function buildApp(d: PhoneDeps): View {
     title: 'PIECE',
     page: () => {
       const b = d.builder(), o = b.layout.objects.find(v => v.id === id);
-      if (!o) return { blocks: [{ type: 'title', text: 'GONE', sub: 'This piece is no longer placed' }] };
+      if (!o) return { blocks: [{ type: 'title', text: translate('phone.ui.gone'), sub: translate('phone.ui.piece_gone') }] };
       const name = (matchAsset(o)?.label ?? o.type).toUpperCase(), editable = b.canEdit(id);
       return { blocks: [
-        { type: 'title', text: name, sub: `${m(o.x)}, ${m(o.z)} · ${Math.round(((o.rotation * 180) / Math.PI + 360) % 360)}°${editable ? '' : ' · placed by another rider'}` },
+        { type: 'title', text: name, sub: `${m(o.x)}, ${m(o.z)} · ${Math.round(((o.rotation * 180) / Math.PI + 360) % 360)}°${editable ? '' : ' · '+translate('phone.ui.placed_other')}` },
         ...(editable ? [{ type: 'list', rows: [
-          { id: 'move', label: 'MOVE / ROTATE', detail: 'Pick it up and place it again', action: () => d.phone.close(() => d.builder().move(id)) },
-          { id: 'dup', label: 'DUPLICATE', detail: 'A copy beside it, ready to place', action: () => d.phone.close(() => d.builder().duplicate(id)) },
-          { id: 'del', label: 'DELETE', detail: b.isShared ? 'Remove your room piece' : 'UNDO brings it back', action: () => { d.builder().deletePiece(id); d.phone.back(); } },
+          { id: 'move', label: translate('phone.ui.move_rotate'), detail: translate('phone.ui.move_detail'), action: () => d.phone.close(() => d.builder().move(id)) },
+          { id: 'dup', label: translate('phone.ui.duplicate'), detail: translate('phone.ui.duplicate_detail'), action: () => d.phone.close(() => d.builder().duplicate(id)) },
+          { id: 'del', label: translate('phone.ui.delete'), detail: translate(b.isShared ? 'phone.ui.delete_room' : 'phone.ui.undo_restore'), action: () => { d.builder().deletePiece(id); d.phone.back(); } },
         ] } as Block] : []),
       ] };
     },
@@ -387,8 +388,8 @@ function buildApp(d: PhoneDeps): View {
     page: () => {
       const list = d.builder().placed(d.sim());
       return { blocks: [
-        { type: 'title', text: 'PLACED', sub: list.length ? 'Nearest first' : 'Nothing placed yet' },
-        { type: 'list', rows: list.map(({ o, asset, distance }) => ({ id: 'piece-' + o.id, label: (asset?.label ?? o.type).toUpperCase(), detail: m(distance) + ' m away' + (d.builder().canEdit(o.id) ? '' : ' · other rider'), action: () => d.phone.push(piece(o.id)) })) },
+        { type: 'title', text: translate('phone.ui.placed'), sub: translate(list.length ? 'phone.ui.nearest_first' : 'phone.ui.nothing_placed') },
+        { type: 'list', rows: list.map(({ o, asset, distance }) => ({ id: 'piece-' + o.id, label: (asset?.label ?? o.type).toUpperCase(), detail: translate('phone.ui.distance_away',{distance:m(distance)}) + (d.builder().canEdit(o.id) ? '' : ' · '+translate('phone.ui.other_rider')), action: () => d.phone.push(piece(o.id)) })) },
       ] };
     },
   };
@@ -396,24 +397,24 @@ function buildApp(d: PhoneDeps): View {
     title: 'BUILD',
     page: () => {
       if (d.mapId() !== 'warehouse') return { blocks: [
-        { type: 'title', text: 'BUILD', sub: 'Warehouse only' },
-        { type: 'text', text: 'Building is open in the Warehouse: place ramps, rails and boxes, then ride them. Pick the Warehouse from Maps.' },
-        { type: 'list', rows: [{ id: 'maps', label: 'OPEN MAPS', action: () => d.phone.close(() => d.openSesh('maps')) }] },
+        { type: 'title', text: translate('phone.build'), sub: translate('phone.ui.warehouse_only') },
+        { type: 'text', text: translate('phone.ui.build_warehouse') },
+        { type: 'list', rows: [{ id: 'maps', label: translate('phone.ui.open_maps'), action: () => d.phone.close(() => d.openSesh('maps')) }] },
       ] };
       const b = d.builder(), count = b.layout.objects.length, owned = b.layout.objects.filter(o => b.canEdit(o.id)).length;
       const rows: Row[] = [
-        ...BUILD_GROUPS.map(g => ({ id: 'cat-' + g, label: 'ADD ' + g, detail: BUILD_CATALOG.filter(a => a.group === g).map(a => a.label).slice(0, 3).join(' · ') + '…', action: () => d.phone.push(category(g)) })),
-        { id: 'placed', label: 'EDIT PLACED', detail: 'Move, rotate, duplicate or delete', value: String(count), disabled: !count, action: () => d.phone.push(placed) },
-        { id: 'undo', label: 'UNDO', disabled: !b.canUndo, action: () => b.undo() },
-        { id: 'redo', label: 'REDO', disabled: !b.canRedo, action: () => b.redo() },
-        { id: 'snap', label: 'SNAP', detail: 'Y also switches while placing', value: SNAP_MODES[b.snap].name, action: () => { b.snap = (b.snap + 1) % SNAP_MODES.length; } },
-        ...(b.isShared ? [{ id: 'other-builds', label: 'OTHER PLAYER BUILDS', detail: b.otherBuilds === 'ghost' ? 'Visible, no collision' : 'Visible, solid', value: b.otherBuilds.toUpperCase(), action: () => b.setOtherBuilds(b.otherBuilds === 'solid' ? 'ghost' : 'solid') }] : []),
-        ...(!b.isShared ? [{ id: 'save', label: 'SAVE BUILD', detail: 'Saved to your profile (also after every edit)', action: () => b.save() }] : []),
-        { id: 'clear', label: b.isShared ? 'CLEAR MY ROOM PIECES…' : 'CLEAR BUILD…', detail: b.isShared ? 'Remove your pieces from this room' : 'Reset the Warehouse to empty', disabled: !(b.isShared ? owned : count), action: () => d.phone.sheet(b.isShared ? 'CLEAR YOUR ROOM PIECES?' : 'CLEAR THE WHOLE BUILD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'CLEAR ' + (b.isShared ? owned : count) + ' PIECES', action: () => b.reset() }], b.isShared ? 'Other riders keep their pieces' : 'UNDO can bring it back until you leave') },
+        ...BUILD_GROUPS.map(g => ({ id: 'cat-' + g, label: translate('phone.ui.add_group',{group:g}), detail: BUILD_CATALOG.filter(a => a.group === g).map(a => a.label).slice(0, 3).join(' · ') + '…', action: () => d.phone.push(category(g)) })),
+        { id: 'placed', label: translate('phone.ui.edit_placed'), detail: translate('phone.ui.edit_placed_desc'), value: String(count), disabled: !count, action: () => d.phone.push(placed) },
+        { id: 'undo', label: translate('phone.ui.undo'), disabled: !b.canUndo, action: () => b.undo() },
+        { id: 'redo', label: translate('phone.ui.redo'), disabled: !b.canRedo, action: () => b.redo() },
+        { id: 'snap', label: translate('phone.ui.snap'), detail: translate('phone.ui.snap_desc'), value: translate('phone.snap.'+b.snap), action: () => { b.snap = (b.snap + 1) % SNAP_MODES.length; } },
+        ...(b.isShared ? [{ id: 'other-builds', label: translate('phone.ui.other_builds'), detail: translate(b.otherBuilds === 'ghost' ? 'phone.ui.visible_ghost' : 'phone.ui.visible_solid'), value: translate(b.otherBuilds === 'ghost' ? 'phone.ui.ghost' : 'phone.ui.solid'), action: () => b.setOtherBuilds(b.otherBuilds === 'solid' ? 'ghost' : 'solid') }] : []),
+        ...(!b.isShared ? [{ id: 'save', label: translate('phone.ui.save_build'), detail: translate('phone.ui.save_build_desc'), action: () => b.save() }] : []),
+        { id: 'clear', label: translate(b.isShared ? 'phone.ui.clear_room' : 'phone.ui.clear_build'), detail: translate(b.isShared ? 'phone.ui.clear_room_desc' : 'phone.ui.clear_build_desc'), disabled: !(b.isShared ? owned : count), action: () => d.phone.sheet(translate(b.isShared ? 'phone.ui.clear_room_question' : 'phone.ui.clear_build_question'), [{ label: translate('phone.ui.keep_it'), action: () => {} }, { label: translate('phone.ui.clear_pieces',{count:b.isShared ? owned : count}), action: () => b.reset() }], translate(b.isShared ? 'phone.ui.other_keep' : 'phone.ui.undo_until_leave')) },
       ];
       return { blocks: [
-        { type: 'title', text: 'BUILD', sub: `${b.isShared ? 'ROOM · ' : ''}${count} / ${BUILD_LIMITS.pieces} pieces · ${b.used} / ${BUILD_LIMITS.budget} budget` },
-        ...(b.isShared ? [{ type: 'text', text: 'Room pieces are shared until the lobby ends. Your personal saved build stays in Solo.', muted: true } as Block] : []),
+        { type: 'title', text: translate('phone.build'), sub: translate('phone.ui.build_summary',{room:b.isShared ? translate('phone.ui.room_prefix') : '',count,limit:BUILD_LIMITS.pieces,used:b.used,budget:BUILD_LIMITS.budget}) },
+        ...(b.isShared ? [{ type: 'text', text: translate('phone.ui.room_builds_note'), muted: true } as Block] : []),
         ...(b.notice || b.saveError ? [{ type: 'text', text: b.saveError || b.notice } as Block] : []),
         { type: 'list', rows },
       ] };
@@ -423,7 +424,7 @@ function buildApp(d: PhoneDeps): View {
 
 // ---- MISSIONS -------------------------------------------------------------------
 function missionsApp(d: PhoneDeps): View {
-  const fmt = (n: number) => n.toLocaleString('en-US');
+  const fmt = (n: number) => n.toLocaleString(locale());
   return {
     title: 'MISSIONS', live: true,
     page: () => {
@@ -472,7 +473,7 @@ function missionsApp(d: PhoneDeps): View {
  * combo counts for each of its parts; the combos themselves have their own list.
  */
 function tricksApp(d: PhoneDeps): View {
-  const fmt = (n: number) => n.toLocaleString('en-US');
+  const fmt = (n: number) => n.toLocaleString(locale());
   let combosShown = 10;
   return {
     title: 'TRICKS', live: true,
@@ -481,27 +482,27 @@ function tricksApp(d: PhoneDeps): View {
       const blocks: Block[] = [
         { type: 'image', height: 104, draw: (g, x, y, w) => {
           g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, w, 98, 14); g.fill();
-          const cells: [string, number][] = [['TRICKS LANDED', t.tricks], ['COMBOS', t.combos], ['DIFFERENT', t.different]];
+          const cells: [string, number][] = [[translate('phone.ui.tricks_landed'), t.tricks], [translate('phone.ui.combos'), t.combos], [translate('phone.ui.different'), t.different]];
           cells.forEach(([label, value], i) => {
             const cx = x + 14 + (i * (w - 28)) / 3;
             g.textAlign = 'left'; g.font = `800 10px ${BODY}`; g.fillStyle = i === 1 ? LIME : '#9aa3a9'; g.fillText(label, cx, y + 26);
             g.font = `30px ${DISPLAY}`; g.fillStyle = PAPER; g.fillText(fmt(value), cx, y + 60);
           });
           g.font = `700 11px ${BODY}`; g.fillStyle = '#cfd4d8';
-          g.fillText(`Best line ${t.bestLine} tricks · ${fmt(t.bestLinePoints)} pts · ${fmt(t.perfect)} perfect`, x + 14, y + 86);
+          g.fillText(translate('phone.ui.best_line',{tricks:t.bestLine,points:fmt(t.bestLinePoints),perfect:fmt(t.perfect)}), x + 14, y + 86);
         } },
       ];
-      if (!book.groups.length) blocks.push({ type: 'text', text: 'Land some tricks and they are counted here: every Tailwhip, Barspin and 360, and every combo.', muted: true });
+      if (!book.groups.length) blocks.push({ type: 'text', text: translate('phone.ui.tricks_empty'), muted: true });
       for (const group of book.groups) {
         const total = group.rows.reduce((n, r) => n + r.count, 0);
-        blocks.push({ type: 'title', text: group.title, sub: `${fmt(total)} landed` });
+        blocks.push({ type: 'title', text: group.title, sub: translate('phone.ui.landed_count',{count:fmt(total)}) });
         blocks.push({ type: 'list', rows: group.rows.map(r => ({ id: 'tally-' + r.label, label: r.label.toUpperCase(), value: fmt(r.count) })) });
       }
       if (book.combos.length) {
-        blocks.push({ type: 'title', text: 'COMBO TRICKS', sub: `${fmt(t.comboTricks)} landed · more than one trick at once` });
+        blocks.push({ type: 'title', text: translate('phone.ui.combo_tricks'), sub: translate('phone.ui.combo_landed',{count:fmt(t.comboTricks)}) });
         blocks.push({ type: 'list', rows: [
           ...book.combos.slice(0, combosShown).map(c => ({ id: 'combo-' + c.name, label: c.name.toUpperCase(), value: fmt(c.count) })),
-          ...(book.combos.length > combosShown ? [{ id: 'more', label: 'SHOW MORE', detail: `${book.combos.length - combosShown} more combos`, action: () => { combosShown += 20; } }] : []),
+          ...(book.combos.length > combosShown ? [{ id: 'more', label: translate('phone.ui.show_more'), detail: translate('phone.ui.more_combos',{count:book.combos.length-combosShown}), action: () => { combosShown += 20; } }] : []),
         ] });
       }
       return { blocks };
@@ -610,9 +611,9 @@ function messagesApp(d: PhoneDeps): View {
       d.messages.read(id);
       const list = d.messages.threads.get(id) ?? [];
       return { blocks: [
-        { type: 'title', text: name.toUpperCase(), sub: id === 'room' ? (d.network().status === 'Connected' ? 'Everyone in your room' : 'Local: riders near you') : 'Direct' },
-        { type: 'bubbles', items: list.slice(-14), empty: 'Nothing yet. Say hi.' },
-        { type: 'list', rows: [{ id: 'compose', label: 'NEW MESSAGE', detail: 'Type, then Enter to send', action: () => d.compose() }] },
+        { type: 'title', text: name.toUpperCase(), sub: translate(id === 'room' ? d.network().status === 'Connected' ? 'phone.ui.room_all' : 'phone.ui.room_local' : 'phone.ui.direct') },
+        { type: 'bubbles', items: list.slice(-14), empty: translate('phone.ui.message_empty') },
+        { type: 'list', rows: [{ id: 'compose', label: translate('phone.ui.new_message'), detail: translate('phone.ui.message_type'), action: () => d.compose() }] },
       ], initial: 'compose' };
     },
   });
@@ -621,13 +622,13 @@ function messagesApp(d: PhoneDeps): View {
     page: () => {
       const net = d.network(), online = net.status === 'Connected';
       const room = d.messages.threads.get('room') ?? [], last = room.at(-1), unread = d.messages.unread.get('room') ?? 0;
-      const rows: Row[] = [{ id: 'room', label: online ? 'ROOM CHAT' : 'LOCAL CHAT', detail: last ? (last.mine ? 'You: ' : last.from + ': ') + last.text : 'No messages yet', value: unread ? unread + ' NEW' : undefined, action: () => d.phone.push(thread('room', online ? 'Room chat' : 'Local chat')) }];
-      if (online) for (const p of net.roster) if (p.id !== net.id) rows.push({ id: 'contact-' + p.id, label: p.name.toUpperCase(), detail: fictionalNumber(p.id) + (p.connected === false ? ' · reconnecting' : ''), action: () => d.phone.push(thread('room', 'Room chat')) });
+      const rows: Row[] = [{ id: 'room', label: translate(online ? 'phone.ui.room_chat' : 'phone.ui.local_chat'), detail: last ? (last.mine ? translate('phone.ui.you_prefix') : last.from + ': ') + last.text : translate('phone.ui.no_messages'), value: unread ? translate('phone.ui.new_count',{count:unread}) : undefined, action: () => d.phone.push(thread('room', translate(online ? 'phone.ui.room_chat' : 'phone.ui.local_chat'))) }];
+      if (online) for (const p of net.roster) if (p.id !== net.id) rows.push({ id: 'contact-' + p.id, label: p.name.toUpperCase(), detail: fictionalNumber(p.id) + (p.connected === false ? ' · '+translate('phone.ui.reconnecting') : ''), action: () => d.phone.push(thread('room', translate('phone.ui.room_chat'))) });
       const blocks: Block[] = [
-        { type: 'title', text: 'MESSAGES', sub: 'Your number ' + d.messages.number },
+        { type: 'title', text: translate('phone.messages'), sub: translate('phone.ui.your_number',{number:d.messages.number}) },
         { type: 'list', rows },
       ];
-      if (!online) blocks.push({ type: 'text', text: 'Join a Private Free-ride room to text your crew. Everyone gets a made-up 702-555 number; real numbers are never used.', muted: true });
+      if (!online) blocks.push({ type: 'text', text: translate('phone.ui.join_room'), muted: true });
       return { blocks };
     },
   };
@@ -635,16 +636,16 @@ function messagesApp(d: PhoneDeps): View {
 
 /** The home screen: a clock widget over the dusk wallpaper, then the app grid. */
 export function homePage(d: PhoneDeps): Page {
-  const tiles: Tile[] = d.phone.apps.map(a => ({ id: 'app-' + a.id, label: a.label, icon: a.icon, color: a.color, badge: a.badge?.(), action: () => d.phone.push(a.open()) }));
+  const tiles: Tile[] = d.phone.apps.map(a => ({ id: 'app-' + a.id, label: translate('phone.'+a.id) || a.label, icon: a.icon, color: a.color, badge: a.badge?.(), action: () => d.phone.push(a.open()) }));
   const now = new Date();
   return {
     wallpaper: 'dusk',
     blocks: [
       { type: 'image', height: 132, frame: false, draw: (g, x, y, w) => {
         g.textAlign = 'left'; g.font = `54px ${DISPLAY}`; g.lineWidth = 7; g.strokeStyle = INK;
-        const clock = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/i, '');
+        const clock = now.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/i, '');
         g.strokeText(clock, x + 2, y + 62); g.fillStyle = PAPER; g.fillText(clock, x + 2, y + 62);
-        g.font = `800 14px ${BODY}`; g.fillStyle = LIME; g.fillText(now.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase(), x + 4, y + 86);
+        g.font = `800 14px ${BODY}`; g.fillStyle = LIME; g.fillText(now.toLocaleDateString(locale(), { weekday: 'long', month: 'short', day: 'numeric' }).toUpperCase(), x + 4, y + 86);
         const t = music.current;
         if (t) {
           g.fillStyle = '#0b0c0dcc'; g.beginPath(); g.roundRect(x, y + 98, w, 30, 15); g.fill();
@@ -665,11 +666,11 @@ function replaysApp(d: PhoneDeps): View {
   return {
     title: 'REPLAYS',
     page: () => ({ blocks: [
-      { type: 'title', text: 'REPLAYS', sub: `Always recording the last ${d.replays.seconds()} s` },
+      { type: 'title', text: translate('phone.replays'), sub: translate('phone.ui.recording',{seconds:d.replays.seconds()}) },
       { type: 'list', rows: [
-        { id: 'capture', label: 'CAPTURE REPLAY', detail: `The last ${d.replays.seconds()} s, into the Replay Editor`, action: () => d.phone.close(() => d.replays.capture()) },
-        { id: 'saved', label: 'SAVED REPLAYS', detail: 'Watch, edit, rename or delete', action: () => d.phone.close(() => d.replays.library()) },
-        { id: 'history', label: 'REPLAY HISTORY', detail: 'How much is kept: Settings / Gameplay', value: `${d.replays.seconds()} S`, action: () => d.phone.close(() => d.openSesh('settings-gameplay')) },
+        { id: 'capture', label: translate('phone.ui.capture_replay'), detail: translate('phone.ui.capture_detail',{seconds:d.replays.seconds()}), action: () => d.phone.close(() => d.replays.capture()) },
+        { id: 'saved', label: translate('phone.ui.saved_replays'), detail: translate('phone.ui.saved_detail'), action: () => d.phone.close(() => d.replays.library()) },
+        { id: 'history', label: translate('phone.ui.replay_history'), detail: translate('phone.ui.history_detail'), value: `${d.replays.seconds()} S`, action: () => d.phone.close(() => d.openSesh('settings-gameplay')) },
       ] },
     ] }),
   };

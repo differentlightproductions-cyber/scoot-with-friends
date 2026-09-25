@@ -5,7 +5,6 @@ const browser = await chromium.launch({
     process.env.BROWSER_EXECUTABLE ||
     "C:/Program Files/Google/Chrome/Application/chrome.exe",
   headless: true,
-  args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
 });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } }),
   errors = [],
@@ -27,6 +26,9 @@ try {
   const menus = await page.evaluate(async () => {
     const g = window.__LAZER;
     g.testing(true);
+    // New profiles must claim their real starter before owned-part browsing.
+    g.menu.startStarter('scooter');
+    await g.menu.claimStarter();
     g.exitToMenu();
     const result = [],
       check = (name, condition) => {

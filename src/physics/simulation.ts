@@ -991,6 +991,12 @@ export class Simulation {
     const rampPop = !fromGrind && this.normal.y < 0.85 && this.velocity.y > 1;
     const rampRise = Math.max(0, this.velocity.y);
     const popLip = fromGrind ? null : this.launchLip(), boxPop = popLip?.module.kind === "box" && popLip.distance > -0.25 && popLip.distance < 1.25;
+    // A charged release before coping is still on the wall, so keep its ramp
+    // tangent instead of applying the almost-vertical coping exit redirect.
+    const earlyQuarter = charge > 0.15 && popLip?.module.kind === "quarter" &&
+      "h" in popLip.module &&
+      terrainHeight(this.position.x, this.position.z) >= popLip.module.h * 0.6 &&
+      popLip.distance > 0.1;
     const popHeight = boxPop ? TUNE.boxTrickPopHeight + charge * TUNE.boxTrickPopChargeHeight : TUNE.rampTrickPopHeight + charge * TUNE.rampTrickPopChargeHeight;
     const hop = origin==='fastplant' ? (rampPop?2.4:4.8) : rampPop
       ? Math.sqrt(rampRise * rampRise + 2 * TUNE.gravity * popHeight) - rampRise
@@ -1033,7 +1039,7 @@ export class Simulation {
         this.redirectSpine(lip.direction, lean, lip.forward);
       else if (lip.module.kind === "box")
         this.redirectBox(lip.forward, charge, timing, true);
-      else if (lip.module.kind === "quarter") {
+      else if (lip.module.kind === "quarter" && !earlyQuarter) {
         const speed = Math.hypot(
           this.velocity.dot(lip.forward),
           this.velocity.y,
@@ -1053,6 +1059,10 @@ export class Simulation {
         // Timing at coping is useful but remains a small rider extension,
         // never an arcade launch multiplier.
         this.velocity.y += timing * (0.12 + charge * 0.22);
+      }
+      else if (earlyQuarter) {
+        const forwardSpeed = this.velocity.dot(lip.forward);
+        if (forwardSpeed < 0) this.velocity.addScaledVector(lip.forward, -forwardSpeed);
       }
     }
     if (!replacing)
