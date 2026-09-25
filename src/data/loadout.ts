@@ -42,6 +42,8 @@ export interface LocalProfile {
     replayHistory: 15|30|45|60;
     /** PLAYFUL CONTACT (#47): whether other people's pranks move you. */
     playfulContact: 'full'|'friends'|'off';
+    /** Windowed, Borderless Windowed or Fullscreen (ui/display.ts). */
+    displayMode: 'windowed'|'borderless'|'fullscreen';
     fidelity: 'low'|'medium'|'high';
     mountFlourish: boolean;
     /** Personal camera; never networked. */
@@ -112,6 +114,7 @@ export function loadProfile(): LocalProfile {
       liveSky: false,
       replayHistory: 30,
       playfulContact:'full',
+      displayMode:'windowed',
       mountFlourish: true,
       cameraView:'third',
       firstPersonFov:FP_FOV_DEFAULT,
@@ -147,6 +150,7 @@ export function loadProfile(): LocalProfile {
     if(typeof saved.settings?.liveSky==='boolean')profile.settings.liveSky=saved.settings.liveSky;
     if([15,30,45,60].includes(saved.settings?.replayHistory))profile.settings.replayHistory=saved.settings.replayHistory;
     if(['full','friends','off'].includes(saved.settings?.playfulContact))profile.settings.playfulContact=saved.settings.playfulContact;
+    if(['windowed','borderless','fullscreen'].includes(saved.settings?.displayMode))profile.settings.displayMode=saved.settings.displayMode;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
     // Phones used to start on Low automatically; Medium suits every phone, so an old Low moves up once.
     if((saved.settings?.fidelityVersion??0)<2&&profile.settings.fidelity==='low'&&typeof matchMedia==='function'&&matchMedia('(pointer: coarse)').matches)profile.settings.fidelity='medium';

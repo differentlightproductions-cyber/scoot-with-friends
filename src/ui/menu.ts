@@ -17,6 +17,7 @@ function productCard(name:string,variant:string,rarity:Rarity,color:number,price
   return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>CREDIT</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
 }
 import {loadProfile} from '../data/loadout';
+import {display,DISPLAY_LABEL,DISPLAY_MODES,fullscreenSupported} from './display';
 import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN,TP_FOV_DEFAULT,TP_FOV_MAX,TP_FOV_MIN,TP_FOV_STEP} from '../camera/fov';
 import { version } from '../../package.json';
 import * as THREE from "three";
@@ -182,6 +183,11 @@ export class GameMenu {
     public root: HTMLElement,
     public profile: LocalProfile,
   ) {
+    // DISPLAY (#60): the saved mode starts on the first click or key; leaving
+    // fullscreen through the browser sets it back to Windowed.
+    display.onLeft=()=>{this.profile.settings.displayMode='windowed';this.changed();if(!this.root.hidden)this.render();};
+    display.onWaiting=(waiting)=>{if(!waiting&&/press any key to switch/.test(this.notice)){this.notice='';if(!this.root.hidden)this.render();}};
+    void display.apply(profile.settings.displayMode);
     this.previewScene.background = new THREE.Color(0xc5cbc1);
     this.previewScene.add(this.focusBox);
     this.previewScene.add(this.isolatedProduct);
@@ -538,6 +544,17 @@ export class GameMenu {
       case 'settings-graphics':
         title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';
         add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},'Visual detail, resolution and shadows; riding stays identical.');
+        add('DISPLAY '+DISPLAY_LABEL[this.profile.settings.displayMode],()=>{
+          const next=DISPLAY_MODES[(DISPLAY_MODES.indexOf(this.profile.settings.displayMode)+1)%DISPLAY_MODES.length];
+          this.profile.settings.displayMode=next;this.changed();
+          void display.apply(next).then(ok=>{
+            if(next!=='windowed'&&!fullscreenSupported())this.notice='This browser cannot hide its frame. On iPhone, Share > Add to Home Screen opens the game full screen.';
+            else if(!ok)this.notice='Click, tap or press any key to switch to '+DISPLAY_LABEL[next]+'.';
+            else this.notice='';
+            this.render();
+          });
+          this.render();
+        },{windowed:'In the browser window. Next: Borderless Windowed fills the screen; Esc leaves it.',borderless:'Fills the screen with no browser frame; Esc leaves it. Next: Fullscreen.',fullscreen:'Fills the screen and keeps Esc for the pause menu (hold Esc to leave, where the browser allows it). Next: Windowed.'}[this.profile.settings.displayMode]);
         break;
       case 'settings-time':
         title='TIME & WEATHER';subtitle='SETTINGS / SKY & CONDITIONS';
