@@ -932,16 +932,22 @@ export class Simulation {
   // why bounding the ratio shortens the throw away from the coping WITHOUT
   // touching launch height, gravity or horizontal speed generally. Both natural
   // rollout paths share this one calculation so they cannot drift apart.
+  /**
+   * How squarely the rider meets a quarter's lip: 1 riding straight at it, 0
+   * past about 4.6 degrees off. A diagonal line is an air back into the wall,
+   * never an over-deck exit, whether it rolls out or pops.
+   */
+  private deckAlignment(forward: THREE.Vector3) {
+    const flatSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    const sideRatio = flatSpeed > 0 ? Math.abs(this.velocity.x * forward.z - this.velocity.z * forward.x) / flatSpeed : 0;
+    return 1 - clamp((sideRatio - 0.03) / 0.05, 0, 1);
+  }
   private quarterRollout(
     forward: THREE.Vector3,
     lean: number,
   ) {
     const planeSpeed = Math.hypot(this.velocity.dot(forward), this.velocity.y);
-    const flatSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    const sideRatio = flatSpeed > 0 ? Math.abs(this.velocity.x * forward.z - this.velocity.z * forward.x) / flatSpeed : 0;
-    // A diagonal line is an air back into the wall, not an over-deck exit.
-    // Keep the straight-line takeoff unchanged, with a short analog fade.
-    const deckAlignment = 1 - clamp((sideRatio - 0.03) / 0.05, 0, 1);
+    const deckAlignment = this.deckAlignment(forward);
     const ratio = clamp(
       ((planeSpeed - TUNE.quarterOverDeckSpeed) * TUNE.quarterRolloutSpeedGain -
         clamp(lean, 0, 1) * TUNE.quarterLeanRatio +
@@ -1051,15 +1057,18 @@ export class Simulation {
         this.redirectSpine(lip.direction, lean, lip.forward);
       else if (lip.module.kind === "box")
         this.redirectBox(lip.forward, charge, timing, true);
-      else if (lip.module.kind === "quarter" && !earlyQuarter) {
+      else if (lip.module.kind === "quarter") {
         const speed = Math.hypot(
           this.velocity.dot(lip.forward),
           this.velocity.y,
         );
         // Match the useful spine transfer: clear the lip mostly upward, with
         // only enough outward travel to keep the rider from clipping coping.
+        // LS forward on a straight line carries out onto the deck; any angle
+        // off square keeps it an air back into the quarter.
+        const align = this.deckAlignment(lip.forward);
         const ratio = clamp(
-          -0.035 + Math.max(0, speed - 12) * 0.003 - clamp(lean, -1, 1) * 0.09,
+          (-0.035 + Math.max(0, speed - 12) * 0.003 - clamp(lean, -1, 1) * 0.09) * align - (1 - align) * 0.04,
           -0.07,
           0.11,
         );
@@ -1067,14 +1076,16 @@ export class Simulation {
           lip.forward,
           speed * ratio - this.velocity.dot(lip.forward),
         );
-        this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
-        // Timing at coping is useful but remains a small rider extension,
-        // never an arcade launch multiplier.
-        this.velocity.y += timing * (0.12 + charge * 0.22);
-      }
-      else if (earlyQuarter) {
-        const forwardSpeed = this.velocity.dot(lip.forward);
-        if (forwardSpeed < 0) this.velocity.addScaledVector(lip.forward, -forwardSpeed);
+        // A charged pop still on the wall below the coping keeps the ramp's own
+        // rise (lower than the full coping redirect); only its outward travel
+        // follows the lip rule above. Keeping all of the wall's outward speed
+        // threw quarter airs and flairs up onto the deck.
+        if (!earlyQuarter) {
+          this.velocity.y = speed * Math.sqrt(1 - ratio * ratio);
+          // Timing at coping is useful but remains a small rider extension,
+          // never an arcade launch multiplier.
+          this.velocity.y += timing * (0.12 + charge * 0.22);
+        }
       }
     }
     if (!replacing)

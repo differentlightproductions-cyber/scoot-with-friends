@@ -59,12 +59,13 @@ try {
         }
       }
       off();
-      rows.push({ ramp: ramp.id, speed, angle, zone, pop, popCharge, rise: pop && +(peak - pop.y).toFixed(2), land, bails });
+      rows.push({ ramp: ramp.id, speed, angle, zone, pop, popCharge, rise: pop && +(peak - pop.y).toFixed(2), land, bails, landHeight: +(s.position.y - TUNE.radius - base).toFixed(2), h: ramp.h });
     }
     return rows;
   });
   // The 55% figures pin the original lower-transition takeoff. The 65%
-  // figures are the former premature coping redirects; those must launch lower.
+  // figures are the former premature coping redirects; those must launch lower
+  // and still come back down into the quarter, not onto its deck.
   const before = {
     wood: { '9/0': [6.75, 5.91], '9/15': [6.32, 5.52], '12/0': [10.42, 10.02], '12/15': [9.74, 9.15] },
     metal: { '9/0': [8.32, 7.99], '9/15': [7.94, 7.60], '12/0': [11.55, 11.28], '12/15': [10.99, 10.66] },
@@ -79,7 +80,11 @@ try {
     if (row.zone === 0.65) {
       if (row.pop.vy >= oldUpperVy - 0.2)
         failures.push(`${label}: launch not lowered (${row.pop.vy.toFixed(2)} vs old ${oldUpperVy})`);
-      if (!row.land || row.bails.length) failures.push(`${label}: did not land clean (${row.bails.join(', ')})`);
+      // Straight at the wall it lands clean back in the quarter. On an angle
+      // it is an air back into the wall, never a throw up onto the deck (#72);
+      // on the narrow metal quarter a fast diagonal can carry past its end.
+      if (row.angle === 0 && (!row.land || row.bails.length)) failures.push(`${label}: did not land clean (${row.bails.join(', ')})`);
+      if (row.landHeight > row.h * 0.9) failures.push(`${label}: landed up on the deck (${row.landHeight} m of ${row.h})`);
     }
   }
   console.table(rows.map(({ ramp, speed, angle, zone, pop, popCharge, rise, land, bails }) => ({ ramp, speed, angle, zone, charge: popCharge, vy: pop?.vy.toFixed(2), rise, land, bail: bails.join(', ') })));
