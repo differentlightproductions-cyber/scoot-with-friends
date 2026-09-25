@@ -10,7 +10,7 @@ export function blendPose(a:any,b:any,t:number):Simulation{
  const p=structuredClone(t<.5?a:b),lerp=THREE.MathUtils.lerp;
  for(const key of ['yaw','pitch','roll','elapsed'])p[key]=key==='elapsed'?lerp(a[key],b[key],t):a[key]+wrapAngle(b[key]-a[key])*t;
  for(const k of ['angle','velocity'])p.bodyFlip[k]=lerp(a.bodyFlip[k],b.bodyFlip[k],t);
- if(a.swim&&b.swim&&p.swim)for(const k of ['time','stroke'])p.swim[k]=lerp(a.swim[k],b.swim[k],t);
+ if(a.swim&&b.swim&&p.swim)for(const k of ['time','stroke','depth','rise'])if(typeof a.swim[k]==='number'&&typeof b.swim[k]==='number')p.swim[k]=lerp(a.swim[k],b.swim[k],t);
  if(a.mantle&&b.mantle&&p.mantle)p.mantle.time=lerp(a.mantle.time,b.mantle.time,t);
  if(a.diveFlip&&b.diveFlip&&p.diveFlip)for(const k of ['angle','side','twist'])p.diveFlip[k]=lerp(a.diveFlip[k],b.diveFlip[k],t);
  for(const channel of ['deck','bars','bri','kickless','decade'])for(const k of ['angle','velocity'])if(a.tricks[channel]&&b.tricks[channel])p.tricks[channel][k]=lerp(a.tricks[channel][k],b.tricks[channel][k],t);

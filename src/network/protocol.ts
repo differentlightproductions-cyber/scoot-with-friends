@@ -28,7 +28,7 @@ export function pose(value:any){
  if(value.emote&&!['wave','nod','shake','point','clap','celebrate','sit','laugh','facepalm','cheer','shrug','drink','eat','drink-fountain','vend','place'].includes(value.emote.id))return null;
  if(value.crash&&(!numeric(value.crash,['age','rest'])||!['rider','scooter'].every(k=>numeric(value.crash[k]?.position,['x','y','z'])&&numeric(value.crash[k]?.rotation,['x','y','z','w']))))return null;
  if(value.flipYaw0!==undefined&&typeof value.flipYaw0!=='number'||value.flipRoll0!==undefined&&typeof value.flipRoll0!=='number'||value.jumpOn!==undefined&&typeof value.jumpOn!=='boolean'||value.grinding!==undefined&&typeof value.grinding!=='boolean')return null;
- if(value.swim&&(!numeric(value.swim,['time','stroke','speed'])||(value.swim.out!==null&&value.swim.out!==undefined)))return null;
+ if(value.swim&&(!numeric(value.swim,['time','stroke','speed'])||(value.swim.out!==null&&value.swim.out!==undefined)||(value.swim.depth!==undefined&&!(typeof value.swim.depth==='number'&&value.swim.depth>=0&&value.swim.depth<=3))||(value.swim.rise!==undefined&&!(typeof value.swim.rise==='number'&&Math.abs(value.swim.rise)<=10))))return null;
  if(value.diveFlip&&(!numeric(value.diveFlip,['angle','side','twist','dir','sideDir','twistDir'])||!['dir','sideDir','twistDir'].every(k=>[-1,0,1].includes(value.diveFlip[k]))))return null;
  if(value.mantle&&(!['vault','mantle','climb'].includes(value.mantle.kind)||!numeric(value.mantle,['time','duration'])||!['edge','forward'].every(k=>Array.isArray(value.mantle[k])&&value.mantle[k].length===3&&value.mantle[k].every((n:any)=>typeof n==='number'&&Number.isFinite(n)))))return null;
  if(!valid(value)||!value.position.every((n:any)=>typeof n==='number'&&Number.isFinite(n)))return null;

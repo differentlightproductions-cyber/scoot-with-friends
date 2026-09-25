@@ -5,7 +5,9 @@ import { InputFrame } from "../input/input";
 import { TUNE, clamp, damp, wrap } from "../core/config";
 import type { RiderModel } from "../scooter/model";
 import { terrainHeight } from "../park/park";
-import { WATER } from "../park/water";
+import { lakeBed, WATER } from "../park/water";
+/** Where the lake surface is drawn from below (park/underwater.ts); an eye past it is under. */
+const UNDER_SURFACE = -0.3;
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, thirdPersonVertical } from "./fov";
 
 const UP = new THREE.Vector3(0, 1, 0), SIDE = new THREE.Vector3(1, 0, 0), FORWARD = new THREE.Vector3(0, 0, 1);
@@ -57,10 +59,7 @@ export class ChaseCamera {
   private fpCrash = 0;
   private fpYaw = 0;
   private fpPitch = 0;
-  /** A plunge under the surface after a dive (#62): how deep and how far in. */
-  private fpPlunge: { depth: number; time: number } | null = null;
   /** Diving or jumping in: the first-person view goes under for a moment. */
-  plunge(depth: number) { this.fpPlunge = depth > 0 ? { depth, time: 0 } : null; }
   private fpLookYaw = 0;
   private fpLookPitch = 0;
   private fpCharge = 0;
@@ -160,7 +159,11 @@ export class ChaseCamera {
       .addScaledVector(s.velocity.clone().setY(0), 0.11 + bomb * 0.1);
     // Leading the rider up a steep ramp put the look point inside the ramp, so the
     // obstruction ray started blocked and the camera snapped in about a metre.
-    look.y = Math.max(look.y, terrainHeight(look.x, look.z) + 0.6);
+    // A swimmer down in the lake (#69) is followed under water, from behind and
+    // a little above, never up through the surface or down into the bottom.
+    const submerged = s.swim && !s.swim.out ? clamp(((s.swim.depth ?? 0) - 0.45) / 0.3, 0, 1) : 0;
+    if (submerged > 0) look.y -= 0.55 * submerged;
+    else look.y = Math.max(look.y, terrainHeight(look.x, look.z) + 0.6);
     const desired = p
       .clone()
       .add(
@@ -185,6 +188,10 @@ export class ChaseCamera {
       for (const extra of [0, 0.6, 1.2, 1.8, 2.4]) if (!cast(desired.clone().setY(desired.y + extra)).hit) { liftTarget = extra; break; } else liftTarget = 2.4;
     this.lift = !this.initialized ? liftTarget : this.lift + (liftTarget - this.lift) * (1 - Math.exp(-(liftTarget > this.lift ? 6 : 1.5) * dt));
     desired.y += this.lift;
+    if (submerged > 0) {
+      desired.y = THREE.MathUtils.lerp(desired.y, Math.max(lakeBed(desired.x, desired.z) + 0.3, Math.min(p.y + 0.7, UNDER_SURFACE - 0.1)), submerged);
+      if (submerged === 1) desired.y = Math.min(desired.y, UNDER_SURFACE - 0.1);
+    }
     const { dir: rayDir, length: len, hit } = cast(desired);
     const clear = hit ? Math.max(0.7, hit.timeOfImpact - 0.23) : len;
     this.clearance = !this.initialized || clear < this.clearance ? clear : this.clearance + (clear - this.clearance) * (1 - Math.exp(-3 * dt));
@@ -257,14 +264,10 @@ export class ChaseCamera {
     // when the preload pose brings the rider's chin over the crossbar; it stays
     // small so the front of the deck shows past the rider's hips.
     const eye = new THREE.Vector3(0, 0.01 + flipping * 0.04, (onFoot ? 0.1 : -this.fpTune.eyeBack) + flipping * 0.14).applyQuaternion(headQuaternion).add(headPosition);
-    // In the water (#62): a swimmer's eyes ride just above the surface; a dive or a
-    // jump in plunges the view under for a moment before it comes back up.
-    if (this.fpPlunge) {
-      this.fpPlunge.time += dt;
-      const t = this.fpPlunge.time / 1.3;
-      if (t >= 1 || !s.swim) this.fpPlunge = null;
-      else eye.y = Math.min(eye.y, WATER.surface + 0.1) - this.fpPlunge.depth * Math.sin(Math.PI * Math.min(1, t * 1.15)) ** 0.8;
-    } else if (s.swim && !s.swim.out) eye.y = Math.max(eye.y, WATER.surface + 0.08);
+    // In the water (#62, #69): at the top a swimmer's eyes ride just above the
+    // surface; under, the view goes down with the head. Never in between: the
+    // park's ground layers run on under the lake down to its underside.
+    if (s.swim && !s.swim.out) eye.y = (s.swim.depth ?? 0) < 0.35 ? Math.max(eye.y, WATER.surface + 0.08) : Math.min(eye.y, UNDER_SURFACE - 0.06);
     // Trick focus: while a scooter trick or grab is under way the view turns
     // towards the scooter (quickly), then eases back to the heads-up view once
     // the trick is caught. Flips keep their own rotation, so focus fades out
@@ -285,9 +288,11 @@ export class ChaseCamera {
       }
     }
     // Short collision check from the chest to the eye; the rider's own body is not a collider.
+    // Not for a swimmer: the ground layers under the lake sit between a
+    // swimmer's chest and eyes, and the water rule above already places them.
     const chest = r.torso.getWorldPosition(new THREE.Vector3());
     const toEye = eye.clone().sub(chest), length = toEye.length();
-    if (length > 1e-3) {
+    if (length > 1e-3 && !s.swim) {
       toEye.divideScalar(length);
       const hit = s.world.castRay(new RAPIER.Ray(chest, toEye), length + 0.1, true, undefined, undefined, undefined, s.body);
       if (hit && hit.timeOfImpact < length + 0.1) eye.copy(chest).addScaledVector(toEye, Math.max(0, hit.timeOfImpact - 0.1));

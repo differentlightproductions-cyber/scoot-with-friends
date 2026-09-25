@@ -14,6 +14,12 @@ export function inWater(x: number, z: number, margin = 1) {
     margin * margin
   );
 }
+export const bedBump = (x: number, z: number) => Math.sin(x * 0.9 + z * 0.35) * 0.08 + Math.sin(z * 0.53 - x * 0.4) * 0.1;
+/** The lake bottom (underwater.ts draws it): a bowl 2.5 m deep at the middle, 0.34 m at the bank. */
+export function lakeBed(x: number, z: number) {
+  const r = Math.min(1, Math.hypot((x - WATER.x) / WATER.radiusX, (z - WATER.z) / WATER.radiusZ));
+  return Math.min(-0.34, -WATER.depth * Math.pow(Math.max(0, 1 - r * r), 0.7) + bedBump(x, z) * (1 - r));
+}
 /**
  * The lake's surface: a MeshStandardMaterial (so it keeps the scene's lights,
  * shadows and haze) with wind ripples as animated normals (crossing wave trains

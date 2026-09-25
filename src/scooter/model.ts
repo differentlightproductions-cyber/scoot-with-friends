@@ -113,6 +113,7 @@ export class RiderModel {
   boardLead = 1;
   /** 0 treading water upright, 1 face down stroking; eased. */
   swimProne = 0;
+  swimPitch = 0;
   /** Bar Twist forward tilt of the bars, eased 0..1. */
   twistTilt = 0;
   boardWheelAngle = 0;
@@ -410,11 +411,15 @@ export class RiderModel {
         // Remote riders carry their swim speed in the swim state (no velocity).
         const speed = (s.swim as { speed?: number }).speed ?? Math.hypot(s.velocity?.x ?? 0, s.velocity?.z ?? 0);
         this.swimProne = damp(this.swimProne, s.swim.out || s.swim.celebrate ? 0 : THREE.MathUtils.clamp(speed / TUNE.swimSpeed, 0, 1), 3.5, dt);
-        a = this.swimProne * 1.3;
-        const bob = Math.sin(s.swim.time * 2.1) * 0.03;
+        // Under water (#69) the body tips with the way it is going: head first
+        // down a dive, head up kicking for the surface.
+        const sw = s.swim as { lift?: number; depth?: number; rise?: number }, depth = sw.depth ?? 0, under = THREE.MathUtils.smoothstep(depth, 0.15, 0.6);
+        this.swimPitch = damp(this.swimPitch, THREE.MathUtils.clamp(-(sw.rise ?? 0) * 0.55, -0.8, 1) * under, 4, dt);
+        a = this.swimProne * 1.3 + this.swimPitch;
+        const bob = Math.sin(s.swim.time * 2.1) * 0.03 * (1 - under);
         // A hop on A (#62) lifts the whole swimmer out of the water for a moment.
-        const lift = (s.swim as { lift?: number }).lift ?? 0;
-        hip = v(this.root.position.x, WATER.surface - THREE.MathUtils.lerp(0.5, 0.09, this.swimProne) + bob + lift, this.root.position.z);
+        const lift = sw.lift ?? 0;
+        hip = v(this.root.position.x, WATER.surface - THREE.MathUtils.lerp(0.5, 0.09, this.swimProne) + bob + lift - depth, this.root.position.z);
         if (s.swim.out) hip.y = THREE.MathUtils.lerp(hip.y, this.root.position.y + 0.9, THREE.MathUtils.smoothstep(s.swim.out.time, 0, 0.7));
         this.root.position.copy(hip).addScaledVector(f, -0.9 * Math.sin(a)).add(v(0, -0.9 * Math.cos(a), 0));
         this.root.rotation.x = a;

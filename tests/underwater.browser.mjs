@@ -1,8 +1,8 @@
-// First person in the water (#62): click LS to swim faster, A hops up with a
-// splash; a swimmer's eyes ride just above the
-// surface; a dive plunges the view under, where the lake has a basin, murky
-// fog, motes and a bright window overhead, then it comes back up; an on-foot
-// flip turns the first-person view over with the body.
+// First person in the water (#62, #69): click LS to swim faster, A hops up with
+// a splash; a swimmer's eyes ride just above the surface; left still they sink,
+// B dives and A kicks back up, and under the lake has a basin, murky fog, motes
+// and a bright window overhead; an on-foot flip turns the first-person view
+// over with the body.
 //   LAZER_URL=http://127.0.0.1:5195 BROWSER_EXECUTABLE=... OUT=artifacts/underwater node tests/underwater.browser.mjs
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -48,20 +48,56 @@ try {
   check('Click LS on the move to swim faster; stopping drops back to a steady stroke', controls.fast > controls.steady * 1.4 && controls.fastFlag && controls.dropped, controls);
   check('A hops up out of the water with a splash and drops back in', controls.lift > 0.25 && controls.splashes >= 2 && Math.abs(controls.back) < 0.06 && controls.swimming, controls);
 
-  const plunge = await page.evaluate(async () => {
-    const g = window.__LAZER, W = window.__WATER; g.camera.plunge(1.3);
-    let deepest = 9, under = false, fog = null;
-    for (let i = 0; i < 30; i++) { g.render(); deepest = Math.min(deepest, g.camera.camera.position.y); if (g.underwater.under) { under = true; fog ??= { near: g.park.scene.fog.near, far: g.park.scene.fog.far }; } }
-    const overlay = document.querySelector('.underwater-tint').style.opacity;
-    return { deepest: +deepest.toFixed(2), under, fog, overlay, surface: W.surface };
+  // Depth (#69): left still a swimmer sinks at a steady rate; stroking holds them up;
+  // B dives, A kicks back up; the bottom stops them; a jump in carries them under.
+  const depth = await page.evaluate(async () => {
+    const g = window.__LAZER, s = g.sim, W = window.__WATER, out = {};
+    const { lakeBed } = await import('/src/park/water.ts');
+    const at = () => +(s.swim?.depth ?? 0).toFixed(2);
+    const reset = () => { s.position.set(W.x, 0.4, W.z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.velocity.set(0, 0, 0); s.swim.depth = 0; s.swim.rise = 0; s.swim.still = 0; };
+    reset();
+    for (let i = 0; i < 60; i++) g.advance(1 / 60, {}, false);
+    out.after1s = at();
+    for (let i = 0; i < 120; i++) g.advance(1 / 60, {}, false);
+    out.after3s = at(); out.rate = +((out.after3s - out.after1s) / 2).toFixed(2);
+    reset();
+    for (let i = 0; i < 180; i++) g.advance(1 / 60, { lean: i % 120 < 60 ? -1 : 1 }, false);
+    out.stroking = at();
+    reset();
+    let under = false, fog = null;
+    for (let i = 0; i < 90; i++) { g.advance(1 / 60, { held: { brakeBars: 1 } }, false); g.render(); if (g.underwater.under) { under = true; fog ??= g.park.scene.fog.far; } }
+    out.dived = at(); out.under = under; out.fog = fog; out.overlay = document.querySelector('.underwater-tint').style.opacity; out.eye = +g.camera.camera.position.y.toFixed(2);
+    for (let i = 0; i < 240; i++) g.advance(1 / 60, { held: { brakeBars: 1 } }, false);
+    out.bottom = +(s.position.y - lakeBed(s.position.x, s.position.z)).toFixed(2);
+    for (let i = 0; i < 150; i++) { g.advance(1 / 60, { held: { hop: 1 } }, false); g.render(); }
+    out.kicked = at(); out.upEye = +g.camera.camera.position.y.toFixed(2); out.upUnder = g.underwater.under;
+    // Third person follows a diver under.
+    g.camera.view = 'third';
+    for (let i = 0; i < 70; i++) { g.advance(1 / 60, { held: { brakeBars: 1 } }, false); g.render(); }
+    out.thirdY = +g.camera.camera.position.y.toFixed(2); out.thirdUnder = g.underwater.under;
+    g.camera.view = 'first';
+    for (let i = 0; i < 150; i++) { g.advance(1 / 60, { held: { hop: 1 } }, false); g.render(); }
+    // A jump in from 3 m goes under by itself.
+    s.swim = null; s.walking = true; s.grounded = false; s.footJumped = true;
+    s.position.set(W.x, 3, W.z + 4); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.velocity.set(0, -6, 0);
+    let deepest = 0;
+    for (let i = 0; i < 90; i++) { g.advance(1 / 60, {}, false); deepest = Math.max(deepest, s.swim?.depth ?? 0); }
+    out.jumpIn = +deepest.toFixed(2);
+    for (let i = 0; i < 200; i++) g.advance(1 / 60, { held: { hop: 1 } }, false);
+    return out;
   });
-  check('A dive plunges the view under: murky fog closes in within metres, the tint shows', plunge.under && plunge.deepest < -0.6 && plunge.fog?.far <= 10 && plunge.overlay === '1', plunge);
+  check('Left still, a swimmer sinks at a steady rate (about 0.45 m/s)', depth.after3s > 0.6 && depth.rate > 0.3 && depth.rate < 0.6, depth);
+  check('Stroking holds a swimmer at the surface', depth.stroking < 0.2, depth);
+  check('Holding B dives: the view goes under, murky fog closes in, the tint shows', depth.dived > 1 && depth.under && depth.fog <= 10 && depth.overlay === '1' && depth.eye < -0.3, depth);
+  check('The bottom stops a diver', depth.bottom > 0.25 && depth.bottom < 0.5, depth);
+  check('Holding A kicks back up to the surface, eyes above the water', depth.kicked < 0.05 && depth.upEye > 0.05 && !depth.upUnder, depth);
+  check('In third person the camera follows a diver under', depth.thirdY < -0.3 && depth.thirdUnder, depth);
+  check('A jump in from 3 m carries the swimmer under', depth.jumpIn > 0.8, depth);
 
   // Pictures under water: looking ahead along the bottom, and up at the window in the surface.
   for (const [name, pitch] of [['under-ahead', -0.25], ['under-up', 0.95]]) {
     await page.evaluate(async ({ pitch }) => {
       const g = window.__LAZER, W = window.__WATER, cam = g.camera.camera;
-      g.camera.plunge(1.3); for (let i = 0; i < 20; i++) g.render();
       cam.position.set(W.x + 1, -1.2, W.z - 6); cam.rotation.set(pitch, Math.PI, 0, 'YXZ'); cam.updateMatrixWorld();
       g.underwater.update(cam, 1 / 60, 1, true);
       g.renderer.render = window.__draw; g.renderer.render(g.park.scene, cam); g.renderer.render = () => {};
@@ -71,10 +107,10 @@ try {
 
   const back = await page.evaluate(async () => {
     const g = window.__LAZER;
-    for (let i = 0; i < 120; i++) g.render();
+    for (let i = 0; i < 120; i++) { g.advance(1 / 60, { lean: -0.2 }, false); g.render(); }
     return { eye: +g.camera.camera.position.y.toFixed(3), under: g.underwater.under, far: g.park.scene.fog.far };
   });
-  check('Then it comes back up: eyes above the water, the fog as it was', !back.under && back.eye > 0.05 && back.far > 100, back);
+  check('Back at the top: eyes above the water, the fog as it was', !back.under && back.eye > 0.05 && back.far > 100, back);
 
   // An on-foot flip turns the first-person view over with the body.
   const flip = await page.evaluate(async () => {

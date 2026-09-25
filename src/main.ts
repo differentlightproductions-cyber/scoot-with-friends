@@ -425,7 +425,6 @@ async function boot() {
     audio.event(e);
     if (e.type === "splash") waterEffects.splash(e.x, e.z);
     // Diving or jumping in takes the first-person view under for a moment; wading in does not.
-    if (e.type === "swim" && e.phase === "enter") camera.plunge(e.trick ? 1.3 : e.fromRide ? 0.9 : 0);
     if (e.type === "swim" && e.phase === "enter") {
       // The ride waits at the water's edge; the first swim gets its moment.
       interactions.parkAtShore(sim, e.shore[0], e.shore[1], e.yaw);

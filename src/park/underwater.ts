@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { WATER, inWater } from "./water";
+import { WATER, bedBump as bump, inWater } from "./water";
 
 /**
  * Under the lake (#62). Its basin: a bowl 2.5 m deep at the middle, sand in
@@ -20,7 +20,6 @@ export function buildLakeBasin(scene: THREE.Scene) {
   group.userData.weatherDynamic = true;
   const rings = 22, segments = 96, position: number[] = [], color: number[] = [], index: number[] = [];
   const sand = new THREE.Color(0x8d8263), silt = new THREE.Color(0x33402f), c = new THREE.Color();
-  const bump = (x: number, z: number) => Math.sin(x * 0.9 + z * 0.35) * 0.08 + Math.sin(z * 0.53 - x * 0.4) * 0.1;
   for (let i = 0; i <= rings; i++) {
     const r = i / rings;
     for (let j = 0; j < segments; j++) {
@@ -77,7 +76,7 @@ export function buildLakeBasin(scene: THREE.Scene) {
   const underside = new THREE.Mesh(
     new THREE.CircleGeometry(1, 96),
     new THREE.ShaderMaterial({
-      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uSky: { value: new THREE.Color(0xbfe0e8) }, uDeep: { value: new THREE.Color(0x0f2e2c) }, uLight: { value: 1 } }]),
+      uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uSky: { value: new THREE.Color(0xbfe0e8) }, uDeep: { value: new THREE.Color(0x163c38) }, uLight: { value: 1 } }]),
       vertexShader: `varying vec3 vWorld;
 #include <fog_pars_vertex>
 void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; vec4 mvPosition = viewMatrix * w; gl_Position = projectionMatrix * mvPosition;
@@ -96,6 +95,10 @@ void main() {
   vec3 mirror = uDeep * (1.0 + 0.35 * ripple) * uLight;
   vec3 color = mix(mirror, sky, window) + vec3(0.9, 1.0, 0.95) * uLight * smoothstep(0.035, 0.0, abs(up - 0.66)) * 0.35;
   gl_FragColor = vec4(color, 1.0);
+  // Linear to the screen like the built-in materials; without it the mirror
+  // (total internal reflection outside the window) came out near black.
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
 #include <fog_fragment>
 }`,
       side: THREE.BackSide,

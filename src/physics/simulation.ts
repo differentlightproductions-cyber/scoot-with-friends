@@ -1,6 +1,6 @@
 import { activeLayout } from '../editor/layout';
 
-import { inWater, WATER } from "../park/water";
+import { inWater, lakeBed, WATER } from "../park/water";
 import { DIVE_DOCK, dockBlocks, dockClear, ladderNear, springboardTop } from "../park/dive-dock";
 import { judgeWater, settleTarget, type WaterAir } from "../tricks/water";
 import * as THREE from "three";
@@ -316,9 +316,11 @@ export class Simulation {
   /**
    * Swimming: `fast` while LS was clicked on the move (it drops when the swimmer
    * stops); `lift` and `liftSpeed` are a hop up out of the water on A, metres
-   * above the float line and m/s.
+   * above the float line and m/s. `depth` is how far under the float line the
+   * swimmer is (m), `rise` its rate (m/s, up positive), `still` how long no
+   * stroke has held them up (s).
    */
-  swim: { time: number; stroke: number; out: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null; celebrate?: number; fast?: boolean; lift?: number; liftSpeed?: number } | null = null;
+  swim: { time: number; stroke: number; out: { start: THREE.Vector3; end: THREE.Vector3; time: number } | null; celebrate?: number; fast?: boolean; lift?: number; liftSpeed?: number; depth?: number; rise?: number; still?: number } | null = null;
   /**
    * On-foot water-trick rotation in a foot jump (tricks/water.ts names it on
    * entry): `angle` about the side axis (LT+RT with LS up / down, front +),
@@ -1707,8 +1709,11 @@ export class Simulation {
     this.pitch = this.roll = this.spin = 0;
     this.body.collider(0).setCollisionGroups(GROUPS.chassis);
     this.riderIntangible = false; this.guardClear = false;
+    // The way in carries the body under: a jump or dive from height goes deep, a
+    // roll in off the bank barely dips; water drag takes the speed off (swimStep).
+    const plunge = Math.min(0, this.velocity.y) * 0.6 - 0.5;
     this.velocity.set(this.velocity.x * 0.35, 0, this.velocity.z * 0.35);
-    this.swim = { time: 0, stroke: 0, out: null };
+    this.swim = { time: 0, stroke: 0, out: null, depth: 0, rise: Math.max(-6, plunge), still: 0 };
     this.grounded = false;
     // After the swim state exists, so listeners (the first-swim celebration) can use it.
     this.events.emit({ type: "swim", phase: "enter", fromRide, shore: [shore.x, shore.z], yaw: this.yaw, trick });
@@ -1740,8 +1745,23 @@ export class Simulation {
     if (input.pressed.sprint && moving) sw.fast = !sw.fast;
     if (!moving) sw.fast = false;
     desired.multiplyScalar(sw.fast ? TUNE.swimSprint : TUNE.swimSpeed);
+    // Depth (#69). Treading or stroking holds a swimmer up; left still for a
+    // moment they sink at a steady 0.45 m/s to the bottom. Hold B to dive (faster
+    // swimming fast), hold A under water to kick back up; stroking under water
+    // holds depth, and near the top it brings the swimmer up to breathe.
+    const bed = lakeBed(this.position.x, this.position.z) + 0.32, deepest = Math.max(0, floatY - bed);
+    let depth = sw.depth ?? 0, rise = sw.rise ?? 0;
+    const diving = input.held.brakeBars > 0.5, kicking = input.held.hop > 0.5;
+    sw.still = moving || diving || kicking || sw.lift ? 0 : (sw.still ?? 0) + dt;
+    const target = diving ? -(sw.fast ? 2.1 : 1.5) : kicking ? 1.7 : moving ? (depth < 0.7 ? 0.9 : 0) : sw.still > 0.8 ? -0.45 : depth < 0.2 ? 0.4 : 0;
+    // Water drag: a plunge slows within about a metre; strokes change pace quickly.
+    rise = damp(rise, target, rise < target - 1.5 ? 2.6 : 3.5, dt);
+    depth = clamp(depth - rise * dt, 0, deepest);
+    if ((depth === 0 && rise > 0) || (depth === deepest && rise < 0)) rise = 0;
+    sw.depth = depth; sw.rise = rise;
+    const under = depth > 0.2;
     // A: kick up out of the water (a little over a third of a metre) and drop back in with a splash.
-    if (input.pressed.hop && !sw.lift) {
+    if (input.pressed.hop && !sw.lift && !under) {
       sw.liftSpeed = 2.7; sw.lift = 0.001;
       this.events.emit({ type: "splash", x: this.position.x, z: this.position.z });
     }
@@ -1759,7 +1779,7 @@ export class Simulation {
     const next = this.position.clone().addScaledVector(this.velocity, dt);
     if (this.rampWorld) {
       // The dive dock: swim at a ladder to climb out onto the deck; the deck's footing is solid.
-      const ladder = moving ? ladderNear(next.x, next.z) : null;
+      const ladder = moving && !under ? ladderNear(next.x, next.z) : null;
       if (ladder && desired.x * (ladder.top[0] - this.position.x) + desired.z * (ladder.top[1] - this.position.z) > 0) {
         sw.out = { start: this.position.clone(), end: new THREE.Vector3(ladder.top[0], DIVE_DOCK.deck + TUNE.radius, ladder.top[1]), time: 0 };
         return;
@@ -1775,7 +1795,7 @@ export class Simulation {
     // At the edge: swimming on toward the shore climbs out onto it.
     if (!inWater(next.x, next.z, 0.985)) {
       const out = next.clone().addScaledVector(new THREE.Vector3(this.velocity.x, 0, this.velocity.z).normalize(), 0.9);
-      if (moving && !inWater(out.x, out.z, 1.04)) {
+      if (moving && !under && !inWater(out.x, out.z, 1.04)) {
         out.y = terrainHeight(out.x, out.z) + TUNE.radius;
         if (this.standingClear(out)) { sw.out = { start: this.position.clone(), end: out, time: 0 }; return; }
       }
@@ -1786,7 +1806,10 @@ export class Simulation {
       next.copy(this.position).addScaledVector(this.velocity, dt);
       if (!inWater(next.x, next.z, 0.985)) next.copy(this.position).lerp(centre.setY(this.position.y), 0.01);
     }
-    this.position.set(next.x, floatY + Math.sin(sw.time * 2.1) * 0.02 + (sw.lift ?? 0), next.z);
+    // Near the bank the bottom rises: a swimmer down there is lifted along it.
+    const floor = lakeBed(next.x, next.z) + 0.32;
+    if (floatY - depth < floor) sw.depth = depth = Math.max(0, floatY - floor);
+    this.position.set(next.x, floatY - depth + Math.sin(sw.time * 2.1) * 0.02 * clamp(1 - depth / 0.2, 0, 1) + (sw.lift ?? 0), next.z);
     this.body.setTranslation(this.position, true);
     this.body.setLinvel(this.velocity, true);
     this.body.setRotation(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw), true);
