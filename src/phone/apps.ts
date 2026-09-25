@@ -14,7 +14,7 @@ import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type I
 import type { Phone, View } from './phone';
 import type { PhoneMap } from './map';
 import { fictionalNumber, type MessageStore } from './messages';
-import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, levelFor, missionBoard } from '../data/progress';
+import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, levelFor, missionBoard, trickBook } from '../data/progress';
 import { DELIVERY, type CreditEconomy, type Package } from '../data/credit';
 import { dailyDeals, type Deal } from '../data/deals';
 import { inventoryBrands, inventoryItems, type InventoryItem } from '../data/inventory';
@@ -455,6 +455,50 @@ function missionsApp(d: PhoneDeps): View {
   };
 }
 
+// ---- TRICKS (trick tracker, #59) ----------------------------------------------------
+/**
+ * Every trick this account has landed, as an organized tally: Tailwhips 120,
+ * Barspins 523... grouped by kind, most landed first. A trick done inside a
+ * combo counts for each of its parts; the combos themselves have their own list.
+ */
+function tricksApp(d: PhoneDeps): View {
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  let combosShown = 10;
+  return {
+    title: 'TRICKS', live: true,
+    page: () => {
+      const book = trickBook(d.profile().progress), t = book.totals;
+      const blocks: Block[] = [
+        { type: 'image', height: 104, draw: (g, x, y, w) => {
+          g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, w, 98, 14); g.fill();
+          const cells: [string, number][] = [['TRICKS LANDED', t.tricks], ['COMBOS', t.combos], ['DIFFERENT', t.different]];
+          cells.forEach(([label, value], i) => {
+            const cx = x + 14 + (i * (w - 28)) / 3;
+            g.textAlign = 'left'; g.font = `800 10px ${BODY}`; g.fillStyle = i === 1 ? LIME : '#9aa3a9'; g.fillText(label, cx, y + 26);
+            g.font = `30px ${DISPLAY}`; g.fillStyle = PAPER; g.fillText(fmt(value), cx, y + 60);
+          });
+          g.font = `700 11px ${BODY}`; g.fillStyle = '#cfd4d8';
+          g.fillText(`Best line ${t.bestLine} tricks · ${fmt(t.bestLinePoints)} pts · ${fmt(t.perfect)} perfect`, x + 14, y + 86);
+        } },
+      ];
+      if (!book.groups.length) blocks.push({ type: 'text', text: 'Land some tricks and they are counted here: every Tailwhip, Barspin and 360, and every combo.', muted: true });
+      for (const group of book.groups) {
+        const total = group.rows.reduce((n, r) => n + r.count, 0);
+        blocks.push({ type: 'title', text: group.title, sub: `${fmt(total)} landed` });
+        blocks.push({ type: 'list', rows: group.rows.map(r => ({ id: 'tally-' + r.label, label: r.label.toUpperCase(), value: fmt(r.count) })) });
+      }
+      if (book.combos.length) {
+        blocks.push({ type: 'title', text: 'COMBO TRICKS', sub: `${fmt(t.comboTricks)} landed · more than one trick at once` });
+        blocks.push({ type: 'list', rows: [
+          ...book.combos.slice(0, combosShown).map(c => ({ id: 'combo-' + c.name, label: c.name.toUpperCase(), value: fmt(c.count) })),
+          ...(book.combos.length > combosShown ? [{ id: 'more', label: 'SHOW MORE', detail: `${book.combos.length - combosShown} more combos`, action: () => { combosShown += 20; } }] : []),
+        ] });
+      }
+      return { blocks };
+    },
+  };
+}
+
 // ---- SHOP -----------------------------------------------------------------------
 /**
  * The phone shop: Techno Gravity's stock and today's deals, ordered from
@@ -632,6 +676,7 @@ export function installApps(d: PhoneDeps) {
     ['items', 'ITEMS', 'items', '#ff7ab8', itemsApp],
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
+    ['tricks', 'TRICKS', 'chart', '#c6ff00', tricksApp],
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['shop', 'SHOP', 'crate', '#35b6ff', shopApp, () => { const n = d.profile().wallet.packages.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['replays', 'REPLAYS', 'play', '#ff5a1f', replaysApp],

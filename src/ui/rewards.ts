@@ -6,7 +6,7 @@ import type { Events } from "../core/events";
 import type { InputFrame } from "../input/input";
 import type { CreditEconomy } from "../data/credit";
 import { completedDegrees } from "../tricks/resolver";
-import { CRATE_COLOR, CRATE_NAME, FIRST_COUNT, FIRST_TRICKS, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
+import { CRATE_COLOR, CRATE_NAME, FIRST_COUNT, FIRST_TRICKS, tallyPart, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
 import type { Progress } from "../data/progress";
 import "./rewards.css";
 
@@ -22,6 +22,9 @@ export class MissionTracker {
   private hill = { started: false, top: 0 };
   /** Starter steps seen since the last flush: one-time steps once a session, counted ones every time. */
   private firsts: string[] = [];
+  /** Tricks landed since the last flush (the trick tracker): each part, and multi-part tricks by name. */
+  private tally: Record<string, number> = {};
+  private comboTricks: Record<string, number> = {};
   private reported = new Set<string>();
   private ridden = 0;
   private grindRun = 0;
@@ -40,14 +43,18 @@ export class MissionTracker {
         if (raw && completedDegrees(raw.bodyYaw) >= 180) this.first("spin:180");
         if (raw && completedDegrees(raw.bodyYaw) >= 360) this.first("spin:360");
         this.add("tricks", 1);
+        // Named tricks (Flair, Truck Driver) count as themselves; the rest by their parts.
+        const parts = (e.record?.recognized ? name.split(" + ") : e.record?.components?.length ? e.record.components : [name]).map(tallyPart).filter(Boolean);
+        for (const part of parts) this.tally[part] = (this.tally[part] ?? 0) + 1;
+        if (parts.length > 1) this.comboTricks[name] = (this.comboTricks[name] ?? 0) + 1;
         if (e.record?.landing === "clean") this.add("perfect", 1);
         if (/Frontflip|Backflip|Flair/.test(name)) this.add("flips", 1);
         if (raw && completedDegrees(raw.bodyYaw) >= 360) this.add("spins", 1);
         if ((raw && (Math.abs(raw.deckTurns) >= 1 || Math.abs(raw.barTurns) >= 1 || (raw.fingerTurns ?? 0) >= 1)) || /whip|Barspin|Bri|Kickless|Buttercup/i.test(name)) this.add("whips", 1);
       }
-      if (e.type === "grindCatch") this.add("grinds", 1);
+      if (e.type === "grindCatch") { this.add("grinds", 1); if (e.name) this.tally[e.name] = (this.tally[e.name] ?? 0) + 1; }
       if (e.type === "banked") { this.add("points", e.points); this.linePoints += e.points; this.best("bestLinePoints", this.linePoints); }
-      if (e.type === "line") { this.best("bestLine", e.names.length); if (e.ended) { this.linePoints = 0; this.flushIn = 0; } }
+      if (e.type === "line") { this.best("bestLine", e.names.length); if (e.ended) { this.linePoints = 0; this.flushIn = 0; if (e.names.length >= 2) this.add("combos", 1); } }
       if (e.type === "bail" || e.type === "reset") { this.linePoints = 0; this.hill.started = false; }
     });
   }
@@ -89,8 +96,9 @@ export class MissionTracker {
     if (this.flushIn === 0) this.flush();
   }
   flush() {
-    const changes = this.pending, firsts = this.firsts; this.pending = {}; this.firsts = [];
-    if (Object.keys(changes).length || firsts.length) void this.economy.track(changes, undefined, firsts);
+    const changes = this.pending, firsts = this.firsts, landed = { tally: this.tally, combos: this.comboTricks };
+    this.pending = {}; this.firsts = []; this.tally = {}; this.comboTricks = {};
+    if (Object.keys(changes).length || firsts.length || Object.keys(landed.tally).length) void this.economy.track(changes, undefined, firsts, landed);
   }
 }
 

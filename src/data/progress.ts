@@ -22,7 +22,7 @@ export const CRATE_COLOR: Record<CrateTier, string> = { street: "#35b6ff", pro: 
 export interface Crate { id: string; tier: CrateTier; source: string }
 
 /** Lifetime counters and bests. Daily missions keep their own copy for the day. */
-export const STATS = ["tricks", "perfect", "grinds", "flips", "spins", "whips", "bestLine", "bestLinePoints", "points", "bhillRuns", "bhillTop", "maps", "purchases", "cratesOpened"] as const;
+export const STATS = ["tricks", "perfect", "grinds", "flips", "spins", "whips", "bestLine", "bestLinePoints", "points", "bhillRuns", "bhillTop", "maps", "purchases", "cratesOpened", "combos"] as const;
 export type Stat = (typeof STATS)[number];
 /** Stats that keep the best value instead of adding up. */
 const BEST: Stat[] = ["bestLine", "bestLinePoints", "bhillTop", "maps"];
@@ -40,6 +40,10 @@ export interface Progress {
   firsts: string[];
   /** How many times each counted STARTER step was done so far (5 Tailwhips...). */
   counts: Record<string, number>;
+  /** Trick tracker (#59): landings per trick part (Tailwhip, Barspin, 360...). */
+  tally: Record<string, number>;
+  /** Trick tracker: multi-part tricks by their full name (360° Tailwhip + Barspin). */
+  comboTricks: Record<string, number>;
   /** STARTER missions completed (and paid). */
   starter: string[];
   /** Highest level whose Credit and crate were granted, so a level never pays twice. */
@@ -47,7 +51,7 @@ export interface Progress {
 }
 
 const zeroStats = () => Object.fromEntries(STATS.map((s) => [s, 0])) as Record<Stat, number>;
-export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], counts: {}, starter: [], topLevel: 1 });
+export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], counts: {}, tally: {}, comboTricks: {}, starter: [], topLevel: 1 });
 
 const int = (v: unknown, max = 1e9) => (Number.isSafeInteger(v) && (v as number) >= 0 ? Math.min(v as number, max) : 0);
 const strings = (v: unknown, max = 200) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === "string" && s.length <= 80))].slice(0, max) : []);
@@ -68,12 +72,67 @@ export function validProgress(value: any): Progress {
     .slice(0, 99).map((c: any) => ({ id: c.id, tier: c.tier, source: typeof c.source === "string" ? c.source.slice(0, 60) : "" }));
   p.visited = strings(value.visited, 20);
   p.firsts = strings(value.firsts, 100).filter((f) => FIRSTS.has(f));
+  p.tally = validTable(value.tally);
+  p.comboTricks = validTable(value.comboTricks);
   for (const m of STARTER) if ((m.count ?? 1) > 1 && !p.firsts.includes(m.first)) { const n = int(value.counts?.[m.first], m.count! - 1); if (n) p.counts[m.first] = n; }
   p.starter = strings(value.starter, 100).filter((id) => STARTER.some((m) => m.id === id));
   // Saves from before the level curve changed keep every level they were paid
   // for (on the old curve), so passing those levels again pays nothing twice.
   p.topLevel = Math.max(levelFor(p.xp).level, Number.isSafeInteger(value.topLevel) ? Math.min(999, Math.max(1, value.topLevel)) : legacyLevel(p.xp));
   return p;
+}
+
+// ---- Trick tracker (#59) --------------------------------------------------------
+/** At most this many different tricks (and combos) are kept; the least-landed make room. */
+export const LANDED_MAX = 300;
+const validTrickName = (name: string) => name.length > 0 && name.length <= 80 && /^[\p{L}\p{N} +\-'&./°×]+$/u.test(name);
+/** One trick part as the tally names it: "360°" is a 360, "2× Backflip" a Double Backflip. */
+export function tallyPart(part: string) {
+  return part.trim().replace(/°$/, "").replace(/^2× /, "Double ").replace(/^3× /, "Triple ").replace(/^4× /, "Quad ");
+}
+/** The tally's plural label: Tailwhips, 360s, Kickless stays Kickless. */
+export function tallyLabel(name: string) {
+  if (/^\d+$/.test(name)) return name + "s";
+  if (/(ss|less|s)$/i.test(name)) return name;
+  return name + "s";
+}
+export const TALLY_GROUPS = ["FLIPS", "SPINS", "WHIPS & BARSPINS", "GRINDS & MANUALS", "GRABS & MORE"] as const;
+export function tallyGroup(name: string): (typeof TALLY_GROUPS)[number] {
+  if (/^\d+$/.test(name)) return "SPINS";
+  if (/flip|flair|truck driver/i.test(name)) return "FLIPS";
+  if (/whip|barspin|bri\b|inward|kickless|decade|buttercup|bar twist|finger/i.test(name)) return "WHIPS & BARSPINS";
+  if (/grind|manual|stall|feeble|smith|crooked|50-50|lipslide|boardslide|nose ?slide/i.test(name)) return "GRINDS & MANUALS";
+  return "GRABS & MORE";
+}
+function bump(table: Record<string, number>, adds: Record<string, number>) {
+  for (const [name, n] of Object.entries(adds)) {
+    if (!validTrickName(name) || !Number.isSafeInteger(n) || n <= 0) continue;
+    table[name] = Math.min(1e9, (table[name] ?? 0) + n);
+  }
+  const keys = Object.keys(table);
+  if (keys.length > LANDED_MAX) for (const k of keys.sort((a, b) => table[a] - table[b]).slice(0, keys.length - LANDED_MAX)) delete table[k];
+}
+function validTable(value: unknown) {
+  const out: Record<string, number> = {};
+  if (value && typeof value === "object") for (const [name, n] of Object.entries(value).slice(0, LANDED_MAX)) if (validTrickName(name) && int(n)) out[name] = int(n);
+  return out;
+}
+export interface Landed { tally?: Record<string, number>; combos?: Record<string, number> }
+/** Adds landed tricks: each part to the tally, and multi-part tricks to the combo list. */
+export function addLanded(p: Progress, landed: Landed) {
+  if (landed.tally) bump(p.tally, landed.tally);
+  if (landed.combos) bump(p.comboTricks, landed.combos);
+}
+/** Everything the TRICKS app shows: totals, the tally by kind, and combo tricks. */
+export function trickBook(p: Progress) {
+  const byCount = (table: Record<string, number>) => Object.entries(table).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  const tally = byCount(p.tally);
+  const groups = TALLY_GROUPS.map((title) => ({ title, rows: tally.filter((t) => tallyGroup(t.name) === title).map((t) => ({ label: tallyLabel(t.name), count: t.count })) })).filter((g) => g.rows.length);
+  const combos = byCount(p.comboTricks);
+  return {
+    totals: { tricks: p.stats.tricks, combos: p.stats.combos, comboTricks: combos.reduce((n, t) => n + t.count, 0), different: tally.length, perfect: p.stats.perfect, grinds: p.stats.grinds, bestLine: p.stats.bestLine, bestLinePoints: p.stats.bestLinePoints, points: p.stats.points },
+    groups, combos,
+  };
 }
 
 // ---- Levels -------------------------------------------------------------------
@@ -224,9 +283,10 @@ export function rollDaily(p: Progress, day = dayKey()) {
  * Adds to a stat (or raises a best), then settles every mission it completes
  * and any level-ups, returning what was earned. `newId` names granted crates.
  */
-export function record(p: Progress, changes: Partial<Record<Stat, number>>, newId: () => string, day = dayKey(), firsts: string[] = []): Gains {
+export function record(p: Progress, changes: Partial<Record<Stat, number>>, newId: () => string, day = dayKey(), firsts: string[] = [], landed: Landed = {}): Gains {
   const gains = noGains();
   rollDaily(p, day);
+  addLanded(p, landed);
   for (const [key, amount] of Object.entries(changes) as [Stat, number][]) {
     if (!Number.isFinite(amount) || amount <= 0) continue;
     if (BEST.includes(key)) { p.stats[key] = Math.max(p.stats[key], amount); p.daily.stats[key] = Math.max(p.daily.stats[key], amount); }

@@ -2,7 +2,7 @@ import {loadProfile,saveProfile} from './loadout';
 import {type PartSelection,validStarter} from './scooterParts';
 import {catalogEntry,ownershipKey as catalogKey,ownsSelection,ownsBoard,bundlePrice,completeBoardSelections} from './catalog';
 import {LONGBOARD_PARTS,type LongboardCategory} from './longboardParts';
-import {dayKey,openCrate,record,type CrateResult,type Gains,type Stat} from './progress';
+import {dayKey,openCrate,record,type CrateResult,type Gains,type Landed,type Stat} from './progress';
 import {dailyDeals} from './deals';
 import {SHOPS} from './shops';
 const shopStock=(id:string)=>SHOPS.find(s=>s.id===id)?.stock??[];
@@ -46,11 +46,11 @@ export class CreditEconomy {
   this.queue=operation.then(()=>{},()=>{});return operation as Promise<T|string>;
  }
  /** Counts riding stats toward missions (and a map ridden); pays out whatever they complete. */
- async track(changes:Partial<Record<Stat,number>>,visit?:string,firsts:string[]=[]){
+ async track(changes:Partial<Record<Stat,number>>,visit?:string,firsts:string[]=[],landed:Landed={}){
   const result=await this.update(p=>{
    if(visit&&!p.progress.visited.includes(visit))p.progress.visited.push(visit);
    if(visit)changes={...changes,maps:p.progress.visited.length};
-   const gains=record(p.progress,changes,crateId,dayKey(),firsts);
+   const gains=record(p.progress,changes,crateId,dayKey(),firsts,landed);
    if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);return gains;});
   if(typeof result!=='string'&&(result.completed.length||result.levelsUp.length))this.onGains(result);
   return result;

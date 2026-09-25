@@ -22,7 +22,7 @@ export const BODY = 'system-ui, "Segoe UI", Roboto, sans-serif';
 
 export type Action = () => void;
 export type IconName = 'music' | 'emote' | 'ride' | 'rider' | 'map' | 'items' | 'build' | 'messages' | 'play' | 'pause' | 'prev' | 'next' | 'dice' | 'lock'
-  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil' | 'trophy' | 'crate';
+  | 'wave' | 'nod' | 'shake' | 'point' | 'clap' | 'star' | 'bench' | 'laugh' | 'facepalm' | 'cheer' | 'shrug' | 'board' | 'can' | 'chips' | 'pencil' | 'trophy' | 'crate' | 'chart';
 export interface Tile { id: string; label: string; icon: IconName; color: string; action?: Action; disabled?: boolean; badge?: string }
 export interface Row { id: string; label: string; detail?: string; value?: string; action?: Action; disabled?: boolean; chosen?: boolean; adjust?: (step: -1 | 1) => void }
 export type Block =
@@ -152,6 +152,10 @@ export function icon(g: Ctx, name: IconName, x: number, y: number, s: number, co
       g.beginPath(); g.moveTo(-13, -18); g.lineTo(13, -18); g.lineTo(11, -2); g.quadraticCurveTo(0, 8, -11, -2); g.closePath(); g.fill();
       g.lineWidth = 3.5; g.beginPath(); g.arc(-13, -10, 6, Math.PI * 0.5, Math.PI * 1.5); g.moveTo(13, -16); g.arc(13, -10, 6, -Math.PI * 0.5, Math.PI * 0.5); g.stroke();
       g.fillRect(-3, 4, 6, 8); rounded(g, -11, 12, 22, 7, 2); g.fill(); break;
+    case 'chart':
+      // Three climbing bars over a baseline, with a tick for the best.
+      rounded(g, -18, 2, 9, 16, 2); g.fill(); rounded(g, -5, -7, 9, 25, 2); g.fill(); rounded(g, 8, -16, 9, 34, 2); g.fill();
+      g.lineWidth = 3; g.beginPath(); g.moveTo(-21, 20); g.lineTo(21, 20); g.stroke(); break;
     case 'crate':
       rounded(g, -19, -10, 38, 28, 4); g.fill(); rounded(g, -21, -18, 42, 10, 3); g.fill();
       g.fillStyle = '#00000066'; g.fillRect(-10, -6, 5, 22); g.fillRect(5, -6, 5, 22); break;
