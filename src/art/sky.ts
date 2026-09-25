@@ -34,6 +34,8 @@ void main() {
 const fragment = /* glsl */ `
 uniform vec3 uSunDir, uZenith, uHorizon, uGround, uSunColor, uCloudLit, uCloudShade;
 uniform float uCover, uNight, uTime, uSize, uHaze, uOvercast, uStorm, uFlash;
+uniform vec3 uMoonDir, uMoonSun;
+uniform float uMoon, uMoonSize, uMoonLit;
 varying vec3 vDir;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -53,8 +55,10 @@ void main() {
   sky = mix(sky, uHorizon * 1.04, exp(-up * 16.0) * uHaze);
   if (h < 0.0) sky = mix(uHorizon, uGround, 1.0 - exp(h * 10.0));
   float sd = max(dot(d, uSunDir), 0.0);
+  // With the real moon drawn (#74), the night preset's stand-in disk and glow give way to it.
+  float sunSide = 1.0 - uMoon * smoothstep(0.5, 0.95, uNight);
   float glow = pow(sd, 5.0) * 0.16 + pow(sd, 42.0) * 0.32 + pow(sd, 400.0) * 0.6;
-  sky += uSunColor * glow * (1.0 - uOvercast * 0.7);
+  sky += uSunColor * glow * (1.0 - uOvercast * 0.7) * sunSide;
   // Stars are their own layer (stars.ts): the real sky over Boulder City.
   // Clouds on a flat layer: thin at the horizon, lit from the sun side.
   float cloud = 0.0;
@@ -73,7 +77,28 @@ void main() {
   }
   // The disk last, dimmed behind cloud.
   float disk = smoothstep(1.0 - uSize, 1.0 - uSize * 0.55, sd);
-  sky += uSunColor * disk * (uNight > 0.5 ? 1.2 : 7.0) * (1.0 - cloud * 0.9) * (1.0 - uOvercast);
+  sky += uSunColor * disk * (uNight > 0.5 ? 1.2 : 7.0) * (1.0 - cloud * 0.9) * (1.0 - uOvercast) * sunSide;
+  // The moon (#74): its real phase, the terminator lit from where the sun
+  // really is, dark maria, a trace of earthshine on the unlit part and a halo
+  // that grows with the phase. Cloud passes in front of it.
+  if (uMoon > 0.0) {
+    float md = dot(d, uMoonDir), veil = uMoon * (1.0 - cloud * 0.9) * (1.0 - uOvercast * 0.85);
+    sky += vec3(0.72, 0.8, 1.0) * (pow(max(md, 0.0), 70.0) * 0.06 + pow(max(md, 0.0), 1200.0) * 0.12) * uMoonLit * veil;
+    vec3 right = normalize(cross(uMoonDir, vec3(0.0, 1.0, 0.0)) + vec3(0.0, 0.0, 1e-4));
+    vec3 over = cross(right, uMoonDir);
+    vec2 q = vec2(dot(d, right), dot(d, over)) / sin(uMoonSize);
+    float rr = dot(q, q);
+    if (md > 0.0 && rr < 1.0) {
+      vec3 n = right * q.x + over * q.y - uMoonDir * sqrt(1.0 - rr);
+      float lit = smoothstep(-0.03, 0.07, dot(n, uMoonSun));
+      float maria = fbm(q * 2.1 + vec2(4.3, 1.7)), crater = vnoise(q * 11.0);
+      float albedo = mix(1.0, 0.6, smoothstep(0.47, 0.62, maria)) * (0.9 + crater * 0.14);
+      vec3 moon = vec3(0.95, 0.94, 0.88) * albedo * (lit * 1.35 + 0.012);
+      // By day only the lit part shows, pale against the blue; at night the whole disk hides the stars behind it.
+      float dark = smoothstep(0.4, 0.9, uNight);
+      sky = mix(sky, moon, smoothstep(1.0, 0.93, rr) * veil * mix(lit, 1.0, dark) * mix(0.45, 1.0, dark));
+    }
+  }
   // Overcast (falling snow) greys the whole sky.
   float grey = dot(sky, vec3(0.3, 0.55, 0.15));
   sky = mix(sky, vec3(grey) * vec3(0.92, 0.95, 1.0), uOvercast * 0.75);
@@ -104,6 +129,11 @@ export class SkyDome {
     uOvercast: { value: 0 },
     uStorm: { value: 0 },
     uFlash: { value: 0 },
+    uMoon: { value: 0 },
+    uMoonDir: { value: new THREE.Vector3(0.35, 0.72, -0.6).normalize() },
+    uMoonSun: { value: new THREE.Vector3(0, -1, 0) },
+    uMoonSize: { value: 0.024 },
+    uMoonLit: { value: 1 },
   };
   private envScene = new THREE.Scene();
   private envTarget: THREE.WebGLRenderTarget | null = null;
@@ -150,11 +180,30 @@ export class SkyDome {
     const p = PRESETS[phase], u = this.uniforms;
     for (const [key, hex] of [["uZenith", p.zenith], ["uHorizon", p.horizon], ["uGround", p.ground], ["uSunColor", p.sun], ["uCloudLit", p.cloudLit], ["uCloudShade", p.cloudShade]] as const)
       u[key].value.lerp(this.scratch.set(hex), amount);
-    u.uCover.value += (p.cover - u.uCover.value) * amount;
+    // Live (#74): the real cloud cover, set by weather.ts, instead of the preset's.
+    const cover = typeof this.scene.userData.cloudCover === "number" ? this.scene.userData.cloudCover : p.cover;
+    u.uCover.value += (cover - u.uCover.value) * amount;
     u.uNight.value += (p.night - u.uNight.value) * amount;
     u.uSize.value += (p.size - u.uSize.value) * amount;
     u.uHaze.value += (p.haze - u.uHaze.value) * amount;
-    u.uSunDir.value.lerp(this.dirScratch.set(...p.dir).normalize(), amount).normalize();
+    const dir = phase === "night" && this.nightDirection ? this.dirScratch.copy(this.nightDirection) : this.dirScratch.set(...p.dir).normalize();
+    u.uSunDir.value.lerp(dir, amount).normalize();
+  }
+  /** At night the key light comes from here instead of the preset (the real moon when it is up). */
+  nightDirection: THREE.Vector3 | null = null;
+  /** The preset night light's direction, where a moon is drawn when the sky is not live. */
+  static readonly NIGHT_DIRECTION = new THREE.Vector3(...PRESETS.night.dir).normalize();
+  /**
+   * Draws the moon toward `moon` with the Sun toward `sun` (unit directions),
+   * `illumination` its lit fraction, `visible` fades it (0..1); null hides it.
+   */
+  setMoon(moon: THREE.Vector3 | null, sun?: THREE.Vector3, illumination = 1, visible = 1) {
+    const u = this.uniforms;
+    u.uMoon.value = moon ? visible * THREE.MathUtils.smoothstep(moon.y, -0.03, 0.02) : 0;
+    if (!moon) return;
+    u.uMoonDir.value.copy(moon);
+    if (sun) u.uMoonSun.value.copy(sun);
+    u.uMoonLit.value = illumination;
   }
 
   /** Direction toward the sun (or moon), for the key light. */

@@ -30,8 +30,23 @@ export class VisualFidelity {
   scene.traverse(o=>{if(o instanceof THREE.InstancedMesh&&o.userData.scatterCount)o.count=Math.max(1,Math.round(o.userData.scatterCount*density));});
   scene.userData.fidelity=quality;
  }
+ /**
+  * The sun's shadow map follows the rider (#73). It moves only in whole shadow
+  * texels across the light's own view, so still shadows keep exactly the same
+  * texels as the frustum slides: no crawling edges on the ground, and no jump
+  * when the rider climbs a ramp (height used to round to whole metres).
+  */
  update(player:THREE.Vector3,dt:number){
-  for(const {light,offset}of this.shadowLights){const x=Math.round(player.x*16)/16,z=Math.round(player.z*16)/16;light.target.position.set(x,Math.round(player.y),z);light.position.copy(offset).add(light.target.position);light.target.updateMatrixWorld();}
+  const toLight=this.axisZ,right=this.axisX,up=this.axisY;
+  for(const {light,offset}of this.shadowLights){
+   const cam=light.shadow.camera,texel=(cam.right-cam.left)/light.shadow.mapSize.x;
+   // The shadow camera's own axes (Matrix4.lookAt with world up, as three.js builds it).
+   toLight.copy(offset).normalize();right.set(0,1,0).cross(toLight);if(right.lengthSq()<1e-8)right.set(1,0,0);right.normalize();up.copy(toLight).cross(right);
+   const snap=(v:number)=>Math.round(v/texel)*texel;
+   light.target.position.copy(right).multiplyScalar(snap(player.dot(right))).addScaledVector(up,snap(player.dot(up))).addScaledVector(toLight,player.dot(toLight));
+   light.position.copy(offset).add(light.target.position);light.target.updateMatrixWorld();
+  }
  }
+ private axisX=new THREE.Vector3();private axisY=new THREE.Vector3();private axisZ=new THREE.Vector3();
  disposeScene(){this.materialFeatures.clear();this.scene=undefined;}
 }

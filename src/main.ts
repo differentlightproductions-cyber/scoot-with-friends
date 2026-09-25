@@ -32,6 +32,7 @@ import { NowPlaying } from "./ui/now-playing";
 import { buildBaseAssets } from "./editor/base-assets";
 import { WaterEffects, inWater } from "./park/water";
 import { Doves } from "./park/doves";
+import { DesertWind } from "./park/dust";
 import { PAVILIONS } from "./park/memorial";
 import { Underwater } from "./park/underwater";
 import "./style.css";
@@ -128,7 +129,11 @@ async function boot() {
   const camera = new ChaseCamera();
   const social = new SocialControls(events);
   /** Weather for the loaded map; its lightning schedules thunder in the audio engine. */
-  function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength, km) => audio.thunder(delay, strength, km); return w; }
+  function makeWeather(){ const w = new Weather(scene); w.onThunder = (delay, strength, km) => audio.thunder(delay, strength, km);
+    // Dust devils run on open desert and the ballfield (Veterans), or the lots off B Hill's road (#74).
+    if (ACTIVE_MAP === "outdoor") w.desert = new DesertWind(scene, terrainHeight, (x, z) => terrainSurface(x, z) === "sand" || x < -118 || x > 118 || z < -128 || z > 66);
+    else if (ACTIVE_MAP === "b_hill") w.desert = new DesertWind(scene, terrainHeight, (x, z) => terrainSurface(x, z) === "dirt");
+    return w; }
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
   // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
   let tracks = new WheelTracks(scene);
@@ -384,6 +389,7 @@ async function boot() {
     await loadingStage("Placing the ramps and trees",60);
     await Promise.race([Promise.allSettled(scene.userData.assetLoads ?? []), new Promise((resolve) => setTimeout(resolve, 20000))]);
     await loadingStage("Preparing the view",80);
+    weather.prepare();
     await renderer.compileAsync(scene,camera.camera);
     await loadingStage("Ready to ride",100);finishLoading();
     }catch(error){loadingFailed();throw error;}finally{input.clear();pending=emptyInput();accumulator=0;}
@@ -690,8 +696,8 @@ async function boot() {
     loadMap:async id=>{await menu.onRide(id as MapId);},
     draw:(dt,view,focus,yaw)=>{
       const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
-      daylight.update(dt,live?.phase??profile.settings.daylight,focus,renderer,{flashlight:profile.settings.flashlight,yaw,sidereal:live?.sidereal});
-      weather.update(dt,live?.weather??profile.settings.weather,focus,profile.settings.fidelity,{camera:view.position});
+      daylight.update(dt,live?.phase??profile.settings.daylight,focus,renderer,{flashlight:profile.settings.flashlight,yaw,sidereal:live?.sidereal,live:!!live});
+      weather.update(dt,live?.weather??profile.settings.weather,focus,profile.settings.fidelity,{camera:view.position,live:live?.conditions});
       camcorder.render(renderer,scene,view);
     },
     setLiveHidden:hidden=>{
@@ -728,8 +734,8 @@ async function boot() {
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
     // "Match Boulder City now" (#48) swaps in the city's real time and weather, and turns the stars to the real hour.
     const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
-    daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal});
-    weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
+    daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal,live:!!live});
+    weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer,live:live?.conditions});
     tracks.update(dt,sim,weather.snowDepth,weather.wetness);
     audio.weather(weather.rain);
     fidelity.update(sim.position,dt);

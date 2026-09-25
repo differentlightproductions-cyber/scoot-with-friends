@@ -1,10 +1,16 @@
+import { lightParticles } from '../art/particle-light';
 import * as THREE from 'three';
 import type { Fidelity } from '../render/fidelity';
 import { ACTIVE_MAP, terrainHeight } from './park';
+import type { LiveConditions } from './liveSky';
+import type { DesertWind } from './dust';
+import { setWindStrength } from '../art/flora';
 export type WeatherMode='sunny'|'fall'|'snow'|'rain';
 type Hook={compile:THREE.Material['onBeforeCompile'];cache:()=>string};
 /** What the weather needs to know about the rider this frame (all optional). */
-export interface WeatherRider{camera?:THREE.Vector3;velocity?:THREE.Vector3;yaw?:number;riding?:boolean;grounded?:boolean;landing?:number}
+export interface WeatherRider{camera?:THREE.Vector3;velocity?:THREE.Vector3;yaw?:number;riding?:boolean;grounded?:boolean;landing?:number;
+ /** Real wind, cloud and dust when the sky is live (#74); null or absent for the settings' weather. */
+ live?:LiveConditions|null}
 const TAU=Math.PI*2;
 // Snowfall as falling ice crystals, in world space, so the rider moves through
 // it rather than carrying a snow globe along:
@@ -92,14 +98,29 @@ export class Weather {
  // Kicked-up snow: position, velocity and remaining life per particle.
  private sprayVelocity=new Float32Array(0);private sprayLife=new Float32Array(0);private sprayNext=0;private sprayDebt=0;private wasGrounded=true;
  constructor(private scene:THREE.Scene){this.group.name='Visual weather';scene.add(this.group);}
+ private live:LiveConditions|null=null;
+ /** Dust devils and blowing sand (#74), when the map has open desert for them. */
+ desert?:DesertWind;
+ /** How much dust hangs in the air now (0..1), eased. */
+ dust=0;
+ private windScratch=new THREE.Vector3();
  /** Mean wind (m/s) at time t: veers slowly and gusts on a 5-15 s rhythm. */
  wind(t:number,out=new THREE.Vector3()){
+  // Live (#74): the real wind's direction, swinging a little, between its mean
+  // and its gusts (10 m readings, eased to rider height).
+  const live=this.live;
+  if(live){
+   const from=live.from*Math.PI/180+.12*Math.sin(t*.043)+.06*Math.sin(t*.11+2),gusting=THREE.MathUtils.clamp(.5+.35*Math.sin(t*.41)+.25*Math.sin(t*.93+.7)+.15*Math.sin(t*2.1+2.1),0,1);
+   const speed=.8*(live.wind+(live.gust-live.wind)*gusting*gusting);
+   return out.set(-Math.sin(from)*speed,0,Math.cos(from)*speed);
+  }
   const angle=this.windAngle+.6*Math.sin(t*.031)+.25*Math.sin(t*.083+1.3);
   const speed=1.3*(1+.45*Math.sin(t*.41)+.25*Math.sin(t*.93+.7)+.15*Math.sin(t*2.1+2.1));
   return out.set(Math.cos(angle)*speed,0,Math.sin(angle)*speed);
  }
  update(dt:number,mode:WeatherMode,player:THREE.Vector3,quality:Fidelity,rider:WeatherRider={}){
-  const outdoors=ACTIVE_MAP==='outdoor'||ACTIVE_MAP==='b_hill';if(!outdoors){this.coverage.value=0;this.wet.value=0;this.litter.value=0;this.rain=this.autumn=this.intensity=0;this.group.visible=false;this.applyFog(0);this.setSky(0,0,0);return;}
+  this.live=rider.live??null;
+  const outdoors=ACTIVE_MAP==='outdoor'||ACTIVE_MAP==='b_hill';if(!outdoors){delete this.scene.userData.cloudCover;this.coverage.value=0;this.wet.value=0;this.litter.value=0;this.rain=this.autumn=this.intensity=0;this.group.visible=false;this.applyFog(0);this.setSky(0,0,0);return;}
   if(quality!==this.quality){this.quality=quality;this.buildFlakes();if(this.drops)this.buildDrops();if(this.leaves)this.buildLeaves();}if(mode==='snow'&&this.mode!=='snow')this.coverage.value=Math.max(.12,this.coverage.value);this.mode=mode;
   // Ground cover builds over about 45 s of snowfall and melts off in a few seconds after it.
   this.coverage.value=THREE.MathUtils.clamp(this.coverage.value+(mode==='snow'?dt/45:-dt/3),0,1);
@@ -119,7 +140,20 @@ export class Weather {
   // The flash lights the scene through the park's own ambient light (daylight.ts):
   // a light of its own would put one more light in every material's shader.
   this.setSky(Math.max(this.intensity,this.rain),this.rain,this.flash*this.rain,this.channel*this.rain);
-  this.applyFog(Math.max(this.intensity,this.rain*.7));
+  // Live clouds (#74): the real cover on the dome; a heavy grey sky dims the sun a little.
+  const live=this.live;
+  if(live)this.scene.userData.cloudCover=.12+.75*live.cloud;else delete this.scene.userData.cloudCover;
+  if(live&&this.intensity<=0&&this.rain<=0)this.scene.userData.overcast=.45*THREE.MathUtils.smoothstep(live.cloud,.75,1);
+  // Blowing dust: a tan haze closes in; the trees sway with the real wind.
+  this.dust+=((live?.dust??0)-this.dust)*(1-Math.exp(-dt/3));
+  this.scene.userData.dustHaze=this.dust;
+  const gust=this.wind(this.time,this.windScratch);
+  setWindStrength(THREE.MathUtils.clamp(gust.length()/1.3,.45,4));
+  this.applyFog(Math.max(this.intensity,this.rain*.7,this.dust*.85));
+  // Dust devils: hot, calm, sunny afternoons when live; now and then on a Sunny day otherwise.
+  const night=(this.scene.userData.sky as {uniforms?:{uNight:{value:number}}}|undefined)?.uniforms?.uNight.value??0;
+  const devils=mode!=='sunny'?0:live?live.devils:.15*(1-THREE.MathUtils.smoothstep(night,.05,.3));
+  this.desert?.update(dt,{player,wind:gust,dust:this.dust,devils,quality});
   this.scanAge+=dt;if(this.scanAge>1){this.scanAge=0;this.scan();}
   if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(d,centre);}
   else if(this.flakes)this.flakes.visible=false;
@@ -254,7 +288,16 @@ export class Weather {
   let base=this.fogBase.get(fog);if(!base){base={near:fog.near,far:fog.far};this.fogBase.set(fog,base);}
   fog.near=THREE.MathUtils.lerp(base.near,base.near*.45,amount);fog.far=THREE.MathUtils.lerp(base.far,base.far*.62,amount);
  }
- private scan(){this.scene.traverse(object=>{if(!(object instanceof THREE.Mesh)||object instanceof THREE.SkinnedMesh||this.dynamic(object))return;for(const material of Array.isArray(object.material)?object.material:[object.material])if(material instanceof THREE.MeshStandardMaterial&&!material.transparent&&!material.userData.characterQuality&&!this.hooked.has(material))this.hook(material);});}
+ /**
+  * Hooks every material in the park now (#73). The loading screen calls this
+  * before it compiles the shaders, so the compile already carries the weather
+  * code and nothing recompiles (a hitch) in the first second of riding.
+  */
+ prepare(){this.scanAge=0;this.scan();}
+ private scan(){this.scene.traverse(object=>{if(!(object instanceof THREE.Mesh)||object instanceof THREE.SkinnedMesh)return;
+  // Most materials are hooked already: skip those before the walk up the parents.
+  const list=Array.isArray(object.material)?object.material:[object.material],fresh=list.filter(m=>m instanceof THREE.MeshStandardMaterial&&!m.transparent&&!m.userData.characterQuality&&!this.hooked.has(m));
+  if(!fresh.length||this.dynamic(object))return;for(const material of fresh)this.hook(material as THREE.MeshStandardMaterial);});}
  private dynamic(object:THREE.Object3D){for(let item:THREE.Object3D|null=object;item;item=item.parent)if(item.userData.weatherDynamic)return true;return false;}
  private hook(material:THREE.MeshStandardMaterial){
   // The program key is read before wrapping: the default key is the hook's own
@@ -342,7 +385,7 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
    scale[i]=spriteSize(mm)/base;alpha[i]=0;
   }
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('aScale',new THREE.BufferAttribute(scale,1));geometry.setAttribute('aAlpha',new THREE.BufferAttribute(alpha,1));
-  this.flakes=new THREE.Points(geometry,flakeMaterial(this.disc,base,.9));this.flakes.frustumCulled=false;this.flakes.renderOrder=2;this.group.add(this.flakes);
+  this.flakes=new THREE.Points(geometry,lightParticles(flakeMaterial(this.disc,base,.9)));this.flakes.frustumCulled=false;this.flakes.renderOrder=2;this.group.add(this.flakes);
  }
  private buildDrops(){
   if(this.drops){this.drops.removeFromParent();this.drops.geometry.dispose();(this.drops.material as THREE.Material).dispose();}
@@ -350,7 +393,7 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
   this.dropFall=new Float32Array(count);
   for(let i=0;i<count;i++){const x=(Math.random()-.5)*BOX.x,y=(Math.random()-.5)*BOX.y,z=(Math.random()-.5)*BOX.z;positions.set([x,y,z,x,y,z],i*6);this.dropFall[i]=7+Math.random()*2;}
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));
-  this.drops=new THREE.LineSegments(geometry,new THREE.LineBasicMaterial({color:0xc9d6e3,transparent:true,opacity:0,depthWrite:false}));
+  this.drops=new THREE.LineSegments(geometry,lightParticles(new THREE.LineBasicMaterial({color:0xc9d6e3,transparent:true,opacity:0,depthWrite:false})));
   this.drops.frustumCulled=false;this.drops.renderOrder=2;this.drops.name='Rain';this.group.add(this.drops);
  }
  private buildLeaves(){
@@ -364,16 +407,17 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
   }
   const geometry=new THREE.BufferGeometry();
   for(const [name,array,size] of [['position',positions,3],['color',colors,3],['aScale',scale,1],['aAlpha',alpha,1],['aRot',rot,1],['aFlip',flip,1]] as const)geometry.setAttribute(name,new THREE.BufferAttribute(array,size));
-  this.leaves=new THREE.Points(geometry,leafMaterial(this.leafTex,.16));this.leaves.frustumCulled=false;this.leaves.renderOrder=2;this.leaves.name='Falling leaves';this.group.add(this.leaves);
+  this.leaves=new THREE.Points(geometry,lightParticles(leafMaterial(this.leafTex,.16)));this.leaves.frustumCulled=false;this.leaves.renderOrder=2;this.leaves.name='Falling leaves';this.group.add(this.leaves);
  }
  private buildSpray(){
   const count=this.quality==='low'?120:260,positions=new Float32Array(count*3),scale=new Float32Array(count),alpha=new Float32Array(count);
   for(let i=0;i<count;i++){scale[i]=.8+Math.random()*1.4;positions[i*3+1]=-1e4;}
   this.sprayVelocity=new Float32Array(count*3);this.sprayLife=new Float32Array(count);this.sprayNext=0;
   const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.BufferAttribute(positions,3));geometry.setAttribute('aScale',new THREE.BufferAttribute(scale,1));geometry.setAttribute('aAlpha',new THREE.BufferAttribute(alpha,1));
-  this.spray=new THREE.Points(geometry,flakeMaterial(this.disc,.06,.85));this.spray.frustumCulled=false;this.spray.visible=false;this.group.add(this.spray);
+  this.spray=new THREE.Points(geometry,lightParticles(flakeMaterial(this.disc,.06,.85)));this.spray.frustumCulled=false;this.spray.visible=false;this.group.add(this.spray);
  }
  dispose(){
+  this.desert?.dispose();delete this.scene.userData.cloudCover;delete this.scene.userData.dustHaze;setWindStrength(1);
   for(const points of [this.flakes,this.spray,this.leaves,this.drops])if(points){points.geometry.dispose();(points.material as THREE.Material).dispose();}
   this.disc.dispose();this.leafTex.dispose();this.applyFog(0);this.setSky(0,0,0);
   for(const [material,hook]of this.hooked){material.onBeforeCompile=hook.compile;material.customProgramCacheKey=hook.cache;material.needsUpdate=true;}this.hooked.clear();this.group.removeFromParent();

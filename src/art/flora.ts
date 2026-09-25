@@ -16,6 +16,9 @@ const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 
 // ---- Wind -------------------------------------------------------------------
 const wind = { value: 0 };
+/** How hard the wind blows the plants (1 a light breeze); weather.ts follows the real wind with it (#74). */
+const windStrength = { value: 1 };
+export function setWindStrength(value: number) { windStrength.value = value; }
 let windClock = -1;
 function tickWind() {
   const now = performance.now() / 1000;
@@ -25,18 +28,19 @@ function tickWind() {
 function sway(material: THREE.MeshStandardMaterial, strength: number) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWind = wind;
-    shader.vertexShader = "uniform float uWind;\n" + shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
+    shader.uniforms.uWindStrength = windStrength;
+    shader.vertexShader = "uniform float uWind;\nuniform float uWindStrength;\n" + shader.vertexShader.replace("#include <begin_vertex>", `#include <begin_vertex>
       #ifdef USE_INSTANCING
         vec3 root = instanceMatrix[3].xyz;
       #else
         vec3 root = vec3(0.0);
       #endif
-      float bend = max(transformed.y, 0.0) * ${strength.toFixed(4)};
+      float bend = max(transformed.y, 0.0) * ${strength.toFixed(4)} * uWindStrength;
       float phase = uWind * 1.7 + root.x * 0.37 + root.z * 0.29;
       transformed.x += (sin(phase) + 0.35 * sin(phase * 2.3 + transformed.y)) * bend;
       transformed.z += (cos(phase * 0.8) * 0.6) * bend;`);
   };
-  material.customProgramCacheKey = () => "sway" + strength;
+  material.customProgramCacheKey = () => "sway2" + strength;
 }
 
 // ---- Geometry helpers -------------------------------------------------------

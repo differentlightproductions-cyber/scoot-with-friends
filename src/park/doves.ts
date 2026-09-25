@@ -202,6 +202,8 @@ const SHOULDER = new THREE.Vector3(0.028, 0.086, 0.035).sub(new THREE.Vector3(0,
 function makeDove(scene: THREE.Scene): Pick<Dove, "root" | "head" | "wingL" | "wingR" | "folded"> {
   const p = doveParts(), root = new THREE.Group();
   root.name = "Mourning dove";
+  // They fly about: no snow or wet shading hooked onto them (weather.ts).
+  root.userData.weatherDynamic = true;
   const body = new THREE.Mesh(p.body, p.material), folded = new THREE.Mesh(p.folded, p.material), head = new THREE.Mesh(p.head, p.material);
   const wingR = new THREE.Mesh(p.wing, p.material), wingL = new THREE.Mesh(p.wing, p.material);
   wingL.scale.x = -1;
