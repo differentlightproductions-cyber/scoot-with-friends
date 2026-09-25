@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { InputFrame } from '../input/input';
 import { PhoneScreen, SCREEN_H, SCREEN_W, type IconName, type Page } from './canvas-ui';
 import './phone.css';
+import { locale, onLocale, t } from '../i18n';
 
 /**
  * The rider's phone (docs/briefs/PHONE-SYSTEM.md): one state machine, one app
@@ -37,6 +38,7 @@ export interface SheetOption { label: string; detail?: string; action: () => voi
 
 const DRAW_TIME = 0.34, AWAY_TIME = 0.26;
 const REPEAT_FIRST = 0.36, REPEAT_NEXT = 0.11;
+const HOME_SIZE = 6, HOME_ORDER_KEY = 'swf-phone-app-order-v1';
 
 export class Phone {
   state: PhoneState = 'hidden';
@@ -45,6 +47,10 @@ export class Phone {
   readonly screen = new PhoneScreen();
   readonly texture = new THREE.CanvasTexture(this.screen.canvas);
   readonly apps: PhoneApp[] = [];
+  homePageIndex = 0;
+  homeEditing = false;
+  editingAppId = '';
+  private savedOrder: string[] = [];
   /** The overlay shown in third person: the screen in a hand-held bezel. */
   readonly overlay = document.createElement('div');
   readonly toasts = document.createElement('div');
@@ -65,10 +71,11 @@ export class Phone {
   private clock = '';
   private uploadTimer = 0;
   private pendingUpload = true;
-  private pointer: { id: number; x: number; y: number; moved: boolean } | null = null;
+  private pointer: { id: number; x: number; y: number; startX: number; startY: number; moved: boolean; swipe: boolean } | null = null;
   private afterAway: (() => void) | null = null;
 
   constructor() {
+    try { const order = JSON.parse(localStorage.getItem(HOME_ORDER_KEY) || '[]'); if (Array.isArray(order)) this.savedOrder = order.filter((id): id is string => typeof id === 'string').slice(0, 100); } catch {}
     this.texture.colorSpace = THREE.SRGBColorSpace;
     this.texture.anisotropy = 4;
     this.overlay.className = 'phone-overlay';
@@ -93,16 +100,19 @@ export class Phone {
     document.body.append(this.overlay, this.toasts);
     this.screen.onBack = () => this.back();
     this.screen.onHome = () => this.home();
+    onLocale(() => this.refresh());
+    window.addEventListener('swf-palette-change', () => this.refresh());
     const canvas = this.screen.canvas;
     canvas.addEventListener('pointerdown', e => {
       e.preventDefault();
-      this.pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false };
+      this.pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, moved: false, swipe: false };
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', e => {
       const p = this.pointer;
       if (!p || p.id !== e.pointerId) return;
-      const dy = e.clientY - p.y, scale = SCREEN_H / canvas.getBoundingClientRect().height;
+      const dx = e.clientX - p.startX, dy = e.clientY - p.y, scale = SCREEN_H / canvas.getBoundingClientRect().height;
+      if (!this.view && (p.swipe || Math.abs(dx) > 24 && Math.abs(dx) > Math.abs(e.clientY - p.startY) * 1.2)) { p.swipe = p.moved = true; return; }
       if (Math.abs(dy) > 6 || p.moved) {
         p.moved = true;
         this.screen.scrollBy(-dy * scale);
@@ -113,7 +123,9 @@ export class Phone {
     canvas.addEventListener('pointerup', e => {
       const p = this.pointer;
       this.pointer = null;
-      if (!p || p.id !== e.pointerId || p.moved) return;
+      if (!p || p.id !== e.pointerId) return;
+      if (p.swipe) { const dx = e.clientX - p.startX; if (Math.abs(dx) > 50) this.shiftHomePage(dx < 0 ? 1 : -1); return; }
+      if (p.moved) return;
       const r = canvas.getBoundingClientRect();
       this.tap(((e.clientX - r.left) / r.width) * SCREEN_W, ((e.clientY - r.top) / r.height) * SCREEN_H);
     });
@@ -123,7 +135,12 @@ export class Phone {
     canvas.addEventListener('wheel', e => { e.preventDefault(); this.screen.scrollBy(e.deltaY * 0.6); this.dirty = true; }, { passive: false });
   }
 
-  register(app: PhoneApp) { this.apps.push(app); }
+  register(app: PhoneApp) { this.apps.push(app); this.apps.sort((a,b) => { const ai=this.savedOrder.indexOf(a.id),bi=this.savedOrder.indexOf(b.id); return (ai<0?Infinity:ai)-(bi<0?Infinity:bi); }); }
+  get homePageCount() { return Math.max(1, Math.ceil(this.apps.length / HOME_SIZE)); }
+  get homeApps() { return this.apps.slice(this.homePageIndex * HOME_SIZE, (this.homePageIndex + 1) * HOME_SIZE); }
+  setHomePage(index: number) { const next=Math.max(0,Math.min(this.homePageCount-1,index));if(next===this.homePageIndex)return;this.homePageIndex=next;if(this.homeEditing&&!this.homeApps.some(a=>a.id===this.editingAppId))this.editingAppId='';this.screen.focusId='';this.screen.resetScroll();this.dirty=true; }
+  shiftHomePage(step: number) { this.setHomePage(this.homePageIndex+step); }
+  moveApp(id: string, step: -1 | 1) { const from=this.apps.findIndex(a=>a.id===id),to=from+step;if(from<0||to<0||to>=this.apps.length)return false;[this.apps[from],this.apps[to]]=[this.apps[to],this.apps[from]];this.savedOrder=this.apps.map(a=>a.id);try{localStorage.setItem(HOME_ORDER_KEY,JSON.stringify(this.savedOrder));}catch{}this.setHomePage(Math.floor(to/HOME_SIZE));this.refresh();return true; }
   get active() { return this.state !== 'hidden'; }
   /** Accepting input: fully out. */
   get ready() { return this.state === 'open'; }
@@ -132,6 +149,7 @@ export class Phone {
   /** Takes the phone out, on the home screen or straight into an app or view. */
   open(target?: string | View) {
     this.stack = [];
+    this.homePageIndex = 0; this.homeEditing = false; this.editingAppId = '';
     if (typeof target === 'string') { const app = this.apps.find(a => a.id === target); if (app) this.stack.push(app.open()); }
     else if (target) this.stack.push(target);
     this.screen.focusId = '';
@@ -190,6 +208,7 @@ export class Phone {
   }
   home() {
     this.stack = [];
+    this.homePageIndex = 0; this.homeEditing = false; this.editingAppId = '';
     this.screen.focusId = '';
     this.screen.resetScroll();
     this.dirty = true;
@@ -271,7 +290,7 @@ export class Phone {
       this.repeat = REPEAT_NEXT;
     } else { this.heldDir = dir; this.repeat = REPEAT_FIRST; }
     if (dir === 'left' || dir === 'right') {
-      if (!this.screen.adjust(dir === 'left' ? -1 : 1)) this.screen.move(dir === 'left' ? -1 : 1, 0);
+      if (!this.screen.adjust(dir === 'left' ? -1 : 1)) { const before=this.screen.focusId;this.screen.move(dir === 'left' ? -1 : 1, 0);if(!this.view&&before===this.screen.focusId)this.shiftHomePage(dir==='left'?-1:1); }
     } else this.screen.move(0, dir === 'up' ? -1 : 1);
     this.dirty = true;
   }
@@ -279,6 +298,7 @@ export class Phone {
   /** Chooses the control with this id on the current page, as A would (tests, accessibility). */
   select(id: string) {
     if (this.state === 'hidden') return false;
+    if (!this.view && id.startsWith('app-')) { const index=this.apps.findIndex(a=>'app-'+a.id===id);if(index>=0)this.setHomePage(Math.floor(index/HOME_SIZE)); }
     this.screen.draw(this.view ? this.view.page() : this.homePage());
     if (!this.screen.has(id)) return false;
     this.screen.focusId = id;
@@ -304,14 +324,15 @@ export class Phone {
     }
     if (this.state === 'hidden') return;
     const now = new Date();
-    const clock = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const clock = now.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
     if (clock !== this.clock) { this.clock = clock; this.dirty = true; }
     const view = this.view;
     this.liveTimer -= dt;
     if ((view ? view.live : true) && this.liveTimer <= 0) { this.dirty = true; this.liveTimer = 0.25; }
     if (this.dirty) {
       this.dirty = false;
-      this.screen.chrome = { title: view?.title ?? '', time: clock, battery: 0.72, canBack: true };
+      const titleKey = view?.title === 'SESH MUSIC' ? 'phone.music' : view?.title === 'PIECE' ? 'phone.ui.piece' : view?.title === 'PLACED' ? 'phone.ui.placed' : this.apps.find(a => a.label === view?.title)?.id;
+      this.screen.chrome = { title: titleKey ? t(titleKey.startsWith('phone.') ? titleKey : 'phone.'+titleKey) : view?.title ?? '', time: clock, battery: 0.72, canBack: true };
       this.screen.draw(view ? view.page() : this.homePage());
       this.pendingUpload = true;
     }

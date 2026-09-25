@@ -90,14 +90,20 @@
 .rarity-legendary .crate-card .cc-rarity { background: linear-gradient(90deg, #ffb938, #fff3a0, #ffb938); background-size: 200% 100%; animation: shine 1.4s linear infinite; }
 @keyframes shine { to { background-position: 200% 0; } }
 .crate-card .cc-swatch { width: 84px; height: 84px; margin: 6px 0; border-radius: 50%; border: 4px solid var(--ink); background: conic-gradient(var(--c) 0 70%, var(--a) 70% 100%); box-shadow: inset -8px -10px 0 #0003, inset 6px 8px 0 #fff5; }
+.cc-preview { display: grid; place-items: center; max-width: 100%; }
+.cc-preview canvas { position: static; inset: auto; display: block; width: min(200px, 50vw); height: auto; max-height: 120px; object-fit: contain; }
+.cc-preview:has(canvas) .cc-swatch { display: none; }
 .crate-card .cc-swatch.coin { background: radial-gradient(circle at 35% 35%, #fff3a0, #ffb938 55%, #c98a10); }
 .crate-card small { font: 700 11px/1.2 var(--body); color: #5b6168; letter-spacing: .06em; }
 .crate-card strong { font: 22px/1.1 var(--display); }
 .crate-card em { font: 18px/1.1 var(--marker); font-style: normal; color: #3b3f45; }
 .crate-card .cc-credit { margin-top: 4px; font: 13px/1 var(--display); color: var(--orange); }
 .crate-hint { position: absolute; bottom: 12vh; font: 16px/1 var(--display); color: var(--paper); letter-spacing: .06em; animation: pulse 1.1s ease-in-out infinite; }
+.crate-cancel { position: absolute; bottom: 4vh; border: 0; background: none; color: var(--paper); font: 13px/1 var(--display); cursor: pointer; }
+.crate-cancel[hidden] { display: none; }
 .crate-actions[hidden] { display: none; }
 .crate-actions { position: absolute; bottom: 8vh; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; animation: fade-in .4s .8s both; }
+.crate-batch-error { flex-basis: 100%; margin: 0 16px; color: var(--paper); text-align: center; font: 12px/1.3 var(--body); }
 .crate-actions button {
   font: 16px/1 var(--display); padding: 13px 20px 11px; border: 3px solid var(--ink); border-radius: 12px; cursor: pointer;
   background: var(--paper); color: var(--ink); box-shadow: 5px 5px 0 var(--ink);

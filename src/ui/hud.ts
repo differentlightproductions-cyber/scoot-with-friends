@@ -5,6 +5,7 @@ import { Events } from "../core/events";
 import { TUNE } from "../core/config";
 import { OUTDOOR, SPAWNS } from "../park/park";
 import type { TrickRecord } from "../tricks/resolver";
+import { onLocale, t } from "../i18n";
 export class HUD {
   /** Replaces the riding hint while the phone is out. */
   phoneHint = '';
@@ -40,6 +41,22 @@ export class HUD {
       <div id="pause" class="overlay" hidden><section class="pause-sheet"><div class="eyebrow">TAKE A BREATH</div><h2>SESH<br>PAUSED.</h2><div class="np-player" aria-label="Now playing"><div class="np-meta"><span class="np-label">NOW PLAYING</span><strong class="np-title">Nothing playing</strong><small class="np-artist"></small><u class="np-bar"><s></s></u></div><div class="np-controls"><button data-action="music-prev" data-row="music-toggle" aria-label="Previous track">⏮</button><button data-action="music-toggle" data-row="music-toggle" aria-label="Play">▶</button><button data-action="music-next" data-row="music-toggle" aria-label="Next track">⏭</button></div></div><button data-action="resume">Resume <span>↗</span></button><button data-action="capture-replay">Capture Replay</button><button data-action="replays">Replays</button><button data-action="marker" disabled>Return to Marker <small id="marker-availability">NOT SET</small></button><button data-action="reset">Reset Rider</button><button data-action="restart">Restart Sesh</button><label for="spawn">PRACTICE START</label><select id="spawn">${SPAWNS.map((s, i) => `<option value="${i}">${s.name}</option>`).join("")}</select><button data-action="spot">Move to practice start</button><button data-action="hillstart" hidden>Return to Hill Start</button><button data-action="settings">Settings</button><button data-action="online">Private Free-ride</button><button data-action="exit">Exit to Main Menu</button><button data-action="sound">Sound: <b id="sound">ON</b></button><p>Left Stick selects · A confirms · B resumes<br>H opens the control guide</p></section></div>
       <pre id="debug" hidden></pre><div id="loading">BUILDING THE PARK…</div>`;
     this.root = document.querySelector("#app")!;
+    const pauseLabels: Record<string, string> = { resume:'pause.resume', 'capture-replay':'pause.capture_replay', replays:'pause.replays', marker:'pause.marker', reset:'pause.reset', restart:'pause.restart', spot:'pause.move_practice', hillstart:'pause.hill_start', settings:'pause.settings', online:'pause.online', exit:'pause.exit', sound:'pause.sound' };
+    const localizePause = () => {
+      const sheet = this.root.querySelector('#pause .pause-sheet')!;
+      sheet.querySelector('.eyebrow')!.textContent = t('pause.eyebrow');
+      sheet.querySelector('h2')!.innerHTML = `${t('pause.title.1')}<br>${t('pause.title.2')}`;
+      sheet.querySelector('label[for="spawn"]')!.textContent = t('pause.practice');
+      sheet.querySelector('p')!.innerHTML = `${t('pause.hint.1')}<br>${t('pause.hint.2')}`;
+      for (const [action, key] of Object.entries(pauseLabels)) {
+        const button = sheet.querySelector<HTMLButtonElement>(`button[data-action="${action}"]`);
+        if (button) button.firstChild!.textContent = t(key) + (action === 'sound' ? ': ' : ' ');
+      }
+      const marker = sheet.querySelector<HTMLButtonElement>('button[data-action="marker"]')!;
+      sheet.querySelector('#marker-availability')!.textContent = t(marker.disabled ? 'pause.marker.unset' : 'pause.marker.ready');
+    };
+    onLocale(localizePause);
+    localizePause();
     this.attempt = document.querySelector("#line-text")!;
     document
       .querySelector("#ride")!
@@ -210,8 +227,8 @@ export class HUD {
       document.querySelector('[data-action="marker"]') as HTMLButtonElement
     ).disabled = !s.marker.saved;
     document.querySelector("#marker-availability")!.textContent = s.marker.saved
-      ? "READY"
-      : "NOT SET";
+      ? t('pause.marker.ready')
+      : t('pause.marker.unset');
     this.lineAge += dt;
     if (s.tricks.fakieRecord) this.lineAge = 0;
     document.querySelector("#score")!.textContent =

@@ -10,6 +10,14 @@
      trick book ...... photocopied zine with highlighter
      pause ........... clipboard, sticker-bombed
    Fonts come from creator.css (@font-face Bungee, Marker). */
+html:lang(ar), html:lang(hi), html:lang(zh-CN) {
+  --display: "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif;
+  --body: "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif;
+}
+body.rtl #start .game-menu, body.rtl #pause .pause-sheet { direction: rtl; text-align: right; }
+body.rtl #start .game-menu { left: auto; right: clamp(18px, 4vw, 76px); }
+body.rtl #pause .pause-sheet { margin-left: auto; margin-right: 0; }
+#start[data-screen="settings"] .game-menu nav button:first-child { background: var(--teal); color: var(--ink); }
 :root {
   --ink: #0b0c0d;
   --paper: #f4f1e8;
@@ -520,6 +528,8 @@ body.ui-open #minimap, body.editing #minimap { visibility: hidden; }
 #account-dialog p { color: #30343a; }
 #account-dialog label { font: 12px/1 var(--display); letter-spacing: .06em; color: var(--ink); }
 #account-dialog input, #account-dialog textarea { border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); box-shadow: inset 3px 3px 0 #0000000f; }
+#account-dialog input[type="checkbox"] { display: inline-block; width: 20px; height: 20px; padding: 0; margin: 0 8px 0 0; vertical-align: middle; accent-color: var(--ink); box-shadow: none; }
+#account-dialog label:has(input[type="checkbox"]) { line-height: 1.5; letter-spacing: 0; font-family: var(--body); }
 #account-dialog small { display: block; margin-top: 6px; color: #5b6168; font-size: 12px; }
 #account-dialog button {
   font: 14px/1.1 var(--display); letter-spacing: .03em; text-align: center; padding: 12px 14px 10px;
@@ -635,6 +645,7 @@ body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
   #start .game-menu h1, #start .game-menu h1.long-title { font-size: clamp(18px, 7vh, 28px); margin: 4px 0 6px; }
   #start .game-menu nav { flex: 1 1 auto; max-height: none; }
   #start .game-menu nav button { min-height: 40px; padding-top: 6px; padding-bottom: 6px; }
+  #start[data-screen="settings-touch"] .game-menu nav button { min-height: 44px; }
   #start .game-menu .menu-save-note { font-size: 10px; line-height: 1.3; margin: 4px 0 0; }
   #start .preview-frame { left: calc(52vw + 28px); right: 12px; width: auto; }
   /* Pause: a three-column grid instead of one tall column, so every button shows. */
@@ -658,3 +669,49 @@ body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
 }
 /* With Friends (#47): the throw / shove / pick-up prompt sits just above the world prompt. */
 .world-prompt.playful-prompt { bottom: calc(19% + 52px); background: var(--ink, #172b2d); color: var(--lime, #c6ff00); }
+
+/* Main-menu tabs only; Sesh and in-world shop overlays keep their own navigation. */
+#start .menu-tab-panel { position: absolute; inset: 0; pointer-events: none; }
+#start .main-tabs { position: absolute; z-index: 40; top: 8px; left: 50%; transform: translateX(-50%); width: min(960px, calc(100% - 24px)); display: flex; gap: 5px; padding: 5px; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 12px; background: #15191de8; box-shadow: 4px 4px 0 var(--orange); }
+#start .main-tabs button { flex: 1 1 0; min-width: 0; min-height: 44px; border: 0; border-radius: 7px; padding: 4px; background: #303640; color: white; font: 12px/1.1 var(--display); cursor: pointer; }
+#start .main-tabs button[aria-selected="true"] { background: var(--lime); color: var(--ink); }
+#start .main-tabs button:focus-visible { outline: 3px solid var(--orange); outline-offset: -2px; }
+#start .main-tabs button:disabled { opacity: .6; cursor: not-allowed; }
+#start:has(.main-tabs) .game-menu { top: max(70px, 9vh); }
+@media (orientation: portrait) and (max-width: 700px) {
+  #start .main-tabs { top: max(44px, env(safe-area-inset-top)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #start .main-tabs button { min-height: 44px; font-size: 11px; }
+  #start:has(.main-tabs) .game-menu { top: max(155px, env(safe-area-inset-top)); }
+  #start[data-screen="settings-touch"]:has(.main-tabs) .game-menu { top: max(325px, env(safe-area-inset-top)); }
+  body:has(#start[data-screen="settings-touch"] .main-tabs) #touch-pad.tp-preview { top: 155px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  #start:has(.main-tabs) .game-menu { top: max(62px, env(safe-area-inset-top)); }
+}
+
+/* Alternate palettes recolor interface surfaces, never canvas or product swatches. */
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start[data-screen="creator"] {
+  --ink: inherit; --paper: inherit; --lime: inherit; --orange: inherit; --teal: inherit; --pink: inherit;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu {
+  --face: var(--paper); --pick: var(--lime); --pick-shadow: var(--orange);
+  background: var(--paper); color: var(--ink);
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu h1 {
+  background: none; color: var(--ink); -webkit-text-fill-color: var(--ink); -webkit-text-stroke: 0; filter: none; text-shadow: none;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu :is(.eyebrow,.menu-save-note,.menu-controls,.build-number,.menu-subtitle) { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button {
+  background: var(--paper) !important; color: var(--ink); border: 2px solid var(--ink); text-shadow: none;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button.selected {
+  background: var(--lime) !important; color: var(--ink); box-shadow: 4px 4px 0 var(--ink); outline: 2px solid var(--ink); outline-offset: 2px;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button small { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu .eyebrow { background: var(--paper); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs { background: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs button { background: var(--paper); color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs button[aria-selected="true"] { background: var(--lime); outline: 2px solid var(--paper); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) .cr-grid.presets .cr-tile { --card: var(--teal); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog :is(.account-identity,[role="status"],.account-save strong) { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog .recovery-code { background: var(--paper); }

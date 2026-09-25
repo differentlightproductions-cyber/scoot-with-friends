@@ -6,6 +6,8 @@ import { ownershipKey, ownsBoard, ownsSelection, type RideableKind } from "./cat
 import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
+import { isLocale, LOCALES, type Locale } from "../i18n";
+import { isUiPalette, type UiPalette } from '../ui/palette';
 import { validBuild, type SavedBuild } from "./builds";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
@@ -25,6 +27,8 @@ export interface LocalProfile {
   /** Player builds, saved compactly (data/builds.ts): the Warehouse layout. */
   builds?: { warehouse?: SavedBuild };
   settings: {
+    language: Locale;
+    uiPalette: UiPalette;
     controlStyle: "pro" | "arcade";
     sound: boolean;
     grindAssist: boolean;
@@ -68,11 +72,24 @@ export interface LocalProfile {
     touchControls: 'auto'|'on'|'off';
     touchSize: number;
     touchOpacity: number;
+    touchLeftHanded: boolean;
+    touchHaptics: boolean;
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
 /** Called after every successful save (cloud sync listens). */
 export const profileSaved = new Set<() => void>();
+export function browserLocale(): Locale {
+  const preferred = typeof navigator === 'undefined' ? [] : navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const language of preferred) {
+    const exact = LOCALES.find(l => l.code.toLowerCase() === language.toLowerCase());
+    if (exact) return exact.code;
+    const base = language.split('-')[0].toLowerCase();
+    const matched = LOCALES.find(l => l.code.split('-')[0].toLowerCase() === base);
+    if (matched) return matched.code;
+  }
+  return 'en-US';
+}
 /**
  * A save from before the avatar keeps the spirit of its gear, once: body
  * build, headwear, top, bottoms and shoes (ids like "top-hoodie-red") map to
@@ -103,6 +120,8 @@ export function loadProfile(): LocalProfile {
     activeRideable: "scooter",
     progress: emptyProgress(),
     settings: {
+      language: browserLocale(),
+      uiPalette: 'default',
       controlStyle: "pro",
       sound: true,
       grindAssist: true,
@@ -128,6 +147,8 @@ export function loadProfile(): LocalProfile {
       touchControls:'auto',
       touchSize:100,
       touchOpacity:50,
+      touchLeftHanded:false,
+      touchHaptics:false,
       fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'medium' : 'high',
       fidelityVersion:2,
     },
@@ -136,6 +157,8 @@ export function loadProfile(): LocalProfile {
   try {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3,4].includes(saved.version)) return profile;
+    if(isLocale(saved.settings?.language))profile.settings.language=saved.settings.language;
+    if(isUiPalette(saved.settings?.uiPalette))profile.settings.uiPalette=saved.settings.uiPalette;
     profile.wallet=validWallet(saved.wallet);
     profile.progress=validProgress(saved.progress);
     const warehouse=validBuild(saved.builds?.warehouse);if(warehouse)profile.builds={warehouse};
@@ -166,6 +189,8 @@ export function loadProfile(): LocalProfile {
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;
     if(Number.isFinite(saved.settings?.touchSize))profile.settings.touchSize=Math.min(130,Math.max(80,Math.round(saved.settings.touchSize)));
     if(Number.isFinite(saved.settings?.touchOpacity))profile.settings.touchOpacity=Math.min(85,Math.max(20,Math.round(saved.settings.touchOpacity)));
+    if(typeof saved.settings?.touchLeftHanded==='boolean')profile.settings.touchLeftHanded=saved.settings.touchLeftHanded;
+    if(typeof saved.settings?.touchHaptics==='boolean')profile.settings.touchHaptics=saved.settings.touchHaptics;
     if(Number.isFinite(saved.settings?.filterStrength))profile.settings.filterStrength=Math.min(100,Math.max(0,Math.round(saved.settings.filterStrength)));
     for (const slot of Object.keys(
       profile.scooter,

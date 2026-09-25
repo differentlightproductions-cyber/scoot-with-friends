@@ -9,7 +9,7 @@ import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryIte
 import {AccountPanel,cloud} from './account';
 /** Where saves go: this device, plus the account when signed in. */
 const savedWhere=()=>cloud.account?'saved to this device and your account.':'saved on this device.';
-import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,type Rarity} from '../data/progress';
+import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
 import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
 interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean }
 /** The product on the counter: rarity frame, colour swatch, price sticker. */
@@ -17,6 +17,8 @@ function productCard(name:string,variant:string,rarity:Rarity,color:number,price
   return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>CREDIT</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
 }
 import {loadProfile} from '../data/loadout';
+import { LOCALES, onLocale, setLocale, t } from '../i18n';
+import { applyUiPalette, UI_PALETTES } from './palette';
 import {display,DISPLAY_LABEL,DISPLAY_MODES,fullscreenSupported} from './display';
 import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN,TP_FOV_DEFAULT,TP_FOV_MAX,TP_FOV_MIN,TP_FOV_STEP} from '../camera/fov';
 import { version } from '../../package.json';
@@ -45,9 +47,38 @@ import './shop.css';
 import { cityForMap, liveSky } from '../park/liveSky';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
+const MAIN_TABS=['play','locker','shop','crates','settings','account'] as const;
+type MainTab=typeof MAIN_TABS[number];
 export class GameMenu {
   accountPanel = new AccountPanel();
   screen = "home";
+  private shopBrowse=false;
+  onOpenCrate=(_id:string,_all=false)=>{};
+  overlayOwnsInput=()=>false;
+  private shellActive(){return !this.seshOpen&&!this.shopOpen&&!this.root.hidden;}
+  private tabsLocked(){return this.buying||this.accountPanel.dialog.open||this.overlayOwnsInput()||['creator','starter','starter-pick'].includes(this.screen);}
+  private activeTab():MainTab{
+    if(this.shopBrowse||['shop','purchase','purchased','board-complete','board-purchase'].includes(this.screen))return 'shop';
+    if(this.screen==='crates')return 'crates';
+    if(this.screen==='account')return 'account';
+    if(this.screen.startsWith('settings')||['guide','tricks','test-controller'].includes(this.screen))return 'settings';
+    if(['rides','rider','rider-presets','creator','scooter','longboard','brand','brand-items'].includes(this.screen))return 'locker';
+    return 'play';
+  }
+  tabPanel(name:MainTab){return this.root.querySelector<HTMLElement>(`[data-tab-panel="${name}"]`);}
+  private switchTab(tab:MainTab){
+    if(!this.shellActive()||this.tabsLocked())return;
+    this.shopBrowse=tab==='shop';
+    if(tab==='shop')this.activeShop=SHOPS[0];
+    this.show(({play:'home',locker:'rides',shop:'shop',crates:'crates',settings:'settings',account:'account'} as const)[tab]);
+  }
+  private renderTabs(){
+    if(!this.shellActive())return;
+    const locked=this.tabsLocked(),active=this.activeTab();
+    const bar=document.createElement('div');bar.className='main-tabs';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Main menu');
+    for(const name of MAIN_TABS){const button=document.createElement('button');button.type='button';button.textContent=name.toUpperCase();button.dataset.tab=name;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(active===name));button.disabled=locked;button.title=locked?'Finish or leave this draft before switching tabs':'';button.onclick=()=>this.switchTab(name);bar.append(button);}
+    this.root.prepend(bar);
+  }
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
   private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
   openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.longboard=structuredClone(latest.longboard);this.profile.activeRideable=latest.activeRideable;this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
@@ -116,7 +147,7 @@ export class GameMenu {
     if(this.afterStarter==='ride')this.onRide('outdoor');else this.show('scooter');
   }
   private memory=new Map<string,number>();private repeatKey='';private repeatTimer=0;private equipRequest=0;private previewing=false;
-  private browseMode():BrowseMode{return this.shopOpen?'shop':'owned';}
+  private browseMode():BrowseMode{return this.shopOpen||this.shopBrowse?'shop':'owned';}
   private memoryKey(screen:string){return screen+'/'+(['brand','brand-items'].includes(screen)?this.browseBrand:'')+'/'+(screen==='brand-items'?this.browseCategory:'');}
   private brandName(){return this.browseBrand===BOARD_BRAND_ID?'Sometimes Summer':PARTS.find(p=>p.brandId===this.browseBrand)?.brand??this.browseBrand;}
   private equippedSelection(item:{rideable:string;category:string}){return item.rideable==='longboard'?this.profile.longboard[item.category as LongboardCategory]:this.selected(item.category as Category);}
@@ -154,6 +185,7 @@ export class GameMenu {
   pan = new THREE.Vector3();
   focusBox = new THREE.Box3Helper(new THREE.Box3(), 0xb9c9c5);
   isolatedProduct = new THREE.Group();
+  private rewardSelection: {partId:string;variantId:string}|undefined;
   private focusKey = "";
   private saveFailed = false;
   onRide = (_map: MapId) => {};
@@ -183,6 +215,13 @@ export class GameMenu {
     public root: HTMLElement,
     public profile: LocalProfile,
   ) {
+    onLocale(() => { if (!this.root.hidden) this.render(); });
+    window.addEventListener('keydown',e=>{
+      if(e.repeat||!['KeyQ','KeyE'].includes(e.code)||!this.shellActive()||this.tabsLocked()||e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const index=MAIN_TABS.indexOf(this.activeTab());this.switchTab(MAIN_TABS[(index+(e.code==='KeyQ'?-1:1)+MAIN_TABS.length)%MAIN_TABS.length]);
+    },true);
     // DISPLAY (#60): the saved mode starts on the first click or key; leaving
     // fullscreen through the browser sets it back to Windowed.
     display.onLeft=()=>{this.profile.settings.displayMode='windowed';this.changed();if(!this.root.hidden)this.render();};
@@ -260,13 +299,15 @@ export class GameMenu {
   private screenBeforePurchase='brand-items';
   private swatchOf(partId:string,variantId:string){return (PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color)??0x888888;}
   show(screen: string) {
+    if(screen==='home')this.shopBrowse=false;
+    if(screen==='settings-touch' || (this.screen==='settings-touch'&&screen!=='settings-touch')){this.touchPreviewOn=screen==='settings-touch';this.touchPreview(this.touchPreviewOn);}
     if(screen==='purchase'&&this.screen!=='purchase')this.screenBeforePurchase=this.screen;
     // Returning to a screen restores where focus was, so a category keeps its place.
     if(screen!==this.screen){this.memory.set(this.memoryKey(this.screen),this.index);this.index=this.memory.get(this.memoryKey(screen))??0;}
     if(this.screen==='creator'&&screen!=='creator')this.leaveCreator();
     const entering=screen==='creator'&&this.screen!=='creator';
     this.screen = screen;
-    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop('dusk');this.creator.start(this.root,this.profile.avatar);return;}
+    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop('dusk');this.creator.start(this.root,this.profile.avatar);this.renderTabs();return;}
     // A direction still held from the previous screen waits before repeating here.
     this.repeatTimer=Math.max(this.repeatTimer,.38);
     this.render();
@@ -305,7 +346,7 @@ export class GameMenu {
   }
   private render() {
     this.root.classList.toggle('shop-overlay',this.shopOpen);this.root.classList.toggle('sesh-overlay',this.seshOpen);
-    if(this.screen==='creator'){this.root.dataset.screen='creator';this.creator.render();return;}
+    if(this.screen==='creator'){this.root.dataset.screen='creator';this.creator.render();this.renderTabs();return;}
     const parkMaps=PARK_MAPS;
     this.root.dataset.screen=this.screen;
     const add = (
@@ -332,18 +373,11 @@ export class GameMenu {
       case "online":
         title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
-        if(this.needsStarter())add("BUILD YOUR SCOOTER",()=>this.startStarter('ride'),"Pick your first Lazer parts: they are yours to keep");
-        else add("PLAY",()=>this.show("play"),"Find your next line");
-        add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
-        add("RIDES",()=>this.show("rides"),"Ride and customize your scooter or longboard");
-        add("RIDER",()=>this.show("rider"),"Your avatar: riders, body type, randomize");
-        add("SETTINGS",()=>this.show("settings"),"Preferences and trick book");
-        add("ACCOUNT",()=>{void this.accountPanel.open();},"Sign in / Create account");
-        break;
       case "play":
         title="PLAY";subtitle="YOUR NEXT SESH";
-        add("SOLO",()=>this.show("maps"),"Choose a park and ride");
-        add("PRIVATE FREE-RIDE",()=>this.show("online"),"Invite friends to a private room");break;
+        if(this.needsStarter())add("BUILD YOUR SCOOTER",()=>this.startStarter('ride'),"Pick your first Lazer parts: they are yours to keep");
+        add("SOLO",()=>this.needsStarter()?this.startStarter('ride'):this.show("maps"),"Choose a park and ride");
+        add("PRIVATE FREE-RIDE",()=>this.needsStarter()?this.startStarter('ride'):this.show("online"),"Invite friends to a private room");break;
       case "rides":{
         title="RIDES";subtitle="A RIDE IT / X CUSTOMIZE";
         const boardOwned=ownsBoard(loadProfile().wallet,this.profile.longboard),active=this.profile.activeRideable;
@@ -353,6 +387,7 @@ export class GameMenu {
         add('LONGBOARD',()=>void this.ride('longboard'),!boardOwned?'Buy a complete Sometimes Summer board at Techno Gravity first':(active==='longboard'?'Riding now':'A to ride it')+' · X to customize',active==='longboard',{primary:true});
         add('CUSTOMIZE SCOOTER',()=>this.needsStarter()?this.startStarter('scooter'):this.show('scooter'),this.needsStarter()?'Build your starter scooter first':'Your parts by brand / '+selectedPart(this.profile.scooter.deck).part.name);
         add('CUSTOMIZE LONGBOARD',()=>this.show('longboard'),boardOwned?'Sometimes Summer / '+longboardPart(this.profile.longboard.deck).variant.name+' build':'Your board parts by category');
+        if(!this.seshOpen)add('RIDER',()=>this.show('rider'),'Face, hair, body, outfit and accessories');
         break;}
       case "guide":
         title="HELP & CONTROLS";subtitle="LEARN YOUR NEXT TRICK";
@@ -383,8 +418,19 @@ export class GameMenu {
         title='TRAVEL TO '+MAPS.find(m=>m.id===this.travelMap)!.name;subtitle='YOUR OWNED GEAR TRAVELS WITH YOU';
         add('TRAVEL',()=>{const target=this.travelMap;this.closeSesh();this.onRide(target);},'Unapplied setup edits are discarded. Current attempt ends.');add('CANCEL',()=>this.show('maps'));break;
       case "shops":
-        title='SHOPS';subtitle='LOCAL SHOPS / PLACES TO RIDE';
+        title='TECHNO GRAVITY';subtitle='VISIT THE SHOP';
         for(const shop of SHOPS)add(shop.name,()=>{if(this.seshOpen){this.travelMap=shop.mapId;this.show('travel');}else this.onRide(shop.mapId);},shop.description,this.currentMap===shop.mapId);
+        break;
+      case 'crates':{
+        title='CRATES';subtitle='UNOPENED REWARDS / OPEN WHEN YOU WANT';
+        const crates=this.profile.progress.crates;
+        if(!crates.length)add('NO CRATES YET',()=>{},'Earn crates from missions and level-ups.');
+        for(const crate of crates)add(CRATE_NAME[crate.tier].toUpperCase(),()=>this.onOpenCrate(crate.id),crate.source);
+        if(crates.length>1)add('OPEN ALL',()=>this.onOpenCrate(crates[0].id,true),`${crates.length} crates in order`);
+        break;}
+      case 'account':
+        title='ACCOUNT';subtitle='YOUR RIDER / YOUR SAVE';
+        add(cloud.account?'MANAGE ACCOUNT':'SIGN IN / CREATE ACCOUNT',()=>{void this.accountPanel.open();},cloud.account?'View account and cloud save':'Save progress across your devices');
         break;
       case "maps":
         title = "MAP SELECT";
@@ -413,11 +459,12 @@ export class GameMenu {
         for(const deal of dailyDeals(this.activeShop.id)){const entry=catalogEntry(deal.partId)!,variant=entry.variants.find(v=>v.id===deal.variantId)!,owned=owns(wallet,deal),color=PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color;
           cell(entry.name.replace(/^(Mafioso|Sometimes Summer) /,'').toUpperCase()+' / '+variant.name.toUpperCase(),()=>{if(owned)return;this.product=deal.partId;this.pendingVariant=deal.variantId;this.pendingDeal=deal;this.show('purchase');},
             owned?'Yours already':'Was '+deal.was+' · ends in '+hours+'h',false,color,{rarity:priceRarity(deal.was),badge:owned?'SOLD':'-'+deal.off+'%',tag:owned?'':String(deal.price),poor:!owned&&wallet.credit+wallet.testCredit<deal.price,sold:owned});}
+        if(!this.shopOpen)add('VISIT TECHNO GRAVITY',()=>this.onRide(this.activeShop.mapId),'Ride to the shop, browse its displays and skate the DIY alley');
         const brands=inventoryBrands(wallet,'shop',{shopId:this.activeShop.id}),collected=collection(wallet.owned).brands;
         for(const b of brands){const c=collected.find(x=>x.brand===b.brand);add(b.brand.toUpperCase(),()=>{this.browseBrand=b.brandId;this.catPage=0;this.show(b.rideable==='longboard'?'longboard':'brand');},plural(b.count,'colorway')+' left to collect / '+plural(b.categories.length,'category'),false,{meter:c?[c.have,c.total]:undefined});}
         if(!brands.length)add('ALL STOCK OWNED',()=>{},'Everything this shop sells is already yours. Equip it from Customization.');
         const exclusive=collectibles().filter(c=>c.exclusive),found=exclusive.filter(c=>wallet.owned.includes(c.partId+':'+c.variantId)).length;
-        add('CRATE EXCLUSIVES',()=>{this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.';this.render();},`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
+        add('CRATE EXCLUSIVES',()=>this.shopOpen?(this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.',this.render()):this.switchTab('crates'),`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
         break;}
       case "longboard":{
         const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard),mode=this.browseMode();this.browseBrand=BOARD_BRAND_ID;
@@ -507,112 +554,134 @@ export class GameMenu {
         else add('BUILD YOUR BOARD',()=>this.show('longboard'),'Equip it from the board builder',false,{primary:true});
         add('KEEP SHOPPING',()=>this.show(this.screenBeforePurchase==='shop'?'shop':'brand-items'),'More drops, more deals');break;}
       case 'test-controller':{
-        title='TEST CONTROLLER';subtitle='PRESS BUTTONS AND MOVE THE STICKS';
-        add('COPY DIAGNOSTICS',()=>{const text=JSON.stringify(this.controllerReport(),null,2);void navigator.clipboard?.writeText(text).then(()=>{this.notice='Diagnostics copied (no account or personal data).';this.render();},()=>{this.notice='Clipboard unavailable.';this.render();});},'Controller id, mapping, source, preset and live buttons. No personal data.');
-        add('SHOW TOUCH CONTROLS HERE',()=>{this.touchPreview(!this.touchPreviewOn);this.render();},'Preview and test the on-screen controller.');
+        title=t('settings.option.test_controller');subtitle=t('settings.test.subtitle');
+        add(t('settings.test.copy'),()=>{const text=JSON.stringify(this.controllerReport(),null,2);void navigator.clipboard?.writeText(text).then(()=>{this.notice=t('settings.test.copied');this.render();},()=>{this.notice=t('settings.test.unavailable');this.render();});},t('settings.test.copy.desc'));
+        add(t('settings.test.show_touch'),()=>{this.touchPreviewOn=!this.touchPreviewOn;this.touchPreview(this.touchPreviewOn);this.render();},t('settings.test.show_touch.desc'));
         break;}
       case 'leave-sesh':{title='UNSAVED CHANGES';subtitle='APPLY THEM OR LEAVE THEM BEHIND';
         add('APPLY & CLOSE',()=>{this.applySesh();if(!this.dirty())this.closeSesh();},'Saves this setup on this device.');
         add('DISCARD CHANGES',()=>this.closeSesh(),'Keeps the setup you had when you paused.');
         add('STAY',()=>this.show(this.leaveReturn),'Keep editing.');break;}
       case "settings":
-        title="SETTINGS";subtitle="MAKE YOURSELF AT HOME";
-        add("HELP & CONTROLS",()=>this.show("guide"),"Trick book and controller guide");
-        add('RIDING & CONTROLS',()=>this.show('settings-riding'),'Control style, stance, held item and controller test');
-        add('CAMERA',()=>this.show('settings-camera'),'View, field of view, motion and filter');
-        add('GRAPHICS',()=>this.show('settings-graphics'),'Visual quality and rider detail');
-        add('TIME & WEATHER',()=>this.show('settings-time'),'Time of day, and sunny, fall, snow or rain');
-        add('GAMEPLAY',()=>this.show('settings-gameplay'),'Replay history');
-        add('AUDIO',()=>this.show('settings-audio'),'Game sound');
-        add('PHONE',()=>this.show('settings-phone'),'Which hand holds it, notifications');
-        add('ACCESSIBILITY & TOUCH',()=>this.show('settings-touch'),'Touch controls, size, opacity and reset');
-        if(this.owner())add('OWNER / ALPHA TEST CREDIT',()=>this.show('test-credit'),'Local testing only; separate from earned Credit.');
+        title=t('settings.title');subtitle=t('settings.subtitle');
+        add('🌐 '+t('settings.language')+(this.profile.settings.language==='en-US'?'':' · LANGUAGE'),()=>this.show('settings-language'),t('settings.language.desc'),false,{primary:true});
+        add(t('settings.help'),()=>this.show("guide"),t('settings.help.desc'));
+        add(t('settings.riding'),()=>this.show('settings-riding'),t('settings.riding.desc'));
+        add(t('settings.camera'),()=>this.show('settings-camera'),t('settings.camera.desc'));
+        add(t('settings.graphics'),()=>this.show('settings-graphics'),t('settings.graphics.desc'));
+        add(t('settings.time'),()=>this.show('settings-time'),t('settings.time.desc'));
+        add(t('settings.gameplay'),()=>this.show('settings-gameplay'),t('settings.gameplay.desc'));
+        add(t('settings.audio'),()=>this.show('settings-audio'),t('settings.audio.desc'));
+        add(t('settings.phone'),()=>this.show('settings-phone'),t('settings.phone.desc'));
+        add(t('settings.touch'),()=>this.show('settings-touch'),t('settings.touch.desc'));
+        if(this.owner())add(t('settings.owner_credit'),()=>this.show('test-credit'),t('settings.owner_credit.desc'));
+        break;
+      case 'settings-language':
+        title=t('language.title');subtitle=t('language.subtitle');
+        for (const language of LOCALES) add(language.native,()=>{
+          this.profile.settings.language=language.code;
+          if(this.savedProfile)this.savedProfile.settings.language=language.code;
+          this.saveFailed=!saveProfile(this.savedProfile??this.profile);
+          setLocale(language.code);
+          this.render();
+        },language.english,this.profile.settings.language===language.code);
         break;
       case 'settings-riding':
-        title='RIDING & CONTROLS';subtitle='SETTINGS / INPUT & FEEL';
-        add('USE HELD ITEM',()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / on foot');
-        add('MOUNT CAMERA '+(this.profile.settings.mountFlourish?'ON':'OFF'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
-        add("CONTROLS "+(this.profile.settings.controlStyle==='pro'?'PRO / ADVANCED':'ARCADE'),()=>{this.profile.settings.controlStyle=this.profile.settings.controlStyle==='pro'?'arcade':'pro';this.changed();this.render();});
-        add('CONTROLS PRESET '+presetName(this.profile.settings.stance).toUpperCase(),()=>{this.profile.settings.stance=this.profile.settings.stance==='regular'?'goofy':'regular';this.changed();this.render();});
-        add('TEST CONTROLLER',()=>this.show('test-controller'),'See each button, stick, source and the action it resolves to.');
+        title=t('settings.riding');subtitle=t('settings.title')+' / '+t('settings.riding');
+        add(t('settings.option.held_item'),()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / '+t('settings.option.on_foot'));
+        add(t('settings.option.mount_camera')+' '+t(this.profile.settings.mountFlourish?'common.on':'common.off'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
+        add(t('settings.option.controls')+' '+t('settings.value.'+this.profile.settings.controlStyle),()=>{this.profile.settings.controlStyle=this.profile.settings.controlStyle==='pro'?'arcade':'pro';this.changed();this.render();});
+        add(t('settings.option.preset')+' '+t('settings.value.'+this.profile.settings.stance),()=>{this.profile.settings.stance=this.profile.settings.stance==='regular'?'goofy':'regular';this.changed();this.render();});
+        add(t('settings.option.test_controller'),()=>this.show('test-controller'),t('settings.riding.desc'));
         break;
       case 'settings-gameplay':
-        title='GAMEPLAY';subtitle='SETTINGS / REPLAYS / WITH FRIENDS';
-        add('REPLAY HISTORY '+this.profile.settings.replayHistory+' SEC',()=>{const lengths=[15,30,45,60] as const;this.profile.settings.replayHistory=lengths[(lengths.indexOf(this.profile.settings.replayHistory)+1)%lengths.length];this.changed();this.render();},'How much of your riding CAPTURE REPLAY can reach back to: 15, 30, 45 or 60 seconds.');
-        add('PLAYFUL CONTACT '+({full:'FULL',friends:'FRIENDS ONLY',off:'OFF'} as const)[this.profile.settings.playfulContact],()=>{const modes=['full','friends','off'] as const;this.profile.settings.playfulContact=modes[(modes.indexOf(this.profile.settings.playfulContact)+1)%modes.length];this.changed();this.render();},'Whether thrown things and shoves from other people move you. Off: they just bounce off. Friends only: only from friends.');
+        title=t('settings.gameplay');subtitle=t('settings.title')+' / '+t('settings.gameplay');
+        add(t('gameplay.replay_history',{seconds:this.profile.settings.replayHistory}),()=>{const lengths=[15,30,45,60] as const;this.profile.settings.replayHistory=lengths[(lengths.indexOf(this.profile.settings.replayHistory)+1)%lengths.length];this.changed();this.render();},t('gameplay.replay_history.desc'));
+        add(t('gameplay.playful_contact',{mode:t('playful.'+this.profile.settings.playfulContact)}),()=>{const modes=['full','friends','off'] as const;this.profile.settings.playfulContact=modes[(modes.indexOf(this.profile.settings.playfulContact)+1)%modes.length];this.changed();this.render();},t('gameplay.playful_contact.desc'));
         break;
       case 'settings-graphics':
-        title='GRAPHICS';subtitle='SETTINGS / VISUAL QUALITY';
-        add('GRAPHICS '+this.profile.settings.fidelity.toUpperCase(),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},'Visual detail, resolution and shadows; riding stays identical.');
-        add('DISPLAY '+DISPLAY_LABEL[this.profile.settings.displayMode],()=>{
+        title=t('settings.graphics');subtitle=t('settings.title')+' / '+t('settings.graphics');
+        add(t('settings.ui_palette')+': '+t('palette.'+this.profile.settings.uiPalette),()=>{
+          const next=UI_PALETTES[(UI_PALETTES.indexOf(this.profile.settings.uiPalette)+1)%UI_PALETTES.length];
+          this.profile.settings.uiPalette=next;
+          if(this.savedProfile)this.savedProfile.settings.uiPalette=next;
+          this.saveFailed=!saveProfile(this.savedProfile??this.profile);
+          applyUiPalette(next);this.render();
+        },t('settings.ui_palette.desc'));
+        add(t('settings.graphics')+' '+t('settings.value.'+this.profile.settings.fidelity),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},t('settings.graphics.desc'));
+        add(t('settings.option.display')+' '+t('settings.value.'+this.profile.settings.displayMode),()=>{
           const next=DISPLAY_MODES[(DISPLAY_MODES.indexOf(this.profile.settings.displayMode)+1)%DISPLAY_MODES.length];
           this.profile.settings.displayMode=next;this.changed();
           void display.apply(next).then(ok=>{
-            if(next!=='windowed'&&!fullscreenSupported())this.notice='This browser cannot hide its frame. On iPhone, Share > Add to Home Screen opens the game full screen.';
-            else if(!ok)this.notice='Click, tap or press any key to switch to '+DISPLAY_LABEL[next]+'.';
+            if(next!=='windowed'&&!fullscreenSupported())this.notice=t('settings.detail.display_unsupported');
+            else if(!ok)this.notice=t('settings.detail.display_waiting',{mode:t('settings.value.'+next)});
             else this.notice='';
             this.render();
           });
           this.render();
-        },{windowed:'In the browser window. Next: Borderless Windowed fills the screen; Esc leaves it.',borderless:'Fills the screen with no browser frame; Esc leaves it. Next: Fullscreen.',fullscreen:'Fills the screen and keeps Esc for the pause menu (hold Esc to leave, where the browser allows it). Next: Windowed.'}[this.profile.settings.displayMode]);
+        },t('settings.detail.display_'+this.profile.settings.displayMode));
         break;
       case 'settings-time':
-        title='TIME & WEATHER';subtitle='SETTINGS / SKY & CONDITIONS';
+        title=t('settings.time');subtitle=t('settings.title')+' / '+t('settings.time');
         {
         // Live mode (#48) shows what the city's sky is doing; picking a time or a weather by hand turns it off.
         const city=cityForMap(this.currentMap),live=this.profile.settings.liveSky?liveSky.current(city):null;
-        const status=live?(live.source==='live'?`Live now: ${live.clock}, ${live.weather} (weather from Open-Meteo).`:live.source==='saved'?`${live.clock}; weather service unreachable, using its last reading (${live.weather}).`:live.source==='loading'?`${live.clock}; asking the weather service...`:`${live.clock}; offline, so the sky is clear until the weather service answers.`):'';
-        add('MATCH '+city.short+' NOW '+(live?'ON':'OFF'),()=>{this.profile.settings.liveSky=!this.profile.settings.liveSky;this.changed();this.render();},
-          live?status:`The real time of day and weather in ${city.name}, right now. The time needs no connection; the weather asks Open-Meteo (only the city's location is sent).`);
-        add('TIME OF DAY '+(live?'LIVE · '+live.phase.toUpperCase():this.profile.settings.daylight.toUpperCase()),()=>{
+        const status=live?t('settings.detail.live_'+live.source,{clock:live.clock,weather:t('settings.value.'+live.weather)}):'';
+        add(t('settings.option.match_now',{city:city.short,mode:t(live?'common.on':'common.off')}),()=>{this.profile.settings.liveSky=!this.profile.settings.liveSky;this.changed();this.render();},
+          live?status:t('settings.detail.match_now',{city:city.name}));
+        add(t('settings.option.time_of_day')+' '+(live?t('settings.value.live')+' · '+t('settings.value.'+live.phase):t('settings.value.'+this.profile.settings.daylight)),()=>{
           const phases=['day','sunset','night','sunrise'] as const,from=live?live.phase:this.profile.settings.daylight;this.profile.settings.liveSky=false;this.profile.settings.daylight=phases[(phases.indexOf(from)+1)%phases.length];this.changed();this.render();
-        },live?'Choosing a time turns off the live sky.':'Day, Sunset, Night or Sunrise.');
-        add('WEATHER '+(live?'LIVE · '+live.weather.toUpperCase():this.profile.settings.weather.toUpperCase()),()=>{
+        },t(live?'settings.detail.time_live':'settings.detail.time_manual'));
+        add(t('settings.option.weather')+' '+(live?t('settings.value.live')+' · '+t('settings.value.'+live.weather):t('settings.value.'+this.profile.settings.weather)),()=>{
           const kinds=['sunny','fall','snow','rain'] as const,from=live?live.weather:this.profile.settings.weather;this.profile.settings.liveSky=false;this.profile.settings.weather=kinds[(kinds.indexOf(from)+1)%kinds.length];this.changed();this.render();
-        },live?'Choosing a weather turns off the live sky.':'Sunny, Fall leaves, Snow, or Rain with thunderstorms. Works at any time of day; riding and physics stay the same.');
+        },t(live?'settings.detail.weather_live':'settings.detail.weather_manual'));
         }
-        add('HEADLAMP '+(this.profile.settings.flashlight?'ON':'OFF'),()=>{this.profile.settings.flashlight=!this.profile.settings.flashlight;this.changed();this.render();},'A headlamp at night: you wear it, and it lights wherever your head turns. Off, the park is dark: only its lamps, the moon and the stars.');
+        add(t('settings.option.headlamp')+' '+t(this.profile.settings.flashlight?'common.on':'common.off'),()=>{this.profile.settings.flashlight=!this.profile.settings.flashlight;this.changed();this.render();},t('settings.detail.headlamp'));
         break;
       case 'settings-camera':
-        title='CAMERA';subtitle='SETTINGS / YOUR VIEW';
+        title=t('settings.camera');subtitle=t('settings.title')+' / '+t('settings.camera');
         // Camera settings take effect at once, in the Sesh too, and are saved straight away.
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
-        add('CAMERA VIEW '+(this.profile.settings.cameraView==='first'?'FIRST PERSON':'THIRD PERSON'),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),'Personal view only. Riding, tricks and what other players see are unchanged.');
-        add('FIRST PERSON FOV '+this.profile.settings.firstPersonFov+'°',()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=FP_FOV_MAX?FP_FOV_MIN:c.firstPersonFov+5;}),`Horizontal field of view, ${FP_FOV_MIN}° to ${FP_FOV_MAX}°. Default ${FP_FOV_DEFAULT}°.`);
-        add('THIRD PERSON FOV '+this.profile.settings.thirdPersonFov+'°',()=>camera(c=>{c.thirdPersonFov=c.thirdPersonFov>=TP_FOV_MAX?TP_FOV_MIN:Math.min(TP_FOV_MAX,c.thirdPersonFov+TP_FOV_STEP);}),`Chase camera, horizontal on a widescreen, ${TP_FOV_MIN}° to ${TP_FOV_MAX}°. Default ${TP_FOV_DEFAULT}°.`);
-        add('CAMERA MOTION '+this.profile.settings.cameraMotion.toUpperCase(),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),'Reduced filters head bob and rig shake; spins, flips and crouches still come through.');
-        add("CAMERA FILTER "+(this.profile.settings.cameraFilter==='camcorder'?"'90s CAMCORDER":'OFF'),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),'Lo-res picture, soft edges, and faded camcorder-style color. Gameplay stays smooth.');
-        if(this.profile.settings.cameraFilter==='camcorder')add('FILTER STRENGTH '+this.profile.settings.filterStrength+'%',()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),'0% looks unfiltered. Default 65%.');
+        add(t('settings.option.camera_view')+' '+t('settings.value.'+this.profile.settings.cameraView),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),t('settings.detail.camera_view'));
+        add(t('settings.option.first_fov',{degrees:this.profile.settings.firstPersonFov}),()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=FP_FOV_MAX?FP_FOV_MIN:c.firstPersonFov+5;}),t('settings.detail.first_fov',{min:FP_FOV_MIN,max:FP_FOV_MAX,default:FP_FOV_DEFAULT}));
+        add(t('settings.option.third_fov',{degrees:this.profile.settings.thirdPersonFov}),()=>camera(c=>{c.thirdPersonFov=c.thirdPersonFov>=TP_FOV_MAX?TP_FOV_MIN:Math.min(TP_FOV_MAX,c.thirdPersonFov+TP_FOV_STEP);}),t('settings.detail.third_fov',{min:TP_FOV_MIN,max:TP_FOV_MAX,default:TP_FOV_DEFAULT}));
+        add(t('settings.option.camera_motion')+' '+t('settings.value.'+this.profile.settings.cameraMotion),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),t('settings.detail.camera_motion'));
+        add(t('settings.option.camera_filter')+' '+(this.profile.settings.cameraFilter==='camcorder'?t('settings.value.camcorder'):t('common.off')),()=>camera(c=>{c.cameraFilter=c.cameraFilter==='camcorder'?'off':'camcorder';}),t('settings.detail.camera_filter'));
+        if(this.profile.settings.cameraFilter==='camcorder')add(t('settings.option.filter_strength',{percent:this.profile.settings.filterStrength}),()=>camera(c=>{c.filterStrength=c.filterStrength>=100?0:c.filterStrength+5;}),t('settings.detail.filter_strength'));
         break;
       case 'settings-phone':{
-        title='PHONE';subtitle='SETTINGS / D-PAD DOWN IN THE SESH';
+        title=t('settings.phone');subtitle=t('settings.title')+' / '+t('settings.phone');
         const phone=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
-        add('PHONE HAND '+this.profile.settings.phoneHand.toUpperCase(),()=>phone(c=>{c.phoneHand=c.phoneHand==='right'?'left':'right';}),'The hand that holds the phone, in first and third person. Riding, the other hand keeps the bar.');
-        add('NOTIFICATIONS '+(this.profile.settings.phoneNotifications?'ON':'OFF'),()=>phone(c=>{c.phoneNotifications=!c.phoneNotifications;}),'Small pop-ups for new messages, now playing and saves. They never open the phone.');
+        add(t('settings.option.phone_hand')+' '+t('settings.value.'+this.profile.settings.phoneHand),()=>phone(c=>{c.phoneHand=c.phoneHand==='right'?'left':'right';}),t('settings.detail.phone_hand'));
+        add(t('settings.option.notifications')+' '+t(this.profile.settings.phoneNotifications?'common.on':'common.off'),()=>phone(c=>{c.phoneNotifications=!c.phoneNotifications;}),t('settings.detail.notifications'));
         break;}
-      case 'settings-touch':
-        title='ACCESSIBILITY & TOUCH';subtitle='SETTINGS / ON-SCREEN CONTROLS';
+      case 'settings-touch':{
+        title=t('settings.touch');subtitle=t('settings.title')+' / '+t('settings.touch');
         const touch=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
-        add('TOUCH CONTROLS '+this.profile.settings.touchControls.toUpperCase(),()=>touch(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),'Phones and tablets only. Auto shows them when no controller is in use.');
-        add('TOUCH CONTROL SIZE '+this.profile.settings.touchSize+'%',()=>touch(c=>{c.touchSize=c.touchSize>=130?80:c.touchSize+10;}),'80% to 130%. Layout only: stick response and gestures are unchanged.');
-        add('TOUCH CONTROL OPACITY '+this.profile.settings.touchOpacity+'%',()=>touch(c=>{c.touchOpacity=c.touchOpacity>=85?20:Math.min(85,c.touchOpacity+15);}),'20% to 85%. Appearance only; hit areas stay the same.');
-        add('RESET TOUCH LAYOUT',()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;}),'Auto, 100% size, 50% opacity.');
-        break;
+        add(t('settings.option.touch_controls')+' '+(this.profile.settings.touchControls==='auto'?t('settings.value.auto'):t('common.'+this.profile.settings.touchControls)),()=>touch(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),t('settings.detail.touch_controls'));
+        const sizes=[80,100,130] as const, size=this.profile.settings.touchSize<=90?'small':this.profile.settings.touchSize<=110?'medium':'large';
+        add(t('settings.option.touch_size')+' '+t('settings.value.'+size),()=>touch(c=>{c.touchSize=sizes[size==='small'?1:size==='medium'?2:0];}),t('settings.detail.touch_size'));
+        const opacities=[25,50,75] as const;
+        add(t('settings.option.touch_opacity')+' '+this.profile.settings.touchOpacity+'%',()=>touch(c=>{c.touchOpacity=opacities[(opacities.findIndex(n=>n>=c.touchOpacity)+1)%opacities.length]??25;}),t('settings.detail.touch_opacity'));
+        add(t('settings.option.touch_left_handed')+' '+t(this.profile.settings.touchLeftHanded?'common.on':'common.off'),()=>touch(c=>{c.touchLeftHanded=!c.touchLeftHanded;}),t('settings.detail.touch_left_handed'));
+        if(typeof navigator.vibrate==='function')add(t('settings.option.touch_haptics')+' '+t(this.profile.settings.touchHaptics?'common.on':'common.off'),()=>touch(c=>{c.touchHaptics=!c.touchHaptics;}),t('settings.detail.touch_haptics'));
+        add(t('settings.option.touch_reset'),()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;c.touchLeftHanded=false;c.touchHaptics=false;}),t('settings.detail.touch_reset'));
+        break;}
       case 'settings-audio':
-        title='AUDIO';subtitle='SETTINGS / SOUND';
-        add("SOUND " + (this.profile.settings.sound ? "ON" : "OFF"), () => {
+        title=t('settings.audio');subtitle=t('settings.title')+' / '+t('settings.audio');
+        add(t('pause.sound')+' '+t(this.profile.settings.sound?'common.on':'common.off'), () => {
           this.profile.settings.sound = !this.profile.settings.sound;
           this.changed();
           this.render();
         });
         break;
     }
-    if(this.seshOpen && (["rider","scooter","settings","rides","brand","brand-items","longboard"].includes(this.screen)||this.screen.startsWith('settings-')))add("APPLY / SAVE CHANGES",()=>this.applySesh(),this.dirty()?"Unsaved choices. Appearance refreshes when safely grounded.":"Nothing to apply yet.");
+    if(this.seshOpen && (["rider","scooter","settings","rides","brand","brand-items","longboard"].includes(this.screen)||this.screen.startsWith('settings-')))add(this.screen.startsWith('settings')?t('settings.apply'):"APPLY / SAVE CHANGES",()=>this.applySesh(),this.screen.startsWith('settings')?t(this.dirty()?'settings.unsaved':'settings.nothing'):this.dirty()?"Unsaved choices. Appearance refreshes when safely grounded.":"Nothing to apply yet.");
     if (this.screen !== "home"&&this.screen!=="leave-sesh")
       add(
         !this.seshOpen && this.screen === "rider"
           ? "SAVE & BACK"
-          : "BACK",
+          : this.screen.startsWith('settings')||this.screen==='test-controller'?t('common.back'):"BACK",
         () => this.back(),
       );
     this.index=Math.min(this.index,Math.max(0,this.choices.length-1));
@@ -620,7 +689,12 @@ export class GameMenu {
     const x=(c:(typeof this.choices)[number])=>c.extra??{};
     const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen " : ""}${x(c).rarity?"rarity-"+x(c).rarity+" ":""}${x(c).poor?"poor ":""}${x(c).sold?"sold ":""}${x(c).primary?"menu-primary ":""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}${x(c).badge?`<em class="menu-badge">${x(c).badge}</em>`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}${x(c).tag?`<b class="price-tag">${x(c).tag}</b>`:""}${x(c).meter?`<i class="menu-meter"><s style="width:${Math.round(x(c).meter![0]/Math.max(1,x(c).meter![1])*100)}%"></s></i>`:""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
-    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1${Math.max(...String(title).split(/\s+/).map((w)=>w.length))>10?' class="long-title"':''}>${title}</h1>${header}<nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||(cloud.account?'Progress saves to your account. ':'Progress saves on this device. Sign in to sync it. ')+'Cash purchases unavailable in this alpha.')}</p><p class="menu-controls">D-PAD / LS SELECT · A CONFIRM · B BACK${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    const localizedSettings=this.screen.startsWith('settings')||this.screen==='test-controller';
+    const saveNote=localizedSettings?(this.saveFailed?t('settings.save_failed'):this.notice||t(cloud.account?'settings.saved_account':'settings.saved_device')+' '+t('settings.cash_unavailable')):this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||(cloud.account?'Progress saves to your account. ':'Progress saves on this device. Sign in to sync it. ')+'Cash purchases unavailable in this alpha.');
+    const controls=localizedSettings?t('settings.controls_hint'):"D-PAD / LS SELECT · A CONFIRM · B BACK";
+    const controlsMore=this.shellActive()?"LB / RB OR Q / E TABS · RS ROTATE / ZOOM · DRAG / WHEEL · W / S, ENTER, ESC":localizedSettings?t('settings.controls_more'):"RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC";
+    this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1${Math.max(...String(title).split(/\s+/).map((w)=>w.length))>10?' class="long-title"':''}>${title}</h1>${header}<nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${saveNote}</p><p class="menu-controls">${controls}${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>${controlsMore}</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    if(this.shellActive()){this.root.insertAdjacentHTML('afterbegin',`<div class="menu-tab-panel" data-tab-panel="${this.activeTab()}" aria-hidden="true"></div>`);this.renderTabs();}
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -638,18 +712,22 @@ export class GameMenu {
   }
   /** The row or cell the preview should show, without touching the draft or saved loadout. */
   private focusedSelection(){
+    if(this.rewardSelection)return this.rewardSelection;
     if(this.screen==='starter-pick'&&this.index<this.cellCount){const o=this.starterItems[this.index];if(o)return {partId:o.part.id,variantId:o.variant.id};}
     if(this.screen==='brand-items'&&this.index<this.cellCount){const item=this.visibleItems[this.index];if(item)return {partId:item.partId,variantId:item.variantId};}
     if(['purchase','purchased'].includes(this.screen)&&this.product)return {partId:this.product,variantId:this.pendingVariant};
     return undefined;
   }
   private highlight() {
+    const rewardEntry=this.rewardSelection&&catalogEntry(this.rewardSelection.partId);
+    const isolated=this.shopOpen||!!rewardEntry;
     const ridesBoard=this.screen==='rides'&&(this.index===1||this.index===3);
     const boardBrowse=this.browseBrand===BOARD_BRAND_ID&&['brand-items','purchase','purchased'].includes(this.screen);
-    const boardScreen=["longboard","board-complete","board-purchase"].includes(this.screen)||boardBrowse||ridesBoard;
+    const boardScreen=rewardEntry?rewardEntry.rideable==='longboard':["longboard","board-complete","board-purchase"].includes(this.screen)||boardBrowse||ridesBoard;
     let category:string=this.screen==='starter-pick'?this.starterCategory:this.screen==='brand-items'?this.browseCategory:this.category;
     if(this.screen==='brand'&&this.index<this.cellCount)category=this.visibleCategories[this.index]??category;
-    const active=!boardScreen&&["brand","brand-items","purchase","purchased","starter-pick"].includes(this.screen);
+    if(rewardEntry)category=rewardEntry.category;
+    const active=!boardScreen&&(!!rewardEntry||["brand","brand-items","purchase","purchased","starter-pick"].includes(this.screen));
     // The starter screens preview the draft build (with the focused pick on it).
     const starterScreen=(this.screen==='starter'||this.screen==='starter-pick')&&!!this.starterDraft;
     const focused=this.focusedSelection(),entry=focused&&catalogEntry(focused.partId);
@@ -663,7 +741,7 @@ export class GameMenu {
     if(boardScreen){
       const preview=structuredClone(this.profile.longboard);
       let boardCategory=this.screen==='longboard'?(this.index<this.cellCount?this.visibleCategories[this.index]:'deck')??'deck':this.browseCategory;
-      if(entry?.rideable==='longboard')preview[entry.category as LongboardCategory]={...focused!};
+      if(entry?.rideable==='longboard'){preview[entry.category as LongboardCategory]={...focused!};if(rewardEntry)boardCategory=entry.category;}
       if(this.screen==="board-complete"){const variant=LONGBOARD_PARTS.find(p=>p.category==='deck')!.variants[this.index];if(variant)preview.deck={partId:'ss-drop-through-deck',variantId:variant.id};boardCategory='deck';}
       if(this.screen==="board-purchase"){preview.deck={partId:'ss-drop-through-deck',variantId:this.pendingVariant};boardCategory='deck';}
       this.previewRider.setLongboard(preview);
@@ -685,7 +763,7 @@ export class GameMenu {
     }
     if(!boardScreen){
     this.focusBox.visible = active;
-    this.isolatedProduct.clear();this.previewRider.scooter.visible=!this.shopOpen;
+    this.isolatedProduct.clear();this.previewRider.scooter.visible=!isolated;
     this.previewRider.scooter.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=true;});
     if(active){
       const bounds=new THREE.Box3();this.previewRider.root.updateMatrixWorld(true);
@@ -695,13 +773,13 @@ export class GameMenu {
         if(selected){o.geometry.computeBoundingBox();if(o.geometry.boundingBox)bounds.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
           // Selected hardware may be nested inside a wheel mesh. Render only
           // its geometry, independently of the hidden assembled parent.
-          if(this.shopOpen){const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.userData.part=o.userData.part;this.isolatedProduct.add(copy);}
+          if(isolated){const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.userData.part=o.userData.part;this.isolatedProduct.add(copy);}
         }
       });
       if(!bounds.isEmpty()){
         const size=bounds.getSize(new THREE.Vector3()),padding=THREE.MathUtils.clamp(size.length()*.018,.0008,.012);
         this.focusBox.box.copy(bounds).expandByScalar(padding);bounds.getCenter(this.focusTarget);
-        if(this.shopOpen)this.zoomTarget=Math.max(.075,size.length()*1.85);
+        if(isolated)this.zoomTarget=Math.max(.075,size.length()*1.85);
       }else this.focusBox.visible=false;
     }else this.focusTarget.set(0,.83,0);
     }
@@ -732,6 +810,7 @@ export class GameMenu {
     }
   }
   select() {
+    if(this.overlayOwnsInput()||this.accountPanel.dialog.open)return;
     if(this.screen==='creator'){this.creator.select();return;}
     this.choices[this.index]?.action();
   }
@@ -747,14 +826,14 @@ export class GameMenu {
     if(this.shopOpen&&(this.screen==="longboard"||this.screen==="shop")){if(this.screen==="shop")this.closeShop();else this.show("shop");return;}
     if(["purchase","purchased"].includes(this.screen)){this.show('brand-items');return;}
     if(this.screen==='brand-items'){this.show(this.browseBrand===BOARD_BRAND_ID?'longboard':'brand');return;}
-    if(this.screen==='brand'){this.show(this.shopOpen?'shop':'scooter');return;}
+    if(this.screen==='brand'){this.show(this.shopOpen||this.shopBrowse?'shop':'scooter');return;}
     if(this.screen==="board-complete"){this.show("longboard");return;}
     if(this.screen==="board-purchase"){this.show("board-complete");return;}
-    if(this.screen==="longboard"){this.show("rides");return;}
+    if(this.screen==="longboard"){this.show(this.shopBrowse?'shop':"rides");return;}
     if(this.screen==="starter-pick"){this.show("starter");return;}
     if(this.screen==="starter"){this.starterDraft=null;this.previewRider.applyProfile(this.profile);this.show(this.afterStarter==='ride'?'home':'rides');return;}
     this.show(
-      this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
+      this.screen==='maps'?'home':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
     );
   }
   /** One focus step. Grid cells move by column/row; the rows below move one at a time. */
@@ -778,9 +857,12 @@ export class GameMenu {
     this.highlight();
   }
   update(input: InputFrame, dt: number) {
+    if(this.overlayOwnsInput())return;
     if(this.screen==='test-controller'){let pre=this.root.querySelector<HTMLElement>('#controller-test');if(!pre){pre=document.createElement('pre');pre.id='controller-test';this.root.querySelector('nav')?.after(pre);}pre.textContent=JSON.stringify(this.controllerReport(),null,1).replace(/[{}"]/g,'');}
-    else if(this.touchPreviewOn)this.touchPreview(false);
+    else if(this.touchPreviewOn&&this.screen!=='settings-touch'){this.touchPreviewOn=false;this.touchPreview(false);}
     if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
+    const tabStep=input.pressed.leftModifier?-1:input.pressed.rightModifier?1:0;
+    if(this.shellActive()&&!this.tabsLocked()&&tabStep){const index=MAIN_TABS.indexOf(this.activeTab());this.switchTab(MAIN_TABS[(index+tabStep+MAIN_TABS.length)%MAIN_TABS.length]);return;}
     if(this.screen==='creator'){
       this.creator.update(input,dt);this.frameCreator();
       // RS turns the rider, the triggers zoom (LT out, RT in).
@@ -828,6 +910,40 @@ export class GameMenu {
     if(s.startsWith('settings')||s==='test-controller'||s==='test-credit')return 'night';
     if(s==='guide'||s==='tricks')return 'sunrise';
     return 'dusk';
+  }
+  /** A crate result borrows the existing shop preview once; it never equips the part. */
+  renderPartPreview(renderer:THREE.WebGLRenderer,selection:{partId:string;variantId:string}) {
+    const entry=catalogEntry(selection.partId);
+    if(!entry?.variants.some(v=>v.id===selection.variantId))throw new Error('Unknown preview item');
+    const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;
+    canvas.dataset.partId=selection.partId;canvas.dataset.variantId=selection.variantId;
+    canvas.setAttribute('role','img');canvas.setAttribute('aria-label',entry.name+' / '+entry.variants.find(v=>v.id===selection.variantId)!.name);
+    const target=new THREE.WebGLRenderTarget(canvas.width,canvas.height,{colorSpace:THREE.SRGBColorSpace});
+    const previousTarget=renderer.getRenderTarget(),viewport=renderer.getViewport(new THREE.Vector4()),scissor=renderer.getScissor(new THREE.Vector4()),scissorTest=renderer.getScissorTest();
+    const background=this.previewScene.background,camera=this.previewCamera.clone(),floor=this.previewScene.getObjectByName('Preview floor');
+    const floorVisible=floor?.visible,riderVisible=this.previewRider.rider.visible;
+    const focus=this.focus.clone(),focusTarget=this.focusTarget.clone(),pan=this.pan.clone(),zoom=this.zoom,zoomTarget=this.zoomTarget,orbit=this.orbit;
+    try {
+      this.rewardSelection=selection;this.highlight();
+      this.previewRider.rider.visible=false;this.focusBox.visible=false;if(floor)floor.visible=false;
+      this.previewScene.background=new THREE.Color(0xf4f1e8);
+      this.previewCamera.aspect=canvas.width/canvas.height;
+      const distance=this.zoomTarget;
+      this.previewCamera.position.copy(this.focusTarget).add(new THREE.Vector3(Math.sin(.65)*distance,distance*.3,Math.cos(.65)*distance));
+      this.previewCamera.lookAt(this.focusTarget);this.previewCamera.updateProjectionMatrix();
+      renderer.setRenderTarget(target);renderer.setScissorTest(false);renderer.clear();renderer.render(this.previewScene,this.previewCamera);
+      const pixels=new Uint8Array(canvas.width*canvas.height*4),context=canvas.getContext('2d')!,image=context.createImageData(canvas.width,canvas.height);
+      renderer.readRenderTargetPixels(target,0,0,canvas.width,canvas.height,pixels);
+      for(let y=0;y<canvas.height;y++)image.data.set(pixels.subarray((canvas.height-1-y)*canvas.width*4,(canvas.height-y)*canvas.width*4),y*canvas.width*4);
+      context.putImageData(image,0,0);
+      return canvas;
+    } finally {
+      this.rewardSelection=undefined;this.highlight();
+      this.focus.copy(focus);this.focusTarget.copy(focusTarget);this.pan.copy(pan);this.zoom=zoom;this.zoomTarget=zoomTarget;this.orbit=orbit;
+      this.previewRider.rider.visible=riderVisible;if(floor)floor.visible=floorVisible!;
+      this.previewScene.background=background;this.previewCamera.copy(camera);
+      renderer.setRenderTarget(previousTarget);renderer.setViewport(viewport);renderer.setScissor(scissor);renderer.setScissorTest(scissorTest);target.dispose();
+    }
   }
   preview(renderer: THREE.WebGLRenderer) {
     this.previewRider.posePreviewHands(performance.now()/1000);

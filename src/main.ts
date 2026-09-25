@@ -47,6 +47,9 @@ import { HUD } from "./ui/hud";
 import { EMOTES, SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
+import {setLocale,t} from './i18n';
+import {applyUiPalette} from './ui/palette';
+import {networkPlayful} from './network/playful';
 import type { MapId } from "./data/maps";
 import { VisualFidelity } from './render/fidelity';
 import { WorldInteractions } from './park/interactions';
@@ -72,6 +75,8 @@ import { B_HILL_LENGTH, routeProgress } from './park/bhill';
 async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
+  setLocale(profile.settings.language);
+  applyUiPalette(profile.settings.uiPalette);
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
   if(ACTIVE_MAP==="church"){const church=await import("./park/church");church.installChurch();setActiveLayout(church.churchLayout);selectPark("church");}
   const events = new Events(),
@@ -140,8 +145,8 @@ async function boot() {
       if (fromOthers) { missions.litter(); hud.feedback("LITTER BINNED · CLEAN-UP CREW", "good"); } else hud.feedback("BINNED", "good");
     };
     f.local.onHit = (hit) => {
-      const what = hit.item === "paper" ? "A PAPER BALL" : hit.item === "can" ? "A CAN" : hit.item === "rock" ? "A PEBBLE" : hit.item === "pinecone" ? "A PINECONE" : "AN ACORN";
-      hud.feedback(hit.strength === "cosmetic" ? `${what} BOUNCES OFF` : `BONK! ${what}`, "warn");
+      const item=t('item.'+(hit.item??'acorn'));
+      hud.feedback(hit.kind==='shove'?t('playful.shoved'):t(hit.strength==='cosmetic'?'playful.bounce':'playful.bonk',{item}), "warn");
     };
     return f;
   }
@@ -158,7 +163,7 @@ async function boot() {
   camera.mountFlourish=profile.settings.mountFlourish;
   const camcorder=new CamcorderFilter();
   const touchPad=new TouchPad();input.touch=touchPad;
-  const applyCamera=()=>{touchPad.mode=profile.settings.touchControls;touchPad.size=profile.settings.touchSize/100;touchPad.opacity=profile.settings.touchOpacity/100;camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.thirdPersonFov=profile.settings.thirdPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
+  const applyCamera=()=>{touchPad.mode=profile.settings.touchControls;touchPad.size=profile.settings.touchSize/100;touchPad.opacity=profile.settings.touchOpacity/100;touchPad.leftHanded=profile.settings.touchLeftHanded;touchPad.haptics=profile.settings.touchHaptics;camera.view=profile.settings.cameraView;camera.firstPersonFov=profile.settings.firstPersonFov;camera.thirdPersonFov=profile.settings.thirdPersonFov;camera.motion=profile.settings.cameraMotion;camcorder.enabled=profile.settings.cameraFilter==='camcorder';camcorder.strength=profile.settings.filterStrength/100;};applyCamera();
   rider.applyProfile(profile);
   sim.grindAssist = true;
   sim.tricks.stance = profile.settings.stance;
@@ -178,6 +183,7 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
+  const updateNetworkPlayful=networkPlayful(network,()=>playful,profile,()=>sim);
   const friends=new SocialClient(()=>network.endpoint);
   network.socialCredential=friends.credential;
   friends.onState=()=>phone.refresh();
@@ -188,7 +194,8 @@ async function boot() {
   const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   const syncRoomBuilds=()=>builder.setShared(network.status==='Connected'&&network.map==='warehouse'&&ACTIVE_MAP==='warehouse',network.id,m=>network.send({type:'build',generation:network.generation,...m}));
-  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();};
+  let showRoomConfirmation=false;
+  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();if(showRoomConfirmation){showRoomConfirmation=false;hud.setPaused(false);menu.root.hidden=false;menu.show('online');}};
   network.onBuilds=pieces=>builder.applySharedSnapshot(pieces);
   network.onBuild=message=>builder.applySharedChange(message);
   events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
@@ -196,17 +203,19 @@ async function boot() {
   messages.onChange=()=>phone.refresh();
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   // Cloud save starts once the account dialog exists to ask questions in.
-  void cloud.start();
-  network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
+  if(new URLSearchParams(location.search).has('account_reset')||new URLSearchParams(location.search).has('account_verify'))void menu.accountPanel.open();
+  else void cloud.start();
+  network.prepare=async()=>{showRoomConfirmation=menu.screen==='online'&&!menu.root.hidden;if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
-    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':network.lastError,action:()=>{}},
+    {label:network.status==='Connected'?'ROOM CONNECTED':(network.lan?'LAN / ':'')+network.status,detail:network.status==='Connected'?'Your private room is ready. Share an invite, then enter the park.':network.lastError||(network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':''),action:()=>{}},
+    ...(network.status==='Connected'?[{label:'ENTER PARK',action:()=>{menu.root.hidden=true;hud.setPaused(false);input.clear();pending=emptyInput();accumulator=0;}},{label:'COPY ROOM CODE',detail:network.code,action:()=>void copyText(network.code)}]:[]),
     ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void copyText(network.code)}]:[]),
     ...(network.id?[{label:'COPY INVITE',action:()=>void copyText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
-  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(showRoomConfirmation&&network.lastError&&network.status!=='Connecting'&&network.status!=='Loading'){showRoomConfirmation=false;hud.setPaused(false);menu.root.hidden=false;}if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   const mapFeatures=():MapFeature[]=>{
     const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
     for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
@@ -230,7 +239,7 @@ async function boot() {
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
   const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,
-    openCrate:id=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,crates);},
+    openCrate:(id,all=false)=>menu.onOpenCrate(id,all),
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim,profile.settings.phoneHand==='left'?1:0),
     openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
@@ -263,7 +272,7 @@ async function boot() {
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
-  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.thirdPersonFov=settings.thirdPersonFov;profile.settings.phoneHand=settings.phoneHand;profile.settings.phoneNotifications=settings.phoneNotifications;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;applyCamera();};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.thirdPersonFov=settings.thirdPersonFov;profile.settings.phoneHand=settings.phoneHand;profile.settings.phoneNotifications=settings.phoneNotifications;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;profile.settings.touchLeftHanded=settings.touchLeftHanded;profile.settings.touchHaptics=settings.touchHaptics;applyCamera();};
   menu.touchPreview=(on)=>{menu.touchPreviewOn=on;touchPad.preview=on;};
   menu.controllerReport=()=>{
     const pad=input.pad,names=['A','B','X','Y','LB','RB','LT','RT','View','Menu','L3','R3','Up','Down','Left','Right','Home'];
@@ -278,9 +287,12 @@ async function boot() {
       touchControls:profile.settings.touchControls+(touchPad.device?'':' (not a touch device)')};
   };
   rewards.equip=async(partId,variantId)=>{const r=await economy.equip({partId,variantId},profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not equip.';};
-  rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  rewards.preview=(partId,variantId,container)=>container.replaceChildren(menu.renderPartPreview(renderer,{partId,variantId}));
+  rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;if(!menu.root.hidden&&menu.screen==='crates')menu.show('crates');};
+  menu.overlayOwnsInput=()=>rewards.open;
+  menu.onOpenCrate=(id,all=false)=>{if(rewards.open)return;const crates=[...profile.progress.crates],crate=crates.find(c=>c.id===id);if(!crate)return;input.clear();pending=emptyInput();accumulator=0;if(all)void rewards.openAll(crates);else rewards.openCrate(crate);};
   menu.onPurchased=item=>rewards.purchase(item);
-  menu.onChange = () => {appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});
+  menu.onChange = () => {setLocale(profile.settings.language);applyUiPalette(profile.settings.uiPalette);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:riderAppearance(profile)});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;
@@ -290,10 +302,10 @@ async function boot() {
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
     document.querySelector("#sound")!.textContent = audio.enabled
-      ? "ON"
-      : "OFF";
+      ? t('common.on')
+      : t('common.off');
   };
-  document.querySelector("#sound")!.textContent = audio.enabled ? "ON" : "OFF";
+  document.querySelector("#sound")!.textContent = audio.enabled ? t('common.on') : t('common.off');
   let publicLayout: ParkLayout | null = null;
   async function latestPark() {
     try {
@@ -610,14 +622,14 @@ async function boot() {
             profile.settings.sound = audio.enabled;
             saveProfile(profile);
             document.querySelector("#sound")!.textContent = audio.enabled
-              ? "ON"
-              : "OFF";
+              ? t('common.on')
+              : t('common.off');
             break;
         }
       }),
     );
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Enter" && !hud.started && !e.repeat) menu.select();
+    if (e.code === "Enter" && !hud.started && !e.repeat && !rewards.open && !menu.accountPanel.dialog.open && !menu.root.hidden && !(e.target instanceof HTMLElement && e.target.closest('button,input,textarea,select,[contenteditable="true"]'))) menu.select();
   });
   const suspend=()=>{input.clear();sim.preload.reset();sim.tricks.gesture.clear();sim.hopBuffer=0;sim.groundIntent=null;sim.tricks.pendingBumper=null;sim.tricks.deck.holdTime=sim.tricks.bars.holdTime=0;pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   const mobile=new MobileGate(()=>void audio.start(),suspend);
@@ -665,7 +677,7 @@ async function boot() {
     testMode = false;
   const lampAt=new THREE.Vector3(),lampDir=new THREE.Vector3();
   const render = (dt: number, alpha = 1) => {
-    const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen);
+    const worldFrozen = hud.started && (hud.paused || !menu.root.hidden || menu.seshOpen || menu.shopOpen || rewards.open);
     if (!worldFrozen) {
     if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
@@ -712,7 +724,7 @@ async function boot() {
     // Under the lake (#62): the basin's ripples and caustics move on; with the eye under, the water closes in.
     {const light=1-.85*daylight.nightLevel;(scene.userData.lakeBasin as {update(dt:number,sky?:THREE.Color,light?:number):void}|undefined)?.update(dt,(scene.userData.sky as {horizon?:THREE.Color}|undefined)?.horizon,light);
      underwater.update(camera.camera,dt,light,ACTIVE_MAP==='outdoor'&&hud.started);}
-    const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
+    const overlayOpen=!menu.root.hidden||hud.paused||rewards.open;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
     // (and releases everything) while they own input, except in the controller test view.
     touchPad.suspended=(overlayOpen||phone.active||!social.chat.hidden)&&!touchPad.preview;
@@ -740,7 +752,7 @@ async function boot() {
     last = now;
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
-    touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden)&&!touchPad.preview;
+    touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden||rewards.open)&&!touchPad.preview;
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();
@@ -753,7 +765,7 @@ async function boot() {
     if(replay.open){replay.update(frame,dt);audio.update(0,false,false,true);replay.draw(dt);return;}
     if(rewards.open){rewards.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
     if(menu.shopOpen||menu.seshOpen){menu.update(frame,dt);audio.update(0,false,false,true);render(dt);return;}
-    if (!hud.started) {
+    if (!hud.started || !menu.root.hidden) {
       menu.update(frame, dt);
       render(dt);
       return;
@@ -787,6 +799,7 @@ async function boot() {
     else {
       frame = social.update(sim, frame, dt);
       if(playful){
+        updateNetworkPlayful();
         playful.rules.contact=profile.settings.playfulContact;
         const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
         const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'||held.kind==='Party Popper'?'paper':'can'):null;

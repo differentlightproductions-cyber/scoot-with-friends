@@ -7,7 +7,7 @@ import {reconcile, saveSummary} from '../src/data/cloud';
 
 const database = () => {
   const sql = new DatabaseSync(':memory:');
-  for (const file of ['0000_game_accounts.sql', '0001_game_saves.sql']) sql.exec(readFileSync(new URL('../drizzle/' + file, import.meta.url), 'utf8'));
+  for (const file of ['0000_game_accounts.sql', '0001_game_saves.sql', '0002_account_email.sql']) sql.exec(readFileSync(new URL('../drizzle/' + file, import.meta.url), 'utf8').replaceAll('--> statement-breakpoint',''));
   const db: AuthDB = {
     prepare(query) { let values: any[] = []; return { bind(...args: any[]) { values = args; return this; }, async first() { return sql.prepare(query).get(...values) ?? null; }, async run() { return sql.prepare(query).run(...values); } } as any; },
     async batch(statements) { sql.exec('BEGIN'); try { const results = []; for (const s of statements) results.push(await s.run()); sql.exec('COMMIT'); return results; } catch (e) { sql.exec('ROLLBACK'); throw e; } },
@@ -20,7 +20,7 @@ test('cloud save: signed-in only, revisioned, no silent overwrite across devices
   let cookie = '';
   const call = async (action: string, data?: unknown) => authAPI(new Request(origin + '/api/account/' + action, { method: data ? 'POST' : 'GET', headers: { origin, 'content-type': 'application/json', cookie }, ...(data ? { body: JSON.stringify(data) } : {}) }), { DB: db }) as Promise<Response>;
   assert.equal((await call('save')).status, 401, 'no save without a session');
-  const res = await call('register', { username: 'save_rider', password: 'test-only-strong-password' });
+  const res = await call('register', { username: 'save_rider', password: 'test-only-strong-password', email: 'save@example.com', marketingConsent: false });
   cookie = res.headers.get('set-cookie')!.split(';')[0];
   assert.deepEqual(await (await call('save')).json(), { save: null });
   const profile = { version: 3, wallet: { credit: 420 }, progress: { xp: 900 } };

@@ -4,6 +4,7 @@ import type { Simulation } from "../physics/simulation";
 import type { LocalProfile } from "../data/loadout";
 import { Npc, type NpcSpot } from "./npcs";
 import { PlayfulRules, THROW_STRENGTH, atMost, lobVelocity, shoveStrength, type PlayfulEvent, type PlayfulHit, type PlayfulTarget, type Strength, type ThrowableKind } from "./playful";
+import { t } from '../i18n';
 
 /**
  * "With Friends" in the park (#47): small things to throw lying around,
@@ -23,7 +24,6 @@ const LOOK: Record<ThrowableKind, { color: number; size: number; shape: "ball" |
   can: { color: 0xc8262d, size: 0.033, shape: "can" },
   paper: { color: 0xeeeae0, size: 0.04, shape: "ball" },
 };
-const NAME: Record<ThrowableKind, string> = { acorn: "acorn", pinecone: "pinecone", rock: "rock", can: "empty can", paper: "paper ball" };
 
 interface Thing { kind: ThrowableKind; mesh: THREE.Mesh; velocity: THREE.Vector3; state: "ground" | "carried" | "flying" | "binned"; thrower: string; rest: number; hit: Set<string>; own?: boolean }
 /** Litter (#58): the kinds that go in a trash can. */
@@ -58,6 +58,9 @@ export class WithFriends {
   /** Seconds until one of the locals drops a can or a wrapper. */
   private litterIn = 30 + Math.random() * 40;
   readonly events: PlayfulEvent[] = [];
+  /** Room adapter supplies remote targets; NPC events never leave this client. */
+  remotes: PlayfulTarget[] = [];
+  onNetworkEvent: (event: PlayfulEvent) => void = () => {};
   readonly prompt = document.createElement("div");
   private geometries: Partial<Record<ThrowableKind, THREE.BufferGeometry>> = {};
   private materials: Partial<Record<ThrowableKind, THREE.Material>> = {};
@@ -90,10 +93,14 @@ export class WithFriends {
   }
 
   /** Everyone a hit can land on. */
-  get targets(): PlayfulTarget[] { return [this.local, ...this.npcs]; }
+  get targets(): PlayfulTarget[] { return [this.local, ...this.npcs, ...this.remotes]; }
 
   /** Delivers a hit through the rules: it may be softened to cosmetic or not land at all. */
   deliver(target: PlayfulTarget, hit: PlayfulHit) {
+    if(target.kind === 'remote') {
+      if(hit.source === 'local' && hit.kind === 'shove')this.onNetworkEvent({type:'ShoveRequest',source:'local',target:target.id,direction:[hit.direction.x,hit.direction.z],strength:hit.strength});
+      return null; // Only the room server decides remote hits.
+    }
     const allowed = this.rules.allow(target, hit);
     if (!allowed) return null;
     const landed = { ...hit, strength: atMost(hit.strength, allowed) };
@@ -115,7 +122,8 @@ export class WithFriends {
       const aim = target.position.clone().setY(target.position.y + target.height * 0.62), time = THREE.MathUtils.clamp(from.distanceTo(aim) / 13, 0.25, 1.1);
       t.velocity.copy(lobVelocity(from, aim, time, GRAVITY));
     } else t.velocity.set(Math.sin(heading) * 11, 3.2, Math.cos(heading) * 11);
-    this.events.push({ type: "ThrowItem", source, item: kind, from: from.toArray() as [number, number, number], velocity: t.velocity.toArray() as [number, number, number] });
+    const event:PlayfulEvent={ type: "ThrowItem", source, item: kind, from: from.toArray() as [number, number, number], velocity: t.velocity.toArray() as [number, number, number] };
+    this.events.push(event);if(source==='local')this.onNetworkEvent(event);
     return t;
   }
 
@@ -134,7 +142,7 @@ export class WithFriends {
   }
   private nearestNpc(s: Simulation, reach: number, heading: number) {
     const f = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
-    return this.npcs.map((n) => ({ n, d: n.position.distanceTo(s.position), dot: n.position.clone().sub(s.position).setY(0).normalize().dot(f) }))
+    return [...this.npcs,...this.remotes].map((n) => ({ n, d: n.position.distanceTo(s.position), dot: n.position.clone().sub(s.position).setY(0).normalize().dot(f) }))
       .filter(({ d, dot }) => d < reach && dot > 0.2).sort((a, b) => a.d - b.d)[0]?.n ?? null;
   }
 
@@ -153,15 +161,15 @@ export class WithFriends {
     let out = input;
     if (onFoot) {
       const heading = s.yaw;
-      const near = this.carried ? null : this.things.filter((t) => t.state === "ground" && t.mesh.position.distanceTo(s.position) < 1.3).sort((a, b) => a.mesh.position.distanceTo(s.position) - b.mesh.position.distanceTo(s.position))[0];
+      const near = this.carried ? null : this.things.filter((t) => !t.thrower.startsWith('network:') && t.state === "ground" && t.mesh.position.distanceTo(s.position) < 1.3).sort((a, b) => a.mesh.position.distanceTo(s.position) - b.mesh.position.distanceTo(s.position))[0];
       const npc = this.nearestNpc(s, 1.6, heading);
       const throwing = this.carried?.kind ?? heldEmpty;
       // Beside a trash can, B throws litter away peacefully (RT still throws it at someone).
       const bin = throwing && LITTER.includes(throwing) ? this.bins.find((b) => Math.hypot(b.x - s.position.x, b.z - s.position.z) < 1.5) : undefined;
-      if (bin) this.show(`B · Throw it away · RT · Throw ${NAME[throwing!]}`);
-      else if (throwing) this.show(`RT · Throw ${NAME[throwing]}`);
-      else if (npc) this.show("RT · Shove");
-      else if (near && !heldEmpty) this.show(`B · Pick up ${NAME[near.kind]}`);
+      if (bin) this.show(`${t('playful.bin')} · ${t('playful.throw',{item:t('item.'+throwing)})}`);
+      else if (throwing) this.show(t('playful.throw',{item:t('item.'+throwing)}));
+      else if (npc) this.show(t('playful.shove'));
+      else if (near && !heldEmpty) this.show(t('playful.pick_up',{item:t('item.'+near.kind)}));
       if (bin && input.pressed.brakeBars) {
         const hand = s.position.clone().add(new THREE.Vector3(Math.sin(heading) * 0.3, 1.2, Math.cos(heading) * 0.3));
         const thing = this.carried ?? this.spawn(throwing!, hand);
@@ -246,7 +254,7 @@ export class WithFriends {
       const p = t.mesh.position.addScaledVector(t.velocity, dt);
       t.mesh.rotation.x += dt * 9; t.mesh.rotation.y += dt * 5;
       for (const target of this.targets) {
-        if (target.id === t.thrower || t.hit.has(target.id)) continue;
+        if (target.kind==='remote'||t.thrower.startsWith('network:')||target.id === t.thrower || t.hit.has(target.id)) continue;
         const dx = p.x - target.position.x, dz = p.z - target.position.z, up = p.y - target.position.y;
         if (Math.hypot(dx, dz) < target.radius + 0.08 && up > 0 && up < target.height + 0.1) {
           t.hit.add(target.id);
@@ -267,7 +275,14 @@ export class WithFriends {
   }
 
   /** The locals' poses, and a carried thing in the rider's hand. */
+  networkThrow(item:ThrowableKind,source:string,from:[number,number,number],velocity:[number,number,number]) {
+    const t=this.spawn(item,new THREE.Vector3(...from));t.mesh.position.fromArray(from);t.velocity.fromArray(velocity);t.state='flying';t.thrower='network:'+source;
+    // Network-only props expire; they never create inventory or local pickup copies.
+    t.rest=-4;
+  }
   render(dt: number, elapsed: number, hand?: THREE.Object3D) {
+    for(const t of this.things)if(t.thrower.startsWith('network:')){t.rest+=dt;if(t.rest>=0)t.mesh.removeFromParent();}
+    this.things=this.things.filter(t=>!t.thrower.startsWith('network:')||t.rest<0);
     for (const npc of this.npcs) npc.render(dt, elapsed);
     if (this.carried && hand) { this.carried.mesh.visible = true; hand.getWorldPosition(this.carried.mesh.position); }
   }

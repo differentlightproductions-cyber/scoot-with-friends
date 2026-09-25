@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
 const url = process.env.LAZER_URL || 'http://127.0.0.1:5186', out = process.env.OUT || 'artifacts/surfaces';
 mkdirSync(out, { recursive: true });
-const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH, headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || process.env.CHROME_PATH, headless: true });
 const results = [];
 const check = (label, ok, detail = '') => { results.push(!!ok); console.log(`${ok ? 'PASS' : 'FAIL'} ${label} ${JSON.stringify(detail)}`); };
 try {
@@ -14,7 +14,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER?.startSession, null, { timeout: 900000 });
-  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.renderer.render = () => {}; });
+  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.__render = g.renderer.render; g.renderer.render = () => {}; });
 
   // Roll 2 s from 6 m/s on each ground, heading east, and compare the speed kept.
   const roll = await page.evaluate(() => {
@@ -59,7 +59,7 @@ try {
 
   // A picture of the lot, from above its north-east corner.
   const shot = await page.evaluate(async () => {
-    const g = window.__LAZER; delete g.renderer.render;
+    const g = window.__LAZER; g.renderer.render = g.__render;
     const s = g.sim; s.reset(0, true); s.position.set(-44, 0.3, -106); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.yaw = Math.PI * 0.8;
     for (let i = 0; i < 30; i++) g.advance(1 / 60, {}, true);
     const cam = g.camera.camera; for (let i = 0; i < 3; i++) g.render();

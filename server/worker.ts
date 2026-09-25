@@ -2,8 +2,8 @@
 import assets from "../work/site-assets.json";
 import { authAPI } from "./auth-api";
 export default {
-  async fetch(request: Request, env: any) {
-    const accountResponse = await authAPI(request, env);
+  async fetch(request: Request, env: any, ctx: { waitUntil(promise: Promise<unknown>): void }) {
+    const accountResponse = await authAPI(request, env, ctx);
     if (accountResponse) return accountResponse;
     const response = await parkAPI(request, env);
     if (response) return response;

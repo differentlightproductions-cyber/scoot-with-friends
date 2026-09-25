@@ -30,12 +30,12 @@ if(/BUILD YOUR SCOOTER/.test(await play.innerText())){await play.click();await p
 else{await play.click();await page.getByRole('button',{name:/^SOLO/}).click();await page.locator('.game-menu nav button').first().click();}
 await page.locator('#loading').waitFor({state:'hidden',timeout:30000});
 await page.locator('#start').waitFor({state:'hidden',timeout:30000});
-await page.waitForTimeout(500);
+await page.locator('#destination-loading').waitFor({state:'hidden',timeout:30000});
 await page.keyboard.down('Escape');
 await page.waitForTimeout(150);
 await page.keyboard.up('Escape');
 await page.locator('#pause').waitFor({state:'visible'});
-assert.match(await page.locator('#pause').evaluate(e=>getComputedStyle(e).backgroundColor),/rgba\([^)]*, 0\.[0-9]+\)/);
+assert.match(await page.locator('#pause').evaluate(e=>getComputedStyle(e).backgroundImage),/linear-gradient/);
 const frozen=()=>page.evaluate(()=>{const g=window.__LAZER;return {position:g.sim.position.toArray(),elapsed:g.sim.elapsed,rider:g.rider.rider.position.toArray(),hands:g.rider.hands.map(h=>h.position.toArray()),camera:g.camera.camera.position.toArray()};});
 const before=await frozen();await page.keyboard.down('w');await page.waitForTimeout(400);await page.keyboard.up('w');
 assert.deepEqual(await frozen(),before,'pause must freeze physics, pose and camera even with movement held');

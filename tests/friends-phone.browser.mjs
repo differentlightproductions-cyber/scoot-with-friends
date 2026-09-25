@@ -2,7 +2,8 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const origin = 'http://127.0.0.1:5183/';
+const origin = (process.env.LAZER_URL || 'http://127.0.0.1:5183').replace(/\/?$/, '/');
+const roomEndpoint = process.env.ROOM_URL || 'ws://127.0.0.1:8788';
 const artifacts = 'artifacts/network';
 mkdirSync(artifacts, { recursive: true });
 const evidence = { origin, result: 'INCOMPLETE', steps: [], clients: [], errors: [] };
@@ -28,7 +29,7 @@ async function client(name) {
   await page.waitForFunction(() => window.__LAZER?.phone?.apps?.some(a => a.id === 'friends'));
   await page.evaluate(() => { const g = window.__LAZER; g.startSession('outdoor', true); g.hud.start(); });
   await page.waitForFunction(() => window.__LAZER.friends.status === 'Connected', null, { timeout: 30000 });
-  assert((await page.evaluate(() => window.__LAZER.network.endpoint)).endsWith(':8788'));
+  assert.equal(await page.evaluate(() => window.__LAZER.network.endpoint), roomEndpoint);
   info.socialConnected = true;
   return { context, page, info };
 }
