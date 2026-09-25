@@ -3,6 +3,9 @@ import { music, MUSIC_GENRES } from '../audio/music';
 import type { Simulation } from '../physics/simulation';
 import type { LocalProfile } from '../data/loadout';
 import type { WorldInteractions } from '../park/interactions';
+import type { FreeRide } from '../network/client';
+import type { SocialClient } from '../network/social';
+import { friendsApp } from './friends';
 import { SNAP_MODES, matchAsset, type WarehouseBuilder } from '../editor/warehouse';
 import { BUILD_CATALOG, BUILD_GROUPS, BUILD_LIMITS, type BuildGroup } from '../data/builds';
 import { EMOTES } from '../ui/social';
@@ -38,7 +41,9 @@ export interface PhoneDeps {
   /** Opens the chat field (typing) for the room / local chat. */
   compose: () => void;
   messages: MessageStore;
-  network: () => { status: string; id: string; code: string; roster: { id: string; name: string; connected?: boolean }[] };
+  network: () => FreeRide;
+  social: () => SocialClient;
+  teleportToPlayer: (id: string) => boolean;
   map: PhoneMap;
   /** Opens a crate on screen (the phone is put away first). */
   openCrate: (id: string) => void;
@@ -633,6 +638,7 @@ export function installApps(d: PhoneDeps) {
     ['spots', 'SPOTS', 'star', '#ffd23f', spotsApp],
     ['items', 'ITEMS', 'items', '#ff7ab8', itemsApp],
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
+    ['friends', 'FRIENDS', 'rider', TEAL, friendsApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],
     ['shop', 'SHOP', 'crate', '#35b6ff', shopApp, () => { const n = d.profile().wallet.packages.length; return n ? String(Math.min(9, n)) : undefined; }],

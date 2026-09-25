@@ -7,6 +7,8 @@ import { WheelTracks } from "./park/tracks";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide,capture} from './network/client';
+import {SocialClient} from './network/social';
+import {teleportNear} from './network/teleport';
 import {appearance as riderAppearance} from './network/protocol';
 import {ReplayBuffer} from './replay/buffer';
 import {ReplayEditor} from './replay/editor';
@@ -149,6 +151,12 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
+  const friends=new SocialClient(()=>network.endpoint);
+  network.socialCredential=friends.credential;
+  friends.onState=()=>phone.refresh();
+  friends.onInvite=invite=>phone.notify('Lobby invite',invite.name+' invited you. Open Friends to join.','rider');
+  friends.onAccepted=code=>phone.close(()=>void network.connect('join',friends.name,code));
+  friends.connect();
   /** The rolling replay history (#41); a new map starts a new one. */
   const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
@@ -171,7 +179,7 @@ async function boot() {
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
-  network.onChange=()=>{syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   const mapFeatures=():MapFeature[]=>{
     const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
     for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
@@ -203,7 +211,14 @@ async function boot() {
     ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
     items:()=>interactions,builder:()=>builder,
     compose:()=>social.openChat(),
-    network:()=>network,
+    network:()=>network,social:()=>friends,
+    teleportToPlayer:id=>{
+      const remote=network.remotes.get(id),sample=remote?.samples.at(-1);
+      if(network.status!=='Connected'||!network.roster.some(p=>p.id===id&&p.connected)||!sample||performance.now()-sample.at>1000)return false;
+      const moved=teleportNear(sim,sample.state.position,sample.state.yaw);
+      if(moved){input.clear();pending=emptyInput();accumulator=0;camera.reset();}
+      return moved;
+    },
     replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory},
     // Fast travel (#43): the spot's district loads if it is not this one, then the rider is placed at the spot.
     fastTravel:async spot=>{if(ACTIVE_MAP!==spot.map)await menu.onRide(spot.map);if(ACTIVE_MAP!==spot.map)return;sim.spawnIndex=Math.min(spot.spawn,SPAWNS.length-1);reset();}};
@@ -826,6 +841,8 @@ async function boot() {
       editor,
       profile,
       network,
+      friends,
+      teleportToPlayer:phoneDeps.teleportToPlayer,
       startSession,
       exitToMenu,
       get rider() {
