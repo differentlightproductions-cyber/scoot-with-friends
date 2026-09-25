@@ -1953,10 +1953,19 @@ export class Simulation {
         .projectOnPlane(support.normal)
         .normalize()
         .multiplyScalar(magnitude);
-      desired.addScaledVector(
-        new THREE.Vector3(0, -1, 0).projectOnPlane(support.normal),
-        1.8,
-      );
+      // Feet hold on gentle ground: only a slope past about 28 degrees starts
+      // to carry a walker down, fully by 42 (ramp walls, steep banks). Judged
+      // on the flattest footing just around the feet, so standing at the edge
+      // of a curb, a deck or a berm, half on the flat, never slides off it.
+      let flattest = support.normal.y;
+      for (const [x, z] of [[0.14, 0], [-0.14, 0], [0, 0.14], [0, -0.14]])
+        flattest = Math.max(flattest, terrainNormal(this.position.x + x, this.position.z + z).y);
+      const slide = 1 - clamp((flattest - Math.cos(0.733)) / (Math.cos(0.489) - Math.cos(0.733)), 0, 1);
+      if (slide > 0)
+        desired.addScaledVector(
+          new THREE.Vector3(0, -1, 0).projectOnPlane(support.normal),
+          3 * slide * slide,
+        );
     }
     // Mid dive flip LS picks the flip, not a drift: the dive keeps its line.
     if (this.diveFlip && !this.grounded) desired.set(this.velocity.x, 0, this.velocity.z);
