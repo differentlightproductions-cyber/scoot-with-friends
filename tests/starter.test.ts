@@ -4,7 +4,7 @@ import {CreditEconomy,owns} from '../src/data/credit';
 import {loadProfile,PROFILE_KEY} from '../src/data/loadout';
 import {defaultScooter,PARTS,STARTER_PICKS,validStarter,type ScooterLoadout} from '../src/data/scooterParts';
 import {ownsBoard} from '../src/data/catalog';
-import {emptyProgress,levelFor,record,STARTER,STARTER_REWARD,validProgress} from '../src/data/progress';
+import {emptyProgress,levelFor,missionBoard,record,STARTER,STARTER_REWARD,validProgress} from '../src/data/progress';
 
 const store=new Map<string,string>();
 Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v),removeItem:(k:string)=>store.delete(k)}});
@@ -99,4 +99,20 @@ test('phone shop: an order is paid once, travels as a package and is delivered o
   assert.ok(owns(w, bars) && w.packages.length === 0);
   assert.equal(await e.deliver(t0 + 99_000), 'none', 'delivered once');
   assert.equal(loadProfile().progress.stats.purchases, 1, 'an order counts as a purchase');
+});
+
+test('simple trick missions take 5 landings, skill ones 3, big ones 1; progress survives a reload', () => {
+  const p = emptyProgress();
+  for (let i = 0; i < 4; i++) assert.equal(record(p, {}, id, '2026-09-24', ['trick:Tailwhip']).completed.length, 0, 'tailwhip ' + (i + 1) + ' of 5 pays nothing yet');
+  const board = missionBoard(p, '2026-09-24').starter.find(m => m.id === 's-tailwhip')!;
+  assert.equal(board.value, 4); assert.equal(board.goal, 5);
+  const reloaded = validProgress(JSON.parse(JSON.stringify(p)));
+  assert.deepEqual(record(reloaded, {}, id, '2026-09-24', ['trick:Tailwhip']).completed.map(c => c.title), ['Land 5 Tailwhips']);
+  assert.equal(record(reloaded, {}, id, '2026-09-24', ['trick:Tailwhip']).completed.length, 0, 'never twice');
+  // Two in one flush count as two.
+  assert.equal(record(p, {}, id, '2026-09-24', ['spin:360', 'spin:360', 'spin:360']).completed.length, 1);
+  assert.equal(record(p, {}, id, '2026-09-24', ['trick:Backflip']).completed.length, 1, 'a big trick is still one landing');
+  for (const m of STARTER.filter(m => m.tier === 'basic' && ['TRICKS', 'RAMPS', 'GRINDS'].includes(m.group))) assert.ok((m.count ?? 1) >= 5, m.id + ' asks for at least 5');
+  assert.equal(validProgress({ counts: { 'trick:Tailwhip': 99, 'push': 3, 'nope': 2 } }).counts['trick:Tailwhip'], 4, 'counts are clamped and only kept for counted steps');
+  assert.deepEqual(Object.keys(validProgress({ counts: { 'push': 3, 'nope': 2 } }).counts), []);
 });

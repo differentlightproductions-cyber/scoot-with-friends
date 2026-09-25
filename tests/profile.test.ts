@@ -67,3 +67,15 @@ test('the flashlight starts on and the live sky off; both are saved, bad values 
  const bad=JSON.parse(store.get(PROFILE_KEY)!);bad.settings.flashlight='yes';bad.settings.liveSky=1;store.set(PROFILE_KEY,JSON.stringify(bad));
  const safe=loadProfile();assert.equal(safe.settings.flashlight,true);assert.equal(safe.settings.liveSky,false);
 });
+test('phones start on Medium graphics; an old auto Low on a phone moves up once, a desktop Low stays',()=>{
+ const store=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
+ const phone=(coarse:boolean)=>Object.defineProperty(globalThis,'matchMedia',{configurable:true,value:(q:string)=>({matches:coarse&&q.includes('coarse')})});
+ phone(true);assert.equal(loadProfile().settings.fidelity,'medium');
+ const old=loadProfile() as any;old.settings.fidelity='low';delete old.settings.fidelityVersion;store.set(PROFILE_KEY,JSON.stringify(old));
+ const moved=loadProfile();assert.equal(moved.settings.fidelity,'medium');
+ // Once saved on the new version, choosing Low again sticks.
+ moved.settings.fidelity='low';saveProfile(moved);assert.equal(loadProfile().settings.fidelity,'low');
+ phone(false);store.set(PROFILE_KEY,JSON.stringify(old));assert.equal(loadProfile().settings.fidelity,'low');
+ delete (globalThis as any).matchMedia;
+});

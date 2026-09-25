@@ -38,6 +38,8 @@ export interface Progress {
   visited: string[];
   /** One-time "firsts" seen while riding (STARTER missions): push, trick:Tailwhip, phone... */
   firsts: string[];
+  /** How many times each counted STARTER step was done so far (5 Tailwhips...). */
+  counts: Record<string, number>;
   /** STARTER missions completed (and paid). */
   starter: string[];
   /** Highest level whose Credit and crate were granted, so a level never pays twice. */
@@ -45,7 +47,7 @@ export interface Progress {
 }
 
 const zeroStats = () => Object.fromEntries(STATS.map((s) => [s, 0])) as Record<Stat, number>;
-export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], starter: [], topLevel: 1 });
+export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], counts: {}, starter: [], topLevel: 1 });
 
 const int = (v: unknown, max = 1e9) => (Number.isSafeInteger(v) && (v as number) >= 0 ? Math.min(v as number, max) : 0);
 const strings = (v: unknown, max = 200) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === "string" && s.length <= 80))].slice(0, max) : []);
@@ -66,6 +68,7 @@ export function validProgress(value: any): Progress {
     .slice(0, 99).map((c: any) => ({ id: c.id, tier: c.tier, source: typeof c.source === "string" ? c.source.slice(0, 60) : "" }));
   p.visited = strings(value.visited, 20);
   p.firsts = strings(value.firsts, 100).filter((f) => FIRSTS.has(f));
+  for (const m of STARTER) if ((m.count ?? 1) > 1 && !p.firsts.includes(m.first)) { const n = int(value.counts?.[m.first], m.count! - 1); if (n) p.counts[m.first] = n; }
   p.starter = strings(value.starter, 100).filter((id) => STARTER.some((m) => m.id === id));
   // Saves from before the level curve changed keep every level they were paid
   // for (on the old curve), so passing those levels again pays nothing twice.
@@ -108,7 +111,7 @@ export const CAREER: CareerChain[] = [
   { id: "bigline", stat: "bestLinePoints", goals: [1500, 5000, 15000, 40000, 100000], title: (n) => `Bank ${n.toLocaleString("en-US")} in one line`, detail: "Points from a single unbroken line" },
   { id: "whips", stat: "whips", goals: [5, 25, 75, 200], title: (n) => `${n} whips and barspins`, detail: "Tailwhips, barspins, bris and friends" },
   { id: "flips", stat: "flips", goals: [3, 10, 30, 80], title: (n) => `Land ${n} flips`, detail: "Backflips and frontflips (the first one is a Starter mission)" },
-  { id: "spins", stat: "spins", goals: [3, 15, 50, 150], title: (n) => `${n} spins of 360+`, detail: "Full rotations, off anything" },
+  { id: "spins", stat: "spins", goals: [5, 15, 50, 150], title: (n) => `${n} spins of 360+`, detail: "Full rotations, off anything" },
   { id: "bhill", stat: "bhillRuns", goals: [1, 3, 10, 25], title: (n) => (n === 1 ? "Bomb B Hill top to bottom" : `Finish ${n} B Hill runs`), detail: "Start at the top banner, finish at the bottom" },
   { id: "velocity", stat: "bhillTop", goals: [18, 22, 26, 28], title: (n) => `Hit ${Math.round(n * 3.6)} km/h on B Hill`, detail: "Tuck, hold your line, trust it" },
   { id: "explorer", stat: "maps", goals: [2, 4, 6], title: (n) => `Ride ${n} different spots`, detail: "Every map counts once" },
@@ -150,40 +153,47 @@ export const STARTER_REWARD: Record<StarterTier, Reward> = {
   skill: { credit: 40, xp: 120 },
   big: { credit: 75, xp: 220 },
 };
-export interface StarterMission { id: string; group: string; title: string; how: string; tier: StarterTier; first: string }
+/**
+ * `count`: how many times it must be done (default once). Simple tricks ask
+ * for 5 and skill tricks for 3, so a mission is a small goal, not a pop-up
+ * for every first try; big tricks and one-time steps stay at one.
+ */
+export interface StarterMission { id: string; group: string; title: string; how: string; tier: StarterTier; first: string; count?: number }
 export const STARTER: StarterMission[] = [
   { id: "s-push", group: "RIDING", title: "Push off", how: "Push to pick up speed", tier: "intro", first: "push" },
   { id: "s-speed", group: "RIDING", title: "Hit 20 km/h", how: "Push hard or roll downhill", tier: "intro", first: "speed" },
   { id: "s-distance", group: "RIDING", title: "Ride 150 metres", how: "Cruise around without bailing", tier: "intro", first: "distance" },
-  { id: "s-tailwhip", group: "TRICKS", title: "Land a Tailwhip", how: "Pop and whip the deck around", tier: "basic", first: "trick:Tailwhip" },
-  { id: "s-barspin", group: "TRICKS", title: "Land a Barspin", how: "Pop and spin the bars round", tier: "basic", first: "trick:Barspin" },
-  { id: "s-180", group: "TRICKS", title: "Land a 180", how: "Pop and turn half way round", tier: "basic", first: "spin:180" },
-  { id: "s-360", group: "TRICKS", title: "Land a 360", how: "Off a ramp, turn all the way round", tier: "skill", first: "spin:360" },
-  { id: "s-manual", group: "TRICKS", title: "Hold a Manual", how: "RS gently down, then balance", tier: "basic", first: "trick:Manual" },
-  { id: "s-nose-manual", group: "TRICKS", title: "Hold a Nose Manual", how: "RS gently up, then balance", tier: "basic", first: "trick:Nose Manual" },
-  { id: "s-quarter", group: "RAMPS", title: "Air a quarter pipe", how: "Ride up a quarter, fly off the lip", tier: "basic", first: "quarterAir" },
-  { id: "s-reentry", group: "RAMPS", title: "Land back into a quarter", how: "Air a quarter, land back in it", tier: "skill", first: "quarterLand" },
-  { id: "s-grind", group: "GRINDS", title: "Lock your first grind", how: "Pop onto a rail or ledge (RT helps)", tier: "basic", first: "grind" },
-  { id: "s-long-grind", group: "GRINDS", title: "Grind 3 metres", how: "Hold one grind for 3 metres", tier: "skill", first: "grindLong" },
+  { id: "s-tailwhip", group: "TRICKS", title: "Land 5 Tailwhips", how: "Pop and whip the deck around", tier: "basic", first: "trick:Tailwhip", count: 5 },
+  { id: "s-barspin", group: "TRICKS", title: "Land 5 Barspins", how: "Pop and spin the bars round", tier: "basic", first: "trick:Barspin", count: 5 },
+  { id: "s-180", group: "TRICKS", title: "Land 5 180s", how: "Pop and turn half way round", tier: "basic", first: "spin:180", count: 5 },
+  { id: "s-360", group: "TRICKS", title: "Land 3 360s", how: "Off a ramp, turn all the way round", tier: "skill", first: "spin:360", count: 3 },
+  { id: "s-manual", group: "TRICKS", title: "Hold 5 Manuals", how: "RS gently down, then balance", tier: "basic", first: "trick:Manual", count: 5 },
+  { id: "s-nose-manual", group: "TRICKS", title: "Hold 5 Nose Manuals", how: "RS gently up, then balance", tier: "basic", first: "trick:Nose Manual", count: 5 },
+  { id: "s-quarter", group: "RAMPS", title: "Air a quarter pipe 5 times", how: "Ride up a quarter, fly off the lip", tier: "basic", first: "quarterAir", count: 5 },
+  { id: "s-reentry", group: "RAMPS", title: "Land back into a quarter 3 times", how: "Air a quarter, land back in it", tier: "skill", first: "quarterLand", count: 3 },
+  { id: "s-grind", group: "GRINDS", title: "Lock 5 grinds", how: "Pop onto a rail or ledge (RT helps)", tier: "basic", first: "grind", count: 5 },
+  { id: "s-long-grind", group: "GRINDS", title: "Grind 3 metres, 3 times", how: "Hold one grind for 3 metres", tier: "skill", first: "grindLong", count: 3 },
   { id: "s-backflip", group: "BIG TRICKS", title: "Land a Backflip", how: "In the air: LT + RT, LS back", tier: "big", first: "trick:Backflip" },
   { id: "s-frontflip", group: "BIG TRICKS", title: "Land a Frontflip", how: "In the air: LT + RT, LS forward", tier: "big", first: "trick:Frontflip" },
   { id: "s-bri", group: "BIG TRICKS", title: "Land a Bri Flip", how: "RS down, round and out to the side", tier: "big", first: "trick:Bri" },
   { id: "s-decade", group: "BIG TRICKS", title: "Land a Decade", how: "In the air: tap LB", tier: "big", first: "trick:Decade" },
-  { id: "s-clamp", group: "BIG TRICKS", title: "Land a Clamp Grab", how: "In the air: hold RT + RB", tier: "skill", first: "trick:Clamp Grab" },
+  { id: "s-clamp", group: "BIG TRICKS", title: "Land 3 Clamp Grabs", how: "In the air: hold RT + RB", tier: "skill", first: "trick:Clamp Grab", count: 3 },
   { id: "s-phone", group: "GETTING AROUND", title: "Check your phone", how: "Hold D-pad Down to take it out", tier: "intro", first: "phone" },
   { id: "s-crate", group: "GETTING AROUND", title: "Open a crate", how: "Open one from MISSIONS", tier: "intro", first: "crate" },
   { id: "s-customize", group: "GETTING AROUND", title: "Customize your ride", how: "Equip a new part from RIDES", tier: "intro", first: "customize" },
   { id: "s-swim", group: "GETTING AROUND", title: "Take a swim", how: "Walk or ride into the lake at Veterans", tier: "intro", first: "swim" },
-  { id: "s-water-flip", group: "TRICKS", title: "Flip into the lake", how: "Jump in on foot, LT+RT and LS up or down", tier: "skill", first: "water-flip" },
-  { id: "w-cannonball", group: "WATER", title: "Cannonball!", how: "Off the dive dock, hold X to tuck", tier: "intro", first: "water:cannonball" },
-  { id: "w-dive", group: "WATER", title: "Head-first dive", how: "LT+RT + LS up, let go head down", tier: "basic", first: "water:dive" },
+  { id: "s-water-flip", group: "TRICKS", title: "Flip into the lake 3 times", how: "Jump in on foot, LT+RT and LS up or down", tier: "skill", first: "water-flip", count: 3 },
+  { id: "w-cannonball", group: "WATER", title: "3 Cannonballs!", how: "Off the dive dock, hold X to tuck", tier: "intro", first: "water:cannonball", count: 3 },
+  { id: "w-dive", group: "WATER", title: "5 head-first dives", how: "LT+RT + LS up, let go head down", tier: "basic", first: "water:dive", count: 5 },
   { id: "w-tower", group: "WATER", title: "Jump off the tower", how: "Climb the dive dock stairs, jump", tier: "basic", first: "water:tower" },
-  { id: "w-board", group: "WATER", title: "Springboard flip", how: "Jump off the springboard, flip in", tier: "skill", first: "water:board" },
-  { id: "w-twist", group: "WATER", title: "Flip with a twist", how: "Add LB or RB to a flip", tier: "skill", first: "water:twist" },
-  { id: "w-swan", group: "WATER", title: "Swan Dive", how: "Front Dive holding B, arms out", tier: "skill", first: "water:swan" },
+  { id: "w-board", group: "WATER", title: "3 springboard flips", how: "Jump off the springboard, flip in", tier: "skill", first: "water:board", count: 3 },
+  { id: "w-twist", group: "WATER", title: "3 flips with a twist", how: "Add LB or RB to a flip", tier: "skill", first: "water:twist", count: 3 },
+  { id: "w-swan", group: "WATER", title: "3 Swan Dives", how: "Front Dive holding B, arms out", tier: "skill", first: "water:swan", count: 3 },
   { id: "w-double", group: "WATER", title: "Double into the lake", how: "Hold LT+RT through two flips", tier: "big", first: "water:double" },
 ];
 const FIRSTS = new Set(STARTER.map((m) => m.first));
+/** Steps that must be done several times, and how many. */
+export const FIRST_COUNT = new Map(STARTER.filter((m) => (m.count ?? 1) > 1).map((m) => [m.first, m.count!]));
 /** Tricks that count as a "first", matched against a landed trick's name. */
 export const FIRST_TRICKS: [string, RegExp][] = [
   ["trick:Tailwhip", /\bTailwhip\b/], ["trick:Barspin", /\bBarspin\b/], ["trick:Manual", /^Manual$/], ["trick:Nose Manual", /^Nose Manual$/],
@@ -228,7 +238,11 @@ export function record(p: Progress, changes: Partial<Record<Stat, number>>, newI
     gains.credit += reward.credit; gains.xp += reward.xp;
     if (reward.crate) gains.crates.push({ id: newId(), tier: reward.crate, source: title });
   };
-  for (const first of firsts) if (FIRSTS.has(first) && !p.firsts.includes(first)) p.firsts.push(first);
+  for (const first of firsts) {
+    if (!FIRSTS.has(first) || p.firsts.includes(first)) continue;
+    const need = FIRST_COUNT.get(first) ?? 1, done = Math.min(need, (p.counts[first] ?? 0) + 1);
+    if (done >= need) { p.firsts.push(first); delete p.counts[first]; } else p.counts[first] = done;
+  }
   if (changes.cratesOpened && !p.firsts.includes("crate")) p.firsts.push("crate");
   for (const mission of STARTER)
     if (!p.starter.includes(mission.id) && p.firsts.includes(mission.first)) { p.starter.push(mission.id); grant(mission.title, STARTER_REWARD[mission.tier]); }
@@ -270,7 +284,10 @@ export function missionBoard(p: Progress, day = dayKey()) {
     const stage = copy.career[chain.id] ?? 0, complete = stage >= chain.goals.length, goal = chain.goals[Math.min(stage, chain.goals.length - 1)];
     return { id: chain.id, title: complete ? careerTitle(chain, chain.goals.length - 1) : careerTitle(chain, stage), detail: chain.detail, value: Math.min(goal, copy.stats[chain.stat]), goal, stage, stages: chain.goals.length, complete, reward: careerReward(stage) };
   });
-  const starter = STARTER.map((m) => ({ id: m.id, group: m.group, title: m.title, how: m.how, done: copy.starter.includes(m.id), reward: STARTER_REWARD[m.tier] }));
+  const starter = STARTER.map((m) => {
+    const goal = m.count ?? 1, done = copy.starter.includes(m.id);
+    return { id: m.id, group: m.group, title: m.title, how: m.how, done, value: done || copy.firsts.includes(m.first) ? goal : copy.counts[m.first] ?? 0, goal, reward: STARTER_REWARD[m.tier] };
+  });
   return { daily, career, starter, bonus: copy.daily.bonus, bonusReward: DAILY_BONUS };
 }
 

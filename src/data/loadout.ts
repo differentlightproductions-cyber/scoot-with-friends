@@ -49,6 +49,8 @@ export interface LocalProfile {
     /** First-person HORIZONTAL field of view in degrees (converted per aspect). */
     firstPersonFov: number;
     firstPersonViewVersion?: number;
+    /** 2: phones default to Medium; older phone profiles on the old auto Low move up once. */
+    fidelityVersion?: number;
     /** Third-person HORIZONTAL field of view at 16:9, in degrees (camera/fov.ts). */
     thirdPersonFov: number;
     /** Which hand holds the phone, in both views. */
@@ -123,7 +125,8 @@ export function loadProfile(): LocalProfile {
       touchControls:'auto',
       touchSize:100,
       touchOpacity:50,
-      fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'low' : 'high',
+      fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'medium' : 'high',
+      fidelityVersion:2,
     },
   };
   let migrated = false;
@@ -145,6 +148,8 @@ export function loadProfile(): LocalProfile {
     if([15,30,45,60].includes(saved.settings?.replayHistory))profile.settings.replayHistory=saved.settings.replayHistory;
     if(['full','friends','off'].includes(saved.settings?.playfulContact))profile.settings.playfulContact=saved.settings.playfulContact;
     if(['low','medium','high'].includes(saved.settings?.fidelity))profile.settings.fidelity=saved.settings.fidelity;
+    // Phones used to start on Low automatically; Medium suits every phone, so an old Low moves up once.
+    if((saved.settings?.fidelityVersion??0)<2&&profile.settings.fidelity==='low'&&typeof matchMedia==='function'&&matchMedia('(pointer: coarse)').matches)profile.settings.fidelity='medium';
     if(['third','first'].includes(saved.settings?.cameraView))profile.settings.cameraView=saved.settings.cameraView;
     if(Number.isFinite(saved.settings?.firstPersonFov))profile.settings.firstPersonFov=Math.min(FP_FOV_MAX,Math.max(FP_FOV_MIN,Math.round(saved.settings.firstPersonFov)));
     // Version 2 widened the range (70-110 became 100-150): the old defaults (90, then 110) and anything below the new minimum move to the new default.

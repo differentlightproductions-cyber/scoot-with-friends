@@ -6,7 +6,7 @@ import type { Events } from "../core/events";
 import type { InputFrame } from "../input/input";
 import type { CreditEconomy } from "../data/credit";
 import { completedDegrees } from "../tricks/resolver";
-import { CRATE_COLOR, CRATE_NAME, FIRST_TRICKS, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
+import { CRATE_COLOR, CRATE_NAME, FIRST_COUNT, FIRST_TRICKS, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
 import type { Progress } from "../data/progress";
 import "./rewards.css";
 
@@ -20,12 +20,14 @@ export class MissionTracker {
   private linePoints = 0;
   private flushIn = 0;
   private hill = { started: false, top: 0 };
-  /** Starter "firsts" seen this session (each reported once; the save ignores repeats). */
-  private firsts = new Set<string>();
+  /** Starter steps seen since the last flush: one-time steps once a session, counted ones every time. */
+  private firsts: string[] = [];
   private reported = new Set<string>();
   private ridden = 0;
   private grindRun = 0;
   private quarterAir = false;
+  private inQuarterAir = false;
+  private longGrind = false;
   dispose: () => void;
   constructor(events: Events, private economy: CreditEconomy) {
     this.dispose = events.on((e) => {
@@ -50,17 +52,24 @@ export class MissionTracker {
     });
   }
   private add(stat: Stat, amount: number) { this.pending[stat] = (this.pending[stat] ?? 0) + amount; if (!this.flushIn) this.flushIn = 0.6; }
-  /** A one-time Starter mission step (push, trick:Tailwhip, phone...). */
-  first(key: string) { if (this.reported.has(key)) return; this.reported.add(key); this.firsts.add(key); if (!this.flushIn) this.flushIn = 0.6; }
+  /** A Starter mission step (push, trick:Tailwhip, phone...). Counted steps (5 Tailwhips) report every time. */
+  first(key: string) {
+    if (this.reported.has(key)) return;
+    if (!FIRST_COUNT.has(key)) this.reported.add(key);
+    this.firsts.push(key); if (!this.flushIn) this.flushIn = 0.6;
+  }
   /** Riding firsts read from the simulation: speed, distance, quarter-pipe air, a long grind. */
   sample(sim: RiderState, dt: number) {
-    if (sim.walking || sim.state === "Bail") { this.grindRun = 0; return; }
+    if (sim.walking || sim.state === "Bail") { this.grindRun = 0; this.longGrind = false; this.inQuarterAir = false; return; }
     if (sim.speed >= FIRST_SPEED) this.first("speed");
     this.ridden += sim.speed * dt;
     if (this.ridden >= FIRST_DISTANCE) this.first("distance");
-    if (sim.tricks.quarterAir) { this.quarterAir = true; this.first("quarterAir"); }
+    // Counted steps: once per air and once per grind, not once per frame.
+    if (sim.tricks.quarterAir && !this.inQuarterAir) { this.quarterAir = true; this.first("quarterAir"); }
+    this.inQuarterAir = sim.tricks.quarterAir;
     this.grindRun = sim.grind ? this.grindRun + sim.speed * dt : 0;
-    if (this.grindRun >= FIRST_GRIND) this.first("grindLong");
+    if (this.grindRun >= FIRST_GRIND && !this.longGrind) { this.longGrind = true; this.first("grindLong"); }
+    if (!this.grindRun) this.longGrind = false;
   }
   private best(stat: Stat, value: number) { this.pending[stat] = Math.max(this.pending[stat] ?? 0, value); if (!this.flushIn) this.flushIn = 0.6; }
   /** A map was ridden. */
@@ -80,7 +89,7 @@ export class MissionTracker {
     if (this.flushIn === 0) this.flush();
   }
   flush() {
-    const changes = this.pending, firsts = [...this.firsts]; this.pending = {}; this.firsts.clear();
+    const changes = this.pending, firsts = this.firsts; this.pending = {}; this.firsts = [];
     if (Object.keys(changes).length || firsts.length) void this.economy.track(changes, undefined, firsts);
   }
 }
