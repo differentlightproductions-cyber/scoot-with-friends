@@ -208,7 +208,7 @@ export interface ScatterKind { name: string; models: PlantModel[]; placements: P
  * `sample` to propose candidate points instead of the rings around `center`.
  * Returns what was planted (by kind and model) so callers can add colliders.
  */
-export function scatterDesert(scene: THREE.Scene, o: { keepOut: (x: number, z: number) => number; ground: (x: number, z: number) => number; center: THREE.Vector2; near: number; far: number; count: number; seed?: number; avoid?: (x: number, z: number) => boolean; sample?: (random: () => number) => [number, number] }) {
+export function scatterDesert(scene: THREE.Scene, o: { keepOut: (x: number, z: number) => number; ground: (x: number, z: number) => number; center: THREE.Vector2; near: number; far: number; count: number; seed?: number; avoid?: (x: number, z: number) => boolean; sample?: (random: () => number) => [number, number]; shadowRange?: number }) {
   const random = mulberry(o.seed ?? 99), noise = new Noise2((o.seed ?? 99) + 3);
   const kinds: { name: string; share: number; models: PlantModel[]; scale: [number, number]; sink: number; solid: boolean }[] = [
     { name: "creosote", share: 0.38, models: [1, 2, 3, 4].map(creosote), scale: [0.7, 1.35], sink: 0.02, solid: false },
@@ -218,6 +218,9 @@ export function scatterDesert(scene: THREE.Scene, o: { keepOut: (x: number, z: n
     { name: "yucca", share: 0.04, models: [5, 6].map(yucca), scale: [0.8, 1.3], sink: 0.02, solid: true },
   ];
   const lists = kinds.map((k) => k.models.map(() => [] as Placement[]));
+  // Plants further out than the sun's shadow box ever reaches from where a
+  // rider can be cast no shadow: they are drawn once a frame, not twice.
+  const shadowRange = o.shadowRange ?? 30, farLists = kinds.map((k) => k.models.map(() => [] as Placement[]));
   let placed = 0, tries = 0;
   while (placed < o.count && tries < o.count * 30) {
     tries++;
@@ -236,9 +239,12 @@ export function scatterDesert(scene: THREE.Scene, o: { keepOut: (x: number, z: n
     while (k < kinds.length - 1 && pick > kinds[k].share) { pick -= kinds[k].share; k++; }
     const kind = kinds[k], m = Math.floor(random() * kind.models.length);
     const scale = kind.scale[0] + random() * (kind.scale[1] - kind.scale[0]);
-    lists[k][m].push({ x, y: o.ground(x, z) - kind.sink * scale, z, scale, yaw: random() * Math.PI * 2 });
+    (out - o.near > shadowRange ? farLists : lists)[k][m].push({ x, y: o.ground(x, z) - kind.sink * scale, z, scale, yaw: random() * Math.PI * 2 });
     placed++;
   }
-  kinds.forEach((kind, k) => kind.models.forEach((model, m) => { if (lists[k][m].length) plant(scene, model, lists[k][m], "desert " + kind.name, true); }));
-  return kinds.map((kind, k): ScatterKind => ({ name: kind.name, models: kind.models, placements: lists[k], solid: kind.solid }));
+  kinds.forEach((kind, k) => kind.models.forEach((model, m) => {
+    if (lists[k][m].length) plant(scene, model, lists[k][m], "desert " + kind.name, true);
+    if (farLists[k][m].length) for (const mesh of plant(scene, model, farLists[k][m], "desert " + kind.name + " (far)", true)) mesh.castShadow = false;
+  }));
+  return kinds.map((kind, k): ScatterKind => ({ name: kind.name, models: kind.models, placements: lists[k].map((near, m) => near.concat(farLists[k][m])), solid: kind.solid }));
 }

@@ -2,6 +2,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { drinkingFountain, scooterRack, servicePad, trashCan } from './props';
 import { VendingMachine, VendingSession, type VendHooks } from './vending';
 import { DIVE_DOCK } from "./dive-dock";
+import { B_HILL_HANGOUT } from "./bhill";
 import { DIY, PARK_BINS, PAVILIONS } from "./memorial";
 import * as THREE from 'three';
 import type { Park } from './park';
@@ -76,7 +77,9 @@ export class WorldInteractions {
    ?[{x:22,z:-31.4,vending:false,spread:2.2,bin:-3.3},{x:-43.2,z:-18.6,vending:true,spread:2.6,bin:-3.6},{x:45.5,z:-29.8,vending:true,spread:2.6,yaw:Math.PI-Math.atan2(4.76,18),bin:3.75,pad:[-0.41,9.4,2.0]},{x:DIVE_DOCK.rack[0],z:DIVE_DOCK.rack[1],vending:false,spread:2.2,fountain:false,bin:1.9}]
    :ACTIVE_MAP==="techno_gravity"?[{x:5.2,z:-6,vending:true,spread:2.4,facing:-1}]
    // The Church: a rack and machine at the corner of the front lot, by the sidewalk.
-   :ACTIVE_MAP==="church"?[{x:25.5,z:-41,vending:true,spread:3}]:[{x:24,z:-31,vending:true,spread:3}];
+   :ACTIVE_MAP==="church"?[{x:25.5,z:-41,vending:true,spread:3}]
+   // B Hill: the hangout beside the staging area at the top.
+   :ACTIVE_MAP==="b_hill"?[{x:B_HILL_HANGOUT.x,z:B_HILL_HANGOUT.z,vending:true,spread:2.6,yaw:B_HILL_HANGOUT.yaw,pad:[0,8.6,2.2]}]:[{x:24,z:-31,vending:true,spread:3}];
   for(const [index,cluster] of clusters.entries()){
    const {x,z,spread}=cluster,f=cluster.facing??1;
    const y=terrainHeight(x,z),base=new THREE.Vector3(x,y,z);

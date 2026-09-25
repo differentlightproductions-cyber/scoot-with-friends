@@ -1,4 +1,4 @@
-// B Hill downhill (#20): the road tips over straight after the spawn, speed
+// B Hill downhill (#20, the road and houses from the owner's photo in #89): the road tips over straight after the spawn, speed
 // keeps building from gravity alone past the pushing ceiling, and at bombing
 // speed oversteer, jerky corrections and loose ground can put a rider down
 // while smooth riding stays clean. Full descents run for scooter and longboard.
@@ -29,13 +29,20 @@ try {
     const { TUNE } = await import("/src/core/config.ts");
     const s = g.sim;
     const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     if (!s.__wrapped) { const bail = s.bail.bind(s); s.bail = (r, x) => { if (s.state !== "Bail") s.__reason = r; return bail(r, x); }; s.__wrapped = true; }
     const place = (at, speed, ride = "scooter") => {
       s.rideable = ride;
       s.reset(0, true);
       g.advance(0.2, {}, false);
       const p = hill.routePose(at);
-      s.position.set(p.x, p.y + 0.25, p.z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
+      // Settle on the road there first (braked), so nothing from the spawn's
+      // own ground and heading carries over into the launch.
+      s.position.set(p.x, p.y + 0.23, p.z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
+      s.yaw = s.previousYaw = p.yaw; s.velocity.set(0, 0, 0); s.body.setLinvel(s.velocity, true);
+      s.grounded = true; s.lastGround = s.elapsed;
+      g.advance(0.3, { held: { brake: 1 } }, false);
+      s.position.set(p.x, p.y + 0.23, p.z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
       s.yaw = s.previousYaw = p.yaw;
       s.velocity.set(Math.sin(p.yaw) * speed, -hill.bHillGrade(at) * speed, Math.cos(p.yaw) * speed);
       s.body.setLinvel(s.velocity, true);
@@ -64,9 +71,16 @@ try {
           t += 1.8;
           continue;
         }
-        const ahead = hill.routePose(at + Math.max(7, speed * (style === "aggressive" ? 0.55 : 0.9)));
+        const reach = Math.max(7, speed * (style === "aggressive" ? 0.55 : 0.9)), ahead = hill.routePose(at + reach);
         const err = wrap(Math.atan2(ahead.x - p.x, ahead.z - p.z) - s.yaw);
-        let want = Math.max(-(style === "aggressive" ? 1 : 0.7), Math.min(style === "aggressive" ? 1 : 0.7, -(style === "aggressive" ? 4.5 : 1.6) * err));
+        let aim = -(style === "aggressive" ? 4.5 : 1.6) * err;
+        if (ride === "longboard" && style === "controlled" && speed > 8) {
+          // A board's lean sets its arc's curvature over speed squared, so a careful
+          // rider leans for the arc through the point ahead (pure pursuit), not by a fixed gain.
+          const carve = TUNE.boardCarveAccel + (TUNE.boardRaceCarveAccel - TUNE.boardCarveAccel) * smooth(TUNE.boardPushMaxSpeed, 20, speed);
+          aim = -((2 * Math.sin(err)) / reach) * speed * speed / carve;
+        }
+        let want = Math.max(-(style === "aggressive" ? 1 : 0.7), Math.min(style === "aggressive" ? 1 : 0.7, aim));
         if (style === "aggressive" && t > 8 && Math.floor(t / 1.6) % 3 === 0) want = Math.sign(Math.sin(t * 9)) * 0.9;
         steer = style === "aggressive" ? want : steer + (want - steer) * 0.5;
         let brake = 0, tuck = style === "aggressive" ? 1 : 0;
@@ -192,6 +206,74 @@ try {
     return out;
   });
   check("Tucked longboard pulls away on the steep section; standing it holds back", tuck.tucked.end > 26.5 && tuck.tucked.state !== "Bail" && tuck.standing.end < 25 && tuck.tucked.end - tuck.standing.end > 2, tuck);
+
+  // #89: the road from the owner's aerial photo, houses on both sides with
+  // walkable yards, rideable driveways and pools, and the side streets.
+  const street = await run(() => {
+    const { g, hill } = window.__bhill, lots = hill.bHillLots(), out = { length: Math.round(hill.B_HILL_LENGTH), lots: lots.length };
+    out.sides = [-1, 1].map((side) => lots.filter((l) => l.side === side).length);
+    out.pools = lots.filter((l) => l.pool).length; out.cars = lots.filter((l) => l.car || l.rv).length;
+    out.styles = [...new Set(lots.map((l) => l.style))].sort();
+    // Heading change along the road: the photo's S-bends and long left.
+    const yaw = (s) => hill.routePose(s).yaw, wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+    out.turns = [[400, 470], [480, 580], [640, 720], [1000, 1080], [1230, 1330]].map(([a, b]) => +wrap(yaw(b) - yaw(a)).toFixed(2));
+    // Driveway grades along each slab, from the ground the physics reads.
+    const H = (x, z) => g.terrainHeight(x, z);
+    let worst = 0, steps = 0;
+    for (const l of lots) {
+      const fx = Math.sin(l.yaw), fz = Math.cos(l.yaw), ax = Math.cos(l.yaw), az = -Math.sin(l.yaw);
+      let prev = null;
+      for (let t = l.door + 0.2; t < l.LD / 2 + l.reach - 0.2; t += 0.5) {
+        const x = l.x + ax * l.gx + fx * t, z = l.z + az * l.gx + fz * t, y = H(x, z);
+        if (prev !== null) { worst = Math.max(worst, Math.abs(y - prev) / 0.5); if (Math.abs(y - prev) > 0.2) steps++; }
+        prev = y;
+      }
+    }
+    out.driveGrade = +worst.toFixed(3); out.driveSteps = steps;
+    out.surfaces = (() => { const l = lots.find((k) => k.pool), fx = Math.sin(l.yaw), fz = Math.cos(l.yaw), ax = Math.cos(l.yaw), az = -Math.sin(l.yaw), at = (u, v) => [l.x + ax * u + fx * v, l.z + az * u + fz * v];
+      return { drive: hill.bHillSurface(...at(l.gx, l.LD / 2 + 1)), patio: hill.bHillSurface(...at(l.patio.x, l.patio.z)), yard: hill.bHillSurface(...at(l.gx - Math.sign(l.gx || 1) * 3, l.LD / 2 - 1)), pool: +(H(...at(l.pool.x, l.pool.z)) - l.pad).toFixed(2) }; })();
+    out.streets = hill.B_HILL_STREETS.map((st) => ({ id: st.id, road: hill.bHillSurface(st.x + st.dx * 20, st.z + st.dz * 20), rise: +(H(st.x + st.dx * 30, st.z + st.dz * 30) - H(st.x + st.dx * 8, st.z + st.dz * 8)).toFixed(2) }));
+    out.chunks = g.park.scene.userData.detailChunks?.length ?? 0;
+    return out;
+  });
+  check("The road follows the photo: the S-bends, the right-hander and the long left", street.length > 1400 && street.length < 1600 && street.turns[1] > 0.4 && street.turns[0] < -0.3 && street.turns[2] < -0.3 && street.turns[4] > 0.5, street.turns);
+  check("Houses line both sides, in every style, with pools and cars", street.lots >= 80 && street.sides.every((n) => n >= 35) && street.styles.length === 3 && street.pools >= 20 && street.cars >= 30, { lots: street.lots, sides: street.sides, pools: street.pools, cars: street.cars, styles: street.styles });
+  check("Every driveway is a smooth slope under 22%", street.driveGrade < 0.22 && street.driveSteps === 0, { grade: street.driveGrade, steps: street.driveSteps });
+  check("Driveways and patios are paved, yards are gravel, pools go down to a floor", street.surfaces.drive === "road" && street.surfaces.patio === "road" && street.surfaces.yard === "dirt" && street.surfaces.pool < -1.3, street.surfaces);
+  check("Side streets toward Veterans and the church are paved and climb away", street.streets.length === 2 && street.streets.every((st) => st.road === "road" && st.rise > 0.3), street.streets);
+  check("Houses draw in chunks with distance detail", street.chunks >= 6, { chunks: street.chunks });
+
+  // Walk a lot: onto the yard, into the pool, and ride up a driveway.
+  const walk = await run(() => {
+    const { g, s, hill } = window.__bhill, lots = hill.bHillLots(), l = lots.find((k) => k.pool && k.s > 300), out = {};
+    const fx = Math.sin(l.yaw), fz = Math.cos(l.yaw), ax = Math.cos(l.yaw), az = -Math.sin(l.yaw), at = (u, v) => [l.x + ax * u + fx * v, l.z + az * u + fz * v];
+    const put = (u, v, y, heading) => { s.reset(0, true); g.advance(0.1, {}, false); const [x, z] = at(u, v); s.position.set(x, y + 0.6, z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.velocity.set(0, 0, 0); s.body.setLinvel(s.velocity, true); s.yaw = s.previousYaw = heading; };
+    // Standing in the front yard (beside the drive) stands on the yard.
+    put(l.gx - Math.sign(l.gx || 1) * 4, l.LD / 2 - 1.2, l.pad, l.yaw); s.walking = true; g.advance(1, {}, false);
+    out.yard = +(s.position.y - l.pad).toFixed(2);
+    // Walk off the pool's coping into the water: down to the floor.
+    put(l.pool.x, l.pool.z + l.pool.l / 2 + 0.9, l.pad, l.yaw + Math.PI); s.walking = true; s.walkCameraYaw = l.yaw + Math.PI; g.advance(0.3, {}, false);
+    for (let i = 0; i < 90; i++) g.advance(1 / 30, { lean: -1 }, false);
+    out.pool = +(s.position.y - l.pad).toFixed(2); out.state = s.state;
+    // A at the far wall climbs out onto the deck.
+    g.advance(1 / 30, { lean: -1, pressed: { hop: true } }, false);
+    for (let i = 0; i < 60; i++) g.advance(1 / 30, { lean: -1 }, false);
+    out.out = +(s.position.y - l.pad).toFixed(2);
+    // Ride up a driveway from the street: the scooter climbs it to the garage.
+    const d = lots.find((k) => k.car === null && !k.rv && (k.pad - k.foot) > 0.6 && k.s > 200) ?? lots[3];
+    const dfx = Math.sin(d.yaw), dfz = Math.cos(d.yaw), dax = Math.cos(d.yaw), daz = -Math.sin(d.yaw);
+    s.walking = false; s.rideable = "scooter"; s.reset(0, true); g.advance(0.1, {}, false);
+    const sx = d.x + dax * d.gx + dfx * (d.LD / 2 + d.reach + 2), sz = d.z + daz * d.gx + dfz * (d.LD / 2 + d.reach + 2);
+    s.position.set(sx, g.terrainHeight(sx, sz) + 0.4, sz); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true);
+    s.yaw = s.previousYaw = d.yaw + Math.PI; s.velocity.set(-dfx * 7, 0, -dfz * 7); s.body.setLinvel(s.velocity, true); s.grounded = true; s.lastGround = s.elapsed;
+    let t = 0, reached = false;
+    while (t < 4 && s.state !== "Bail") { g.advance(0.05, {}, false); t += 0.05; const v = (s.position.x - d.x) * dfx + (s.position.z - d.z) * dfz; if (v < d.door + 1.5) { reached = true; break; } }
+    out.drive = { reached, state: s.state, rise: +(d.pad - d.foot).toFixed(2), y: +(s.position.y - d.pad).toFixed(2) };
+    return out;
+  });
+  check("The yard is solid ground at yard level", Math.abs(walk.yard - 0.12) < 0.35, walk);
+  check("Walking into a pool goes down to its floor, and A at the wall climbs out", walk.pool < -1.0 && walk.state !== "Bail" && Math.abs(walk.out - 0.22) < 0.1, walk);
+  check("A scooter rides up a driveway to the garage", walk.drive.reached && walk.drive.state !== "Bail", walk.drive);
 
   // Full descents.
   const runs = [];

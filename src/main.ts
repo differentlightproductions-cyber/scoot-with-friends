@@ -622,7 +622,7 @@ async function boot() {
       // The scene object is reused: what one map's builders listed on it (lamp
       // lenses and heads, shelters, perches, pending loads) must not carry into
       // the next map, where old lamp positions lit phantom spots (#85).
-      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch","drainage"])delete scene.userData[key];
+      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch","drainage","detailChunks"])delete scene.userData[key];
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);

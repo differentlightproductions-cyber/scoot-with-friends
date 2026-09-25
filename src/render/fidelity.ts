@@ -20,7 +20,7 @@ export class VisualFidelity {
    if(o instanceof THREE.DirectionalLight){if(!o.userData.shadowOffset)o.userData.shadowOffset=o.position.clone().sub(o.target.position);this.shadowLights.push({light:o,offset:o.userData.shadowOffset});if(!o.target.parent)scene.add(o.target);if(o.shadow.mapSize.x!==size){o.shadow.map?.dispose();o.shadow.map=null;o.shadow.mapSize.set(size,size);}Object.assign(o.shadow.camera,{left:low?-12:-24,right:low?12:24,top:low?12:24,bottom:low?-12:-24});o.shadow.camera.updateProjectionMatrix();o.shadow.bias=-.0002;o.shadow.normalBias=.012;}
    if(o instanceof THREE.Mesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof THREE.MeshStandardMaterial){
     if(!this.materialFeatures.has(m))this.materialFeatures.set(m,{bump:m.bumpMap,rough:m.roughnessMap});const saved=this.materialFeatures.get(m)!;
-    m.bumpMap=low?null:saved.bump;m.roughnessMap=low?null:saved.rough;m.envMapIntensity=m.metalness>.5?(low?.45:.8):.15;
+    m.bumpMap=low?null:saved.bump;m.roughnessMap=low?null:saved.rough;m.envMapIntensity=m.userData.envMapIntensity??(m.metalness>.5?(low?.45:.8):.15);
     if(m.map)m.map.anisotropy=high?Math.min(8,this.renderer.capabilities.getMaxAnisotropy()):2;m.needsUpdate=true;
    }
   });
@@ -37,6 +37,10 @@ export class VisualFidelity {
   * when the rider climbs a ramp (height used to round to whole metres).
   */
  update(player:THREE.Vector3,dt:number){
+  // Distance detail (#89): a street's windows, cars and pool gear are drawn
+  // only for the chunks of it near the rider.
+  const chunks=this.scene?.userData.detailChunks as {center:THREE.Vector3;radius:number;meshes:THREE.Object3D[]}[]|undefined;
+  if(chunks){const range=this.quality==='low'?90:this.quality==='high'?230:160;for(const c of chunks){const on=c.center.distanceTo(player)-c.radius<range;for(const m of c.meshes)m.visible=on;}}
   const toLight=this.axisZ,right=this.axisX,up=this.axisY;
   for(const {light,offset}of this.shadowLights){
    const cam=light.shadow.camera,texel=(cam.right-cam.left)/light.shadow.mapSize.x;
