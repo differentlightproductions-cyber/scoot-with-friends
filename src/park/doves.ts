@@ -254,10 +254,10 @@ export class Doves {
     }
   }
 
-  /** Crumbs dropped where someone ate chips. */
-  addCrumbs(at: THREE.Vector3) {
-    for (let i = 0; i < 5; i++) {
-      const a = Math.random() * Math.PI * 2, r = 0.25 + Math.random() * 0.45, x = at.x + Math.cos(a) * r, z = at.z + Math.sin(a) * r;
+  /** Crumbs dropped where someone ate chips (or shaken out of a tossed chip bag: fewer, closer). */
+  addCrumbs(at: THREE.Vector3, count = 5, near = 0.25, spread = 0.45) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2, r = near + Math.random() * spread, x = at.x + Math.cos(a) * r, z = at.z + Math.sin(a) * r;
       const crumb = this.chipPiece(0.35 + Math.random() * 0.3);
       crumb.position.set(x, this.world.ground(x, z) + 0.004, z);
       this.scene.add(crumb);

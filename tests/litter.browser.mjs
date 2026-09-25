@@ -96,6 +96,19 @@ try {
     return { one, total: f.litter };
   });
   check('A local drops litter when due, capped at ten pieces lying about', dropped.one === 1 && dropped.total <= 10 && dropped.total >= 1, dropped);
+  // A chip bag tossed down spills its last crumbs beside it for the doves (#78); a can does not.
+  const crumbs = await page.evaluate(async () => {
+    const g = window.__LAZER, f = g.playful, d = g.doves;
+    const count = () => d.food.filter((o) => o.kind === 'crumb').length;
+    const toss = (kind, x, z) => { const from = g.sim.position.clone().set(x, g.terrainHeight(x, z) + 1.2, z); f.throwFrom('local', kind, from, 0, null); for (let i = 0; i < 90; i++) window.__step(1); };
+    const start = count();
+    toss('can', -30, 12); const afterCan = count();
+    toss('wrapper', -34, 12); const after = count();
+    const bag = f.things.filter((t) => t.kind === 'wrapper' && t.state === 'ground').at(-1)?.mesh.position;
+    const near = bag ? d.food.filter((o) => o.kind === 'crumb').slice(-3).map((o) => +Math.hypot(o.position.x - bag.x, o.position.z - bag.z).toFixed(2)) : [];
+    return { start, afterCan, after, near };
+  });
+  check('A tossed chip bag spills three crumbs beside it for the doves; a can spills none', crumbs.afterCan === crumbs.start && crumbs.after - crumbs.afterCan === 3 && crumbs.near.every((r) => r < 0.35), crumbs);
   check('No page errors', errors.length === 0, errors.slice(0, 3));
 } finally {
   await browser.close();

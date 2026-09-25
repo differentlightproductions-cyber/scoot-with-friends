@@ -49,6 +49,8 @@ export class WithFriends {
   bins: THREE.Vector3[] = [];
   /** A piece of litter went in a bin; `fromOthers` when it was someone else's trash (it counts toward Clean-Up Crew). */
   onBinned: (fromOthers: boolean) => void = () => {};
+  /** A thrown or dropped piece of litter came to rest at `at` (a chip bag spills its last crumbs, #78). */
+  onLitterDown: (kind: ThrowableKind, at: THREE.Vector3) => void = () => {};
   private binning: { thing: Thing; from: THREE.Vector3; to: THREE.Vector3; time: number }[] = [];
   /** Seconds until one of the locals drops a can or a wrapper. */
   private litterIn = 30 + Math.random() * 40;
@@ -236,6 +238,7 @@ export class WithFriends {
     this.carried = null;
     t.state = "ground";
     lie(t.kind, t.mesh, s.position.x, this.ground(s.position.x, s.position.z), s.position.z, s.yaw);
+    if (LITTER.includes(t.kind)) this.onLitterDown(t.kind, t.mesh.position.clone());
   }
 
   /** Flight: gravity, a bounce or two, hits on anyone but the thrower, then rest where it lands. */
@@ -260,7 +263,10 @@ export class WithFriends {
       if (p.y <= floor) {
         p.y = floor;
         // It settles the way it lies: a can or bottle on its side, a bag flat.
-        if (Math.abs(t.velocity.y) < 1.2) { t.velocity.set(0, 0, 0); t.state = "ground"; lie(t.kind, t.mesh, p.x, this.ground(p.x, p.z), p.z, t.mesh.rotation.y); }
+        if (Math.abs(t.velocity.y) < 1.2) {
+          t.velocity.set(0, 0, 0); t.state = "ground"; lie(t.kind, t.mesh, p.x, this.ground(p.x, p.z), p.z, t.mesh.rotation.y);
+          if (LITTER.includes(t.kind)) this.onLitterDown(t.kind, t.mesh.position.clone());
+        }
         else { t.velocity.y = -t.velocity.y * 0.35; t.velocity.x *= 0.55; t.velocity.z *= 0.55; }
       }
     }

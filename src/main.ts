@@ -158,6 +158,8 @@ async function boot() {
       events.emit({ type: "worldInteraction", interaction: "bin", item: "litter" });
       if (fromOthers) { missions.litter(); hud.feedback("LITTER BINNED · CLEAN-UP CREW", "good"); } else hud.feedback("BINNED", "good");
     };
+    // A chip bag tossed down spills its last crumbs beside it; the doves come for them.
+    f.onLitterDown = (kind, at) => { if (kind === "wrapper") doves?.addCrumbs(at, 3, 0.08, 0.22); };
     f.local.onHit = (hit) => {
       const item=t('item.'+(hit.item??'acorn'));
       hud.feedback(hit.kind==='shove'?t('playful.shoved'):t(hit.strength==='cosmetic'?'playful.bounce':'playful.bonk',{item}), "warn");
