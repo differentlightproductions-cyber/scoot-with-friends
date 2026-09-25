@@ -571,7 +571,7 @@ export class GameMenu {
           const kinds=['sunny','fall','snow','rain'] as const,from=live?live.weather:this.profile.settings.weather;this.profile.settings.liveSky=false;this.profile.settings.weather=kinds[(kinds.indexOf(from)+1)%kinds.length];this.changed();this.render();
         },live?'Choosing a weather turns off the live sky.':'Sunny, Fall leaves, Snow, or Rain with thunderstorms. Works at any time of day; riding and physics stay the same.');
         }
-        add('FLASHLIGHT '+(this.profile.settings.flashlight?'ON':'OFF'),()=>{this.profile.settings.flashlight=!this.profile.settings.flashlight;this.changed();this.render();},'Your light at night. Off, the park is dark: only its lamps, the moon and the stars.');
+        add('HEADLAMP '+(this.profile.settings.flashlight?'ON':'OFF'),()=>{this.profile.settings.flashlight=!this.profile.settings.flashlight;this.changed();this.render();},'A headlamp at night: you wear it, and it lights wherever your head turns. Off, the park is dark: only its lamps, the moon and the stars.');
         break;
       case 'settings-camera':
         title='CAMERA';subtitle='SETTINGS / YOUR VIEW';

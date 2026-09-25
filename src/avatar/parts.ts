@@ -268,6 +268,49 @@ export function buildHair(c: AvatarConfig, material: THREE.Material, detail: Det
 
 // ---- Headwear and eyewear -----------------------------------------------------
 
+/**
+ * A headlamp (#64): an elastic strap around the head, over the hair or the
+ * headwear, and a lamp housing on the forehead with a lens that glows when it
+ * is on. `lens` is returned so the rider can switch it without a rebuild.
+ */
+export function buildHeadlamp(c: AvatarConfig, detail: Detail) {
+  const group = new THREE.Group();
+  group.name = 'Headlamp';
+  const shape = c.headShape;
+  // How far the strap sits off the skull: over a helmet shell, a beanie, a cap crown, or the hair.
+  const hair = c.hairStyle === 'buzz' ? 0.012 : ['afro', 'fluffy', 'curly'].includes(c.hairStyle) ? 0.05 : 0.026;
+  const lift = c.headwear === 'helmet' ? 0.05 : c.headwear === 'beanie' ? 0.036 : c.headwear === 'cap' ? 0.03 : hair;
+  const strap = new THREE.MeshStandardMaterial({ color: 0x1d1f22, roughness: 0.9 });
+  const shell = new THREE.MeshStandardMaterial({ color: 0x2b2e33, roughness: 0.45, metalness: 0.15 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0xd8dde0, roughness: 0.35, metalness: 0.6 });
+  const lens = new THREE.MeshStandardMaterial({ color: 0xe8ecef, roughness: 0.1, metalness: 0, emissive: 0xfff2d6, emissiveIntensity: 0 });
+  // The strap: level across the forehead, a little lower at the back, as a headlamp is worn.
+  const ring: THREE.Vector3[] = [];
+  for (let i = 0; i < 40; i++) {
+    const a = (i / 40) * TAU, e = 0.42 - 0.14 * (1 - Math.cos(a)) / 2, d = fromAngles(a, e);
+    ring.push(headSurface(shape, d).addScaledVector(d, lift));
+  }
+  const band = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ring, true), seg(detail, 80, 40), 0.006, 6, true), strap);
+  band.scale.set(1, 0.55, 1);
+  group.add(band);
+  // The housing sits on the strap at the front, tilted a little down to light the ground ahead.
+  const front = fromAngles(0, 0.42), at = headSurface(shape, front).addScaledVector(front, lift + 0.016);
+  const housing = new THREE.Group();
+  housing.position.copy(at);
+  housing.rotation.x = 0.28;
+  const body = new THREE.Mesh(new RoundedBoxGeometry(0.058, 0.036, 0.03, 3, 0.009), shell);
+  const bezel = new THREE.Mesh(new THREE.TorusGeometry(0.0125, 0.0028, 8, seg(detail, 24, 14)), trim);
+  bezel.position.z = 0.016;
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.0125, seg(detail, 24, 14)), lens);
+  glass.position.z = 0.0158;
+  const button = new THREE.Mesh(new RoundedBoxGeometry(0.012, 0.006, 0.01, 2, 0.002), trim);
+  button.position.set(0.018, 0.019, 0.002);
+  housing.add(body, bezel, glass, button);
+  group.add(housing);
+  group.traverse(o => { if (o instanceof THREE.Mesh) o.castShadow = o.receiveShadow = true; });
+  return { group, lens, housing };
+}
+
 export function buildHeadwear(c: AvatarConfig, material: THREE.Material, trim: THREE.Material, detail: Detail) {
   const group = new THREE.Group();
   group.name = 'Headwear';

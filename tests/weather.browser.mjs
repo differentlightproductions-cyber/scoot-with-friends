@@ -74,14 +74,14 @@ try {
   const saved = await page.evaluate(() => window.__LAZER.profile.settings);
   check('Rain at sunset persists after reload', saved.weather === 'rain' && saved.daylight === 'sunset', { weather: saved.weather, daylight: saved.daylight });
 
-  // #44 FLASHLIGHT and #48 MATCH BOULDER CITY NOW: their own rows; live mode shows the city's time and weather.
+  // #44 HEADLAMP and #48 MATCH BOULDER CITY NOW: their own rows; live mode shows the city's time and weather.
   await page.evaluate(() => { window.__LAZER.menu.openSesh('settings-time', 'outdoor'); });
   await page.waitForSelector('.game-menu');
-  await page.getByRole('button', { name: /^FLASHLIGHT/ }).click();
-  const torch = await page.getByRole('button', { name: /^FLASHLIGHT/ }).textContent();
+  await page.getByRole('button', { name: /^HEADLAMP/ }).click();
+  const torch = await page.getByRole('button', { name: /^HEADLAMP/ }).textContent();
   await page.getByRole('button', { name: /^MATCH BOULDER CITY NOW/ }).click();
   const live = { match: await page.getByRole('button', { name: /^MATCH BOULDER CITY NOW/ }).textContent(), time: await page.getByRole('button', { name: /^TIME OF DAY/ }).textContent(), weather: await page.getByRole('button', { name: /^WEATHER/ }).textContent() };
-  check('Flashlight turns off; MATCH BOULDER CITY NOW shows the live time and weather', /FLASHLIGHT OFF/.test(torch ?? '') && /NOW ON/.test(live.match ?? '') && /LIVE · (DAY|SUNSET|NIGHT|SUNRISE)/.test(live.time ?? '') && /LIVE · (SUNNY|FALL|SNOW|RAIN)/.test(live.weather ?? ''), { torch, live });
+  check('Flashlight turns off; MATCH BOULDER CITY NOW shows the live time and weather', /HEADLAMP OFF/.test(torch ?? '') && /NOW ON/.test(live.match ?? '') && /LIVE · (DAY|SUNSET|NIGHT|SUNRISE)/.test(live.time ?? '') && /LIVE · (SUNNY|FALL|SNOW|RAIN)/.test(live.weather ?? ''), { torch, live });
   await page.getByRole('button', { name: /^APPLY \/ SAVE CHANGES/ }).first().click();
   await page.reload(); await page.waitForFunction(() => window.__LAZER?.profile, null, { timeout: 900000 });
   const kept = await page.evaluate(() => window.__LAZER.profile.settings);

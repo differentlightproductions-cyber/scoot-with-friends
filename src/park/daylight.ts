@@ -15,8 +15,8 @@ export class Daylight {
  private lamps:THREE.MeshStandardMaterial[]=[];
  private sun?:THREE.DirectionalLight;private ambient?:THREE.HemisphereLight;
  /**
-  * The rider's flashlight (#44): a beam ahead of the rider at night, when the
-  * setting is on. It is the park's one moving light (it replaced the glow that
+  * The rider's headlamp (#44, #64): a beam ahead of the rider at night, when the
+  * setting is on, aimed from the lamp on their head by aimLamp(). It is the park's one moving light (it replaced the glow that
   * used to follow the rider) and stays in the scene at zero by day, so turning
   * it on or off never changes the light count and recompiles every shader.
   */
@@ -99,6 +99,18 @@ export class Daylight {
   this.flashlight.intensity+=(beam*60-this.flashlight.intensity)*(1-Math.exp(-dt*8));
   this.flashlight.position.set(player.x+f.x*.35,player.y+1.35,player.z+f.z*.35);
   this.flashlight.target.position.set(player.x+f.x*11,player.y-.4,player.z+f.z*11);
+  this.flashlight.target.updateMatrixWorld();
+  this.nightLevel=p.night;
+ }
+ /** How dark it is (0 day .. 1 night), as the lights last saw it. */
+ nightLevel=0;
+ /**
+  * Aims the beam from the headlamp itself: from its lens along the way the head
+  * faces, so it turns with every look, flip and spin (first person: the eye).
+  */
+ aimLamp(position:THREE.Vector3,direction:THREE.Vector3){
+  this.flashlight.position.copy(position);
+  this.flashlight.target.position.copy(position).addScaledVector(direction,11);
   this.flashlight.target.updateMatrixWorld();
  }
 }

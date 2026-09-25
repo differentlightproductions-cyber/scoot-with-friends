@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CLOTH_COLORS, HAIR_COLORS, SKIN_TONES, sanitizeAvatar, swatchHex, type AvatarConfig } from './config';
 import { faceTextures } from './face';
-import { buildEyewear, buildFaceSolids, buildHair, buildHeadwear, buildShoe, faceGeometry, handGeometry, headGeometry, limbGeometry, limbRadius, pelvisGeometry, ring, torsoGeometry } from './parts';
+import { buildEyewear, buildFaceSolids, buildHair, buildHeadlamp, buildHeadwear, buildShoe, faceGeometry, handGeometry, headGeometry, limbGeometry, limbRadius, pelvisGeometry, ring, torsoGeometry } from './parts';
 import { ANKLE_OFFSET, ARM_REACH, BODY_SHAPES, LEG_REACH, RIG, hipJoint, shoulderJoint, solveLimb, type BodyShape, type LimbSolve } from './rig';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
@@ -74,6 +74,8 @@ export class Avatar {
   private ghosts = new Map<THREE.Material, THREE.Material>();
   private originals = new Map<THREE.Mesh, THREE.Material | THREE.Material[]>();
   private firstPerson = false;
+  /** The night headlamp (#64): worn only while it is on; `housing` aims the beam. */
+  readonly headlamp: { group: THREE.Group; lens: THREE.MeshStandardMaterial; housing: THREE.Group };
   private faceMaterial: THREE.MeshStandardMaterial;
   private faces: { open: THREE.Texture; closed: THREE.Texture };
   private nextBlink = 2 + Math.random() * 3;
@@ -125,6 +127,10 @@ export class Avatar {
     face.renderOrder = 1;
     const solids = buildFaceSolids(c, skin, d), hairGroup = buildHair(c, hair, d), hat = buildHeadwear(c, headwear, dark, d), glasses = buildEyewear(c, eyewear, d);
     for (const part of [solids, hairGroup, hat, glasses]) { this.headRoot.add(part); hideTree(part); }
+    this.headlamp = buildHeadlamp(c, d);
+    this.headlamp.group.visible = false;
+    this.headRoot.add(this.headlamp.group);
+    hideTree(this.headlamp.group);
     this.headRoot.add(this.anchors.eye, this.anchors.crown);
     this.anchors.eye.position.set(0, 0.01, 0.06);
     this.anchors.crown.position.set(0, RIG.headHeight / 2, 0);
@@ -300,6 +306,12 @@ export class Avatar {
     const limbs: Record<string, THREE.Object3D[]> = { Arm: this.upperArms, ForeArm: this.forearms, Hand: this.hands, HandMiddle1: this.fingertips, UpLeg: this.thighs, Leg: this.shins, Foot: this.feet };
     if (side >= 0) return limbs[part]?.[side];
     return ({ Hips: this.pelvis, Spine: this.chest, Spine1: this.chest, Spine2: this.chest, Neck: this.neck, Head: this.head } as Record<string, THREE.Object3D>)[name];
+  }
+
+  /** Puts the headlamp on (lens lit) or away. */
+  setHeadlamp(on: boolean) {
+    this.headlamp.group.visible = on;
+    this.headlamp.lens.emissiveIntensity = on ? 3 : 0;
   }
 
   /** Hides the head, hair, neck, chest, pelvis and upper arms from the eye camera; shadows stay. */
