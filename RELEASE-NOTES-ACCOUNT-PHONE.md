@@ -1,6 +1,6 @@
 # Claude handoff — email recovery, phone home, UI palettes
 
-Status: LOCAL, NOT PUSHED OR PUBLISHED. Owner explicitly held the GitHub/server update. Do not infer approval from older pushes. Current branch: `codex/claude-handoff-2`.
+Status: Owner lifted the hold and explicitly requested GitHub, Sites and Railway publication on September 25 UTC. Deployment in progress; verify live receipt. Current branch: `codex/claude-handoff-2`.
 
 ## Changes in this pass
 
@@ -11,7 +11,7 @@ Status: LOCAL, NOT PUSHED OR PUBLISHED. Owner explicitly held the GitHub/server 
 
 ## Earlier local fix included in this branch
 
-`7662d85` fixes oversized multiplayer appearance packets, server WebSocket error handling, and the room-connected/code/invite screen. It remains unpushed under the same owner hold. See `ROOM-CONNECTION-FIX.md`. Railway still needs this source update; these local UI changes do not fix the running room server by themselves.
+`7662d85` fixes oversized multiplayer appearance packets, server WebSocket error handling, and the room-connected/code/invite screen. It is included in the newly authorized release. See `ROOM-CONNECTION-FIX.md`. Railway still needs this source update; these local UI changes do not fix the running room server by themselves.
 
 ## Verification
 
@@ -26,11 +26,9 @@ Status: LOCAL, NOT PUSHED OR PUBLISHED. Owner explicitly held the GitHub/server 
 
 ## Resend / deployment requirements
 
-Owner chose “Prepare Resend setup” and then explicitly approved email DNS, a restricted key, secret storage in Sites and one setup-test email. Resend is now signed in; `scootwithfriends.online` is verified using the provider's TXT `resend._domainkey` and CNAME `rsend` / `send` records. Website records and existing mail forwarding were preserved. A sending-only key scoped to this domain was created. No paid service was purchased and no test email has been sent yet.
+Owner chose “Prepare Resend setup” and then explicitly approved email DNS, a restricted key, secret storage in Sites and one setup-test email. Resend is now signed in; `scootwithfriends.online` is verified using the provider's TXT `resend._domainkey` and CNAME `rsend` / `send` records. Website records and existing mail forwarding were preserved. A sending-only key scoped to this domain was created. No paid service was purchased. Resend accepted the authorized test email to differentlightproductions@gmail.com (message 01a0d6dd-843d-761f-9961-a939dd305fbe).
 
-The two non-secret Sites settings (`ACCOUNT_EMAIL_FROM`, `ACCOUNT_SITE_ORIGIN`) are saved in environment revision 2. The key itself is NOT stored yet: automatic approval review blocked revealing/exporting it, so the next step is direct secret entry in Sites settings. The owner has been asked to sign into ChatGPT in the browser for that handoff. Keep the existing Resend key dialog open; do not create duplicate keys or paste credentials into chat/Git.
-
-Remaining provider step: store the existing domain-restricted key as the secret `RESEND_API_KEY` in the existing Sites project, then send the approved setup-test email to differentlightproductions@gmail.com without exposing the key. Domain creation and DNS verification are already complete; do not repeat them. Details: `EMAIL-RECOVERY.md`.
+Sites environment revision 3 contains ACCOUNT_EMAIL_FROM, ACCOUNT_SITE_ORIGIN and the secret RESEND_API_KEY. The owner supplied the replacement key directly and explicitly authorized storage. The key is not in source or client assets. Apply this environment during the authorized deployment. The earlier unused Resend key remains unused; do not confuse it with the configured replacement.
 
 The additive `drizzle/0002_account_email.sql` migration is required before the new Worker handles accounts. Build copies migrations to `dist/.openai/drizzle`; ensure the release archive includes that migration directory (the repository's root `.openai` contains only hosting.json). Verify migration/deployment support before publishing. Never publish the new Worker against the old schema.
 
