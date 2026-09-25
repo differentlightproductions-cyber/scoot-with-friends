@@ -6,11 +6,11 @@ async function main(){
  const hosting=process.argv[2]==='host';
  let service;
  if(hosting){
-  service=createRooms({host:'0.0.0.0',port:8787,capacity:2,origins:[LAN_ORIGIN]});
+  service=createRooms({host:'0.0.0.0',port:8787,capacity:8,origins:[LAN_ORIGIN]});
   await once(service.server,'listening');
   process.on('SIGINT',service.close);process.on('SIGTERM',service.close);
   process.env.SWF_LAN_HOST='127.0.0.1';
-  console.log('\nLAN host ready (2 players). Give your friend one of these local addresses:');
+  console.log('\nLAN host ready (up to 8 players). Give your friends one of these local addresses:');
   for(const entries of Object.values(networkInterfaces()))for(const entry of entries??[])if(entry.family==='IPv4'&&!entry.internal){try{console.log('  '+privateAddress(entry.address));}catch{}}
   console.log('\nAllow Node through Windows Firewall on your PRIVATE network if asked.\nIn the game: Play > Private Free-ride > Create Private Room.\nCopy the room code to your friend. Keep this window open.');
  }else{

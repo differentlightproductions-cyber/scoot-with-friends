@@ -3,6 +3,9 @@ import { music, MUSIC_GENRES } from '../audio/music';
 import type { Simulation } from '../physics/simulation';
 import type { LocalProfile } from '../data/loadout';
 import type { WorldInteractions } from '../park/interactions';
+import type { FreeRide } from '../network/client';
+import type { SocialClient } from '../network/social';
+import { friendsApp } from './friends';
 import { SNAP_MODES, matchAsset, type WarehouseBuilder } from '../editor/warehouse';
 import { BUILD_CATALOG, BUILD_GROUPS, BUILD_LIMITS, type BuildGroup } from '../data/builds';
 import { EMOTES } from '../ui/social';
@@ -38,7 +41,9 @@ export interface PhoneDeps {
   /** Opens the chat field (typing) for the room / local chat. */
   compose: () => void;
   messages: MessageStore;
-  network: () => { status: string; id: string; code: string; roster: { id: string; name: string; connected?: boolean }[] };
+  network: () => FreeRide;
+  social: () => SocialClient;
+  teleportToPlayer: (id: string) => boolean;
   map: PhoneMap;
   /** Opens a crate on screen (the phone is put away first). */
   openCrate: (id: string) => void;
@@ -363,14 +368,14 @@ function buildApp(d: PhoneDeps): View {
     page: () => {
       const b = d.builder(), o = b.layout.objects.find(v => v.id === id);
       if (!o) return { blocks: [{ type: 'title', text: 'GONE', sub: 'This piece is no longer placed' }] };
-      const name = (matchAsset(o)?.label ?? o.type).toUpperCase();
+      const name = (matchAsset(o)?.label ?? o.type).toUpperCase(), editable = b.canEdit(id);
       return { blocks: [
-        { type: 'title', text: name, sub: `${m(o.x)}, ${m(o.z)} · ${Math.round(((o.rotation * 180) / Math.PI + 360) % 360)}°` },
-        { type: 'list', rows: [
+        { type: 'title', text: name, sub: `${m(o.x)}, ${m(o.z)} · ${Math.round(((o.rotation * 180) / Math.PI + 360) % 360)}°${editable ? '' : ' · placed by another rider'}` },
+        ...(editable ? [{ type: 'list', rows: [
           { id: 'move', label: 'MOVE / ROTATE', detail: 'Pick it up and place it again', action: () => d.phone.close(() => d.builder().move(id)) },
           { id: 'dup', label: 'DUPLICATE', detail: 'A copy beside it, ready to place', action: () => d.phone.close(() => d.builder().duplicate(id)) },
-          { id: 'del', label: 'DELETE', detail: 'UNDO brings it back', action: () => { d.builder().deletePiece(id); d.phone.back(); } },
-        ] },
+          { id: 'del', label: 'DELETE', detail: b.isShared ? 'Remove your room piece' : 'UNDO brings it back', action: () => { d.builder().deletePiece(id); d.phone.back(); } },
+        ] } as Block] : []),
       ] };
     },
   });
@@ -380,7 +385,7 @@ function buildApp(d: PhoneDeps): View {
       const list = d.builder().placed(d.sim());
       return { blocks: [
         { type: 'title', text: 'PLACED', sub: list.length ? 'Nearest first' : 'Nothing placed yet' },
-        { type: 'list', rows: list.map(({ o, asset, distance }) => ({ id: 'piece-' + o.id, label: (asset?.label ?? o.type).toUpperCase(), detail: m(distance) + ' m away', action: () => d.phone.push(piece(o.id)) })) },
+        { type: 'list', rows: list.map(({ o, asset, distance }) => ({ id: 'piece-' + o.id, label: (asset?.label ?? o.type).toUpperCase(), detail: m(distance) + ' m away' + (d.builder().canEdit(o.id) ? '' : ' · other rider'), action: () => d.phone.push(piece(o.id)) })) },
       ] };
     },
   };
@@ -392,18 +397,20 @@ function buildApp(d: PhoneDeps): View {
         { type: 'text', text: 'Building is open in the Warehouse: place ramps, rails and boxes, then ride them. Pick the Warehouse from Maps.' },
         { type: 'list', rows: [{ id: 'maps', label: 'OPEN MAPS', action: () => d.phone.close(() => d.openSesh('maps')) }] },
       ] };
-      const b = d.builder(), count = b.layout.objects.length;
+      const b = d.builder(), count = b.layout.objects.length, owned = b.layout.objects.filter(o => b.canEdit(o.id)).length;
       const rows: Row[] = [
         ...BUILD_GROUPS.map(g => ({ id: 'cat-' + g, label: 'ADD ' + g, detail: BUILD_CATALOG.filter(a => a.group === g).map(a => a.label).slice(0, 3).join(' · ') + '…', action: () => d.phone.push(category(g)) })),
         { id: 'placed', label: 'EDIT PLACED', detail: 'Move, rotate, duplicate or delete', value: String(count), disabled: !count, action: () => d.phone.push(placed) },
         { id: 'undo', label: 'UNDO', disabled: !b.canUndo, action: () => b.undo() },
         { id: 'redo', label: 'REDO', disabled: !b.canRedo, action: () => b.redo() },
         { id: 'snap', label: 'SNAP', detail: 'Y also switches while placing', value: SNAP_MODES[b.snap].name, action: () => { b.snap = (b.snap + 1) % SNAP_MODES.length; } },
-        { id: 'save', label: 'SAVE BUILD', detail: 'Saved to your profile (also after every edit)', action: () => b.save() },
-        { id: 'clear', label: 'CLEAR BUILD…', detail: 'Reset the Warehouse to empty', disabled: !count, action: () => d.phone.sheet('CLEAR THE WHOLE BUILD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'CLEAR ' + count + ' PIECES', action: () => b.reset() }], 'UNDO can bring it back until you leave') },
+        ...(b.isShared ? [{ id: 'other-builds', label: 'OTHER PLAYER BUILDS', detail: b.otherBuilds === 'ghost' ? 'Visible, no collision' : 'Visible, solid', value: b.otherBuilds.toUpperCase(), action: () => b.setOtherBuilds(b.otherBuilds === 'solid' ? 'ghost' : 'solid') }] : []),
+        ...(!b.isShared ? [{ id: 'save', label: 'SAVE BUILD', detail: 'Saved to your profile (also after every edit)', action: () => b.save() }] : []),
+        { id: 'clear', label: b.isShared ? 'CLEAR MY ROOM PIECES…' : 'CLEAR BUILD…', detail: b.isShared ? 'Remove your pieces from this room' : 'Reset the Warehouse to empty', disabled: !(b.isShared ? owned : count), action: () => d.phone.sheet(b.isShared ? 'CLEAR YOUR ROOM PIECES?' : 'CLEAR THE WHOLE BUILD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'CLEAR ' + (b.isShared ? owned : count) + ' PIECES', action: () => b.reset() }], b.isShared ? 'Other riders keep their pieces' : 'UNDO can bring it back until you leave') },
       ];
       return { blocks: [
-        { type: 'title', text: 'BUILD', sub: `${count} / ${BUILD_LIMITS.pieces} pieces · ${b.used} / ${BUILD_LIMITS.budget} budget` },
+        { type: 'title', text: 'BUILD', sub: `${b.isShared ? 'ROOM · ' : ''}${count} / ${BUILD_LIMITS.pieces} pieces · ${b.used} / ${BUILD_LIMITS.budget} budget` },
+        ...(b.isShared ? [{ type: 'text', text: 'Room pieces are shared until the lobby ends. Your personal saved build stays in Solo.', muted: true } as Block] : []),
         ...(b.notice || b.saveError ? [{ type: 'text', text: b.saveError || b.notice } as Block] : []),
         { type: 'list', rows },
       ] };
@@ -675,6 +682,7 @@ export function installApps(d: PhoneDeps) {
     ['spots', 'SPOTS', 'star', '#ffd23f', spotsApp],
     ['items', 'ITEMS', 'items', '#ff7ab8', itemsApp],
     ['build', 'BUILD', 'build', '#b8a07a', buildApp],
+    ['friends', 'FRIENDS', 'rider', TEAL, friendsApp],
     ['messages', 'MESSAGES', 'messages', '#9b7bff', messagesApp, () => (d.messages.unreadTotal ? String(Math.min(9, d.messages.unreadTotal)) : undefined)],
     ['tricks', 'TRICKS', 'chart', '#c6ff00', tricksApp],
     ['missions', 'MISSIONS', 'trophy', '#ffb938', missionsApp, () => { const n = d.profile().progress.crates.length; return n ? String(Math.min(9, n)) : undefined; }],

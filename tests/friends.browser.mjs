@@ -17,12 +17,12 @@ try {
   await page.waitForFunction(() => window.__LAZER?.startSession, null, { timeout: 900000 });
   const setup = await page.evaluate(async () => {
     const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true);
-    const f = g.friends;
+    const f = g.playful;
     window.__step = async (n, values = {}) => {
       const { emptyInput } = await import('/src/input/input.ts');
       for (let i = 0; i < n; i++) {
         const frame = { ...emptyInput(), ...values, pressed: { ...emptyInput().pressed, ...(i === 0 ? values.pressed : {}) }, held: { ...emptyInput().held, ...values.held } };
-        g.friends.update(1 / 30, frame, g.sim, true, null, () => {});
+        g.playful.update(1 / 30, frame, g.sim, true, null, () => {});
         g.advance(1 / 30, {}, false);
       }
     };
@@ -32,7 +32,7 @@ try {
 
   // Walk to the DIY lot beside the local there; pick up the can with B.
   const pick = await page.evaluate(async () => {
-    const g = window.__LAZER, s = g.sim, f = g.friends;
+    const g = window.__LAZER, s = g.sim, f = g.playful;
     s.walking = true; s.position.set(-44.4, 0.05, -118.4); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.yaw = Math.PI; s.previousYaw = s.yaw;
     await window.__step(15);
     const prompt = f.prompt.hidden ? '' : f.prompt.textContent;
@@ -43,7 +43,7 @@ try {
 
   // Face the local and throw: it is aimed at them, it hits, they react and remember.
   const thrown = await page.evaluate(async () => {
-    const g = window.__LAZER, s = g.sim, f = g.friends, npc = f.npcs[2];
+    const g = window.__LAZER, s = g.sim, f = g.playful, npc = f.npcs[2];
     s.position.set(npc.position.x + 6, 0.05, npc.position.z); s.body.setTranslation(s.position, true); s.yaw = -Math.PI / 2; s.previousYaw = s.yaw;
     await window.__step(3);
     await window.__step(1, { pressed: { pumpGrind: true } });
@@ -55,7 +55,7 @@ try {
 
   // Retaliation: force it and check the throw comes back and lands on the player.
   const back = await page.evaluate(async () => {
-    const g = window.__LAZER, f = g.friends, npc = f.npcs[2];
+    const g = window.__LAZER, f = g.playful, npc = f.npcs[2];
     npc.retaliate = { at: 0, source: 'local', item: 'acorn' };
     await window.__step(60);
     return { local: f.local.last, feedback: document.querySelector('#feedback')?.textContent ?? '' };
@@ -64,7 +64,7 @@ try {
 
   // Shove: a stumble that moves them a bounded distance; an instant repeat does nothing.
   const shove = await page.evaluate(async () => {
-    const g = window.__LAZER, s = g.sim, f = g.friends, npc = f.npcs[0];
+    const g = window.__LAZER, s = g.sim, f = g.playful, npc = f.npcs[0];
     s.position.set(npc.position.x - 1.1, 0.05, npc.position.z); s.body.setTranslation(s.position, true); s.yaw = Math.PI / 2; s.previousYaw = s.yaw; s.velocity.set(0, 0, 0);
     await window.__step(3);
     const before = npc.position.clone(), logs = npc.log.length;
@@ -77,7 +77,7 @@ try {
 
   // PLAYFUL CONTACT OFF: a hit on you only bounces off.
   const off = await page.evaluate(async () => {
-    const g = window.__LAZER, f = g.friends, npc = f.npcs[2];
+    const g = window.__LAZER, f = g.playful, npc = f.npcs[2];
     g.profile.settings.playfulContact = 'off'; f.rules.contact = 'off';
     const s = g.sim; s.position.set(npc.position.x + 5, 0.05, npc.position.z); s.body.setTranslation(s.position, true);
     npc.retaliate = { at: 0, source: 'local', item: 'acorn' };
@@ -89,10 +89,10 @@ try {
 
   // A picture: the rider and a local at the DIY lot.
   const shot = await page.evaluate(async () => {
-    const g = window.__LAZER, s = g.sim, npc = g.friends.npcs[2];
+    const g = window.__LAZER, s = g.sim, npc = g.playful.npcs[2];
     s.position.set(npc.position.x + 2.2, 0.05, npc.position.z + 1.2); s.body.setTranslation(s.position, true); s.yaw = -Math.PI / 2;
     npc.play('laugh');
-    for (let i = 0; i < 20; i++) { g.friends.update(1 / 30, (await import('/src/input/input.ts')).emptyInput(), s, true, null, () => {}); g.advance(1 / 30, {}, false); }
+    for (let i = 0; i < 20; i++) { g.playful.update(1 / 30, (await import('/src/input/input.ts')).emptyInput(), s, true, null, () => {}); g.advance(1 / 30, {}, false); }
     for (let i = 0; i < 4; i++) g.render();
     const cam = g.camera.camera; cam.position.set(npc.position.x + 4.5, 1.9, npc.position.z + 5.5); cam.lookAt(npc.position.x + 1, 1, npc.position.z); cam.updateMatrixWorld();
     g.renderer.render(g.park.scene, cam);

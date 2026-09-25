@@ -36,7 +36,7 @@ const read = (key: string) => { try { return localStorage.getItem(key); } catch 
 /** One request to the account API; throws a readable message. */
 export async function accountRequest(action: string, data?: unknown, keepalive = false) {
   const response = await fetch("/api/account/" + action, { credentials: "same-origin", cache: "no-store", keepalive, ...(data ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) } : {}) });
-  if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("Accounts are available on the published website. This local copy remains playable without sign-in.");
+  if (!response.headers.get("content-type")?.includes("application/json")) throw Object.assign(new Error("This website has no account service connected yet. Your progress still saves on this device."), { code: "ACCOUNT_UNAVAILABLE" });
   const result = await response.json();
   if (!response.ok) throw Object.assign(new Error(result.error ?? "Please try again."), { status: response.status, result });
   return result;

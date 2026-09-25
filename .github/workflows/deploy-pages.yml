@@ -1,0 +1,55 @@
+name: Deploy tested game to GitHub Pages
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Tested source commit or branch to publish
+        required: true
+        default: 9ec44843687b28f7769ab8c8507ea1b69a89df7e
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_ROOM_SERVER_URL: ${{ vars.VITE_ROOM_SERVER_URL }}
+      - name: Preserve domain and record published source
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          fs.writeFileSync('dist/client/CNAME', 'scootwithfriends.online\n');
+          fs.writeFileSync('dist/client/.nojekyll', '');
+          fs.writeFileSync('dist/client/build-info.json', JSON.stringify({commit:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),builtAt:new Date().toISOString()}));
+          NODE
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/client
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

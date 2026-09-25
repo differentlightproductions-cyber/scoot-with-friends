@@ -20,7 +20,7 @@ export function attachLanRelay(server:Server,target:string,roomPort=8787){
  server.on('upgrade',(req,socket,head)=>{
   const port=(server.address() as any)?.port;
   const allowed=[`http://127.0.0.1:${port}`,`http://localhost:${port}`];
-  if(req.url!=='/lan-room'||!allowed.includes(req.headers.origin??'')||!allowed.includes('http://'+req.headers.host)||relay.clients.size>=4){socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;}
+  if(req.url!=='/lan-room'||!allowed.includes(req.headers.origin??'')||!allowed.includes('http://'+req.headers.host)||relay.clients.size>=8){socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');return;}
   relay.handleUpgrade(req,socket,head,client=>{
    const upstream=new WebSocket(`ws://${host}:${roomPort}`,{origin:LAN_ORIGIN,maxPayload:262144,handshakeTimeout:5000,perMessageDeflate:false});
    upstreams.add(upstream);

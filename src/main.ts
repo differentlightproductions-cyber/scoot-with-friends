@@ -10,6 +10,8 @@ import type { ThrowableKind } from "./social/playful";
 import { CamcorderFilter } from "./render/camcorder";
 import {shopForMap} from './data/shops';
 import {FreeRide,capture} from './network/client';
+import {SocialClient} from './network/social';
+import {teleportNear} from './network/teleport';
 import {appearance as riderAppearance} from './network/protocol';
 import {ReplayBuffer} from './replay/buffer';
 import {ReplayEditor} from './replay/editor';
@@ -120,7 +122,7 @@ async function boot() {
   // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
   let tracks = new WheelTracks(scene);
   // "With Friends" (#47): the park's locals and small things to throw; Veterans only for now.
-  let friends: WithFriends | null = null;
+  let playful: WithFriends | null = null;
   function makeFriends() {
     if (ACTIVE_MAP !== "outdoor") return null;
     const f = new WithFriends(scene, terrainHeight);
@@ -166,10 +168,19 @@ async function boot() {
   const editor = new ParkEditor(renderer, scene);
   editor.getPark = () => park;
   const network=new FreeRide(scene,profile,()=>sim);
+  const friends=new SocialClient(()=>network.endpoint);
+  network.socialCredential=friends.credential;
+  friends.onState=()=>phone.refresh();
+  friends.onInvite=invite=>phone.notify('Lobby invite',invite.name+' invited you. Open Friends to join.','rider');
+  friends.onAccepted=code=>phone.close(()=>void network.connect('join',friends.name,code));
+  friends.connect();
   /** The rolling replay history (#41); a new map starts a new one. */
   const replayBuffer=new ReplayBuffer();
   network.onLost=()=>{input.clear();pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
-  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  const syncRoomBuilds=()=>builder.setShared(network.status==='Connected'&&network.map==='warehouse'&&ACTIVE_MAP==='warehouse',network.id,m=>network.send({type:'build',generation:network.generation,...m}));
+  network.onJoined=()=>{input.clear();pending=emptyInput();accumulator=0;syncRoomBuilds();};
+  network.onBuilds=pieces=>builder.applySharedSnapshot(pieces);
+  network.onBuild=message=>builder.applySharedChange(message);
   events.on(e=>{if(e.type==='playerChat'){messages.add('room','You',e.message,true);if(network.status==='Connected')network.send({type:'chat',message:e.message});}});
   network.onChat=(name,message)=>{messages.add('room',name,message,false);if(!(phone.ready&&phone.view?.title==='MESSAGES'))phone.notify('New message',name+': '+message,'messages');};
   messages.onChange=()=>phone.refresh();
@@ -178,14 +189,14 @@ async function boot() {
   void cloud.start();
   network.prepare=async()=>{if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
-    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'Both players need this Windows release. Host LAN on one PC; Join LAN on the other. Two players per room.':network.lastError,action:()=>{}},
+    {label:(network.lan?'LAN / ':'')+network.status,detail:network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':network.lastError,action:()=>{}},
     ...(network.lan&&network.id?[{label:'COPY LAN ROOM CODE',action:()=>void copyText(network.code)}]:[]),
     ...(network.id?[{label:'COPY INVITE',action:()=>void copyText(location.origin+location.pathname+'#room='+encodeURIComponent(network.code))},{label:'LEAVE ROOM / PLAY SOLO',action:()=>network.leave()},...network.roster.map(p=>({label:p.name+(p.id===network.owner?' / OWNER':''),detail:p.connected?'Connected':'Reconnecting',action:()=>{if(p.id!==network.id){network.muted.has(p.id)?network.muted.delete(p.id):network.muted.add(p.id);}}})),...(network.owner===network.id?[{label:network.locked?'UNLOCK ROOM':'LOCK ROOM',action:()=>network.send({type:'lock',locked:!network.locked})},...network.roster.filter(p=>p.id!==network.id).map(p=>({label:'REMOVE '+p.name,action:()=>{if(confirm('Remove '+p.name+' from this room?'))network.send({type:'kick',id:p.id});}}))]:[])]:[
     ...(network.secret?[{label:'RECONNECT TO ROOM',action:()=>network.connect('resume')}]:[]),
     {label:'CREATE PRIVATE ROOM',action:()=>network.connect('create',prompt('Guest display name','Rider')||'Rider')},
     {label:'JOIN ROOM',action:()=>{const invite=prompt('Paste invite link or room code',new URLSearchParams(location.hash.slice(1)).get('room')||'');if(invite){const code=invite.includes('#room=')?decodeURIComponent(invite.split('#room=')[1]):invite;network.connect('join',prompt('Guest display name','Rider')||'Rider',code);}}}
     ])];
-  network.onChange=()=>{if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
+  network.onChange=()=>{phone.refresh();syncRoomBuilds();if(menu.screen==='online'&&!menu.root.hidden)menu.show('online');};
   const mapFeatures=():MapFeature[]=>{
     const out:MapFeature[]=SPAWNS.map((sp,i)=>({kind:'spawn',x:sp.x,z:sp.z,label:String(i+1)}));
     for(const item of interactions.items)if(item.interactionType!=='bench')out.push({kind:item.interactionType,x:item.position.x,z:item.position.z});
@@ -217,7 +228,14 @@ async function boot() {
     ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
     items:()=>interactions,builder:()=>builder,
     compose:()=>social.openChat(),
-    network:()=>network,
+    network:()=>network,social:()=>friends,
+    teleportToPlayer:id=>{
+      const remote=network.remotes.get(id),sample=remote?.samples.at(-1);
+      if(network.status!=='Connected'||!network.roster.some(p=>p.id===id&&p.connected)||!sample||performance.now()-sample.at>1000)return false;
+      const moved=teleportNear(sim,sample.state.position,sample.state.yaw);
+      if(moved){input.clear();pending=emptyInput();accumulator=0;camera.reset();}
+      return moved;
+    },
     replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory},
     // Fast travel (#43): the spot's district loads if it is not this one, then the rider is placed at the spot.
     fastTravel:async spot=>{if(ACTIVE_MAP!==spot.map)await menu.onRide(spot.map);if(ACTIVE_MAP!==spot.map)return;sim.spawnIndex=Math.min(spot.spawn,SPAWNS.length-1);reset();}};
@@ -281,9 +299,11 @@ async function boot() {
     }
   }
   void latestPark();
-  let destinationLoading=false;
+  let destinationLoading:Promise<void>|null=null;
   const loadDestination = async (id:MapId) => {
-    if(destinationLoading)return;destinationLoading=true;input.clear();
+    // Callers must await a real load, never receive a false "ready" while another map loads.
+    while(destinationLoading)await destinationLoading;
+    const loading=(async()=>{input.clear();
     try{await loadingStage(id==="techno_gravity"?"Traveling to Techno Gravity Shop":id==="b_hill"?"Heading up B\u00a0Hill":id==="church"?"Heading to the Church":"Loading your park",10);
     if(id==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();}
     if(id==="church"){const church=await import("./park/church");church.installChurch();}
@@ -300,7 +320,10 @@ async function boot() {
     await loadingStage("Preparing the view",80);
     await renderer.compileAsync(scene,camera.camera);
     await loadingStage("Ready to ride",100);finishLoading();
-    }catch(error){loadingFailed();throw error;}finally{destinationLoading=false;input.clear();pending=emptyInput();accumulator=0;}
+    }catch(error){loadingFailed();throw error;}finally{input.clear();pending=emptyInput();accumulator=0;}
+    })();
+    destinationLoading=loading;
+    try{await loading;}finally{if(destinationLoading===loading)destinationLoading=null;}
   };
   network.loadMap=async id=>{await loadDestination(id as MapId);};
   menu.onRide=async id=>{if(network.id){await network.changeMap(id);return;}await loadDestination(id);};
@@ -458,7 +481,7 @@ async function boot() {
         m.dispose();
       });
       weather.dispose();
-      friends?.dispose();friends=null;
+      playful?.dispose();playful=null;
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -468,7 +491,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);friends=makeFriends();
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);playful=makeFriends();
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -667,7 +690,7 @@ async function boot() {
     camera.phonePitch = raise * READ_TILT.first;
     rider.update(sim, dt, alpha);
     if(hud.started){replayBuffer.history=profile.settings.replayHistory;replayBuffer.record(sim.elapsed,()=>capture(sim),camera.view==='first'&&camera.firstPersonActive?'first':'third');}
-    interactions.online=!!network.id;interactions.render(rider);friends?.render(dt,sim.elapsed,rider.hands[0]);
+    interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0]);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
     // Placing a build piece: the build camera frames the ghost instead.
@@ -752,11 +775,11 @@ async function boot() {
     if(builder.placement)frame=builder.update(sim,frame,dt);
     else {
       frame = social.update(sim, frame, dt);
-      if(friends){
-        friends.rules.contact=profile.settings.playfulContact;
+      if(playful){
+        playful.rules.contact=profile.settings.playfulContact;
         const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
         const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'?'paper':'can'):null;
-        frame=friends.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
+        frame=playful.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
       }
       frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);
     }
@@ -842,6 +865,8 @@ async function boot() {
       editor,
       profile,
       network,
+      friends,
+      teleportToPlayer:phoneDeps.teleportToPlayer,
       startSession,
       exitToMenu,
       get rider() {
@@ -855,7 +880,8 @@ async function boot() {
       },
       camera, camcorder, touchPad,
       get tracks() { return tracks; },
-      get friends() { return friends; },
+      /** With Friends playful interactions (#47): locals, throwables, shoves. */
+      get playful() { return playful; },
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),

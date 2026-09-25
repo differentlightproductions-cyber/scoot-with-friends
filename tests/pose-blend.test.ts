@@ -36,3 +36,15 @@ test('angles take the short way round; position and channels interpolate', () =>
   assert.ok(Math.abs(p.position.x - 1) < 1e-9);
   assert.ok(Math.abs(p.tricks.bri.angle - 1) < 1e-9);
 });
+
+test('swim, traversal and dive motion interpolate for remote riders', () => {
+  const extra = (time: number) => ({
+    swim: { time, stroke: time * 2, speed: 1, out: null },
+    mantle: { kind: 'vault', time, duration: 1, edge: [1, 2, 3], forward: [0, 0, 1] },
+    diveFlip: { angle: time, side: time * 2, twist: time * 3, dir: 1, sideDir: 1, twistDir: 1 },
+  });
+  const p = blendPose(pose(extra(0)), pose(extra(1)), .5) as any;
+  assert.equal(p.swim.time,.5);assert.equal(p.swim.stroke,1);assert.equal(p.mantle.time,.5);
+  assert.equal(p.diveFlip.angle,.5);assert.equal(p.diveFlip.side,1);assert.equal(p.diveFlip.twist,1.5);
+  assert(p.mantle.edge instanceof THREE.Vector3);
+});
