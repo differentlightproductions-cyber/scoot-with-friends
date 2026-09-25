@@ -191,7 +191,8 @@ export class RewardFx {
     for (const c of gains.completed) this.stickers.push(() => this.toast(c.title, c.reward.credit, c.reward.xp, c.reward.crate ? CRATE_NAME[c.reward.crate] : ""));
     this.pumpStickers();
     for (const level of gains.levelsUp) {
-      const crates = gains.crates.filter((c) => c.source === "Level " + level).map((c) => CRATE_NAME[c.tier]);
+      // Exactly one reward per level (#55): a crate, or a novelty or snack straight into the pockets.
+      const crates = [...gains.crates.filter((c) => c.source === "Level " + level).map((c) => CRATE_NAME[c.tier]), ...gains.items.filter((i) => i.source === "Level " + level).map((i) => i.kind)];
       this.moments = this.moments.then(async () => {
         while (this.overlay || this.stickers.length) await wait(300);
         this.levelUp(level, crates);

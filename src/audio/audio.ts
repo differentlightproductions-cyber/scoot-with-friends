@@ -176,6 +176,7 @@ export class AudioEngine {
     }
     if(e.type==='worldInteraction'&&e.interaction==='open'){f=1300;g=.08;d=.075;}
     if(e.type==='worldInteraction'&&e.interaction==='vend'){f=340;g=.045;d=.12;}
+    if(e.type==='worldInteraction'&&e.interaction==='novelty'){this.novelty(e.item);return;}
     if (!f) return;
     const o = this.context.createOscillator(),
       a = this.context.createGain(),
@@ -192,5 +193,33 @@ export class AudioEngine {
       o.disconnect();
       a.disconnect();
     };
+  }
+  /** Novelty items (#55): a squeak, a kazoo tune, a whoosh, a pop, bubbles. All synthesised. */
+  novelty(kind: string) {
+    const c = this.context;
+    const out = this.master;
+    if (!c || !out || !this.enabled) return;
+    const t0 = c.currentTime;
+    const tone = (type: OscillatorType, from: number, to: number, at: number, length: number, gain: number, vibrato = 0) => {
+      const o = c.createOscillator(), a = c.createGain(), t = t0 + at;
+      o.type = type; o.frequency.setValueAtTime(from, t); o.frequency.exponentialRampToValueAtTime(Math.max(30, to), t + length);
+      if (vibrato) { const v = c.createOscillator(), vg = c.createGain(); v.frequency.value = 6.5; vg.gain.value = vibrato; v.connect(vg).connect(o.frequency); v.start(t); v.stop(t + length + 0.02); }
+      a.gain.setValueAtTime(0.0001, t); a.gain.exponentialRampToValueAtTime(gain, t + 0.015); a.gain.exponentialRampToValueAtTime(0.0001, t + length);
+      o.connect(a).connect(out); o.start(t); o.stop(t + length + 0.03);
+      o.onended = () => { o.disconnect(); a.disconnect(); };
+    };
+    const noise = (at: number, length: number, gain: number, freq: number) => {
+      const buffer = c.createBuffer(1, Math.ceil(c.sampleRate * length), c.sampleRate), data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      const src = c.createBufferSource(), filter = c.createBiquadFilter(), a = c.createGain();
+      src.buffer = buffer; filter.type = "bandpass"; filter.frequency.value = freq; filter.Q.value = 0.8; a.gain.value = gain;
+      src.connect(filter).connect(a).connect(out); src.start(t0 + at);
+      src.onended = () => { src.disconnect(); filter.disconnect(); a.disconnect(); };
+    };
+    if (kind === "Rubber Duck") { tone("square", 820, 1500, 0, 0.11, 0.05); tone("square", 900, 1650, 0.16, 0.13, 0.05); }
+    else if (kind === "Kazoo") { [392, 392, 440, 392, 523, 494].forEach((f, i) => tone("sawtooth", f, f * 1.01, i * 0.2, 0.19, 0.045, 7)); }
+    else if (kind === "Foam Finger") { noise(0, 0.35, 0.18, 700); }
+    else if (kind === "Party Popper") { noise(0, 0.12, 0.6, 1800); [1760, 2093, 2637].forEach((f, i) => tone("triangle", f, f * 1.2, 0.08 + i * 0.06, 0.18, 0.03)); }
+    else if (kind === "Bubble Wand") { for (let i = 0; i < 6; i++) { const f = 520 + Math.random() * 480; tone("sine", f, f * 1.7, 0.2 + i * 0.28 + Math.random() * 0.1, 0.09, 0.05); } }
   }
 }

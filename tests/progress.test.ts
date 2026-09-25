@@ -42,8 +42,8 @@ test('missions: career stages pay Credit, XP and crates; dailies roll by date wi
   const tricksBefore = q.stats.tricks;
   assert.equal(q.daily.done.length, 3);
   assert.ok(q.daily.bonus && g.completed.some(c => c.title === 'All three dailies'));
-  // Level-ups grant a crate each.
-  assert.ok(g.levelsUp.length > 0 && g.crates.filter(c => c.source.startsWith('Level')).length === g.levelsUp.length);
+  // Every level-up grants exactly one thing: a crate or an item.
+  assert.ok(g.levelsUp.length > 0 && g.crates.filter(c => c.source.startsWith('Level')).length + g.items.filter(i => i.source.startsWith('Level')).length === g.levelsUp.length);
   // Next day: fresh dailies, lifetime stats kept.
   record(q, {tricks: 1}, id, '2026-09-25');
   assert.equal(q.daily.day, '2026-09-25'); assert.equal(q.daily.done.length, 0); assert.equal(q.stats.tricks, tricksBefore + 1);
@@ -96,4 +96,17 @@ test('daily deals: three different parts, the same all day, never an exclusive',
   assert.equal(a.length, 3); assert.equal(new Set(a.map(d => d.partId)).size, 3);
   assert.ok(a.every(d => d.price < d.was && !d.variantId.startsWith('x-')));
   assert.notDeepEqual(dailyDeals('techno_gravity', '2026-09-25'), a);
+});
+
+test('level rewards: one per level, crates every fifth level, silly items and snacks between, fixed per level', async () => {
+  const { levelReward } = await import('../src/data/progress');
+  const { NOVELTY_KINDS } = await import('../src/data/items');
+  assert.deepEqual(levelReward(5), { kind: 'crate', tier: 'pro' });
+  assert.deepEqual(levelReward(10), { kind: 'crate', tier: 'signature' });
+  assert.deepEqual(levelReward(25), { kind: 'crate', tier: 'legend' });
+  assert.deepEqual(levelReward(7), levelReward(7), 'the same level always gives the same thing');
+  const first100 = Array.from({ length: 100 }, (_, i) => levelReward(i + 2));
+  const crates = first100.filter(r => r.kind === 'crate').length, novelties = first100.filter(r => r.kind === 'item' && (NOVELTY_KINDS as readonly string[]).includes(r.item)).length;
+  assert.ok(crates >= 30 && crates <= 55, 'about four crates in ten levels, not ten: ' + crates);
+  assert.ok(novelties >= 25, 'plenty of silly items: ' + novelties);
 });

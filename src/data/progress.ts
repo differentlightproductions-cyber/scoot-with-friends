@@ -9,6 +9,7 @@
 import { PARTS } from "./scooterParts";
 import { LONGBOARD_PARTS } from "./longboardParts";
 import { ownershipKey } from "./catalog";
+import { NOVELTY_KINDS, VENDING_KINDS, type ItemKind } from "./items";
 
 export type Rarity = "common" | "rare" | "epic" | "legendary";
 export const RARITIES: Rarity[] = ["common", "rare", "epic", "legendary"];
@@ -152,9 +153,24 @@ export function levelFor(xp: number) {
   while (into >= levelNeed(level) && level < 999) { into -= levelNeed(level); level++; }
   return { level, into, need: levelNeed(level) };
 }
-/** The crate a level-up grants: bigger every fifth and tenth level. */
-export const levelCrate = (level: number): CrateTier => (level % 10 === 0 ? "legend" : level % 5 === 0 ? "signature" : level % 2 === 0 ? "pro" : "street");
-export const levelCredit = (level: number) => 20 + level * 5;
+/**
+ * What a level-up gives (#55): exactly one thing. Every fifth level is a crate
+ * (Pro; Signature on the tens; Legend on every 25th), so parts stay something to
+ * collect; any other level rolls a Street Crate now and then, and otherwise a
+ * novelty (a rubber duck, a kazoo...) or a snack. Seeded by the level, so a
+ * reload can never re-roll it.
+ */
+export type LevelReward = { kind: "crate"; tier: CrateTier } | { kind: "item"; item: ItemKind };
+export function levelReward(level: number): LevelReward {
+  if (level % 25 === 0) return { kind: "crate", tier: "legend" };
+  if (level % 10 === 0) return { kind: "crate", tier: "signature" };
+  if (level % 5 === 0) return { kind: "crate", tier: "pro" };
+  const random = seeded(hash("level:" + level)), roll = random();
+  if (roll < 0.3) return { kind: "crate", tier: "street" };
+  const pool: readonly ItemKind[] = roll < 0.8 ? NOVELTY_KINDS : VENDING_KINDS;
+  return { kind: "item", item: pool[Math.floor(random() * pool.length)] };
+}
+export const levelRewardLabel = (r: LevelReward) => (r.kind === "crate" ? CRATE_NAME[r.tier] : r.item);
 /** Riding XP from one banked line: a trickle, capped, so levels come from missions. */
 export const trickXp = (points: number) => Math.min(15, Math.max(1, Math.round(points / 400)));
 
@@ -269,8 +285,8 @@ export function dailyFor(day: string) {
 }
 
 // ---- Applying events --------------------------------------------------------------
-export interface Gains { credit: number; xp: number; crates: Crate[]; completed: { title: string; reward: Reward }[]; levelsUp: number[] }
-const noGains = (): Gains => ({ credit: 0, xp: 0, crates: [], completed: [], levelsUp: [] });
+export interface Gains { credit: number; xp: number; crates: Crate[]; completed: { title: string; reward: Reward }[]; levelsUp: number[]; items: { kind: ItemKind; source: string }[] }
+const noGains = (): Gains => ({ credit: 0, xp: 0, crates: [], completed: [], levelsUp: [], items: [] });
 
 /** Starts a new day's dailies when the date changes. */
 export function rollDaily(p: Progress, day = dayKey()) {
@@ -324,8 +340,9 @@ export function record(p: Progress, changes: Partial<Record<Stat, number>>, newI
   const after = levelFor(p.xp).level;
   for (let level = p.topLevel + 1; level <= after; level++) {
     gains.levelsUp.push(level);
-    gains.credit += levelCredit(level);
-    gains.crates.push({ id: newId(), tier: levelCrate(level), source: "Level " + level });
+    const reward = levelReward(level);
+    if (reward.kind === "crate") gains.crates.push({ id: newId(), tier: reward.tier, source: "Level " + level });
+    else gains.items.push({ kind: reward.item, source: "Level " + level });
   }
   p.topLevel = Math.max(p.topLevel, after);
   p.crates.push(...gains.crates);

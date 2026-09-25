@@ -774,7 +774,7 @@ async function boot() {
       if(playful){
         playful.rules.contact=profile.settings.playfulContact;
         const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
-        const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'?'paper':'can'):null;
+        const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'||held.kind==='Party Popper'?'paper':'can'):null;
         frame=playful.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
       }
       frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);

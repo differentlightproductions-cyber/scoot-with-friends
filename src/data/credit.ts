@@ -7,6 +7,16 @@ import {dailyDeals} from './deals';
 import {SHOPS} from './shops';
 const shopStock=(id:string)=>SHOPS.find(s=>s.id===id)?.stock??[];
 import type {LocalProfile} from './loadout';
+import {receiveItem} from './items';
+/**
+ * Pays what record() earned into the same save: Credit into the wallet, and
+ * level-up items into the pockets (a full pocket gets their worth in Credit).
+ */
+function settle(p:LocalProfile,gains:Gains){
+ for(const item of gains.items)if(!receiveItem(p.pockets,item.kind))gains.credit+=POCKETS_FULL_CREDIT;
+ if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);
+}
+const POCKETS_FULL_CREDIT=25;
 const crateId=()=>'c'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('');
 export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number;
  /** The one-time starter scooter has been claimed (claimStarter). Never resets. */
@@ -51,7 +61,7 @@ export class CreditEconomy {
    if(visit&&!p.progress.visited.includes(visit))p.progress.visited.push(visit);
    if(visit)changes={...changes,maps:p.progress.visited.length};
    const gains=record(p.progress,changes,crateId,dayKey(),firsts,landed);
-   if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);return gains;});
+   settle(p,gains);return gains;});
   if(typeof result!=='string'&&(result.completed.length||result.levelsUp.length))this.onGains(result);
   return result;
  }
@@ -80,7 +90,7 @@ export class CreditEconomy {
   if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' Credit.';if(w.credit+w.testCredit<price)return 'Not enough Credit';
   const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;
   const pkg={id:'pkg-'+crateId().slice(1,19),partId:s.partId,variantId:s.variantId,price,ordered:now,arrives:now+DELIVERY.seconds*1000};w.packages.push(pkg);
-  const gains=record(p.progress,{purchases:1},crateId,dayKey());if(gains.credit)w.credit=Math.min(CREDIT_POLICY.maxBalance,w.credit+gains.credit);
+  const gains=record(p.progress,{purchases:1},crateId,dayKey());settle(p,gains);
   return {pkg,gains};}).then(r=>{if(typeof r!=='string'&&(r.gains.completed.length||r.gains.levelsUp.length))this.onGains(r.gains);return r;});}
  /** Delivers every package whose time has come; returns what arrived (nothing twice). */
  deliver(now=Date.now()){return this.update<Package[]>(p=>{
@@ -98,7 +108,7 @@ export class CreditEconomy {
  /** A purchase and the mission progress it makes, in one transaction. `edit` returns how many items it bought. */
  private purchase(edit:(w:AlphaWallet)=>number|string):Promise<string>{
   return this.update<Gains>(p=>{const bought=edit(p.wallet);if(typeof bought==='string')return bought;
-   const gains=record(p.progress,{purchases:bought},crateId);if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);return gains;})
+   const gains=record(p.progress,{purchases:bought},crateId);settle(p,gains);return gains;})
    .then(r=>{if(typeof r==='string')return r;if(r.completed.length||r.levelsUp.length)this.onGains(r);return 'ok';});
  }
  private transact(edit:(w:AlphaWallet)=>string){

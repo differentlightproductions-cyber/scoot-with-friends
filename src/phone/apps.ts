@@ -6,6 +6,7 @@ import type { WorldInteractions } from '../park/interactions';
 import type { FreeRide } from '../network/client';
 import type { SocialClient } from '../network/social';
 import { friendsApp } from './friends';
+import { isNovelty, type NoveltyKind } from '../data/items';
 import { SNAP_MODES, matchAsset, type WarehouseBuilder } from '../editor/warehouse';
 import { BUILD_CATALOG, BUILD_GROUPS, BUILD_LIMITS, type BuildGroup } from '../data/builds';
 import { EMOTES } from '../ui/social';
@@ -315,6 +316,8 @@ function spotsApp(d: PhoneDeps): View {
 }
 
 // ---- ITEMS --------------------------------------------------------------------
+/** What USE NOW does with each novelty (#55). */
+const NOVELTY_USE: Record<NoveltyKind, string> = { 'Rubber Duck': 'Squeeze it: squeak', 'Kazoo': 'Play a little tune', 'Foam Finger': 'Wave it: you are number one', 'Party Popper': 'Pop it: confetti (once)', 'Bubble Wand': 'Blow bubbles' };
 function itemsApp(d: PhoneDeps): View {
   const item = (id: string): View => ({
     title: 'ITEMS',
@@ -326,7 +329,7 @@ function itemsApp(d: PhoneDeps): View {
         { type: 'title', text: group.label.toUpperCase(), sub: '×' + group.items.length + (group.held ? ' · in your hand' : '') },
         { type: 'list', rows: [
           { id: 'hold', label: group.held ? 'IN HAND' : 'HOLD', detail: 'Carry it; ' + useButton(d) + ' uses it', chosen: group.held, action: () => w.hold(held.id) },
-          { id: 'use', label: held.state === 'empty' ? 'EMPTY' : 'USE NOW', detail: walking ? 'Drink or eat it' : 'Step off your ride first', disabled: held.state === 'empty' || !walking, action: () => d.phone.close(() => w.use(d.sim(), held.id)) },
+          { id: 'use', label: held.state === 'empty' ? 'EMPTY' : 'USE NOW', detail: walking ? (isNovelty(group.kind) ? NOVELTY_USE[group.kind] : 'Drink or eat it') : 'Step off your ride first', disabled: held.state === 'empty' || !walking, action: () => d.phone.close(() => w.use(d.sim(), held.id)) },
           { id: 'stow', label: 'STOW', detail: 'Back in your pocket', disabled: !group.held, action: () => w.hold(null) },
           { id: 'discard', label: 'DISCARD…', action: () => d.phone.sheet('DISCARD?', [{ label: 'KEEP IT', action: () => {} }, { label: 'DISCARD ' + group.label.toUpperCase(), action: () => w.discard(held.id) }]) },
         ] },

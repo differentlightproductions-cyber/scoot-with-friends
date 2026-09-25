@@ -116,3 +116,29 @@ test('simple trick missions take 5 landings, skill ones 3, big ones 1; progress 
   assert.equal(validProgress({ counts: { 'trick:Tailwhip': 99, 'push': 3, 'nope': 2 } }).counts['trick:Tailwhip'], 4, 'counts are clamped and only kept for counted steps');
   assert.deepEqual(Object.keys(validProgress({ counts: { 'push': 3, 'nope': 2 } }).counts), []);
 });
+
+test('a level-up item lands in the pockets in the same save; full pockets pay Credit instead', async () => {
+  const { levelReward, levelNeed } = await import('../src/data/progress');
+  const { saveProfile } = await import('../src/data/loadout');
+  // The first level from 2 up that gives an item rather than a crate.
+  let level = 2; while (levelReward(level).kind !== 'item') level++;
+  const reward = levelReward(level) as { kind: 'item'; item: string };
+  const setUp = (fill: number) => {
+    store.clear();
+    const p = loadProfile();
+    let xp = 0; for (let l = 1; l < level; l++) xp += levelNeed(l);
+    p.progress.xp = xp - 1; p.progress.topLevel = level - 1;
+    for (let i = 0; i < fill; i++) p.pockets.entries.push({ id: 'item-' + (i + 1), kind: 'Water', state: 'sealed' });
+    p.pockets.nextId = fill + 1;
+    saveProfile(p);
+    return p.wallet.credit;
+  };
+  setUp(0);
+  const gains = await new CreditEconomy().track({ points: 400 });
+  assert.ok(typeof gains !== 'string' && gains.levelsUp.includes(level));
+  assert.ok(loadProfile().pockets.entries.some(i => i.kind === reward.item), reward.item + ' is in the pockets after a reload');
+  const before = setUp(48);
+  await new CreditEconomy().track({ points: 400 });
+  assert.equal(loadProfile().pockets.entries.length, 48);
+  assert.ok(loadProfile().wallet.credit >= before + 25, 'full pockets: Credit instead');
+});
