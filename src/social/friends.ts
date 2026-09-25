@@ -5,6 +5,7 @@ import type { LocalProfile } from "../data/loadout";
 import { Npc, type NpcSpot } from "./npcs";
 import { PlayfulRules, THROW_STRENGTH, atMost, lobVelocity, shoveStrength, type PlayfulEvent, type PlayfulHit, type PlayfulTarget, type Strength, type ThrowableKind } from "./playful";
 import { t } from '../i18n';
+import { lie, litterModel, restHeight } from "../art/litter";
 
 /**
  * "With Friends" in the park (#47): small things to throw lying around,
@@ -17,17 +18,11 @@ import { t } from '../i18n';
  */
 const THROW_REACH = 18;
 const GRAVITY = 9.81;
-const LOOK: Record<ThrowableKind, { color: number; size: number; shape: "ball" | "can" | "cone" }> = {
-  acorn: { color: 0x8a5a2b, size: 0.03, shape: "ball" },
-  pinecone: { color: 0x6b4a2a, size: 0.045, shape: "cone" },
-  rock: { color: 0x9d9486, size: 0.04, shape: "ball" },
-  can: { color: 0xc8262d, size: 0.033, shape: "can" },
-  paper: { color: 0xeeeae0, size: 0.04, shape: "ball" },
-};
-
-interface Thing { kind: ThrowableKind; mesh: THREE.Mesh; velocity: THREE.Vector3; state: "ground" | "carried" | "flying" | "binned"; thrower: string; rest: number; hit: Set<string>; own?: boolean }
+interface Thing { kind: ThrowableKind; mesh: THREE.Object3D; velocity: THREE.Vector3; state: "ground" | "carried" | "flying" | "binned"; thrower: string; rest: number; hit: Set<string>; own?: boolean }
 /** Litter (#58): the kinds that go in a trash can. */
-const LITTER: ThrowableKind[] = ["can", "paper"];
+export const LITTER: ThrowableKind[] = ["can", "paper", "wrapper", "bottle", "sports", "popper"];
+/** What the locals leave behind, most often first. */
+const DROPPED: ThrowableKind[] = ["can", "wrapper", "bottle", "can", "paper", "wrapper", "sports", "bottle"];
 /** Most litter lying around at once; the locals stop dropping more past it. */
 const LITTER_MAX = 10;
 
@@ -62,8 +57,6 @@ export class WithFriends {
   remotes: PlayfulTarget[] = [];
   onNetworkEvent: (event: PlayfulEvent) => void = () => {};
   readonly prompt = document.createElement("div");
-  private geometries: Partial<Record<ThrowableKind, THREE.BufferGeometry>> = {};
-  private materials: Partial<Record<ThrowableKind, THREE.Material>> = {};
 
   constructor(private scene: THREE.Scene, private ground: (x: number, z: number) => number) {
     this.prompt.className = "world-prompt playful-prompt";
@@ -77,15 +70,10 @@ export class WithFriends {
     for (const [x, z, kind] of scatter) this.spawn(kind, new THREE.Vector3(x, this.ground(x, z), z));
   }
 
+  /** A thing lying at `at` (its ground point), settled the way its kind lies (art/litter.ts). */
   private spawn(kind: ThrowableKind, at: THREE.Vector3) {
-    const look = LOOK[kind];
-    this.geometries[kind] ??= look.shape === "can" ? new THREE.CylinderGeometry(look.size, look.size, look.size * 3.6, 12) : look.shape === "cone" ? new THREE.ConeGeometry(look.size, look.size * 2.4, 8) : new THREE.IcosahedronGeometry(look.size, 1);
-    this.materials[kind] ??= new THREE.MeshStandardMaterial({ color: look.color, roughness: kind === "can" ? 0.35 : 0.9, metalness: kind === "can" ? 0.6 : 0 });
-    const mesh = new THREE.Mesh(this.geometries[kind], this.materials[kind]);
-    mesh.name = "Throwable " + kind;
-    mesh.castShadow = true;
-    mesh.position.copy(at).setY(at.y + look.size);
-    if (look.shape === "can") mesh.rotation.z = Math.PI / 2;
+    const mesh = litterModel(kind).object;
+    lie(kind, mesh, at.x, at.y, at.z);
     this.scene.add(mesh);
     const thing: Thing = { kind, mesh, velocity: new THREE.Vector3(), state: "ground", thrower: "", rest: 0, hit: new Set() };
     this.things.push(thing);
@@ -234,16 +222,20 @@ export class WithFriends {
     if (this.things.filter((t) => LITTER.includes(t.kind) && t.state === "ground").length >= LITTER_MAX) return;
     const npc = this.npcs[Math.floor(Math.random() * this.npcs.length)], a = Math.random() * Math.PI * 2;
     const x = npc.position.x + Math.cos(a) * 0.7, z = npc.position.z + Math.sin(a) * 0.7;
-    const thing = this.spawn(Math.random() < 0.55 ? "can" : "paper", new THREE.Vector3(x, this.ground(x, z), z));
+    const thing = this.spawn(DROPPED[Math.floor(Math.random() * DROPPED.length)], new THREE.Vector3(x, this.ground(x, z), z));
     thing.thrower = npc.id;
   }
+  /** Litter lying on the ground right now, for the doves to pick through (#71). */
+  litterObjects() { return this.things.filter((t) => LITTER.includes(t.kind) && t.state === "ground").map((t) => t.mesh); }
+  /** Someone else's litter left at `at` (its resting surface), e.g. an empty chip bag the doves picked clean. */
+  leaveLitter(kind: ThrowableKind, at: THREE.Vector3) { this.spawn(kind, at).thrower = "park"; }
   /** Litter lying on the ground now (tests). */
   get litter() { return this.things.filter((t) => LITTER.includes(t.kind) && t.state === "ground").length; }
   private drop(s: Simulation) {
     const t = this.carried!;
     this.carried = null;
     t.state = "ground";
-    t.mesh.position.set(s.position.x, this.ground(s.position.x, s.position.z) + LOOK[t.kind].size, s.position.z);
+    lie(t.kind, t.mesh, s.position.x, this.ground(s.position.x, s.position.z), s.position.z, s.yaw);
   }
 
   /** Flight: gravity, a bounce or two, hits on anyone but the thrower, then rest where it lands. */
@@ -264,10 +256,11 @@ export class WithFriends {
           t.velocity.set(-t.velocity.x * 0.2, Math.min(1.5, Math.abs(t.velocity.y) * 0.3), -t.velocity.z * 0.2);
         }
       }
-      const floor = this.ground(p.x, p.z) + LOOK[t.kind].size;
+      const floor = this.ground(p.x, p.z) + restHeight(t.kind);
       if (p.y <= floor) {
         p.y = floor;
-        if (Math.abs(t.velocity.y) < 1.2) { t.velocity.set(0, 0, 0); t.state = "ground"; }
+        // It settles the way it lies: a can or bottle on its side, a bag flat.
+        if (Math.abs(t.velocity.y) < 1.2) { t.velocity.set(0, 0, 0); t.state = "ground"; lie(t.kind, t.mesh, p.x, this.ground(p.x, p.z), p.z, t.mesh.rotation.y); }
         else { t.velocity.y = -t.velocity.y * 0.35; t.velocity.x *= 0.55; t.velocity.z *= 0.55; }
       }
     }
@@ -290,8 +283,6 @@ export class WithFriends {
   dispose() {
     for (const n of this.npcs) n.dispose();
     for (const t of this.things) t.mesh.removeFromParent();
-    for (const g of Object.values(this.geometries)) g?.dispose();
-    for (const m of Object.values(this.materials)) m?.dispose();
     this.prompt.remove();
   }
 }

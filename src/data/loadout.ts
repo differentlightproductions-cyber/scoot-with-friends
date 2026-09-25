@@ -31,6 +31,8 @@ export interface LocalProfile {
     uiPalette: UiPalette;
     controlStyle: "pro" | "arcade";
     sound: boolean;
+    /** Mixer levels 0..100 (#71). Music has its own level in the music player, shared with the phone's MUSIC app. */
+    volumes: { master: number; effects: number; ui: number; ambience: number };
     grindAssist: boolean;
     /** The controls preset: "regular" is shown as Normal. See input/riding.ts. */
     stance: "regular" | "goofy";
@@ -124,6 +126,7 @@ export function loadProfile(): LocalProfile {
       uiPalette: 'default',
       controlStyle: "pro",
       sound: true,
+      volumes: { master: 100, effects: 100, ui: 70, ambience: 100 },
       grindAssist: true,
       stance: "regular",
       controlsVersion: CONTROLS_VERSION,
@@ -184,6 +187,7 @@ export function loadProfile(): LocalProfile {
     if(Number.isFinite(saved.settings?.thirdPersonFov))profile.settings.thirdPersonFov=Math.min(TP_FOV_MAX,Math.max(TP_FOV_MIN,Math.round(saved.settings.thirdPersonFov)));
     if(['right','left'].includes(saved.settings?.phoneHand))profile.settings.phoneHand=saved.settings.phoneHand;
     if(typeof saved.settings?.phoneNotifications==='boolean')profile.settings.phoneNotifications=saved.settings.phoneNotifications;
+    for(const k of ['master','effects','ui','ambience'] as const)if(Number.isFinite(saved.settings?.volumes?.[k]))profile.settings.volumes[k]=Math.min(100,Math.max(0,Math.round(saved.settings.volumes[k])));
     if(['reduced','full'].includes(saved.settings?.cameraMotion))profile.settings.cameraMotion=saved.settings.cameraMotion;
     if(['off','camcorder'].includes(saved.settings?.cameraFilter))profile.settings.cameraFilter=saved.settings.cameraFilter;
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;

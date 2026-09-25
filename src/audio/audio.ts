@@ -1,7 +1,31 @@
 import { GameEvent } from "../core/events";
+/** Mixer levels, 0..1 (#71). Music is mixed by the music player, under the same master. */
+export interface Volumes { master: number; effects: number; ui: number; ambience: number }
+export type UiSound = "move" | "select" | "back" | "tab";
+/** The running engine, so menus, the phone and reward screens can use the UI bus. */
+let active: AudioEngine | null = null;
+/** A short UI click on the UI bus (menus, phone, tabs); silent before the first user gesture. */
+export function uiSound(kind: UiSound) { active?.uiClick(kind); }
+/** The UI bus for reward jingles and the like: they follow the UI and master levels. */
+export function uiBus(): { context: AudioContext; node: AudioNode } | null {
+  return active?.context && active.ui ? { context: active.context, node: active.ui } : null;
+}
 export class AudioEngine {
   context: AudioContext | null = null;
+  /**
+   * The world's sound effects (rolling, grinding, landings, thunder...). The
+   * mix: effects and ambience pass the under-water muffle; UI does not; all
+   * three meet at the master level, then the speakers.
+   */
   master: GainNode | null = null;
+  /** Birds, rain, wind: the park around you. */
+  ambience: GainNode | null = null;
+  /** Clicks, jingles, notifications. */
+  ui: GainNode | null = null;
+  private out: GainNode | null = null;
+  volumes: Volumes = { master: 1, effects: 1, ui: 0.7, ambience: 1 };
+  /** Decoded samples by URL (birds and other recorded sounds). */
+  private samples = new Map<string, Promise<AudioBuffer | null>>();
   roll: GainNode | null = null;
   grind: GainNode | null = null;
   water:GainNode|null=null;
@@ -17,13 +41,24 @@ export class AudioEngine {
   async start() {
     if (!this.context) {
       this.context = new AudioContext();
+      active = this;
+      this.out = this.context.createGain();
+      this.out.gain.value = this.enabled ? this.volumes.master : 0;
+      this.out.connect(this.context.destination);
       this.master = this.context.createGain();
-      this.master.gain.value = 0.32;
-      // Everything passes one low-pass on its way out: wide open, closing to a muffle with the head under water (#62).
+      this.master.gain.value = 0.32 * this.volumes.effects;
+      this.ambience = this.context.createGain();
+      this.ambience.gain.value = this.volumes.ambience;
+      this.ui = this.context.createGain();
+      this.ui.gain.value = this.volumes.ui;
+      this.ui.connect(this.out);
+      // The world passes one low-pass on its way out: wide open, closing to a muffle with the head under water (#62).
       this.muffle = this.context.createBiquadFilter();
       this.muffle.type = "lowpass";
       this.muffle.frequency.value = 20000;
-      this.master.connect(this.muffle).connect(this.context.destination);
+      this.master.connect(this.muffle);
+      this.ambience.connect(this.muffle);
+      this.muffle.connect(this.out);
       this.muffle.frequency.value = this.underwater ? 520 : 20000;
       const buffer = this.context.createBuffer(
         1,
@@ -51,11 +86,81 @@ export class AudioEngine {
       noise.connect(high).connect(this.grind).connect(this.master);
       const splashFilter=this.context.createBiquadFilter();splashFilter.type='bandpass';splashFilter.frequency.value=2400;splashFilter.Q.value=.4;this.water=this.context.createGain();this.water.gain.value=0;noise.connect(splashFilter).connect(this.water).connect(this.master);
       const rainFilter=this.context.createBiquadFilter();rainFilter.type='highpass';rainFilter.frequency.value=1400;const rainSoft=this.context.createBiquadFilter();rainSoft.type='lowpass';rainSoft.frequency.value=7000;
-      this.rain=this.context.createGain();this.rain.gain.value=0;noise.connect(rainFilter).connect(rainSoft).connect(this.rain).connect(this.master);
+      this.rain=this.context.createGain();this.rain.gain.value=0;noise.connect(rainFilter).connect(rainSoft).connect(this.rain).connect(this.ambience);
       this.noiseBuffer=buffer;
       noise.start();
     }
     if (this.context.state === "suspended") await this.context.resume();
+  }
+  /** New mixer levels (0..1); they apply at once. */
+  setVolumes(v: Volumes) {
+    this.volumes = { ...v };
+    if (!this.context || !this.out || !this.ui) return;
+    const t = this.context.currentTime;
+    this.out.gain.setTargetAtTime(this.enabled ? v.master : 0, t, 0.03);
+    this.ui.gain.setTargetAtTime(v.ui, t, 0.03);
+  }
+  /** The ears: where the camera is and which way it faces, for sounds placed in the world. */
+  setListener(position: { x: number; y: number; z: number }, forward: { x: number; y: number; z: number }, up: { x: number; y: number; z: number }) {
+    const l = this.context?.listener;
+    if (!l) return;
+    if (l.positionX) {
+      const t = this.context!.currentTime;
+      l.positionX.setTargetAtTime(position.x, t, 0.02); l.positionY.setTargetAtTime(position.y, t, 0.02); l.positionZ.setTargetAtTime(position.z, t, 0.02);
+      l.forwardX.setTargetAtTime(forward.x, t, 0.02); l.forwardY.setTargetAtTime(forward.y, t, 0.02); l.forwardZ.setTargetAtTime(forward.z, t, 0.02);
+      l.upX.setTargetAtTime(up.x, t, 0.02); l.upY.setTargetAtTime(up.y, t, 0.02); l.upZ.setTargetAtTime(up.z, t, 0.02);
+    } else {
+      l.setPosition(position.x, position.y, position.z);
+      l.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
+  }
+  /** A recorded sound, fetched and decoded once. Null until audio has started, or if it fails to load. */
+  sample(url: string): Promise<AudioBuffer | null> {
+    const c = this.context;
+    if (!c) return Promise.resolve(null);
+    let p = this.samples.get(url);
+    if (!p) {
+      p = fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status))).then((b) => c.decodeAudioData(b)).catch(() => null);
+      this.samples.set(url, p);
+    }
+    return p;
+  }
+  /**
+   * A recorded sound placed in the world on the ambience bus: it is quieter
+   * with distance (full within `near` metres, fading to nothing by `far`) and
+   * comes from its side. `rate` shifts pitch a little so repeats never match.
+   */
+  playAt(buffer: AudioBuffer, at: { x: number; y: number; z: number }, gain = 1, rate = 1, near = 4, far = 70) {
+    const c = this.context;
+    if (!c || !this.ambience || !this.enabled) return null;
+    const src = c.createBufferSource(), panner = c.createPanner(), g = c.createGain();
+    src.buffer = buffer; src.playbackRate.value = rate;
+    panner.panningModel = "HRTF"; panner.distanceModel = "linear";
+    panner.refDistance = near; panner.maxDistance = far; panner.rolloffFactor = 1;
+    if (panner.positionX) { panner.positionX.value = at.x; panner.positionY.value = at.y; panner.positionZ.value = at.z; }
+    else panner.setPosition(at.x, at.y, at.z);
+    g.gain.value = gain;
+    src.connect(g).connect(panner).connect(this.ambience);
+    src.start();
+    src.onended = () => { src.disconnect(); g.disconnect(); panner.disconnect(); };
+    return { panner, stop: () => { try { src.stop(); } catch { /* already stopped */ } } };
+  }
+  /** Menu and phone clicks: short, soft and dry, on the UI bus. */
+  uiClick(kind: UiSound) {
+    const c = this.context, out = this.ui;
+    if (!c || !out || !this.enabled || c.state !== "running") return;
+    const t = c.currentTime;
+    const blip = (from: number, to: number, at: number, length: number, gain: number, type: OscillatorType = "triangle") => {
+      const o = c.createOscillator(), a = c.createGain();
+      o.type = type; o.frequency.setValueAtTime(from, t + at); o.frequency.exponentialRampToValueAtTime(to, t + at + length);
+      a.gain.setValueAtTime(0.0001, t + at); a.gain.exponentialRampToValueAtTime(gain, t + at + 0.004); a.gain.exponentialRampToValueAtTime(0.0001, t + at + length);
+      o.connect(a).connect(out); o.start(t + at); o.stop(t + at + length + 0.02);
+      o.onended = () => { o.disconnect(); a.disconnect(); };
+    };
+    if (kind === "move") blip(2300, 1900, 0, 0.028, 0.05, "sine");
+    else if (kind === "tab") { blip(1500, 1300, 0, 0.035, 0.06); blip(2100, 1900, 0.03, 0.03, 0.04, "sine"); }
+    else if (kind === "select") { blip(880, 1320, 0, 0.05, 0.09); blip(1760, 2100, 0.045, 0.06, 0.05, "sine"); }
+    else blip(760, 420, 0, 0.07, 0.07);
   }
   /** How hard it is raining (0..1): the hiss follows it. */
   weather(rain:number){
@@ -126,10 +231,12 @@ export class AudioEngine {
       return;
     const t = this.context.currentTime;
     this.master.gain.setTargetAtTime(
-      this.enabled && !paused ? 0.32 : 0,
+      this.enabled && !paused ? 0.32 * this.volumes.effects : 0,
       t,
       0.05,
     );
+    this.ambience?.gain.setTargetAtTime(this.enabled && !paused ? this.volumes.ambience : 0, t, 0.08);
+    this.out?.gain.setTargetAtTime(this.enabled ? this.volumes.master : 0, t, 0.05);
     this.roll.gain.setTargetAtTime(
       grounded && !walking ? Math.min(0.18, speed * 0.012) : 0,
       t,

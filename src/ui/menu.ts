@@ -11,12 +11,14 @@ import {AccountPanel,cloud} from './account';
 const savedWhere=()=>cloud.account?'saved to this device and your account.':'saved on this device.';
 import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
 import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
-interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean }
+interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean; /** Left/right on the row steps it (a slider row, #71). */ adjust?: (step: number) => void }
 /** The product on the counter: rarity frame, colour swatch, price sticker. */
 function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false){
   return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>CREDIT</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
 }
 import {loadProfile} from '../data/loadout';
+import { uiSound } from '../audio/audio';
+import { music } from '../audio/music';
 import { LOCALES, onLocale, setLocale, t } from '../i18n';
 import { applyUiPalette, UI_PALETTES } from './palette';
 import {display,DISPLAY_LABEL,DISPLAY_MODES,fullscreenSupported} from './display';
@@ -68,6 +70,7 @@ export class GameMenu {
   tabPanel(name:MainTab){return this.root.querySelector<HTMLElement>(`[data-tab-panel="${name}"]`);}
   private switchTab(tab:MainTab){
     if(!this.shellActive()||this.tabsLocked())return;
+    uiSound('tab');
     this.shopBrowse=tab==='shop';
     if(tab==='shop')this.activeShop=SHOPS[0];
     this.show(({play:'home',locker:'rides',shop:'shop',crates:'crates',settings:'settings',account:'account'} as const)[tab]);
@@ -667,14 +670,26 @@ export class GameMenu {
         if(typeof navigator.vibrate==='function')add(t('settings.option.touch_haptics')+' '+t(this.profile.settings.touchHaptics?'common.on':'common.off'),()=>touch(c=>{c.touchHaptics=!c.touchHaptics;}),t('settings.detail.touch_haptics'));
         add(t('settings.option.touch_reset'),()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;c.touchLeftHanded=false;c.touchHaptics=false;}),t('settings.detail.touch_reset'));
         break;}
-      case 'settings-audio':
+      case 'settings-audio':{
         title=t('settings.audio');subtitle=t('settings.title')+' / '+t('settings.audio');
         add(t('pause.sound')+' '+t(this.profile.settings.sound?'common.on':'common.off'), () => {
           this.profile.settings.sound = !this.profile.settings.sound;
           this.changed();
           this.render();
         });
-        break;
+        // The mix (#71): levels apply and save at once, in the Sesh too. A steps
+        // up (and wraps to silent); left/right fine-tune. MUSIC is the same level
+        // as the phone's MUSIC app slider.
+        const level=(key:'master'|'effects'|'ui'|'ambience',value:number)=>{const edit=(c:LocalProfile['settings'])=>{c.volumes={...c.volumes,[key]:Math.max(0,Math.min(100,value))};};edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
+        const slider=(label:string,value:number,set:(v:number)=>void,detail:string)=>add(`${label} ${value}%`,()=>set(value>=100?0:Math.min(100,Math.floor(value/10)*10+10)),detail,false,{meter:[value,100],adjust:step=>set(Math.max(0,Math.min(100,value+step*5)))});
+        const v=this.profile.settings.volumes;
+        slider(t('settings.option.volume_master'),v.master,n=>level('master',n),t('settings.detail.volume_master'));
+        const musicLevel=Math.round(music.settings.volume*100);
+        slider(t('settings.option.volume_music'),musicLevel,n=>{music.setVolume(n/100);this.render();},t('settings.detail.volume_music'));
+        slider(t('settings.option.volume_effects'),v.effects,n=>level('effects',n),t('settings.detail.volume_effects'));
+        slider(t('settings.option.volume_ambience'),v.ambience,n=>level('ambience',n),t('settings.detail.volume_ambience'));
+        slider(t('settings.option.volume_ui'),v.ui,n=>level('ui',n),t('settings.detail.volume_ui'));
+        break;}
     }
     if(this.seshOpen && (["rider","scooter","settings","rides","brand","brand-items","longboard"].includes(this.screen)||this.screen.startsWith('settings-')))add(this.screen.startsWith('settings')?t('settings.apply'):"APPLY / SAVE CHANGES",()=>this.applySesh(),this.screen.startsWith('settings')?t(this.dirty()?'settings.unsaved':'settings.nothing'):this.dirty()?"Unsaved choices. Appearance refreshes when safely grounded.":"Nothing to apply yet.");
     if (this.screen !== "home"&&this.screen!=="leave-sesh")
@@ -812,11 +827,13 @@ export class GameMenu {
   select() {
     if(this.overlayOwnsInput()||this.accountPanel.dialog.open)return;
     if(this.screen==='creator'){this.creator.select();return;}
+    if(this.choices[this.index])uiSound('select');
     this.choices[this.index]?.action();
   }
   private closeShop(){this.shopOpen=false;this.root.classList.remove('shop-overlay');this.root.hidden=true;this.onCloseShop();}
   back() {
     if(this.buying)return;
+    uiSound('back');
     if(this.screen==='creator'){this.creator.back();return;}
     if(this.seshOpen&&["rides","rider","settings","maps","shops","online"].includes(this.screen)){if(this.dirty()){this.leaveReturn=this.screen;this.show('leave-sesh');return;}this.closeSesh();return;}
     if(this.screen==='leave-sesh'){this.show(this.leaveReturn);return;}
@@ -841,6 +858,9 @@ export class GameMenu {
     const count=this.choices.length;if(!count)return;
     const cells=this.cellCount,grid=this.root.querySelector('.menu-grid');
     const columns=grid?Math.max(1,getComputedStyle(grid).gridTemplateColumns.split(' ').filter(Boolean).length):1;
+    const adjust=horizontal?this.choices[this.index]?.extra?.adjust:undefined;
+    if(adjust){adjust(horizontal);uiSound('move');return;}
+    const before=this.index;
     if(horizontal){
       if(this.index<cells)this.index=(this.index+horizontal+cells)%cells;
       else if(this.choices.some(c=>c.label==='NEXT PAGE ›'))this.pageTurn(horizontal);
@@ -854,6 +874,7 @@ export class GameMenu {
       const next=this.index+vertical;
       this.index=next<cells&&vertical<0?(cells?cells-1:(next+count)%count):(next+count)%count;
     }
+    if(this.index!==before)uiSound('move');
     this.highlight();
   }
   update(input: InputFrame, dt: number) {

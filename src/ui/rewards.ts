@@ -2,6 +2,7 @@
 // chip with its XP bar, and the crate opening (tap to shake, burst, reveal).
 // The MissionTracker turns riding events into mission stats; the economy
 // (data/credit.ts) settles them. Sounds are synthesised, nothing is loaded.
+import { uiBus } from "../audio/audio";
 import type { Events } from "../core/events";
 import type { InputFrame } from "../input/input";
 import type { CreditEconomy } from "../data/credit";
@@ -105,15 +106,16 @@ export class MissionTracker {
 }
 
 // ---- Sound ----------------------------------------------------------------------
-let context: AudioContext | null = null;
+// Jingles play on the game's UI bus (#71), so the UI and master levels and the Sound switch apply.
 function tone(freq: number, at: number, length: number, type: OscillatorType = "triangle", volume = 0.18, slide = 0) {
   try {
-    context ??= new AudioContext();
-    const c = context, t = c.currentTime + at, osc = c.createOscillator(), gain = c.createGain();
+    const bus = uiBus();
+    if (!bus) return;
+    const c = bus.context, t = c.currentTime + at, osc = c.createOscillator(), gain = c.createGain();
     osc.type = type; osc.frequency.setValueAtTime(freq, t);
     if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq * slide), t + length);
     gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(volume, t + 0.012); gain.gain.exponentialRampToValueAtTime(0.0001, t + length);
-    osc.connect(gain).connect(c.destination); osc.start(t); osc.stop(t + length + 0.05);
+    osc.connect(gain).connect(bus.node); osc.start(t); osc.stop(t + length + 0.05);
   } catch { /* audio unavailable */ }
 }
 const sfx = {

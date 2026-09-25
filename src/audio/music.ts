@@ -190,6 +190,12 @@ export class MusicService {
     this.soundEnabled = enabled;
     this.applyVolume();
   }
+  /** The game's master level (0..1, #71): music sits under it like every other sound. */
+  setMaster(level: number) {
+    this.master = clamp01(level);
+    this.applyVolume();
+  }
+  private master = 1;
   setVolume(volume: number) {
     this.settings.volume = clamp01(Math.round(volume * 100) / 100);
     if (this.settings.volume > 0) this.settings.muted = false;
@@ -205,7 +211,7 @@ export class MusicService {
   }
   private applyVolume() {
     const on = this.soundEnabled && this.settings.enabled && !this.settings.muted;
-    this.audio.volume = on ? clamp01(this.settings.volume * this.fade) : 0;
+    this.audio.volume = on ? clamp01(this.settings.volume * this.fade * this.master) : 0;
   }
   private fadeTo(target: number, seconds: number) {
     return new Promise<void>((done) => {

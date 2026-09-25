@@ -9,7 +9,7 @@ import { mulberry, Noise2 } from "./noise";
 import { barkTexture, leafCard, rockTexture } from "./textures";
 
 export interface PlantPart { geometry: THREE.BufferGeometry; material: THREE.Material; shadow: boolean }
-export interface PlantModel { parts: PlantPart[]; height: number; radius: number }
+export interface PlantModel { parts: PlantPart[]; height: number; radius: number; /** Spots on top of branches a bird can sit on (model space). */ perches?: V[] }
 
 type V = THREE.Vector3;
 const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
@@ -180,7 +180,7 @@ export function bursage(seed: number): PlantModel {
  * and an open, irregular crown of needle tufts. The park's shade trees.
  */
 export function aleppoPine(seed: number): PlantModel {
-  const random = mulberry(seed * 31 + 9), wood: THREE.BufferGeometry[] = [], tufts: THREE.BufferGeometry[] = [];
+  const random = mulberry(seed * 31 + 9), wood: THREE.BufferGeometry[] = [], tufts: THREE.BufferGeometry[] = [], perches: V[] = [];
   const height = 11 + random() * 5;
   // A leaning trunk that forks into a few leaders partway up, the open,
   // irregular shape Aleppo pines grow into in a dry park.
@@ -224,13 +224,15 @@ export function aleppoPine(seed: number): PlantModel {
       const reach = height * (0.2 + random() * 0.12) * (1.15 - t * 0.6);
       const mid = base.clone().addScaledVector(out, reach * 0.55), tip = base.clone().addScaledVector(out, reach).add(v3(0, reach * 0.18, 0));
       wood.push(tube([base, mid, tip], [r0 * 0.4, r0 * 0.22, 0.03], 4, 0.5));
+      // On top of a lower branch a little way out from the leader, under the needles where it shows from the ground.
+      if (t < 0.55) perches.push(base.clone().lerp(mid, 0.32).add(v3(0, r0 * 0.34, 0)));
       clump(tip, 0.9 + random() * 0.5);
       // Most branches carry a second puff partway along.
       if (random() < 0.85) clump(mid.clone().add(v3(0, 0.25, 0)), 0.75 + random() * 0.35);
     }
   }
   return {
-    height: Math.max(height, highest), radius: height * 0.35,
+    height: Math.max(height, highest), radius: height * 0.35, perches,
     parts: [
       { geometry: merged(wood), material: barkMaterial("pine"), shadow: true },
       { geometry: merged(tufts), material: foliageMaterial("pine", 0xd4dcae, 0.006), shadow: true },

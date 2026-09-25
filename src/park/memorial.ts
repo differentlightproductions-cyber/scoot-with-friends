@@ -728,11 +728,15 @@ export function buildMemorialGrounds(park: Park) {
   }
   // Aleppo pines: the park's big shade trees (generated, see art/flora.ts).
   // Four shapes, each tree its own size and turn.
-  const pines = [0, 1, 2, 3].map((k) => aleppoPine(k + 1));
+  const pines = [0, 1, 2, 3].map((k) => aleppoPine(k + 1)), perches: THREE.Vector3[] = [], UP = new THREE.Vector3(0, 1, 0);
   pines.forEach((model, k) => {
     const mine = trees.filter((_, i) => i % pines.length === k);
-    plant(scene, model, mine.map(([x, z, h], i) => ({ x, y: park.groundHeight(x, z) - 0.05, z, scale: (h * 2.3) / model.height, yaw: i * 2.399 + k })), "tree-pines");
+    const placed = mine.map(([x, z, h], i) => ({ x, y: park.groundHeight(x, z) - 0.05, z, scale: (h * 2.3) / model.height, yaw: i * 2.399 + k }));
+    plant(scene, model, placed, "tree-pines");
+    // Branch tops in world space, for the mourning doves (#71).
+    for (const p of placed) for (const b of model.perches ?? []) perches.push(b.clone().multiplyScalar(p.scale).applyAxisAngle(UP, p.yaw).add(new THREE.Vector3(p.x, p.y, p.z)));
   });
+  scene.userData.treePerches = perches;
   addParkPeople(scene);
   // The old decorative park bins became usable trash cans (see PARK_BINS, #58).
   // Xeriscape beds along the paths: white bursage with the odd Mojave yucca.

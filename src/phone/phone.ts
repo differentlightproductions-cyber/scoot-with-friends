@@ -1,3 +1,4 @@
+import { uiSound } from '../audio/audio';
 import * as THREE from 'three';
 import type { InputFrame } from '../input/input';
 import { PhoneScreen, SCREEN_H, SCREEN_W, type IconName, type Page } from './canvas-ui';
@@ -278,9 +279,9 @@ export class Phone {
     // and a D-pad step riding on that hold jumped the focus as the phone opened.
     const view = this.view;
     if (view?.input?.(f, dt)) { this.dirty = true; return; }
-    if (f.pressed.brakeBars) { this.back(); return; }
-    if (f.pressed.body) { this.home(); return; }
-    if (f.pressed.hop) { this.screen.activate(); this.dirty = true; return; }
+    if (f.pressed.brakeBars) { uiSound('back'); this.back(); return; }
+    if (f.pressed.body) { uiSound('back'); this.home(); return; }
+    if (f.pressed.hop) { uiSound('select'); this.screen.activate(); this.dirty = true; return; }
     const x = f.steer, y = f.lean;
     const dir = Math.abs(x) > 0.5 && Math.abs(x) >= Math.abs(y) ? (x > 0 ? 'right' : 'left') : Math.abs(y) > 0.5 ? (y > 0 ? 'down' : 'up') : '';
     if (!dir) { this.heldDir = ''; return; }
@@ -289,9 +290,12 @@ export class Phone {
       if (this.repeat > 0) return;
       this.repeat = REPEAT_NEXT;
     } else { this.heldDir = dir; this.repeat = REPEAT_FIRST; }
+    const focused = this.screen.focusId;
     if (dir === 'left' || dir === 'right') {
       if (!this.screen.adjust(dir === 'left' ? -1 : 1)) { const before=this.screen.focusId;this.screen.move(dir === 'left' ? -1 : 1, 0);if(!this.view&&before===this.screen.focusId)this.shiftHomePage(dir==='left'?-1:1); }
+      else uiSound('move');
     } else this.screen.move(0, dir === 'up' ? -1 : 1);
+    if (this.screen.focusId !== focused) uiSound('move');
     this.dirty = true;
   }
 

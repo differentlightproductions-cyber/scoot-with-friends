@@ -17,7 +17,8 @@ export type Strength = "cosmetic" | "flinch" | "wobble" | "push" | "stumble" | "
 export const STRENGTHS: Strength[] = ["cosmetic", "flinch", "wobble", "push", "stumble", "ragdoll", "splash"];
 export const atMost = (a: Strength, b: Strength): Strength => (STRENGTHS.indexOf(a) <= STRENGTHS.indexOf(b) ? a : b);
 
-export type ThrowableKind = "acorn" | "pinecone" | "rock" | "can" | "paper";
+/** Throwables (#47) and litter (#58, #78): paper is a balled-up napkin; wrapper a chip bag; bottle a water bottle; sports a sports drink; popper a spent party popper. */
+export type ThrowableKind = "acorn" | "pinecone" | "rock" | "can" | "paper" | "wrapper" | "bottle" | "sports" | "popper";
 export type HitKind = "throw" | "shove";
 
 export interface PlayfulHit {
@@ -59,7 +60,7 @@ export type PlayfulEvent =
 export type PlayfulContact = "full" | "friends" | "off";
 
 /** What each throwable does on a hit: all of them playful. */
-export const THROW_STRENGTH: Record<ThrowableKind, Strength> = { acorn: "flinch", pinecone: "flinch", paper: "cosmetic", can: "flinch", rock: "flinch" };
+export const THROW_STRENGTH: Record<ThrowableKind, Strength> = { acorn: "flinch", pinecone: "flinch", paper: "cosmetic", can: "flinch", rock: "flinch", wrapper: "cosmetic", bottle: "flinch", sports: "flinch", popper: "cosmetic" };
 /** Shoves grow with the pusher's speed but never past a stumble on foot. */
 export const shoveStrength = (relativeSpeed: number): Strength => (relativeSpeed > 3 ? "stumble" : "push");
 

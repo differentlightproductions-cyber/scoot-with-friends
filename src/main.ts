@@ -30,7 +30,9 @@ import { modules as outdoorRamps } from "./park/outdoor";
 import { Minimap } from "./ui/minimap";
 import { NowPlaying } from "./ui/now-playing";
 import { buildBaseAssets } from "./editor/base-assets";
-import { WaterEffects } from "./park/water";
+import { WaterEffects, inWater } from "./park/water";
+import { Doves } from "./park/doves";
+import { PAVILIONS } from "./park/memorial";
 import { Underwater } from "./park/underwater";
 import "./style.css";
 import * as THREE from "three";
@@ -38,7 +40,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Events } from "./core/events";
 import { TUNE } from "./core/config";
 import { Input, emptyInput, InputFrame } from "./input/input";
-import { OUTDOOR, Park, SPAWNS, selectPark, terrainHeight } from "./park/park";
+import { OUTDOOR, Park, SPAWNS, selectPark, terrainHeight, terrainSurface } from "./park/park";
 import { Simulation } from "./physics/simulation";
 import { RiderModel } from "./scooter/model";
 import { ChaseCamera } from "./camera/chase";
@@ -150,6 +152,44 @@ async function boot() {
     };
     return f;
   }
+  // Mourning doves (#71): a few in the pines and on the pavilion roofs, now and then down on the lawn. Veterans only.
+  let doves: Doves | null = null;
+  function makeDoves() {
+    if (ACTIVE_MAP !== "outdoor") return null;
+    const branches = (scene.userData.treePerches as THREE.Vector3[] | undefined) ?? [];
+    const perches = branches.filter((_, i) => i % 3 === 0), tables: THREE.Vector3[] = [];
+    for (const [x, z] of PAVILIONS) {
+      // The roof's peak and the middle of each eave; the picnic table's top for snacks left out.
+      perches.push(new THREE.Vector3(x, 5.02, z), ...[[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dz]) => new THREE.Vector3(x + dx * 3.45, 3.56, z + dz * 3.45)));
+      tables.push(new THREE.Vector3(x + 1.1, 0.79, z + 0.6));
+    }
+    // Anything a splat can land on: roofs, benches, ramps, the ground.
+    const down = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+    const below = (x: number, y: number, z: number) => {
+      // A picnic table's collider is one block; its real top and bench seats are lower.
+      for (const t of tables) { const dx = Math.abs(x - t.x); if (y > t.y && Math.abs(z - t.z) < 0.95 && dx < 0.85) return dx < 0.45 ? t.y : dx > 0.55 ? 0.475 : terrainHeight(x, z); }
+      down.origin = { x, y, z }; const hit = world.castRay(down, 40, true); return hit ? y - hit.timeOfImpact : terrainHeight(x, z);
+    };
+    const d = new Doves(scene, audio, {
+      ground: terrainHeight,
+      perches,
+      landing(near) {
+        for (let i = 0; i < 16; i++) {
+          const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 22, x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r;
+          if (terrainSurface(x, z) === "grass" && !inWater(x, z) && below(x, 3, z) - terrainHeight(x, z) < 0.05) return new THREE.Vector3(x, terrainHeight(x, z), z);
+        }
+        return null;
+      },
+      litter: () => playful?.litterObjects() ?? [],
+      below,
+    });
+    d.tables = tables;
+    d.onSnackEmpty = (at) => playful?.leaveLitter("wrapper", at);
+    d.onPoopHit = () => hud.feedback(t("doves.hit"), "warn");
+    return d;
+  }
+  /** Chips eaten out in the park leave crumbs the doves come down for. */
+  function ate(kind: string, at: THREE.Vector3) { if (kind === "Chips") doves?.addCrumbs(at); }
   // The rider's phone (D-pad Down): the app hub that replaced the quick wheel.
   const phone = new Phone(), phoneRig = new PhoneRig(phone.texture), messages = new MessageStore();
   let phoneAir = 0;
@@ -169,6 +209,9 @@ async function boot() {
   sim.tricks.stance = profile.settings.stance;
   sim.tricks.controlStyle = profile.settings.controlStyle;
   audio.enabled = profile.settings.sound;
+  // The mix (#71): master, effects, ambience and UI levels; music keeps its own level under the same master.
+  const applyVolumes = () => { const v = profile.settings.volumes; audio.setVolumes({ master: v.master / 100, effects: v.effects / 100, ui: v.ui / 100, ambience: v.ambience / 100 }); music.setMaster(v.master / 100); };
+  applyVolumes();
   // Sesh Music: one app-level player; the panel only observes it.
   music.setSoundEnabled(audio.enabled);
   void music.loadCatalog();
@@ -272,7 +315,7 @@ async function boot() {
   fidelity.apply(scene,profile.settings.fidelity);menu.previewScene.environment=fidelity.environment;
   let appearancePending=false;
   menu.onCloseSesh=()=>{hud.setPaused(true);input.clear();pending=emptyInput();accumulator=0;};
-  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.thirdPersonFov=settings.thirdPersonFov;profile.settings.phoneHand=settings.phoneHand;profile.settings.phoneNotifications=settings.phoneNotifications;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;profile.settings.touchLeftHanded=settings.touchLeftHanded;profile.settings.touchHaptics=settings.touchHaptics;applyCamera();};
+  menu.onCameraChange=(settings)=>{profile.settings.cameraView=settings.cameraView;profile.settings.firstPersonFov=settings.firstPersonFov;profile.settings.thirdPersonFov=settings.thirdPersonFov;profile.settings.phoneHand=settings.phoneHand;profile.settings.phoneNotifications=settings.phoneNotifications;profile.settings.cameraMotion=settings.cameraMotion;profile.settings.cameraFilter=settings.cameraFilter;profile.settings.filterStrength=settings.filterStrength;profile.settings.touchControls=settings.touchControls;profile.settings.touchSize=settings.touchSize;profile.settings.touchOpacity=settings.touchOpacity;profile.settings.touchLeftHanded=settings.touchLeftHanded;profile.settings.touchHaptics=settings.touchHaptics;profile.settings.volumes={...settings.volumes};applyVolumes();applyCamera();};
   menu.touchPreview=(on)=>{menu.touchPreviewOn=on;touchPad.preview=on;};
   menu.controllerReport=()=>{
     const pad=input.pad,names=['A','B','X','Y','LB','RB','LT','RT','View','Menu','L3','R3','Up','Down','Left','Right','Home'];
@@ -298,6 +341,7 @@ async function boot() {
     sim.tricks.controlStyle = profile.settings.controlStyle;
     audio.enabled = profile.settings.sound;
     music.setSoundEnabled(audio.enabled);
+    applyVolumes();
     camera.mountFlourish=profile.settings.mountFlourish;applyCamera();
     fidelity.apply(scene,profile.settings.fidelity);
     menu.previewScene.environment=fidelity.environment;
@@ -504,7 +548,7 @@ async function boot() {
         m.dispose();
       });
       weather.dispose();
-      playful?.dispose();playful=null;
+      playful?.dispose();playful=null;doves?.dispose();doves=null;
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -514,7 +558,7 @@ async function boot() {
       sim = new Simulation(world, park, events);
       rider = new RiderModel(scene);
       rider.root.userData.weatherDynamic=true;
-      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);playful=makeFriends();
+      interactions=new WorldInteractions(park,profile);builder=new WarehouseBuilder(park,()=>profile);builder.onChange=()=>phoneMap.invalidate();daylight=new Daylight(park);weather=makeWeather();tracks=new WheelTracks(scene);playful=makeFriends();doves=makeDoves();interactions.onAte=ate;
       interactions.openOptions=(title,options,sub)=>phone.sheet(title,options,sub);
     }
     sim.reset(0, true);
@@ -706,6 +750,8 @@ async function boot() {
     interactions.online=!!network.id;interactions.render(rider);playful?.render(dt,sim.elapsed,rider.hands[0]);
     const cameraBlocked=menu.shopOpen||hud.paused||!hud.started||!social.chat.hidden||!!builder.placement;
     if(!cameraBlocked)camera.update(sim, frame, dt, alpha);
+    // Sounds placed in the world (doves) are heard from the camera (#71).
+    audio.setListener(camera.camera.position,camera.camera.getWorldDirection(lampDir),camera.camera.up);
     // The headlamp (#64): worn and lit only at night with the setting on; the beam
     // leaves the lamp on the head (or the eye in first person, so the trick camera carries it).
     {const lampOn=profile.settings.flashlight&&daylight.nightLevel>.02;rider.avatar.setHeadlamp(lampOn);
@@ -801,9 +847,10 @@ async function boot() {
         updateNetworkPlayful();
         playful.rules.contact=profile.settings.playfulContact;
         const held=profile.pockets.entries.find(i=>i.id===profile.pockets.held);
-        const heldEmpty:ThrowableKind|null=held?.state==='empty'?(held.kind==='Chips'||held.kind==='Party Popper'?'paper':'can'):null;
+        const heldEmpty:ThrowableKind|null=held?.state==='empty'?({Chips:'wrapper',Soda:'can',Water:'bottle','Sports drink':'sports','Party Popper':'popper'} as Partial<Record<string,ThrowableKind>>)[held.kind]??null:null;
         frame=playful.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
       }
+      doves?.update(dt,{rider:sim.position,speed:sim.walking?0:Math.hypot(sim.velocity.x,sim.velocity.z),night:daylight.nightLevel,rain:weather.rain});
       frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);
     }
     accumulator += dt;
@@ -905,6 +952,9 @@ async function boot() {
       get tracks() { return tracks; },
       /** With Friends playful interactions (#47): locals, throwables, shoves. */
       get playful() { return playful; },
+      /** Mourning doves (#71). */
+      get doves() { return doves; },
+      audio,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},underwater,
       music, phone, phoneRig, phoneMap, messages, phoneAllowed: () => phoneAllowed(),

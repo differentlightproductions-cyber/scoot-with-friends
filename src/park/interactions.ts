@@ -42,6 +42,8 @@ export class WorldInteractions {
  get waterActive(){return this.water.visible;}
  /** Shows a choice on the rider's phone (vending machines, notices). */
  openOptions:(title:string,options:{label:string;detail?:string;action:()=>void}[],sub?:string)=>void=()=>{};
+ /** Someone finished eating or drinking `kind` at `at` (chips leave crumbs for the doves, #71). */
+ onAte:(kind:string,at:THREE.Vector3)=>void=()=>{};
  constructor(public park:Park,profile:LocalProfile){
   this.profile=profile;this.prompt.className='world-prompt';this.prompt.hidden=true;document.body.append(this.prompt);
   const scene=park.scene;
@@ -221,7 +223,7 @@ export class WorldInteractions {
    const interrupted=!s.walking||s.state==='Bail'||Math.hypot(input.steer,input.lean)>.15||input.pressed.hop||input.pressed.body;
    if(interrupted&&!a.mesh){this.active=null;s.emote=null;this.water.visible=false;return input;}
    a.time+=dt;
-   if(a.itemId){const item=this.profile.pockets.entries.find(i=>i.id===a.itemId);if(item&&!a.opened&&a.time>.42){a.opened=true;if(item.state==='sealed'){item.state='opened';saveProfile(this.profile);s.events.emit({type:'worldInteraction',interaction:'open',item:item.kind});}}if(!a.consumed&&a.time>1.35){a.consumed=true;consumeItem(this.profile.pockets,a.itemId);saveProfile(this.profile);}}
+   if(a.itemId){const item=this.profile.pockets.entries.find(i=>i.id===a.itemId);if(item&&!a.opened&&a.time>.42){a.opened=true;if(item.state==='sealed'){item.state='opened';saveProfile(this.profile);s.events.emit({type:'worldInteraction',interaction:'open',item:item.kind});}}if(!a.consumed&&a.time>1.35){a.consumed=true;if(item)this.onAte(item.kind,s.position.clone());consumeItem(this.profile.pockets,a.itemId);saveProfile(this.profile);}}
    if(a.mesh){const t=THREE.MathUtils.smoothstep(a.time/a.duration,0,1);a.mesh.position.copy(a.start).lerp(a.end,t);a.mesh.position.y+=Math.sin(t*Math.PI)*.22;a.mesh.quaternion.copy(a.from).slerp(a.to,t);}
    if(a.time>=a.duration){a.finish?.();this.active=null;this.water.visible=false;s.emote=null;}
    return emptyInput();
