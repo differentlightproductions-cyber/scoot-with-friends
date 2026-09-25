@@ -90,7 +90,7 @@ try {
         const menu = window.__LAZER.menu;
         menu.root.hidden = false;
         menu.show(screen);
-      }, screen), '#start .game-menu');
+      }, screen), '#start');
     }
     await capture('account-login', () => page.evaluate(() => { void window.__LAZER.menu.accountPanel.open(); }), '#account-dialog');
     await capture('account-register', () => page.locator('#account-dialog .account-actions button').filter({ hasText: 'Create an account' }).click(), '#account-dialog');
@@ -104,7 +104,7 @@ try {
     await capture('sesh-settings', () => page.evaluate(() => {
       document.querySelector('#pause').hidden = true;
       window.__LAZER.menu.openSesh('settings', 'outdoor');
-    }), '#start .game-menu');
+    }), '#start');
     await capture('crate', () => page.evaluate(async () => {
       window.__LAZER.menu.root.hidden = true;
       await window.__LAZER.economy.track({ tricks: 200, grinds: 30, bestLine: 9 });
@@ -122,8 +122,8 @@ try {
       const menu = window.__LAZER.menu;
       menu.openShop('bars');
       menu.show('shop');
-    }), '#start .game-menu');
-    await capture('shop-items', () => page.evaluate(() => window.__LAZER.menu.openShop('bars')), '#start .game-menu');
+    }), '#start');
+    await capture('shop-items', () => page.evaluate(() => window.__LAZER.menu.openShop('bars')), '#start');
     results.push({ size: `${width}x${height}`, screen: 'page-errors', errors });
     await context.close();
   }

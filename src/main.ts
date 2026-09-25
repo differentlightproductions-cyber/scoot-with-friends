@@ -234,7 +234,7 @@ async function boot() {
   const phoneAllowed=()=>hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!destinationLoading&&!builder.placement&&!interactions.active&&
     sim.state!=='Bail'&&sim.grounded&&!sim.grind&&!sim.manual.active&&!sim.mantle&&!sim.dropIn.phase&&sim.getUpTimer<=0&&!sim.bodyFlip.active;
   const phoneDeps:PhoneDeps={phone,messages,map:phoneMap,economy,
-    openCrate:id=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,crates);},
+    openCrate:(id,all=false)=>menu.onOpenCrate(id,all),
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim,profile.settings.phoneHand==='left'?1:0),
     openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
@@ -282,9 +282,10 @@ async function boot() {
       touchControls:profile.settings.touchControls+(touchPad.device?'':' (not a touch device)')};
   };
   rewards.equip=async(partId,variantId)=>{const r=await economy.equip({partId,variantId},profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not equip.';};
-  rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  rewards.preview=(partId,variantId,container)=>container.replaceChildren(menu.renderPartPreview(renderer,{partId,variantId}));
+  rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;if(!menu.root.hidden&&menu.screen==='crates')menu.show('crates');};
   menu.overlayOwnsInput=()=>rewards.open;
-  menu.onOpenCrate=(id,all=false)=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,all?crates:[]);};
+  menu.onOpenCrate=(id,all=false)=>{if(rewards.open)return;const crates=[...profile.progress.crates],crate=crates.find(c=>c.id===id);if(!crate)return;input.clear();pending=emptyInput();accumulator=0;if(all)void rewards.openAll(crates);else rewards.openCrate(crate);};
   menu.onPurchased=item=>rewards.purchase(item);
   menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
@@ -671,7 +672,7 @@ async function boot() {
     testMode = false;
   const lampAt=new THREE.Vector3(),lampDir=new THREE.Vector3();
   const render = (dt: number, alpha = 1) => {
-    const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen);
+    const worldFrozen = hud.started && (hud.paused || menu.seshOpen || menu.shopOpen || rewards.open);
     if (!worldFrozen) {
     if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
@@ -718,7 +719,7 @@ async function boot() {
     // Under the lake (#62): the basin's ripples and caustics move on; with the eye under, the water closes in.
     {const light=1-.85*daylight.nightLevel;(scene.userData.lakeBasin as {update(dt:number,sky?:THREE.Color,light?:number):void}|undefined)?.update(dt,(scene.userData.sky as {horizon?:THREE.Color}|undefined)?.horizon,light);
      underwater.update(camera.camera,dt,light,ACTIVE_MAP==='outdoor'&&hud.started);}
-    const overlayOpen=!menu.root.hidden||hud.paused;document.body.classList.toggle("ui-open",overlayOpen);
+    const overlayOpen=!menu.root.hidden||hud.paused||rewards.open;document.body.classList.toggle("ui-open",overlayOpen);
     // Menus, the music phone and radials are tapped directly; the virtual pad steps aside
     // (and releases everything) while they own input, except in the controller test view.
     touchPad.suspended=(overlayOpen||phone.active||!social.chat.hidden)&&!touchPad.preview;
@@ -746,7 +747,7 @@ async function boot() {
     last = now;
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
-    touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden)&&!touchPad.preview;
+    touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden||rewards.open)&&!touchPad.preview;
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}
     frame = input.consume();

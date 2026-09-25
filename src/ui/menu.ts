@@ -184,6 +184,7 @@ export class GameMenu {
   pan = new THREE.Vector3();
   focusBox = new THREE.Box3Helper(new THREE.Box3(), 0xb9c9c5);
   isolatedProduct = new THREE.Group();
+  private rewardSelection: {partId:string;variantId:string}|undefined;
   private focusKey = "";
   private saveFailed = false;
   onRide = (_map: MapId) => {};
@@ -703,18 +704,22 @@ export class GameMenu {
   }
   /** The row or cell the preview should show, without touching the draft or saved loadout. */
   private focusedSelection(){
+    if(this.rewardSelection)return this.rewardSelection;
     if(this.screen==='starter-pick'&&this.index<this.cellCount){const o=this.starterItems[this.index];if(o)return {partId:o.part.id,variantId:o.variant.id};}
     if(this.screen==='brand-items'&&this.index<this.cellCount){const item=this.visibleItems[this.index];if(item)return {partId:item.partId,variantId:item.variantId};}
     if(['purchase','purchased'].includes(this.screen)&&this.product)return {partId:this.product,variantId:this.pendingVariant};
     return undefined;
   }
   private highlight() {
+    const rewardEntry=this.rewardSelection&&catalogEntry(this.rewardSelection.partId);
+    const isolated=this.shopOpen||!!rewardEntry;
     const ridesBoard=this.screen==='rides'&&(this.index===1||this.index===3);
     const boardBrowse=this.browseBrand===BOARD_BRAND_ID&&['brand-items','purchase','purchased'].includes(this.screen);
-    const boardScreen=["longboard","board-complete","board-purchase"].includes(this.screen)||boardBrowse||ridesBoard;
+    const boardScreen=rewardEntry?rewardEntry.rideable==='longboard':["longboard","board-complete","board-purchase"].includes(this.screen)||boardBrowse||ridesBoard;
     let category:string=this.screen==='starter-pick'?this.starterCategory:this.screen==='brand-items'?this.browseCategory:this.category;
     if(this.screen==='brand'&&this.index<this.cellCount)category=this.visibleCategories[this.index]??category;
-    const active=!boardScreen&&["brand","brand-items","purchase","purchased","starter-pick"].includes(this.screen);
+    if(rewardEntry)category=rewardEntry.category;
+    const active=!boardScreen&&(!!rewardEntry||["brand","brand-items","purchase","purchased","starter-pick"].includes(this.screen));
     // The starter screens preview the draft build (with the focused pick on it).
     const starterScreen=(this.screen==='starter'||this.screen==='starter-pick')&&!!this.starterDraft;
     const focused=this.focusedSelection(),entry=focused&&catalogEntry(focused.partId);
@@ -728,7 +733,7 @@ export class GameMenu {
     if(boardScreen){
       const preview=structuredClone(this.profile.longboard);
       let boardCategory=this.screen==='longboard'?(this.index<this.cellCount?this.visibleCategories[this.index]:'deck')??'deck':this.browseCategory;
-      if(entry?.rideable==='longboard')preview[entry.category as LongboardCategory]={...focused!};
+      if(entry?.rideable==='longboard'){preview[entry.category as LongboardCategory]={...focused!};if(rewardEntry)boardCategory=entry.category;}
       if(this.screen==="board-complete"){const variant=LONGBOARD_PARTS.find(p=>p.category==='deck')!.variants[this.index];if(variant)preview.deck={partId:'ss-drop-through-deck',variantId:variant.id};boardCategory='deck';}
       if(this.screen==="board-purchase"){preview.deck={partId:'ss-drop-through-deck',variantId:this.pendingVariant};boardCategory='deck';}
       this.previewRider.setLongboard(preview);
@@ -750,7 +755,7 @@ export class GameMenu {
     }
     if(!boardScreen){
     this.focusBox.visible = active;
-    this.isolatedProduct.clear();this.previewRider.scooter.visible=!this.shopOpen;
+    this.isolatedProduct.clear();this.previewRider.scooter.visible=!isolated;
     this.previewRider.scooter.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=true;});
     if(active){
       const bounds=new THREE.Box3();this.previewRider.root.updateMatrixWorld(true);
@@ -760,13 +765,13 @@ export class GameMenu {
         if(selected){o.geometry.computeBoundingBox();if(o.geometry.boundingBox)bounds.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
           // Selected hardware may be nested inside a wheel mesh. Render only
           // its geometry, independently of the hidden assembled parent.
-          if(this.shopOpen){const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.userData.part=o.userData.part;this.isolatedProduct.add(copy);}
+          if(isolated){const copy=new THREE.Mesh(o.geometry,o.material);copy.matrixAutoUpdate=false;copy.matrix.copy(o.matrixWorld);copy.userData.part=o.userData.part;this.isolatedProduct.add(copy);}
         }
       });
       if(!bounds.isEmpty()){
         const size=bounds.getSize(new THREE.Vector3()),padding=THREE.MathUtils.clamp(size.length()*.018,.0008,.012);
         this.focusBox.box.copy(bounds).expandByScalar(padding);bounds.getCenter(this.focusTarget);
-        if(this.shopOpen)this.zoomTarget=Math.max(.075,size.length()*1.85);
+        if(isolated)this.zoomTarget=Math.max(.075,size.length()*1.85);
       }else this.focusBox.visible=false;
     }else this.focusTarget.set(0,.83,0);
     }
@@ -897,6 +902,40 @@ export class GameMenu {
     if(s.startsWith('settings')||s==='test-controller'||s==='test-credit')return 'night';
     if(s==='guide'||s==='tricks')return 'sunrise';
     return 'dusk';
+  }
+  /** A crate result borrows the existing shop preview once; it never equips the part. */
+  renderPartPreview(renderer:THREE.WebGLRenderer,selection:{partId:string;variantId:string}) {
+    const entry=catalogEntry(selection.partId);
+    if(!entry?.variants.some(v=>v.id===selection.variantId))throw new Error('Unknown preview item');
+    const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;
+    canvas.dataset.partId=selection.partId;canvas.dataset.variantId=selection.variantId;
+    canvas.setAttribute('role','img');canvas.setAttribute('aria-label',entry.name+' / '+entry.variants.find(v=>v.id===selection.variantId)!.name);
+    const target=new THREE.WebGLRenderTarget(canvas.width,canvas.height,{colorSpace:THREE.SRGBColorSpace});
+    const previousTarget=renderer.getRenderTarget(),viewport=renderer.getViewport(new THREE.Vector4()),scissor=renderer.getScissor(new THREE.Vector4()),scissorTest=renderer.getScissorTest();
+    const background=this.previewScene.background,camera=this.previewCamera.clone(),floor=this.previewScene.getObjectByName('Preview floor');
+    const floorVisible=floor?.visible,riderVisible=this.previewRider.rider.visible;
+    const focus=this.focus.clone(),focusTarget=this.focusTarget.clone(),pan=this.pan.clone(),zoom=this.zoom,zoomTarget=this.zoomTarget,orbit=this.orbit;
+    try {
+      this.rewardSelection=selection;this.highlight();
+      this.previewRider.rider.visible=false;this.focusBox.visible=false;if(floor)floor.visible=false;
+      this.previewScene.background=new THREE.Color(0xf4f1e8);
+      this.previewCamera.aspect=canvas.width/canvas.height;
+      const distance=this.zoomTarget;
+      this.previewCamera.position.copy(this.focusTarget).add(new THREE.Vector3(Math.sin(.65)*distance,distance*.3,Math.cos(.65)*distance));
+      this.previewCamera.lookAt(this.focusTarget);this.previewCamera.updateProjectionMatrix();
+      renderer.setRenderTarget(target);renderer.setScissorTest(false);renderer.clear();renderer.render(this.previewScene,this.previewCamera);
+      const pixels=new Uint8Array(canvas.width*canvas.height*4),context=canvas.getContext('2d')!,image=context.createImageData(canvas.width,canvas.height);
+      renderer.readRenderTargetPixels(target,0,0,canvas.width,canvas.height,pixels);
+      for(let y=0;y<canvas.height;y++)image.data.set(pixels.subarray((canvas.height-1-y)*canvas.width*4,(canvas.height-y)*canvas.width*4),y*canvas.width*4);
+      context.putImageData(image,0,0);
+      return canvas;
+    } finally {
+      this.rewardSelection=undefined;this.highlight();
+      this.focus.copy(focus);this.focusTarget.copy(focusTarget);this.pan.copy(pan);this.zoom=zoom;this.zoomTarget=zoomTarget;this.orbit=orbit;
+      this.previewRider.rider.visible=riderVisible;if(floor)floor.visible=floorVisible!;
+      this.previewScene.background=background;this.previewCamera.copy(camera);
+      renderer.setRenderTarget(previousTarget);renderer.setViewport(viewport);renderer.setScissor(scissor);renderer.setScissorTest(scissorTest);target.dispose();
+    }
   }
   preview(renderer: THREE.WebGLRenderer) {
     this.previewRider.posePreviewHands(performance.now()/1000);

@@ -48,7 +48,7 @@ export interface PhoneDeps {
   teleportToPlayer: (id: string) => boolean;
   map: PhoneMap;
   /** Opens a crate on screen (the phone is put away first). */
-  openCrate: (id: string) => void;
+  openCrate: (id: string, all?: boolean) => void;
   /** The one economy (data/credit.ts): the SHOP app orders through it. */
   economy: CreditEconomy;
   /** Replays (#41): capture the rolling history into the editor, or open the saved ones. */
@@ -319,6 +319,18 @@ function spotsApp(d: PhoneDeps): View {
 // ---- ITEMS --------------------------------------------------------------------
 /** What USE NOW does with each novelty (#55). */
 const NOVELTY_USE: Record<NoveltyKind, string> = { 'Rubber Duck': 'duck', 'Kazoo': 'kazoo', 'Foam Finger': 'foam', 'Party Popper': 'popper', 'Bubble Wand': 'bubbles' };
+function crateInventory(d: PhoneDeps): View {
+  return { title: 'CRATES', live: true, page: () => {
+    const crates = d.profile().progress.crates;
+    return { blocks: [
+      { type: 'title', text: 'YOUR CRATES', sub: `${crates.length} waiting in your inventory` },
+      crates.length ? { type: 'list', rows: [
+        { id: 'open-all-crates', label: 'OPEN ALL', detail: 'Open every waiting crate once, then review the results', action: () => d.phone.close(() => d.openCrate(crates[0].id, true)) },
+        ...crates.map(c => ({ id: 'crate-' + c.id, label: CRATE_NAME[c.tier].toUpperCase(), detail: 'From ' + c.source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(c.id)) })),
+      ] } : { type: 'text', text: 'No crates waiting. Earn them from missions and level-ups.', muted: true },
+    ], initial: crates.length ? 'crate-' + crates[0].id : undefined };
+  } };
+}
 function itemsApp(d: PhoneDeps): View {
   const item = (id: string): View => ({
     title: 'ITEMS',
@@ -343,6 +355,7 @@ function itemsApp(d: PhoneDeps): View {
       const p = d.profile(), groups = d.items().itemGroups(), heldItem = p.pockets.entries.find(i => i.id === p.pockets.held);
       return { blocks: [
         { type: 'title', text: translate(p.pockets.backpack ? 'phone.ui.backpack' : 'phone.ui.pockets'), sub: heldItem ? translate('phone.ui.holding_item',{item:heldItem.kind}) : translate('phone.ui.nothing_hand') },
+        { type: 'list', rows: [{ id: 'crate-inventory', label: 'CRATES', detail: `${p.progress.crates.length} waiting`, action: () => d.phone.push(crateInventory(d)) }] },
         groups.length
           ? { type: 'list', rows: groups.map(g => ({ id: 'group-' + g.items[0].id, label: g.label.toUpperCase(), detail: translate('phone.ui.item_count',{count:g.items.length}) + (g.held ? ' · '+translate('phone.ui.in_hand') : ''), chosen: g.held, action: () => d.phone.push(item(g.items[0].id)) })) }
           : { type: 'text', text: translate('phone.ui.pockets_empty'), muted: true },
@@ -444,6 +457,7 @@ function missionsApp(d: PhoneDeps): View {
         } },
       ];
       // One row per crate tier, rarest first, so a stack of crates stays short.
+      blocks.push({ type: 'list', rows: [{ id: 'crate-inventory', label: 'CRATE INVENTORY', detail: `${prog.crates.length} waiting`, value: prog.crates.length ? 'OPEN' : undefined, action: () => d.phone.push(crateInventory(d)) }] });
       const stacks = (['legend', 'signature', 'pro', 'street'] as const).map(tier => ({ tier, crates: prog.crates.filter(c => c.tier === tier) })).filter(s => s.crates.length);
       if (stacks.length) {
         blocks.push({ type: 'title', text: 'CRATES', sub: 'Parts or Credit inside. No dupes.' });
@@ -461,7 +475,7 @@ function missionsApp(d: PhoneDeps): View {
       const career = board.career.slice().sort((a, b) => Number(a.complete) - Number(b.complete) || b.value / b.goal - a.value / a.goal);
       blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Credit${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
       blocks.push({ type: 'text', text: owned.brands.map(b => `${b.brand} ${b.have}/${b.total}`).join(' · '), muted: true });
-      return { blocks, initial: stacks.length ? 'crates-' + stacks[0].tier : undefined };
+      return { blocks, initial: prog.crates.length ? 'crate-inventory' : undefined };
     },
   };
 }

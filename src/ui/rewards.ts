@@ -1,4 +1,4 @@
-// Rewards on screen: mission-complete stickers, the level-up slam, the level
+// Rewards on screen: mission-complete stickers, compact level notices, the level
 // chip with its XP bar, and the crate opening (tap to shake, burst, reveal).
 // The MissionTracker turns riding events into mission stats; the economy
 // (data/credit.ts) settles them. Sounds are synthesised, nothing is loaded.
@@ -159,8 +159,13 @@ export class RewardFx {
   private crateState: { crate: Crate; taps: number; result: CrateResult | null; busy: boolean } | null = null;
   /** Crates waiting after the one on screen (Open next). */
   private queue: Crate[] = [];
+  private openedResults: { crate: Crate; result: CrateResult }[] = [];
+  private openedIndex = 0;
+  private openingAll = false;
   /** Equip a revealed part; returns an error message or ''. */
   equip: (partId: string, variantId: string) => Promise<string> = async () => "";
+  /** Render the existing part preview into a revealed crate card. */
+  preview: (partId: string, variantId: string, container: HTMLElement) => void = () => {};
   onClose = () => {};
   constructor(private economy: CreditEconomy, private progress: () => Progress) {
     this.root.className = "rewards-layer";
@@ -184,23 +189,18 @@ export class RewardFx {
   }
 
   /**
-   * Stickers for completed missions (two on screen at most, the rest
-   * following), then each level-up slam in turn, never over an open crate.
+   * Compact notices for missions, stored crates and levels; never interrupt riding.
    */
   private stickers: (() => void)[] = [];
-  private moments = Promise.resolve();
   celebrate(gains: Gains) {
     for (const c of gains.completed) this.stickers.push(() => this.toast(c.title, c.reward.credit, c.reward.xp, c.reward.crate ? CRATE_NAME[c.reward.crate] : ""));
-    this.pumpStickers();
+    for (const crate of gains.crates) this.stickers.push(() => this.crateAdded(crate));
     for (const level of gains.levelsUp) {
       // Exactly one reward per level (#55): a crate, or a novelty or snack straight into the pockets.
       const crates = [...gains.crates.filter((c) => c.source === "Level " + level).map((c) => CRATE_NAME[c.tier]), ...gains.items.filter((i) => i.source === "Level " + level).map((i) => i.kind)];
-      this.moments = this.moments.then(async () => {
-        while (this.overlay || this.stickers.length) await wait(300);
-        this.levelUp(level, crates);
-        await wait(2500);
-      });
+      this.stickers.push(() => this.levelUp(level, crates));
     }
+    void this.pumpStickers();
   }
   private pumping = false;
   private async pumpStickers() {
@@ -220,6 +220,14 @@ export class RewardFx {
     this.toasts.append(el);
     sfx.mission();
     setTimeout(() => el.classList.add("out"), 2800);
+    setTimeout(() => el.remove(), 3300);
+  }
+  private crateAdded(crate: Crate) {
+    const el = document.createElement('div');
+    el.className = 'reward-toast crate-added';
+    el.innerHTML = `<span class="rt-label">CRATE ADDED</span><strong>${CRATE_NAME[crate.tier]}</strong><span class="rt-gain">Open it later from CRATES or your phone</span>`;
+    this.toasts.append(el); sfx.coin();
+    setTimeout(() => el.classList.add('out'), 2800);
     setTimeout(() => el.remove(), 3300);
   }
   /** A phone-shop package arriving: a sticker in the same kit as missions. */
@@ -249,13 +257,12 @@ export class RewardFx {
   }
   levelUp(level: number, crates: string[]) {
     const el = document.createElement("div");
-    el.className = "level-up";
-    el.innerHTML = `<div class="lu-rays"></div><div class="lu-card"><span>LEVEL UP</span><b>${level}</b>${crates.length ? `<em>+ ${esc(crates.join(" + ")).toUpperCase()}</em>` : ""}</div>`;
-    this.root.append(el);
+    el.className = "reward-toast level-reward";
+    el.innerHTML = `<span class="rt-label">LEVEL UP</span><strong>LEVEL ${level}</strong>${crates.length ? `<span class="rt-gain">+ ${esc(crates.join(" + ")).toUpperCase()}</span>` : ''}`;
+    this.toasts.append(el);
     sfx.level();
-    confetti(el, ["#c6ff00", "#ff5a1f", "#1ecbe1", "#ffd23f", "#ffffff"], 90);
-    setTimeout(() => el.classList.add("out"), 2200);
-    setTimeout(() => el.remove(), 2800);
+    setTimeout(() => el.classList.add("out"), 2800);
+    setTimeout(() => el.remove(), 3300);
   }
 
   /** A purchase: ka-ching, and a burst in the item's colour and rarity. */
@@ -267,18 +274,56 @@ export class RewardFx {
 
   /** Opens a crate on screen: A shakes it (three times), the third bursts it open. */
   openCrate(crate: Crate, queue: Crate[] = []) {
-    this.closeOverlay();
+    if (this.openingAll || this.crateState?.busy) return;
+    this.openedResults = [];
     this.queue = queue.filter((c) => c.id !== crate.id);
+    this.showCrate(crate);
+  }
+  /** Open every saved crate once, then review the already-granted results. */
+  async openAll(crates: Crate[]): Promise<void> {
+    if (this.overlay || this.openingAll || !crates.length) return;
+    const pending = [...new Map(crates.map(crate => [crate.id, crate])).values()];
+    this.queue = []; this.openedResults = []; this.openedIndex = 0;
+    this.showCrate(pending[0]);
+    this.openingAll = true;
+    this.crateState!.busy = true;
+    let error = '';
+    for (const [index, crate] of pending.entries()) {
+      this.overlay!.querySelector('.crate-hint')!.textContent = `OPENING ${index + 1} / ${pending.length}`;
+      try {
+        const result = await this.economy.openCrate(crate.id);
+        if (typeof result === 'string') { error = result; break; }
+        this.openedResults.push({ crate, result });
+      } catch (failure) { error = failure instanceof Error ? failure.message : 'Could not open that crate.'; break; }
+    }
+    this.openingAll = false;
+    if (this.openedResults.length) this.showOpened(0);
+    else {
+      this.crateState!.busy = false;
+      this.crateState!.taps = 1;
+      this.overlay!.querySelector('.crate-hint')!.textContent = `${error || 'No crates opened.'} / TAP TO RETRY OR BACK`;
+    }
+    if (error && this.openedResults.length) this.overlay!.querySelector('.crate-actions')!.insertAdjacentHTML('afterbegin', `<p class="crate-batch-error">${esc(error)}. Unopened crates remain in your inventory.</p>`);
+  }
+  private showCrate(crate: Crate) {
+    this.overlay?.remove();
     this.crateState = { crate, taps: 0, result: null, busy: false };
     const el = document.createElement("div");
     el.className = `crate-overlay tier-${crate.tier}`;
     el.style.setProperty("--tier", CRATE_COLOR[crate.tier]);
     el.innerHTML = `<div class="crate-rays"></div><div class="crate-title"><small>${esc(crate.source).toUpperCase()}</small><h2>${CRATE_NAME[crate.tier].toUpperCase()}</h2></div>
       <div class="crate-stage"><div class="crate-box"><div class="crate-lid"></div><div class="crate-body"><span class="crate-sticker">SCOOT<br>WITH<br>FRIENDS</span><i class="crate-strap"></i><i class="crate-strap"></i></div></div><div class="crate-card" hidden></div></div>
-      <p class="crate-hint">A / TAP TO OPEN</p><div class="crate-actions" hidden></div>`;
-    el.addEventListener("pointerdown", (e) => { if (!(e.target as HTMLElement).closest("button")) this.tap(); });
+      <p class="crate-hint">A / TAP TO OPEN</p><button class="crate-cancel" type="button">BACK</button><div class="crate-actions" hidden></div>`;
+    el.addEventListener("pointerdown", (e) => { if (!(e.target as HTMLElement).closest("button")) void this.tap(); });
+    el.querySelector<HTMLButtonElement>('.crate-cancel')!.onclick = () => this.closeOverlay();
     this.root.append(el);
     this.overlay = el;
+  }
+  private showOpened(index: number) {
+    this.openedIndex = index;
+    const { crate, result } = this.openedResults[index];
+    this.showCrate(crate);
+    this.reveal(result);
   }
   private async tap() {
     const s = this.crateState, el = this.overlay;
@@ -292,15 +337,26 @@ export class RewardFx {
     if (s.taps === 2) {
       // The second shake already knows: the glow hints the rarity.
       s.busy = true;
-      const result = await this.economy.openCrate(s.crate.id);
-      s.busy = false;
-      if (typeof result === "string") { el.querySelector(".crate-hint")!.textContent = result; return; }
+      let result: CrateResult | string;
+      try { result = await this.economy.openCrate(s.crate.id); }
+      catch (failure) { result = failure instanceof Error ? failure.message : 'Could not open that crate.'; }
+      finally { s.busy = false; }
+      if (this.crateState !== s || this.overlay !== el) return;
+      if (typeof result === "string") {
+        s.taps = 1; el.style.setProperty('--charge', '0.333');
+        el.querySelector(".crate-hint")!.textContent = `${result} / TAP TO RETRY`;
+        return;
+      }
       s.result = null;
       el.style.setProperty("--rarity", RARITY_COLOR[result.rarity]);
       el.classList.add("hint-" + result.rarity);
       (el as HTMLElement & { pending?: CrateResult }).pending = result;
     }
-    if (s.taps >= 3) this.reveal((el as HTMLElement & { pending?: CrateResult }).pending!);
+    if (s.taps >= 3) {
+      const pending = (el as HTMLElement & { pending?: CrateResult }).pending;
+      if (pending) this.reveal(pending);
+      else s.taps = 1;
+    }
   }
   private reveal(result: CrateResult) {
     const s = this.crateState!, el = this.overlay!;
@@ -316,25 +372,45 @@ export class RewardFx {
     const item = result.item;
     card.innerHTML = item
       ? `<span class="cc-rarity">${RARITY_LABEL[result.rarity]}${item.exclusive ? " · CRATE EXCLUSIVE" : ""}</span>
-         <div class="cc-swatch" style="--c:${hex(item.color)};--a:${hex(item.accent ?? item.color)}"></div>
+         <div class="cc-preview"><div class="cc-swatch" style="--c:${hex(item.color)};--a:${hex(item.accent ?? item.color)}"></div></div>
          <small>${esc(item.brand).toUpperCase()} · ${esc(item.category).toUpperCase()}</small>
          <strong>${esc(item.name.replace(item.brand + " ", ""))}</strong><em>${esc(item.variantName)}</em>
          <span class="cc-credit">+${result.credit} CREDIT</span>`
       : `<span class="cc-rarity">COLLECTION COMPLETE</span><div class="cc-swatch coin"></div><strong>You own everything</strong><em>Paid out in Credit instead</em><span class="cc-credit">+${result.credit} CREDIT</span>`;
     card.hidden = false;
+    el.querySelector<HTMLElement>('.crate-cancel')!.hidden = true;
+    if (item) try { this.preview(item.partId, item.variantId, card.querySelector<HTMLElement>('.cc-preview')!); } catch { /* Keep the colour swatch if preview rendering fails. */ }
     el.querySelector<HTMLElement>(".crate-hint")!.hidden = true;
     const actions = el.querySelector<HTMLElement>(".crate-actions")!;
     const button = (label: string, action: () => void, primary = false) => { const b = document.createElement("button"); b.type = "button"; b.textContent = label; if (primary) b.className = "primary"; b.onclick = action; actions.append(b); return b; };
-    if (item?.rideable === "scooter") button("EQUIP NOW", async () => { const error = await this.equip(item.partId, item.variantId); if (error) el.querySelector<HTMLElement>(".crate-card small")!.textContent = error; else this.closeOverlay(); });
+    const nextOpened = this.openedResults[this.openedIndex + 1];
+    const advance = () => { if (this.overlay !== el || this.crateState !== s || s.busy) return; if (nextOpened) this.showOpened(this.openedIndex + 1); else this.closeOverlay(); };
+    if (item?.rideable === "scooter") button("EQUIP NOW", async () => {
+      if (s.busy || this.overlay !== el) return;
+      s.busy = true;
+      const buttons = [...actions.querySelectorAll<HTMLButtonElement>('button')];
+      buttons.forEach(b => b.disabled = true);
+      let error = '';
+      try { error = await this.equip(item.partId, item.variantId); }
+      catch (failure) { error = failure instanceof Error ? failure.message : 'Could not equip that part.'; }
+      s.busy = false;
+      if (this.overlay !== el || this.crateState !== s) return;
+      if (error) { el.querySelector<HTMLElement>(".crate-card small")!.textContent = error; buttons.forEach(b => b.disabled = false); }
+      else advance();
+    });
     const next = this.queue[0];
-    if (next) button(`OPEN NEXT (${this.queue.length})`, () => this.openCrate(next, this.queue), true);
-    button("NICE!", () => this.closeOverlay(), !next);
+    if (nextOpened) button(`NEXT RESULT (${this.openedResults.length - this.openedIndex - 1})`, advance, true);
+    else if (next) button(`OPEN NEXT (${this.queue.length})`, () => this.openCrate(next, this.queue), true);
+    button("NICE!", () => this.closeOverlay(), !nextOpened && !next);
     actions.hidden = false;
     setTimeout(() => actions.querySelector<HTMLButtonElement>("button.primary, button")?.focus(), 400);
   }
   closeOverlay() {
-    if (!this.overlay) return;
+    if (!this.overlay || this.openingAll || this.crateState?.busy) return;
+    const pending = (this.overlay as HTMLElement & { pending?: CrateResult }).pending;
+    if (pending && !this.crateState?.result) { this.reveal(pending); return; }
     this.overlay.remove(); this.overlay = null; this.crateState = null;
+    this.openedResults = []; this.queue = [];
     this.onClose();
   }
   /** Controller: A taps / confirms, LS moves between buttons, B closes once revealed. */
@@ -343,7 +419,7 @@ export class RewardFx {
     if (!this.overlay) return;
     this.cooldown = Math.max(0, this.cooldown - dt);
     const revealed = !!this.crateState?.result;
-    if (!revealed) { if (input.pressed.hop) void this.tap(); return; }
+    if (!revealed) { if (input.pressed.brakeBars || input.pressed.pause) this.closeOverlay(); else if (input.pressed.hop) void this.tap(); return; }
     const buttons = [...this.overlay.querySelectorAll<HTMLButtonElement>(".crate-actions button")];
     const dir = Math.abs(input.lean) > 0.5 ? Math.sign(input.lean) : 0;
     if (dir && !this.cooldown && buttons.length) { const i = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[(i + dir + buttons.length) % buttons.length].focus(); this.cooldown = 0.22; }
