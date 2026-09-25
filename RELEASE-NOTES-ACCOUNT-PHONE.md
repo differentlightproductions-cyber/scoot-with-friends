@@ -26,10 +26,16 @@ Status: LOCAL, NOT PUSHED OR PUBLISHED. Owner explicitly held the GitHub/server 
 
 ## Resend / deployment requirements
 
-Owner chose “Prepare Resend setup.” Resend login tab is open; account sign-in is pending. No paid service was purchased, no API key created, no DNS changed for email, no message sent.
+Owner chose “Prepare Resend setup” and then explicitly approved email DNS, a restricted key, secret storage in Sites and one setup-test email. Resend is now signed in; `scootwithfriends.online` is verified using the provider's TXT `resend._domainkey` and CNAME `rsend` / `send` records. Website records and existing mail forwarding were preserved. A sending-only key scoped to this domain was created. No paid service was purchased and no test email has been sent yet.
 
-After sign-in: add the sending domain in Resend, use the exact DNS verification records Resend provides, verify them, create a sending-only key scoped to that domain, and store it only in the existing Sites project's server environment. Use `ACCOUNT_EMAIL_FROM=Scoot with Friends <accounts@scootwithfriends.online>` and `ACCOUNT_SITE_ORIGIN=https://scootwithfriends.online`; secret key name is `RESEND_API_KEY`. Do not replace existing mail MX/SPF records blindly. Details: `EMAIL-RECOVERY.md`.
+The two non-secret Sites settings (`ACCOUNT_EMAIL_FROM`, `ACCOUNT_SITE_ORIGIN`) are saved in environment revision 2. The key itself is NOT stored yet: automatic approval review blocked revealing/exporting it, so the next step is direct secret entry in Sites settings. The owner has been asked to sign into ChatGPT in the browser for that handoff. Keep the existing Resend key dialog open; do not create duplicate keys or paste credentials into chat/Git.
+
+Remaining provider step: store the existing domain-restricted key as the secret `RESEND_API_KEY` in the existing Sites project, then send the approved setup-test email to differentlightproductions@gmail.com without exposing the key. Domain creation and DNS verification are already complete; do not repeat them. Details: `EMAIL-RECOVERY.md`.
 
 The additive `drizzle/0002_account_email.sql` migration is required before the new Worker handles accounts. Build copies migrations to `dist/.openai/drizzle`; ensure the release archive includes that migration directory (the repository's root `.openai` contains only hosting.json). Verify migration/deployment support before publishing. Never publish the new Worker against the old schema.
 
 After authorized deployment: test real verification/reset delivery using an owner's chosen test account, confirm old sessions stop working, and confirm legacy account login/cloud saves still work. Keep the current live release available until those checks pass.
+
+## Follow-up: quarter-pipe air intent
+
+See `QUARTER-AIR-INTENT.md`. Deck rollout used forward speed/lean but ignored diagonal approach. A small alignment fade now preserves straight forward deck exits and turns diagonal approaches back toward the wall. Sustained side input during rise/near apex can redirect a deck-bound quarter air toward the transition. Focused browser checks passed 12/12 across both opposing wood quarters, including real flip/turn input. The old Stage 2 browser script fails 9/9 identically on unchanged HEAD and on this patch; its baseline was tested and restored byte-for-byte. No model, UI controls or unrelated physics change in this follow-up.

@@ -935,11 +935,16 @@ export class Simulation {
     lean: number,
   ) {
     const planeSpeed = Math.hypot(this.velocity.dot(forward), this.velocity.y);
+    const flatSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    const sideRatio = flatSpeed > 0 ? Math.abs(this.velocity.x * forward.z - this.velocity.z * forward.x) / flatSpeed : 0;
+    // A diagonal line is an air back into the wall, not an over-deck exit.
+    // Keep the straight-line takeoff unchanged, with a short analog fade.
+    const deckAlignment = 1 - clamp((sideRatio - 0.03) / 0.05, 0, 1);
     const ratio = clamp(
-      (planeSpeed - TUNE.quarterOverDeckSpeed) * TUNE.quarterRolloutSpeedGain -
+      ((planeSpeed - TUNE.quarterOverDeckSpeed) * TUNE.quarterRolloutSpeedGain -
         clamp(lean, 0, 1) * TUNE.quarterLeanRatio +
-        clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio,
-      TUNE.quarterRolloutRatioMin,
+        clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio) * deckAlignment - (1 - deckAlignment) * 0.04,
+      -0.04 * (1 - deckAlignment),
       Math.max(TUNE.quarterRolloutRatioMax, clamp(-lean, 0, 1) * TUNE.quarterDeckLeanRatio),
     );
     const outwardBefore = this.velocity.dot(forward);
@@ -3318,6 +3323,12 @@ export class Simulation {
         if (dropping.time > 1) this.copingDrop = null;
       }
       if(!this.bodyFlip.active)this.airWeight.step(dt, input.lean, this.yaw, this.velocity);
+      if (this.airQuarter && this.velocity.y > -0.5 && Math.abs(input.steer) > 0.45) {
+        // A held side lean can bring a quarter air back over its own wall.
+        const outward = this.velocity.dot(this.airQuarter.forward);
+        if (outward > -2.25)
+          this.velocity.addScaledVector(this.airQuarter.forward, -Math.min(outward + 2.25, (Math.abs(input.steer) - 0.45) / 0.55 * 9 * dt));
+      }
       this.airYawInput = input.steer;
       // The scooter meets the surface it is about to land on. Over a quarter the
       // receiving transition owns the attitude for the whole air, so a straight
