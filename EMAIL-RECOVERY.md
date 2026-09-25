@@ -1,6 +1,6 @@
 # Account email recovery
 
-Run migration `0002_account_email.sql` on the existing D1 database before publishing the matching Worker. It only adds nullable fields and indexes; existing usernames, password hashes, recovery codes, sessions, and cloud saves remain valid.
+The Worker applies the additive email schema through `server/account-schema.ts` before account queries because Sites does not apply packaged migrations. `0002_account_email.sql` remains the schema reference for fresh databases; do not manually reapply it to a database already upgraded by the Worker. It only adds nullable fields and indexes; existing usernames, password hashes, recovery codes, sessions, and cloud saves remain valid.
 
 Configure these server environment values on the existing Sites project:
 

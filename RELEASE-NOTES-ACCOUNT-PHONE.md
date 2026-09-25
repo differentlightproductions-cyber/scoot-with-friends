@@ -37,3 +37,6 @@ After authorized deployment: test real verification/reset delivery using an owne
 ## Follow-up: quarter-pipe air intent
 
 See `QUARTER-AIR-INTENT.md`. Deck rollout used forward speed/lean but ignored diagonal approach. A small alignment fade now preserves straight forward deck exits and turns diagonal approaches back toward the wall. Sustained side input during rise/near apex can redirect a deck-bound quarter air toward the transition. Focused browser checks passed 12/12 across both opposing wood quarters, including real flip/turn input. The old Stage 2 browser script fails 9/9 identically on unchanged HEAD and on this patch; its baseline was tested and restored byte-for-byte. No model, UI controls or unrelated physics change in this follow-up.
+
+## Deployment correction
+Sites accepted version 36 but did not apply packaged SQL migrations. A live reset-request check caught the missing columns. server/account-schema.ts now adds only missing email columns and indexes before account queries, tolerates concurrent isolates, and retries failures. A SQLite regression proves old credentials survive and repeated/concurrent migration works. Full tests and build passed again. Railway successfully deployed the room fix from this branch. The revised Sites release follows this correction.

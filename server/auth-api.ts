@@ -2,6 +2,7 @@ import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { emailReady, sendAccountEmail, type EmailEnv } from './email';
+import { ensureAccountEmailSchema } from './account-schema';
 interface Statement { bind(...args: unknown[]): Statement; first<T = any>(): Promise<T | null>; run(): Promise<unknown> }
 export interface AuthDB { prepare(sql: string): Statement; batch(statements: Statement[]): Promise<unknown> }
 const COOKIE = '__Host-swf-session', AGE = 604800;
@@ -32,6 +33,7 @@ export async function authAPI(request: Request, env: { DB?: AuthDB } & EmailEnv,
   const session = async () => /^[a-f0-9]{64}$/.test(token) ? db.prepare('SELECT a.id,a.username,a.email,a.pending_email,a.marketing_consent FROM game_sessions s JOIN game_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').bind(digest(token), Date.now()).first<{ id: string; username: string; email: string | null; pending_email: string | null; marketing_consent: number }>() : null;
   const publicAccount = (a: { id: string; username: string; email?: string | null; pending_email?: string | null; marketing_consent?: number }) => ({ id: a.id, username: a.username, email: a.email ?? null, pendingEmail: a.pending_email ?? null, marketingConsent: !!a.marketing_consent });
   try {
+    await ensureAccountEmailSchema(db);
     if (action === 'session' && request.method === 'GET') { const a = await session(); return json({ account: a ? publicAccount(a) : null, emailReady: emailReady(env) }); }
     if (action === 'save' && request.method === 'GET') {
       const account = await session(); if (!account) return json({ error: 'Sign in first.' }, 401);
