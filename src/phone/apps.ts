@@ -334,7 +334,7 @@ function crateInventory(d: PhoneDeps): View {
     return { blocks: [
       { type: 'title', text: 'YOUR CRATES', sub: `${crates.length} waiting in your inventory` },
       crates.length ? { type: 'list', rows: [
-        { id: 'open-all-crates', label: 'OPEN ALL', detail: 'Open every waiting crate once, then review the results', action: () => d.phone.close(() => d.openCrate(crates[0].id, true)) },
+        { id: 'open-all-crates', label: 'OPEN ALL', detail: 'All of them, one after another', action: () => d.phone.close(() => d.openCrate(crates[0].id, true)) },
         ...crates.map(c => ({ id: 'crate-' + c.id, label: CRATE_NAME[c.tier].toUpperCase(), detail: 'From ' + c.source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(c.id)) })),
       ] } : { type: 'text', text: 'No crates waiting. Earn them from missions and level-ups.', muted: true },
     ], initial: crates.length ? 'crate-' + crates[0].id : undefined };

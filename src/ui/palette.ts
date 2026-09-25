@@ -2,8 +2,11 @@ export const UI_PALETTES = ['default', 'grayscale', 'earth'] as const;
 export type UiPalette = typeof UI_PALETTES[number];
 const palettes = {
   default: {ink:'#0b0c0d',paper:'#f4f1e8',lime:'#c6ff00',orange:'#ff5a1f',teal:'#1ecbe1',pink:'#ff4fa3',sun:'#ffd23f'},
-  grayscale: {ink:'#141414',paper:'#efefef',lime:'#d6d6d6',orange:'#b6b6b6',teal:'#cccccc',pink:'#c2c2c2',sun:'#e1e1e1'},
-  earth: {ink:'#29261f',paper:'#eee7da',lime:'#bec39b',orange:'#c7946e',teal:'#a2b7a4',pink:'#c4a39a',sun:'#d4bd8a'},
+  // Accents step through light, mid and dark so a selection, a highlight or an accent word on paper
+  // still stands out without hue: lime (the selection, ink text on it) is a clear mid tone, orange
+  // (accent text and drop shadows) dark enough to read on paper.
+  grayscale: {ink:'#141414',paper:'#efefef',lime:'#a9a9a9',orange:'#555555',teal:'#8c8c8c',pink:'#9e9e9e',sun:'#cfcfcf'},
+  earth: {ink:'#29261f',paper:'#eee7da',lime:'#a9b27a',orange:'#8f5230',teal:'#8fa892',pink:'#b98f84',sun:'#d4bd8a'},
 };
 let current: UiPalette = 'default';
 export const isUiPalette = (value:unknown):value is UiPalette => UI_PALETTES.includes(value as UiPalette);

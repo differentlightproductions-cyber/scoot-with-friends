@@ -715,3 +715,5 @@ html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-ta
 html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) .cr-grid.presets .cr-tile { --card: var(--teal); }
 html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog :is(.account-identity,[role="status"],.account-save strong) { color: var(--ink); }
 html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog .recovery-code { background: var(--paper); }
+/* The level chip's crate count sits on ink: in the quieter palettes the dark accent would vanish there. */
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) .level-chip em { color: var(--lime); }

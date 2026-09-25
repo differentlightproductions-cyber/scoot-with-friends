@@ -52,6 +52,8 @@ Phone camera (#77, `src/phone/camera.ts`): OPEN CAMERA in the CAMERA app holds t
 
 `server/auth-api.ts`, `src/ui/account.ts`, `src/data/cloud.ts`: game accounts and cloud save. While signed in the whole saved profile is copied to the account (`game_saves`, drizzle migration 0001, 64 KB limit) about 20 s after a change and when the tab is hidden; it always stays on the device too. Each device remembers the account revision it last matched and the server only accepts uploads based on its current revision, so two devices never silently overwrite each other: an unchanged device pulls the account copy, and when both changed the player picks one in the account dialog (the replaced device save is kept under `lazer-profile-before-cloud-v1`). Signing out stops syncing and keeps progress on the device. Cloud saves are a convenience copy of client-side state; any future real-money entitlement must be granted and checked on the server, never read from a save.
 
+Crate result previews (#53, #78, `GameMenu.renderPartPreview` / `rewardProduct` in `src/ui/menu.ts`): the revealed part is lifted out on its own and the camera is fitted to its bounds, so a bushing reads as big as a deck. Scooter parts use the shop's isolated product (one grip of the pair); board parts are cut from the assembled longboard by part id with `pickTriangles`: the front truck's trucks, bushings or hardware, one wheel's wheel or bearings, the deck on its edge showing its graphic, the grip on its deck. UI palettes (`src/ui/palette.ts`) recolor interface only; in grayscale and earth the selection colour is a clear mid tone and the accent text colour stays dark enough to read on paper.
+
 ## Architecture and performance
 
 

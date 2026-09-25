@@ -20,7 +20,9 @@ try {
   await page.getByRole('button',{name:/^UI COLORS:/}).click();
   await page.reload();await page.waitForFunction(()=>window.__LAZER?.menu);
   assert.equal(await page.locator('html').getAttribute('data-ui-palette'),'grayscale');
-  await page.evaluate(()=>{const g=window.__LAZER;g.startSession('outdoor',true);g.hud.start();g.menu.openSesh('settings-graphics','outdoor');});
+  // The park loads behind its loading screen (#85): wait for it before opening the Sesh menu. Drawing the
+  // park is stubbed (a software renderer takes seconds a frame); the palette is interface only.
+  await page.evaluate(async()=>{const g=window.__LAZER;await g.startSession('outdoor',true);g.renderer.render=()=>{};g.hud.start();g.menu.openSesh('settings-graphics','outdoor');});
   await page.getByRole('button',{name:/^UI COLORS:/}).click();
   assert.equal(await page.locator('html').getAttribute('data-ui-palette'),'earth');
   assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('lazer-profile-v1')).settings.uiPalette),'earth');

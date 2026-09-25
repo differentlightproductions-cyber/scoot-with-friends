@@ -19,7 +19,8 @@ try {
   const earned = await page.evaluate(async () => {
     const g = window.__LAZER;
     g.testing(true);
-    await g.economy.track({ tricks: 200, grinds: 30, bestLine: 9 });
+    // Enough for three mission crates since crates were made rarer (#76).
+    await g.economy.track({ tricks: 600, grinds: 120, bestLine: 12 });
     const crates = g.profile.progress.crates;
     const rows = id => g.phone.apps.find(app => app.id === id).open().page().blocks.flatMap(block => block.rows ?? []);
     const inventory = rows('items').find(row => row.id === 'crate-inventory');

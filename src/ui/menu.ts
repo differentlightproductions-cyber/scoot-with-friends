@@ -16,6 +16,24 @@ interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [
 function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false,unit='COINS'){
   return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>${unit}</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
 }
+/**
+ * The triangles of `source` whose centres pass `keep` (tested after `matrix`), as their own
+ * small geometry: one grip of a pair, one truck's bushings, one wheel of four (crate previews).
+ */
+function pickTriangles(source:THREE.BufferGeometry,matrix:THREE.Matrix4,keep:(centre:THREE.Vector3)=>boolean){
+  const names=['position','normal','uv','color'].filter(n=>source.attributes[n]&&!(source.attributes[n] as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute);
+  const out:number[][]=names.map(()=>[]),index=source.index,position=source.attributes.position,count=index?index.count:position.count;
+  const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3();
+  for(let t=0;t+2<count;t+=3){
+    const corners=[0,1,2].map(k=>index?index.getX(t+k):t+k);
+    a.fromBufferAttribute(position,corners[0]);b.fromBufferAttribute(position,corners[1]);c.fromBufferAttribute(position,corners[2]);
+    if(!keep(a.add(b).add(c).divideScalar(3).applyMatrix4(matrix)))continue;
+    names.forEach((name,n)=>{const attribute=source.attributes[name] as THREE.BufferAttribute;for(const i of corners)for(let k=0;k<attribute.itemSize;k++)out[n].push(attribute.getComponent(i,k));});
+  }
+  const geometry=new THREE.BufferGeometry();
+  names.forEach((name,n)=>geometry.setAttribute(name,new THREE.Float32BufferAttribute(out[n],(source.attributes[name] as THREE.BufferAttribute).itemSize)));
+  return geometry;
+}
 import {loadProfile} from '../data/loadout';
 import { uiSound } from '../audio/audio';
 import { music } from '../audio/music';
@@ -933,11 +951,48 @@ export class GameMenu {
     if(s==='guide'||s==='tricks')return 'sunrise';
     return 'dusk';
   }
+  /**
+   * What a crate result shows, and its bounds. Board parts are lifted out on their own like scooter
+   * parts: a deck on its edge showing its graphic, grip on its deck, the front truck's trucks,
+   * bushings or hardware, one wheel's wheel or bearings. A pair of grips shows one grip.
+   */
+  private rewardProduct(rideable:string|undefined,category:string,partId:string,picked:THREE.BufferGeometry[]){
+    const board=this.previewRider.board;
+    const lift=(meshes:THREE.Mesh[],space:THREE.Matrix4,keep:(c:THREE.Vector3)=>boolean)=>{
+      this.isolatedProduct.clear();
+      for(const m of meshes){const g=pickTriangles(m.geometry,space.clone().multiply(m.matrixWorld),keep);picked.push(g);const copy=new THREE.Mesh(g,m.material);copy.matrixAutoUpdate=false;copy.matrix.copy(m.matrixWorld);this.isolatedProduct.add(copy);}
+    };
+    if(rideable==='longboard'&&['deck','grip'].includes(category)){
+      // On its edge, lengthwise: the deck shows its graphic (underneath), the grip its top on the deck.
+      const deckId=(board.userData.loadout as {deck?:{partId:string}}|undefined)?.deck?.partId,grip=category==='grip';
+      board.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0,grip?1:-1,0),new THREE.Vector3(0,0,grip?1:-1),new THREE.Vector3(1,0,0)));
+      board.position.set(0,0,0);board.updateMatrixWorld(true);
+      const meshes:THREE.Mesh[]=[];board.traverse(o=>{if(o instanceof THREE.Mesh&&(o.userData.part===partId||(grip&&o.userData.part===deckId)))meshes.push(o);});
+      lift(meshes,new THREE.Matrix4(),()=>true);
+      board.visible=false;
+    }else if(rideable==='longboard'){
+      board.updateMatrixWorld(true);
+      const meshes:THREE.Mesh[]=[];board.traverse(o=>{if(o instanceof THREE.Mesh&&o.userData.part===partId)meshes.push(o);});
+      const toBoard=board.matrixWorld.clone().invert(),extent=new THREE.Box3(),p=new THREE.Vector3();
+      for(const m of meshes){const toLocal=toBoard.clone().multiply(m.matrixWorld),pos=m.geometry.attributes.position;for(let i=0;i<pos.count;i++)extent.expandByPoint(p.fromBufferAttribute(pos,i).applyMatrix4(toLocal));}
+      const size=extent.getSize(new THREE.Vector3()),front=size.z>.3,right=['wheels','bearings'].includes(category)&&size.x>.15;
+      lift(meshes,toBoard,c=>(!front||c.z>0)&&(!right||c.x>0));
+      board.visible=false;
+    }else if(category==='grips'&&this.isolatedProduct.children.length){
+      this.isolatedProduct.updateMatrixWorld(true);
+      const whole=new THREE.Box3().setFromObject(this.isolatedProduct),size=whole.getSize(new THREE.Vector3()),centre=whole.getCenter(new THREE.Vector3());
+      const axis=size.x>=size.z?'x':'z';
+      lift(this.isolatedProduct.children.filter((o):o is THREE.Mesh=>o instanceof THREE.Mesh),new THREE.Matrix4(),c=>c[axis]>centre[axis]);
+    }
+    this.isolatedProduct.updateMatrixWorld(true);
+    const bounds=new THREE.Box3().setFromObject(this.isolatedProduct);
+    return bounds.isEmpty()?new THREE.Box3().setFromCenterAndSize(this.focusTarget,new THREE.Vector3(.3,.3,.3)):bounds;
+  }
   /** A crate result borrows the existing shop preview once; it never equips the part. */
   renderPartPreview(renderer:THREE.WebGLRenderer,selection:{partId:string;variantId:string}) {
     const entry=catalogEntry(selection.partId);
     if(!entry?.variants.some(v=>v.id===selection.variantId))throw new Error('Unknown preview item');
-    const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;
+    const canvas=document.createElement('canvas');canvas.width=640;canvas.height=400;
     canvas.dataset.partId=selection.partId;canvas.dataset.variantId=selection.variantId;
     canvas.setAttribute('role','img');canvas.setAttribute('aria-label',entry.name+' / '+entry.variants.find(v=>v.id===selection.variantId)!.name);
     const target=new THREE.WebGLRenderTarget(canvas.width,canvas.height,{colorSpace:THREE.SRGBColorSpace});
@@ -945,14 +1000,23 @@ export class GameMenu {
     const background=this.previewScene.background,camera=this.previewCamera.clone(),floor=this.previewScene.getObjectByName('Preview floor');
     const floorVisible=floor?.visible,riderVisible=this.previewRider.rider.visible;
     const focus=this.focus.clone(),focusTarget=this.focusTarget.clone(),pan=this.pan.clone(),zoom=this.zoom,zoomTarget=this.zoomTarget,orbit=this.orbit;
+    const picked:THREE.BufferGeometry[]=[],boardPose=[this.previewRider.board.position.clone(),this.previewRider.board.quaternion.clone()] as const;
     try {
       this.rewardSelection=selection;this.highlight();
       this.previewRider.rider.visible=false;this.focusBox.visible=false;if(floor)floor.visible=false;
       this.previewScene.background=new THREE.Color(0xf4f1e8);
       this.previewCamera.aspect=canvas.width/canvas.height;
-      const distance=this.zoomTarget;
-      this.previewCamera.position.copy(this.focusTarget).add(new THREE.Vector3(Math.sin(.65)*distance,distance*.3,Math.cos(.65)*distance));
-      this.previewCamera.lookAt(this.focusTarget);this.previewCamera.updateProjectionMatrix();
+      // Framed on the part itself: the closest view that keeps every corner of its bounds in the picture.
+      const shown=this.rewardProduct(entry.rideable,entry.category,selection.partId,picked),centre=shown.getCenter(new THREE.Vector3());
+      const view=new THREE.Vector3(Math.sin(.65),.3,Math.cos(.65)).normalize(),cam=this.previewCamera;
+      cam.position.copy(centre).add(view);cam.lookAt(centre);cam.updateMatrixWorld();
+      const tanV=Math.tan(THREE.MathUtils.degToRad(cam.fov)/2),tanH=tanV*cam.aspect,corner=new THREE.Vector3();let distance=.05;
+      for(let i=0;i<8;i++){
+        corner.set(i&1?shown.max.x:shown.min.x,i&2?shown.max.y:shown.min.y,i&4?shown.max.z:shown.min.z).applyMatrix4(cam.matrixWorldInverse);
+        const depth=corner.z+1;distance=Math.max(distance,depth+Math.abs(corner.x)/tanH*1.12,depth+Math.abs(corner.y)/tanV*1.12);
+      }
+      cam.position.copy(centre).addScaledVector(view,distance);
+      cam.near=distance/50;cam.lookAt(centre);cam.updateProjectionMatrix();
       renderer.setRenderTarget(target);renderer.setScissorTest(false);renderer.clear();renderer.render(this.previewScene,this.previewCamera);
       const pixels=new Uint8Array(canvas.width*canvas.height*4),context=canvas.getContext('2d')!,image=context.createImageData(canvas.width,canvas.height);
       renderer.readRenderTargetPixels(target,0,0,canvas.width,canvas.height,pixels);
@@ -961,6 +1025,7 @@ export class GameMenu {
       return canvas;
     } finally {
       this.rewardSelection=undefined;this.highlight();
+      picked.forEach(g=>g.dispose());this.previewRider.board.position.copy(boardPose[0]);this.previewRider.board.quaternion.copy(boardPose[1]);
       this.focus.copy(focus);this.focusTarget.copy(focusTarget);this.pan.copy(pan);this.zoom=zoom;this.zoomTarget=zoomTarget;this.orbit=orbit;
       this.previewRider.rider.visible=riderVisible;if(floor)floor.visible=floorVisible!;
       this.previewScene.background=background;this.previewCamera.copy(camera);
