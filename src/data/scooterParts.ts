@@ -34,8 +34,11 @@ export interface ScooterPart {
   unlocked: boolean;
   priceFuture: number | null;
   variants: PartVariant[];
-  unlockType: "free"|"credit";
+  /** How it is bought (#76): Coins ("credit", earned by riding) or Bucks (premium, Mafioso). */
+  unlockType: "free"|"credit"|"bucks";
   creditPrice?:number;
+  /** Premium parts only: their price in Bucks (1-20). */
+  bucksPrice?:number;
   premium: false;
   priceId: null;
   owned: boolean;
@@ -48,12 +51,13 @@ export interface ScooterPart {
 }
 /**
  * Lazer is the starter brand, but only the starter build is given away (see
- * STARTER below); every other Lazer part and colourway costs Credit. Prices
- * are per colourway and deliberately below Mafioso's. Tune here.
+ * STARTER below); every other Lazer part and colourway costs Coins (#76:
+ * two and a half times the old prices, so parts are something to save for).
+ * Prices are per colourway. Tune here.
  */
 export const LAZER_PRICE: Record<Category, number> = {
-  deck: 60, bars: 45, fork: 40, clamp: 25, wheels: 35, bearings: 15,
-  grips: 12, headset: 15, brake: 15, compression: 20, griptape: 12,
+  deck: 150, bars: 110, fork: 100, clamp: 60, wheels: 90, bearings: 40,
+  grips: 30, headset: 40, brake: 40, compression: 50, griptape: 30,
 };
 const colors = {
   black: 0x263333,
@@ -163,12 +167,17 @@ export const PARTS: ScooterPart[] = [
   make("compression", "ihc-compression", "IHC Compression", "ihc", ["black"]),
   make("compression", "scs-compression", "SCS Compression", "scs", ["silver"]),
 ];
-const mafioso=(category:Category,id:string,name:string,shape:string,creditPrice:number,variants:PartVariant[]):ScooterPart=>({...make(category,id,name,shape,['black'],category==='wheels'?110:undefined),brand:'Mafioso',brandId:'mafioso',name:'Mafioso '+name,unlockType:'credit',owned:false,unlocked:false,creditPrice,variants});
+/**
+ * Mafioso is the high-end brand (#76): never sold for Coins. Its parts come
+ * from a very lucky crate pull, or for Bucks (1-20; the premium currency,
+ * earned slowly by levelling up; buying Bucks with money is not available).
+ */
+const mafioso=(category:Category,id:string,name:string,shape:string,bucksPrice:number,variants:PartVariant[]):ScooterPart=>({...make(category,id,name,shape,['black'],category==='wheels'?110:undefined),brand:'Mafioso',brandId:'mafioso',name:'Mafioso '+name,unlockType:'bucks',creditPrice:undefined,bucksPrice,owned:false,unlocked:false,variants});
 PARTS.push(
- mafioso('bars','mafioso-bars-y','Crown Y Bars','mafioso-y',75,[{id:'mafioso_bars_y_black_gold',name:'Black / Gold',color:0x171b1e,accent:0xc5a653},{id:'mafioso_bars_y_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_bars_y_chrome',name:'Chrome',color:0xb8cbc6}]),
- mafioso('wheels','mafioso-wheels-petal','Petal 110 Wheel Pair','petal',55,[{id:'mafioso_wheels_petal_oilslick',name:'Oil Slick / Black',color:0x71989b},{id:'mafioso_wheels_petal_green_gold',name:'Green / Gold',color:0x638845,accent:0xc4a24f}]),
- mafioso('wheels','mafioso-wheels-broad','Broad Spoke 110 Wheel Pair','broad',55,[{id:'mafioso_wheels_broad_rainbow',name:'Rainbow / Black',color:0x71989b}]),
- mafioso('clamp','mafioso-clamp-segmented','Segmented Double Clamp','segmented',35,[{id:'mafioso_clamp_segmented_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_clamp_segmented_chrome',name:'Chrome',color:0xb8cbc6},{id:'mafioso_clamp_segmented_black',name:'Black',color:0x171b1e}])
+ mafioso('bars','mafioso-bars-y','Crown Y Bars','mafioso-y',6,[{id:'mafioso_bars_y_black_gold',name:'Black / Gold',color:0x171b1e,accent:0xc5a653},{id:'mafioso_bars_y_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_bars_y_chrome',name:'Chrome',color:0xb8cbc6}]),
+ mafioso('wheels','mafioso-wheels-petal','Petal 110 Wheel Pair','petal',5,[{id:'mafioso_wheels_petal_oilslick',name:'Oil Slick / Black',color:0x71989b},{id:'mafioso_wheels_petal_green_gold',name:'Green / Gold',color:0x638845,accent:0xc4a24f}]),
+ mafioso('wheels','mafioso-wheels-broad','Broad Spoke 110 Wheel Pair','broad',5,[{id:'mafioso_wheels_broad_rainbow',name:'Rainbow / Black',color:0x71989b}]),
+ mafioso('clamp','mafioso-clamp-segmented','Segmented Double Clamp','segmented',3,[{id:'mafioso_clamp_segmented_neochrome',name:'Neochrome',color:0x71989b},{id:'mafioso_clamp_segmented_chrome',name:'Chrome',color:0xb8cbc6},{id:'mafioso_clamp_segmented_black',name:'Black',color:0x171b1e}])
 );
 // Griptape is cosmetic: it changes the deck's top sheet only, never grip,
 // friction, weight, speed or pop.
@@ -189,7 +198,7 @@ PARTS.push(
     { id: "black-white", name: "Black / White", color: 0x2b3133, accent: 0xe9e5d9 },
     { id: "smoke-red", name: "Smoke / Red", color: 0x4d5558, accent: 0xe65330 },
   ]),
-  mafioso("griptape", "mafioso-griptape-crown", "Crown Grip Tape", "crown", 20, [
+  mafioso("griptape", "mafioso-griptape-crown", "Crown Grip Tape", "crown", 1, [
     { id: "mafioso_grip_black_gold", name: "Black / Gold", color: 0x1d2022, accent: 0xc5a653 },
     { id: "mafioso_grip_frost", name: "Frosted / White", color: 0x8c9496, accent: 0xe9e5d9 },
   ]),

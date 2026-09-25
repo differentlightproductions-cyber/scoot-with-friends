@@ -7,7 +7,7 @@ import type { Events } from "../core/events";
 import type { InputFrame } from "../input/input";
 import type { CreditEconomy } from "../data/credit";
 import { completedDegrees } from "../tricks/resolver";
-import { CRATE_COLOR, CRATE_NAME, FIRST_COUNT, FIRST_TRICKS, tallyPart, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
+import { CRATE_COLOR, CRATE_NAME, levelReward, FIRST_COUNT, FIRST_TRICKS, tallyPart, RARITY_COLOR, RARITY_LABEL, levelFor, type Crate, type CrateResult, type Gains, type Stat } from "../data/progress";
 import type { Progress } from "../data/progress";
 import "./rewards.css";
 
@@ -198,8 +198,9 @@ export class RewardFx {
     for (const c of gains.completed) this.stickers.push(() => this.toast(c.title, c.reward.credit, c.reward.xp, c.reward.crate ? CRATE_NAME[c.reward.crate] : ""));
     for (const crate of gains.crates) this.stickers.push(() => this.crateAdded(crate));
     for (const level of gains.levelsUp) {
-      // Exactly one reward per level (#55): a crate, or a novelty or snack straight into the pockets.
-      const crates = [...gains.crates.filter((c) => c.source === "Level " + level).map((c) => CRATE_NAME[c.tier]), ...gains.items.filter((i) => i.source === "Level " + level).map((i) => i.kind)];
+      // Exactly one reward per level (#55): Bucks every fifth level (#76), else a crate, or a novelty or snack straight into the pockets.
+      const bucks = levelReward(level);
+      const crates = [...(bucks.kind === "bucks" ? [`+${bucks.amount} Bucks`] : []), ...gains.crates.filter((c) => c.source === "Level " + level).map((c) => CRATE_NAME[c.tier]), ...gains.items.filter((i) => i.source === "Level " + level).map((i) => i.kind)];
       this.stickers.push(() => this.levelUp(level, crates));
     }
     void this.pumpStickers();
@@ -218,7 +219,7 @@ export class RewardFx {
   toast(title: string, credit: number, xp: number, crate = "") {
     const el = document.createElement("div");
     el.className = "reward-toast";
-    el.innerHTML = `<span class="rt-label">MISSION COMPLETE</span><strong>${esc(title)}</strong><span class="rt-gain">+${credit} CREDIT · +${xp} XP${crate ? ` · <b>${esc(crate).toUpperCase()}</b>` : ""}</span>`;
+    el.innerHTML = `<span class="rt-label">MISSION COMPLETE</span><strong>${esc(title)}</strong><span class="rt-gain">+${credit} COINS · +${xp} XP${crate ? ` · <b>${esc(crate).toUpperCase()}</b>` : ""}</span>`;
     this.toasts.append(el);
     sfx.mission();
     setTimeout(() => el.classList.add("out"), 2800);
@@ -377,8 +378,8 @@ export class RewardFx {
          <div class="cc-preview"><div class="cc-swatch" style="--c:${hex(item.color)};--a:${hex(item.accent ?? item.color)}"></div></div>
          <small>${esc(item.brand).toUpperCase()} · ${esc(item.category).toUpperCase()}</small>
          <strong>${esc(item.name.replace(item.brand + " ", ""))}</strong><em>${esc(item.variantName)}</em>
-         <span class="cc-credit">+${result.credit} CREDIT</span>`
-      : `<span class="cc-rarity">COLLECTION COMPLETE</span><div class="cc-swatch coin"></div><strong>You own everything</strong><em>Paid out in Credit instead</em><span class="cc-credit">+${result.credit} CREDIT</span>`;
+         <span class="cc-credit">+${result.credit} COINS</span>`
+      : `<span class="cc-rarity">COLLECTION COMPLETE</span><div class="cc-swatch coin"></div><strong>You own everything</strong><em>Paid out in Coins instead</em><span class="cc-credit">+${result.credit} COINS</span>`;
     card.hidden = false;
     el.querySelector<HTMLElement>('.crate-cancel')!.hidden = true;
     if (item) try { this.preview(item.partId, item.variantId, card.querySelector<HTMLElement>('.cc-preview')!); } catch { /* Keep the colour swatch if preview rendering fails. */ }

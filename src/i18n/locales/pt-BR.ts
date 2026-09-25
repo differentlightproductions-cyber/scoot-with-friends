@@ -147,7 +147,7 @@ export const PT_BR: Record<string, string> = {
   "phone.ui.saved_replays": "REPLAYS SALVOS", "phone.ui.saved_detail": "Assistir, editar, renomear ou excluir", "phone.ui.replay_history": "HISTÓRICO DE REPLAY", "phone.ui.history_detail": "Duração: Configurações / Jogabilidade",
   "settings.option.held_item": "USAR ITEM NA MÃO",
   "settings.test.subtitle": "APERTE BOTÕES E MOVA OS ANALÓGICOS", "settings.test.copy": "COPIAR DIAGNÓSTICO", "settings.test.copied": "Diagnóstico copiado (sem dados pessoais).", "settings.test.unavailable": "Área de transferência indisponível.", "settings.test.copy.desc": "ID, mapeamento, origem, predefinição e botões ativos; sem dados pessoais.", "settings.test.show_touch": "MOSTRAR CONTROLES DE TOQUE", "settings.test.show_touch.desc": "Prévia e teste do controle na tela.",
-  "settings.owner_credit": "PROPRIETÁRIO / CRÉDITO DE TESTE", "settings.owner_credit.desc": "Só teste local; separado do Credit ganho.",
+  "settings.owner_credit": "PROPRIETÁRIO / CRÉDITO DE TESTE", "settings.owner_credit.desc": "Só teste local; separado do Coins ganho.",
   "settings.apply": "APLICAR / SALVAR ALTERAÇÕES", "settings.unsaved": "Escolhas não salvas. A aparência muda ao pousar com segurança.", "settings.nothing": "Nada para aplicar ainda.",
   "settings.save_failed": "Não foi possível salvar. Tente novamente antes de sair.", "settings.saved_account": "O progresso é salvo na sua conta.", "settings.saved_device": "O progresso é salvo neste aparelho. Entre para sincronizar.", "settings.cash_unavailable": "Compras em dinheiro indisponíveis nesta versão alfa.",
   "settings.controls_hint": "D-PAD / LS SELECIONA · A CONFIRMA · B VOLTA", "settings.controls_more": "RS GIRA / ZOOM · LB+RS MOVE · ARRASTE / RODA · TECLADO W/S, Enter, Esc",
@@ -244,6 +244,6 @@ export const PT_BR: Record<string, string> = {
   "doves.hit": "UMA POMBA TE ACERTOU!",
   "item.can": "lata vazia",
   "item.paper": "bola de papel",
-  "reward.credits.one": "Você ganhou {count} Credit",
-  "reward.credits.other": "Você ganhou {count} Credits",
+  "reward.credits.one": "Você ganhou {count} Coin",
+  "reward.credits.other": "Você ganhou {count} Coins",
 };

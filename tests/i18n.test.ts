@@ -24,10 +24,10 @@ test("a missing key falls back to English, an unknown key to nothing", () => {
   assert.equal(t("no.such.key"), "");
 });
 test("plurals follow each language's rules", () => {
-  assert.equal(tn("reward.credits", 1, {}, "en-US"), "You earned 1 Credit");
-  assert.equal(tn("reward.credits", 1200, {}, "en-US"), "You earned 1,200 Credits");
-  assert.equal(tn("reward.credits", 1, {}, "ar"), "كسبت Credit واحدًا");
-  assert.equal(tn("reward.credits", 1, {}, "pt-BR"), "Você ganhou 1 Credit");
+  assert.equal(tn("reward.credits", 1, {}, "en-US"), "You earned 1 Coin");
+  assert.equal(tn("reward.credits", 1200, {}, "en-US"), "You earned 1,200 Coins");
+  assert.equal(tn("reward.credits", 1, {}, "ar"), "كسبت Coins واحدًا");
+  assert.equal(tn("reward.credits", 1, {}, "pt-BR"), "Você ganhou 1 Coin");
 });
 test("Arabic reads right to left, the rest left to right", () => {
   assert.equal(direction("ar"), "rtl");

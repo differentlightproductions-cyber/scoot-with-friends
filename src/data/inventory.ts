@@ -4,10 +4,10 @@
 // disagree about ownership.
 import { PARTS, CATEGORIES } from "./scooterParts";
 import { LONGBOARD_BRAND, LONGBOARD_CATEGORIES, LONGBOARD_PARTS } from "./longboardParts";
-import { ownsSelection, type RideableKind } from "./catalog";
+import { ownsSelection, priceOf, type Currency, type RideableKind } from "./catalog";
 import type { AlphaWallet } from "./credit";
 import { SHOPS } from "./shops";
-import { priceRarity, type Rarity } from "./progress";
+import { partRarity, priceRarity, type Rarity } from "./progress";
 
 export type BrowseMode = "owned" | "shop";
 
@@ -22,6 +22,8 @@ export interface InventoryItem {
   category: string;
   rideable: RideableKind;
   price: number;
+  /** What `price` is in (#76): Coins, or Bucks for Mafioso. */
+  currency: Currency;
   owned: boolean;
   /** Crate-only colourway: never for sale. */
   exclusive: boolean;
@@ -43,15 +45,15 @@ function allItems(wallet: AlphaWallet): InventoryItem[] {
     p.variants.map((v) => ({
       partId: p.id, variantId: v.id, partName: strip(p.name, p.brand), variantName: v.name,
       brandId: p.brandId, brand: p.brand, category: p.category, rideable: "scooter" as const,
-      price: p.creditPrice ?? 0, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
-      exclusive: !!v.exclusive, rarity: v.exclusive ?? priceRarity(p.creditPrice ?? 0),
+      price: priceOf(p).amount, currency: priceOf(p).currency, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
+      exclusive: !!v.exclusive, rarity: v.exclusive ?? partRarity(p),
     })),
   );
   const board = LONGBOARD_PARTS.flatMap((p) =>
     p.variants.map((v) => ({
       partId: p.id, variantId: v.id, partName: strip(p.name, p.brand), variantName: v.name,
       brandId: p.brandId, brand: p.brand, category: p.category, rideable: "longboard" as const,
-      price: p.creditPrice, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
+      price: p.creditPrice, currency: "coins" as const, owned: ownsSelection(wallet, { partId: p.id, variantId: v.id }),
       exclusive: false, rarity: priceRarity(p.creditPrice),
     })),
   );

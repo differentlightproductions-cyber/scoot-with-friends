@@ -80,19 +80,19 @@ const part = (
 });
 
 export const LONGBOARD_PARTS: LongboardPart[] = [
-  part("deck", "ss-drop-through-deck", "Drop-Through Deck", "single", 220, [
+  part("deck", "ss-drop-through-deck", "Drop-Through Deck", "single", 550, [
     { id: "classic", name: "Classic", color: 0xc79a62 },
     { id: "horizon", name: "Horizon", color: 0x1f3342 },
     { id: "palms", name: "Palms", color: 0x151a1c },
     { id: "ridgeline", name: "Ridgeline", color: 0xd3a36c },
   ]),
-  part("trucks", "ss-rkp-trucks", "180 mm Reverse-Kingpin Trucks", "pair", 140, [
+  part("trucks", "ss-rkp-trucks", "180 mm Reverse-Kingpin Trucks", "pair", 350, [
     { id: "matte-black", name: "Matte Black", color: 0x1e2224 },
     { id: "gunmetal", name: "Gunmetal", color: 0x4e5559 },
     { id: "silver", name: "Silver", color: 0xb9c0c2 },
     { id: "olive", name: "Olive", color: 0x55603a },
   ]),
-  part("wheels", "ss-cruiser-wheels", "70 mm Cruiser Wheels", "set-of-4", 90, [
+  part("wheels", "ss-cruiser-wheels", "70 mm Cruiser Wheels", "set-of-4", 225, [
     { id: "blue", name: "Blue", color: 0x1f7fd0 },
     { id: "purple", name: "Purple", color: 0x7a3bc4 },
     { id: "lime", name: "Lime", color: 0xa9d62c },
@@ -100,22 +100,22 @@ export const LONGBOARD_PARTS: LongboardPart[] = [
     { id: "white", name: "White", color: 0xe8e6de },
     { id: "black", name: "Black", color: 0x222526 },
   ]),
-  part("bushings", "ss-barrel-bushings", "Barrel Bushings", "kit", 25, [
+  part("bushings", "ss-barrel-bushings", "Barrel Bushings", "kit", 60, [
     { id: "green", name: "Green", color: 0x2f9a45 },
     { id: "black", name: "Black", color: 0x202324 },
     { id: "red", name: "Red", color: 0xc42f2a },
     { id: "blue", name: "Blue", color: 0x2d62b8 },
   ]),
-  part("bearings", "ss-precision-bearings", "Precision Bearings", "set-of-8", 35, [
+  part("bearings", "ss-precision-bearings", "Precision Bearings", "set-of-8", 90, [
     { id: "steel", name: "Steel", color: 0xb4bcbd, accent: 0x1c1f20 },
   ]),
-  part("grip", "ss-grip", "Coarse Grip Tape", "single", 15, [
+  part("grip", "ss-grip", "Coarse Grip Tape", "single", 40, [
     { id: "black", name: "Black", color: 0x1b1d1e },
     { id: "charcoal", name: "Charcoal", color: 0x3a3f41 },
     { id: "sand", name: "Sand", color: 0x8a7a5e },
     { id: "sea-glass", name: "Sea Glass", color: 0x4f7d78 },
   ]),
-  part("hardware", "ss-mounting-hardware", "Mounting Hardware", "set-of-8", 10, [
+  part("hardware", "ss-mounting-hardware", "Mounting Hardware", "set-of-8", 25, [
     { id: "black", name: "Black", color: 0x1c1e1f },
   ]),
 ];

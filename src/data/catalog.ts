@@ -18,8 +18,10 @@ export interface CatalogEntry {
   name: string;
   rideable: RideableKind;
   category: string;
-  unlockType: "free" | "credit";
+  unlockType: "free" | "credit" | "bucks";
   creditPrice: number;
+  /** Premium parts only (#76): the price in Bucks. */
+  bucksPrice: number;
   variants: { id: string; name: string; exclusive?: string }[];
 }
 
@@ -33,6 +35,7 @@ export function catalogEntry(partId: string): CatalogEntry | undefined {
       category: scooter.category,
       unlockType: scooter.unlockType,
       creditPrice: scooter.creditPrice ?? 0,
+      bucksPrice: scooter.bucksPrice ?? 0,
       variants: scooter.variants,
     };
   const board = LONGBOARD_PARTS.find((p) => p.id === partId);
@@ -44,9 +47,23 @@ export function catalogEntry(partId: string): CatalogEntry | undefined {
       category: board.category,
       unlockType: board.unlockType,
       creditPrice: board.creditPrice,
+      bucksPrice: 0,
       variants: board.variants,
     };
   return undefined;
+}
+
+/**
+ * The two currencies (#76). Coins are earned by riding (banked points and
+ * missions; stored as the wallet's `credit`). Bucks are the premium currency:
+ * earned very slowly (5 every 5 levels) and, one day, bought with money
+ * (not available: see docs/PAYMENTS-PLAN.md). Mafioso parts cost Bucks.
+ */
+export type Currency = "coins" | "bucks";
+export const CURRENCY_LABEL: Record<Currency, string> = { coins: "COINS", bucks: "BUCKS" };
+/** What a part costs, and in which currency. */
+export function priceOf(entry: { unlockType: string; creditPrice?: number; bucksPrice?: number }): { amount: number; currency: Currency } {
+  return entry.unlockType === "bucks" ? { amount: entry.bucksPrice ?? 0, currency: "bucks" } : { amount: entry.creditPrice ?? 0, currency: "coins" };
 }
 
 /**

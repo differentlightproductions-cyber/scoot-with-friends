@@ -1,6 +1,6 @@
 import {loadProfile,saveProfile} from './loadout';
 import {type PartSelection,validStarter} from './scooterParts';
-import {catalogEntry,ownershipKey as catalogKey,ownsSelection,ownsBoard,bundlePrice,completeBoardSelections} from './catalog';
+import {catalogEntry,ownershipKey as catalogKey,ownsSelection,ownsBoard,bundlePrice,completeBoardSelections,priceOf,type Currency} from './catalog';
 import {LONGBOARD_PARTS,type LongboardCategory} from './longboardParts';
 import {dayKey,openCrate,record,type CrateResult,type Gains,type Landed,type Stat} from './progress';
 import {dailyDeals} from './deals';
@@ -9,16 +9,23 @@ const shopStock=(id:string)=>SHOPS.find(s=>s.id===id)?.stock??[];
 import type {LocalProfile} from './loadout';
 import {receiveItem} from './items';
 /**
- * Pays what record() earned into the same save: Credit into the wallet, and
- * level-up items into the pockets (a full pocket gets their worth in Credit).
+ * Pays what record() earned into the same save: Coins (`credit`) and Bucks into
+ * the wallet, and level-up items into the pockets (a full pocket gets their
+ * worth in Coins).
  */
 function settle(p:LocalProfile,gains:Gains){
  for(const item of gains.items)if(!receiveItem(p.pockets,item.kind))gains.credit+=POCKETS_FULL_CREDIT;
  if(gains.credit)p.wallet.credit=Math.min(CREDIT_POLICY.maxBalance,p.wallet.credit+gains.credit);
+ if(gains.bucks)p.wallet.bucks=Math.min(BUCKS_POLICY.maxBalance,p.wallet.bucks+gains.bucks);
 }
-const POCKETS_FULL_CREDIT=25;
+const POCKETS_FULL_CREDIT=15;
 const crateId=()=>'c'+Array.from(crypto.getRandomValues(new Uint8Array(9)),b=>b.toString(16).padStart(2,'0')).join('');
-export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number;
+/**
+ * The one wallet. `credit` holds Coins (#76: the earned currency, shown as
+ * COINS); `bucks` holds the premium currency, earned only by levelling up in
+ * this alpha. Neither can be bought with money here (BUCKS_POLICY.cashPurchases).
+ */
+export interface AlphaWallet {credit:number;remainder:number;owned:string[];receipts:string[];testCredit:number;bucks:number;
  /** The one-time starter scooter has been claimed (claimStarter). Never resets. */
  starter:boolean;
  /** Phone-shop orders on their way: paid for, owned once delivered. */
@@ -27,8 +34,11 @@ export interface AlphaWallet {credit:number;remainder:number;owned:string[];rece
 export interface Package {id:string;partId:string;variantId:string;price:number;ordered:number;arrives:number}
 /** Phone orders are the same stock and price as the shop, delivered after a short wait. Tune here. */
 export const DELIVERY={seconds:45,shopId:'techno_gravity',maxOpen:12};
-export const CREDIT_POLICY={pointsPerCredit:100,maxBalance:10000000};
-export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0,starter:false,packages:[]});
+/** Coins from riding (#76): one per 250 banked points (was 100). */
+export const CREDIT_POLICY={pointsPerCredit:250,maxBalance:10000000};
+/** Bucks: 5 every 5 levels (progress.ts); buying them with money is off until a server-side store exists (docs/PAYMENTS-PLAN.md). */
+export const BUCKS_POLICY={maxBalance:100000,cashPurchases:false};
+export const emptyWallet=():AlphaWallet=>({credit:0,remainder:0,owned:[],receipts:[],testCredit:0,bucks:0,starter:false,packages:[]});
 /** Reward receipts only guard against the same event paying twice, which happens moments apart; the newest are enough. */
 const RECEIPTS_KEPT=500;
 export const ownershipKey=catalogKey;
@@ -36,6 +46,7 @@ export function owns(wallet:AlphaWallet,s:PartSelection){return ownsSelection(wa
 export function validWallet(value:any):AlphaWallet{
  const w=emptyWallet();if(!value)return w;
  for(const k of ['credit','remainder','testCredit'] as const)if(Number.isSafeInteger(value[k])&&value[k]>=0)w[k]=Math.min(value[k],CREDIT_POLICY.maxBalance);
+ if(Number.isSafeInteger(value.bucks)&&value.bucks>=0)w.bucks=Math.min(value.bucks,BUCKS_POLICY.maxBalance);
  w.owned=Array.isArray(value.owned)?[...new Set<string>(value.owned.filter((s:any)=>typeof s==='string'))]:[];
  w.receipts=Array.isArray(value.receipts)?[...new Set<string>(value.receipts.filter((s:any)=>typeof s==='string'))].slice(-RECEIPTS_KEPT):[];
  w.starter=value.starter===true;
@@ -86,9 +97,8 @@ export class CreditEconomy {
   if(!part||!variant||variant.exclusive||!shopStock(DELIVERY.shopId).includes(s.partId))return 'Product unavailable';
   if(owns(w,s))return 'Already owned';if(w.packages.some(k=>k.partId===s.partId&&k.variantId===s.variantId))return 'Already on its way';
   if(w.packages.length>=DELIVERY.maxOpen)return 'Too many packages on the way. Wait for a delivery.';
-  const deal=dailyDeals(DELIVERY.shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId),price=deal?deal.price:part.creditPrice;
-  if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' Credit.';if(w.credit+w.testCredit<price)return 'Not enough Credit';
-  const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;
+  const deal=dailyDeals(DELIVERY.shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId),{amount,currency}=priceOf(part),price=deal?deal.price:amount;
+  const paid=pay(w,price,currency,expected);if(paid)return paid;
   const pkg={id:'pkg-'+crateId().slice(1,19),partId:s.partId,variantId:s.variantId,price,ordered:now,arrives:now+DELIVERY.seconds*1000};w.packages.push(pkg);
   const gains=record(p.progress,{purchases:1},crateId,dayKey());settle(p,gains);
   return {pkg,gains};}).then(r=>{if(typeof r!=='string'&&(r.gains.completed.length||r.gains.levelsUp.length))this.onGains(r.gains);return r;});}
@@ -126,16 +136,14 @@ export class CreditEconomy {
   * `expected` guards against the price rising between showing it and buying.
   */
  buy(s:PartSelection,shopId?:string,expected?:number){return this.purchase(w=>{const part=catalogEntry(s.partId),variant=part?.variants.find(v=>v.id===s.variantId);if(!part||!variant||variant.exclusive)return 'Product unavailable';if(owns(w,s))return 'Already owned';if(w.packages.some(k=>k.partId===s.partId&&k.variantId===s.variantId))return 'Already on its way from your phone order';
-  const deal=shopId?dailyDeals(shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId):undefined;
-  const price=deal?deal.price:part.creditPrice;if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' Credit.';if(w.credit+w.testCredit<price)return 'Not enough Credit';
-  const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;w.owned.push(ownershipKey(s));return 1;});}
+  const deal=shopId?dailyDeals(shopId).find(d=>d.partId===s.partId&&d.variantId===s.variantId):undefined,{amount,currency}=priceOf(part);
+  const paid=pay(w,deal?deal.price:amount,currency,expected);if(paid)return paid;w.owned.push(ownershipKey(s));return 1;});}
  /** A complete Sometimes Summer board in one transaction; only missing parts are charged. */
  buyCompleteBoard(deckVariant:string){return this.purchase(w=>{
   const deck=LONGBOARD_PARTS.find(p=>p.category==='deck')!;if(!deck.variants.some(v=>v.id===deckVariant))return 'Product unavailable';
   const selections=completeBoardSelections(deckVariant,loadProfile().longboard);
   const {missing,price}=bundlePrice(selections,s=>ownsSelection(w,s));if(!missing.length)return 'Already owned';
-  if(w.credit+w.testCredit<price)return 'Not enough Credit';
-  const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;for(const s of missing)w.owned.push(catalogKey(s));return missing.length;});}
+  const paid=pay(w,price,'coins');if(paid)return paid;for(const s of missing)w.owned.push(catalogKey(s));return missing.length;});}
  equip(s:PartSelection,expectedRevision:number){
   const run=()=>{const profile=loadProfile();if((profile.equipmentRevision??0)!==expectedRevision)return {error:'Your setup changed in another tab. Reopen the menu and retry.'};
    const part=catalogEntry(s.partId);if(!part?.variants.some(v=>v.id===s.variantId)||!owns(profile.wallet,s))return {error:'You do not own this colorway.'};
@@ -155,4 +163,16 @@ export class CreditEconomy {
   const op=this.queue.then(()=>typeof navigator!=='undefined'&&navigator.locks?navigator.locks.request('swf-alpha-wallet',run):run());this.queue=op.then(()=>{},()=>{});return op;
  }
  setTestCredit(amount:number,owner:boolean){if(!owner)return Promise.resolve('Owner access required');return this.transact(w=>{w.testCredit=Math.max(0,Math.min(CREDIT_POLICY.maxBalance,Math.floor(amount)||0));return 'ok';});}
+}
+/**
+ * Charges a price in its currency (#76), or says why not. Coins spend owner
+ * test Credit first; Bucks come only from the Bucks balance. `expected` guards
+ * against a deal ending between showing a price and buying.
+ */
+function pay(w:AlphaWallet,price:number,currency:Currency,expected?:number):string|null{
+ const unit=currency==='bucks'?'Bucks':'Coins';
+ if(expected!==undefined&&price>expected)return 'That deal just ended. The price is now '+price+' '+unit+'.';
+ if(currency==='bucks'){if(w.bucks<price)return 'Not enough Bucks';w.bucks-=price;return null;}
+ if(w.credit+w.testCredit<price)return 'Not enough Coins';
+ const test=Math.min(price,w.testCredit);w.testCredit-=test;w.credit-=price-test;return null;
 }

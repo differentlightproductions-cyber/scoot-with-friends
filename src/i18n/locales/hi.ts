@@ -147,7 +147,7 @@ export const HI: Record<string, string> = {
   "phone.ui.saved_replays": "सहेजे रीप्ले", "phone.ui.saved_detail": "देखें, संपादित करें, नाम बदलें या हटाएँ", "phone.ui.replay_history": "रीप्ले इतिहास", "phone.ui.history_detail": "अवधि: सेटिंग / गेमप्ले",
   "settings.option.held_item": "पकड़ी चीज़ इस्तेमाल करें",
   "settings.test.subtitle": "बटन दबाएँ और स्टिक घुमाएँ", "settings.test.copy": "जाँच जानकारी कॉपी करें", "settings.test.copied": "जाँच जानकारी कॉपी हुई (निजी डेटा नहीं)।", "settings.test.unavailable": "क्लिपबोर्ड उपलब्ध नहीं।", "settings.test.copy.desc": "कंट्रोलर आईडी, मैपिंग, स्रोत, प्रीसेट और लाइव बटन; निजी डेटा नहीं।", "settings.test.show_touch": "टच नियंत्रण यहाँ दिखाएँ", "settings.test.show_touch.desc": "स्क्रीन कंट्रोलर देखें और जाँचें।",
-  "settings.owner_credit": "मालिक / अल्फ़ा टेस्ट क्रेडिट", "settings.owner_credit.desc": "केवल स्थानीय जाँच; कमाए Credit से अलग।",
+  "settings.owner_credit": "मालिक / अल्फ़ा टेस्ट क्रेडिट", "settings.owner_credit.desc": "केवल स्थानीय जाँच; कमाए Coins से अलग।",
   "settings.apply": "लागू करें / बदलाव सहेजें", "settings.unsaved": "बिना सहेजे विकल्प। ज़मीन पर सुरक्षित होने पर रूप बदलेगा।", "settings.nothing": "अभी कुछ लागू नहीं करना।",
   "settings.save_failed": "सहेज नहीं पाए। जाने से पहले फिर कोशिश करें।", "settings.saved_account": "प्रगति आपके खाते में सहेजी जाती है।", "settings.saved_device": "प्रगति इस डिवाइस पर सहेजी जाती है। सिंक के लिए साइन इन करें।", "settings.cash_unavailable": "इस अल्फ़ा में नकद खरीद उपलब्ध नहीं।",
   "settings.controls_hint": "D-PAD / LS चुनें · A पुष्टि · B पीछे", "settings.controls_more": "RS घुमाएँ / ज़ूम · LB+RS पैन · खींचें / व्हील · कीबोर्ड W/S, Enter, Esc",
@@ -244,6 +244,6 @@ export const HI: Record<string, string> = {
   "doves.hit": "कबूतर ने बीट कर दी!",
   "item.can": "खाली कैन",
   "item.paper": "कागज़ का गोला",
-  "reward.credits.one": "आपने {count} Credit कमाया",
-  "reward.credits.other": "आपने {count} Credits कमाए",
+  "reward.credits.one": "आपने {count} Coin कमाया",
+  "reward.credits.other": "आपने {count} Coins कमाए",
 };

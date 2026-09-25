@@ -16,10 +16,16 @@ export const RARITIES: Rarity[] = ["common", "rare", "epic", "legendary"];
 export const RARITY_LABEL: Record<Rarity, string> = { common: "COMMON", rare: "RARE", epic: "EPIC", legendary: "LEGENDARY" };
 export const RARITY_COLOR: Record<Rarity, string> = { common: "#b9c2c7", rare: "#35b6ff", epic: "#b36bff", legendary: "#ffb938" };
 
-export type CrateTier = "street" | "pro" | "signature" | "legend";
-export const CRATE_TIERS: CrateTier[] = ["street", "pro", "signature", "legend"];
-export const CRATE_NAME: Record<CrateTier, string> = { street: "Street Crate", pro: "Pro Crate", signature: "Signature Crate", legend: "Legend Crate" };
-export const CRATE_COLOR: Record<CrateTier, string> = { street: "#35b6ff", pro: "#b36bff", signature: "#ff7a2f", legend: "#ffb938" };
+/**
+ * Two crates (#76; there were four): the Street Crate, mostly everyday parts,
+ * and the rare Legend Crate, the only real shot at Mafioso. Unopened Pro and
+ * Signature crates from older saves become Street and Legend crates.
+ */
+export type CrateTier = "street" | "legend";
+export const CRATE_TIERS: CrateTier[] = ["street", "legend"];
+const OLD_TIERS: Record<string, CrateTier> = { pro: "street", signature: "legend" };
+export const CRATE_NAME: Record<CrateTier, string> = { street: "Street Crate", legend: "Legend Crate" };
+export const CRATE_COLOR: Record<CrateTier, string> = { street: "#35b6ff", legend: "#ffb938" };
 export interface Crate { id: string; tier: CrateTier; source: string }
 
 /** Lifetime counters and bests. Daily missions keep their own copy for the day. */
@@ -47,12 +53,14 @@ export interface Progress {
   comboTricks: Record<string, number>;
   /** STARTER missions completed (and paid). */
   starter: string[];
-  /** Highest level whose Credit and crate were granted, so a level never pays twice. */
+  /** Highest level whose Coins and crate were granted, so a level never pays twice. */
   topLevel: number;
+  /** Highest level whose Bucks were paid (#76); older saves start at 0 and are paid for levels already reached. */
+  bucksLevel: number;
 }
 
 const zeroStats = () => Object.fromEntries(STATS.map((s) => [s, 0])) as Record<Stat, number>;
-export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], counts: {}, tally: {}, comboTricks: {}, starter: [], topLevel: 1 });
+export const emptyProgress = (): Progress => ({ xp: 0, stats: zeroStats(), career: Object.fromEntries(CAREER.map((c) => [c.id, 0])), daily: { day: "", ids: [], stats: zeroStats(), done: [], bonus: false }, crates: [], visited: [], firsts: [], counts: {}, tally: {}, comboTricks: {}, starter: [], topLevel: 1, bucksLevel: 1 });
 
 const int = (v: unknown, max = 1e9) => (Number.isSafeInteger(v) && (v as number) >= 0 ? Math.min(v as number, max) : 0);
 const strings = (v: unknown, max = 200) => (Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === "string" && s.length <= 80))].slice(0, max) : []);
@@ -69,6 +77,7 @@ export function validProgress(value: any): Progress {
     p.daily.bonus = value.daily.bonus === true;
   }
   p.crates = (Array.isArray(value.crates) ? value.crates : [])
+    .map((c: any) => (c && OLD_TIERS[c.tier] ? { ...c, tier: OLD_TIERS[c.tier] } : c))
     .filter((c: any) => c && typeof c.id === "string" && /^[a-z0-9-]{6,64}$/.test(c.id) && CRATE_TIERS.includes(c.tier))
     .slice(0, 99).map((c: any) => ({ id: c.id, tier: c.tier, source: typeof c.source === "string" ? c.source.slice(0, 60) : "" }));
   p.visited = strings(value.visited, 20);
@@ -80,6 +89,7 @@ export function validProgress(value: any): Progress {
   // Saves from before the level curve changed keep every level they were paid
   // for (on the old curve), so passing those levels again pays nothing twice.
   p.topLevel = Math.max(levelFor(p.xp).level, Number.isSafeInteger(value.topLevel) ? Math.min(999, Math.max(1, value.topLevel)) : legacyLevel(p.xp));
+  p.bucksLevel = Number.isSafeInteger(value.bucksLevel) ? Math.min(p.topLevel, Math.max(0, value.bucksLevel)) : 0;
   return p;
 }
 
@@ -154,23 +164,22 @@ export function levelFor(xp: number) {
   return { level, into, need: levelNeed(level) };
 }
 /**
- * What a level-up gives (#55): exactly one thing. Every fifth level is a crate
- * (Pro; Signature on the tens; Legend on every 25th), so parts stay something to
- * collect; any other level rolls a Street Crate now and then, and otherwise a
- * novelty (a rubber duck, a kazoo...) or a snack. Seeded by the level, so a
- * reload can never re-roll it.
+ * What a level-up gives (#55): exactly one thing. Every fifth level pays
+ * BUCKS_PER_FIVE_LEVELS Bucks (#76: the only free source of the premium
+ * currency, so it comes very slowly); any other level rolls a Street Crate now
+ * and then (rarer than before), and otherwise a novelty (a rubber duck, a
+ * kazoo...) or a snack. Seeded by the level, so a reload can never re-roll it.
  */
-export type LevelReward = { kind: "crate"; tier: CrateTier } | { kind: "item"; item: ItemKind };
+export const BUCKS_PER_FIVE_LEVELS = 5;
+export type LevelReward = { kind: "crate"; tier: CrateTier } | { kind: "item"; item: ItemKind } | { kind: "bucks"; amount: number };
 export function levelReward(level: number): LevelReward {
-  if (level % 25 === 0) return { kind: "crate", tier: "legend" };
-  if (level % 10 === 0) return { kind: "crate", tier: "signature" };
-  if (level % 5 === 0) return { kind: "crate", tier: "pro" };
+  if (level % 5 === 0) return { kind: "bucks", amount: BUCKS_PER_FIVE_LEVELS };
   const random = seeded(hash("level:" + level)), roll = random();
-  if (roll < 0.3) return { kind: "crate", tier: "street" };
-  const pool: readonly ItemKind[] = roll < 0.8 ? NOVELTY_KINDS : VENDING_KINDS;
+  if (roll < 0.12) return { kind: "crate", tier: "street" };
+  const pool: readonly ItemKind[] = roll < 0.7 ? NOVELTY_KINDS : VENDING_KINDS;
   return { kind: "item", item: pool[Math.floor(random() * pool.length)] };
 }
-export const levelRewardLabel = (r: LevelReward) => (r.kind === "crate" ? CRATE_NAME[r.tier] : r.item);
+export const levelRewardLabel = (r: LevelReward) => (r.kind === "crate" ? CRATE_NAME[r.tier] : r.kind === "bucks" ? r.amount + " Bucks" : r.item);
 /** Riding XP from one banked line: a trickle, capped, so levels come from missions. */
 export const trickXp = (points: number) => Math.min(15, Math.max(1, Math.round(points / 400)));
 
@@ -194,9 +203,10 @@ export const CAREER: CareerChain[] = [
   { id: "collector", stat: "purchases", goals: [1, 5, 15, 30], title: (n) => (n === 1 ? "Buy your first part" : `Buy ${n} parts`), detail: "Any shop, any colourway" },
 ];
 export const careerTitle = (chain: CareerChain, stage: number) => `${chain.title(chain.goals[Math.min(stage, chain.goals.length - 1)])} ${ROMAN[stage] ?? ""}`.trim();
+/** Career stages (#76): fewer Coins than before, a Street Crate at stage III and a Legend Crate only at stage V. */
 export function careerReward(stage: number): Reward {
-  const credit = [30, 60, 100, 160, 250][stage] ?? 250, xp = [80, 200, 450, 800, 1300][stage] ?? 1300;
-  return { credit, xp, crate: stage === 1 ? "street" : stage === 2 ? "pro" : stage >= 3 ? "signature" : undefined };
+  const credit = [20, 40, 60, 100, 150][stage] ?? 150, xp = [80, 200, 450, 800, 1300][stage] ?? 1300;
+  return { credit, xp, crate: stage === 2 ? "street" : stage === 4 ? "legend" : undefined };
 }
 
 export interface DailyMission { id: string; stat: Stat; goal: number; title: string }
@@ -212,8 +222,8 @@ export const DAILY: DailyMission[] = [
   { id: "d-bhill", stat: "bhillRuns", goal: 1, title: "Finish a B Hill run" },
   { id: "d-banked", stat: "points", goal: 20000, title: "Bank 20,000 points" },
 ];
-export const DAILY_REWARD: Reward = { credit: 40, xp: 120 };
-export const DAILY_BONUS: Reward = { credit: 60, xp: 250, crate: "pro" };
+export const DAILY_REWARD: Reward = { credit: 25, xp: 120 };
+export const DAILY_BONUS: Reward = { credit: 40, xp: 250 };
 
 // ---- Starter missions -------------------------------------------------------------
 /**
@@ -224,10 +234,10 @@ export const DAILY_BONUS: Reward = { credit: 60, xp: 250, crate: "pro" };
  */
 export type StarterTier = "intro" | "basic" | "skill" | "big";
 export const STARTER_REWARD: Record<StarterTier, Reward> = {
-  intro: { credit: 15, xp: 40 },
-  basic: { credit: 25, xp: 70 },
-  skill: { credit: 40, xp: 120 },
-  big: { credit: 75, xp: 220 },
+  intro: { credit: 10, xp: 40 },
+  basic: { credit: 15, xp: 70 },
+  skill: { credit: 25, xp: 120 },
+  big: { credit: 50, xp: 220 },
 };
 /**
  * `count`: how many times it must be done (default once). Simple tricks ask
@@ -286,8 +296,8 @@ export function dailyFor(day: string) {
 }
 
 // ---- Applying events --------------------------------------------------------------
-export interface Gains { credit: number; xp: number; crates: Crate[]; completed: { title: string; reward: Reward }[]; levelsUp: number[]; items: { kind: ItemKind; source: string }[] }
-const noGains = (): Gains => ({ credit: 0, xp: 0, crates: [], completed: [], levelsUp: [], items: [] });
+export interface Gains { credit: number; xp: number; crates: Crate[]; completed: { title: string; reward: Reward }[]; levelsUp: number[]; items: { kind: ItemKind; source: string }[]; /** Premium currency earned (#76): every fifth level. */ bucks: number }
+const noGains = (): Gains => ({ credit: 0, xp: 0, crates: [], completed: [], levelsUp: [], items: [], bucks: 0 });
 
 /** Starts a new day's dailies when the date changes. */
 export function rollDaily(p: Progress, day = dayKey()) {
@@ -339,13 +349,17 @@ export function record(p: Progress, changes: Partial<Record<Stat, number>>, newI
   // Level-ups from everything earned above; each level pays once, ever.
   p.xp += gains.xp;
   const after = levelFor(p.xp).level;
+  // Bucks for levels reached before Bucks existed (older saves), once.
+  for (let level = p.bucksLevel + 1; level <= p.topLevel; level++) if (level % 5 === 0) gains.bucks += BUCKS_PER_FIVE_LEVELS;
   for (let level = p.topLevel + 1; level <= after; level++) {
     gains.levelsUp.push(level);
     const reward = levelReward(level);
     if (reward.kind === "crate") gains.crates.push({ id: newId(), tier: reward.tier, source: "Level " + level });
+    else if (reward.kind === "bucks") gains.bucks += reward.amount;
     else gains.items.push({ kind: reward.item, source: "Level " + level });
   }
   p.topLevel = Math.max(p.topLevel, after);
+  p.bucksLevel = p.topLevel;
   p.crates.push(...gains.crates);
   return gains;
 }
@@ -372,29 +386,33 @@ export function missionBoard(p: Progress, day = dayKey()) {
 // ---- Crates -----------------------------------------------------------------------
 export interface Collectible { partId: string; variantId: string; name: string; variantName: string; brand: string; category: string; rarity: Rarity; color: number; accent?: number; exclusive: boolean; rideable: "scooter" | "longboard"; price: number }
 
-/** Rarity: crate-exclusive colourways carry their own; shop parts go by price. */
-export function priceRarity(price: number): Rarity { return price >= 150 ? "legendary" : price >= 70 ? "epic" : price >= 35 ? "rare" : "common"; }
+/** Rarity: crate-exclusive colourways carry their own; shop parts go by their Coin price; Bucks (Mafioso) parts are legendary. */
+export function priceRarity(price: number): Rarity { return price >= 375 ? "legendary" : price >= 175 ? "epic" : price >= 85 ? "rare" : "common"; }
+export const partRarity = (p: { unlockType: string; creditPrice?: number }): Rarity => (p.unlockType === "bucks" ? "legendary" : priceRarity(p.creditPrice ?? 0));
 
 /** Everything a crate can hold: every paid colourway and every crate exclusive. */
 export function collectibles(): Collectible[] {
   const list: Collectible[] = [];
   for (const p of PARTS) for (const v of p.variants) {
     if (p.unlockType === "free" && !v.exclusive) continue;
-    list.push({ partId: p.id, variantId: v.id, name: p.name, variantName: v.name, brand: p.brand, category: p.category, rarity: v.exclusive ?? priceRarity(p.creditPrice ?? 0), color: v.color, accent: v.accent, exclusive: !!v.exclusive, rideable: "scooter", price: p.creditPrice ?? 0 });
+    list.push({ partId: p.id, variantId: v.id, name: p.name, variantName: v.name, brand: p.brand, category: p.category, rarity: v.exclusive ?? partRarity(p), color: v.color, accent: v.accent, exclusive: !!v.exclusive, rideable: "scooter", price: p.creditPrice ?? 0 });
   }
   for (const p of LONGBOARD_PARTS) for (const v of p.variants)
     list.push({ partId: p.id, variantId: v.id, name: p.name, variantName: v.name, brand: p.brand, category: p.category, rarity: priceRarity(p.creditPrice), color: v.color, accent: v.accent, exclusive: false, rideable: "longboard", price: p.creditPrice });
   return list;
 }
 
+/**
+ * Crate odds (shown to players). Legendary is where Mafioso lives (with the
+ * gold crate exclusives), so a Mafioso part is a really lucky pull: about 1 in
+ * 250 Street Crates and 1 in 16 Legend Crates.
+ */
 const ODDS: Record<CrateTier, Record<Rarity, number>> = {
-  street: { common: 68, rare: 26, epic: 5.5, legendary: 0.5 },
-  pro: { common: 30, rare: 48, epic: 18, legendary: 4 },
-  signature: { common: 0, rare: 40, epic: 45, legendary: 15 },
-  legend: { common: 0, rare: 0, epic: 50, legendary: 50 },
+  street: { common: 75, rare: 21, epic: 3.5, legendary: 0.5 },
+  legend: { common: 0, rare: 55, epic: 36, legendary: 9 },
 };
 export const crateOdds = (tier: CrateTier) => ODDS[tier];
-const BONUS: Record<CrateTier, [number, number]> = { street: [15, 30], pro: [40, 70], signature: [90, 140], legend: [200, 300] };
+const BONUS: Record<CrateTier, [number, number]> = { street: [8, 16], legend: [60, 100] };
 
 export interface CrateResult { item: Collectible | null; credit: number; rarity: Rarity }
 /**

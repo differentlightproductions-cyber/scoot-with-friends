@@ -82,12 +82,12 @@ test('starter missions pay once each; purposeful ones pay more; levels pay once 
 test('phone shop: an order is paid once, travels as a package and is delivered once', async () => {
   store.clear();
   const e = new CreditEconomy();
-  await e.setTestCredit(0, true); await e.reward('bank:phone-1', 20000); // 200 Credit
-  const bars = {partId: 'mafioso-bars-y', variantId: 'mafioso_bars_y_chrome'}, t0 = 1_000_000;
+  await e.setTestCredit(0, true); await e.reward('bank:phone-1', 50000); // 200 Coins
+  const bars = {partId: 'y-bars', variantId: 'blue'}, t0 = 1_000_000;
   const first = await e.order(bars, undefined, t0);
   assert.equal(typeof first, 'object');
   const after = loadProfile().wallet, paid = 200 - after.credit;
-  assert.ok(paid > 0 && paid <= 75 && after.packages.length === 1, 'charged at list or deal price, package on its way');
+  assert.ok(paid > 0 && paid <= 110 && after.packages.length === 1, 'charged at list or deal price, package on its way');
   assert.equal(owns(after, bars), false, 'not owned until delivered');
   assert.equal(await e.order(bars, undefined, t0), 'Already on its way');
   assert.match(await e.buy(bars), /on its way/, 'the counter cannot sell it twice either');
@@ -117,7 +117,7 @@ test('simple trick missions take 5 landings, skill ones 3, big ones 1; progress 
   assert.deepEqual(Object.keys(validProgress({ counts: { 'push': 3, 'nope': 2 } }).counts), []);
 });
 
-test('a level-up item lands in the pockets in the same save; full pockets pay Credit instead', async () => {
+test('a level-up item lands in the pockets in the same save; full pockets pay Coins instead', async () => {
   const { levelReward, levelNeed } = await import('../src/data/progress');
   const { saveProfile } = await import('../src/data/loadout');
   // The first level from 2 up that gives an item rather than a crate.
@@ -140,5 +140,5 @@ test('a level-up item lands in the pockets in the same save; full pockets pay Cr
   const before = setUp(48);
   await new CreditEconomy().track({ points: 400 });
   assert.equal(loadProfile().pockets.entries.length, 48);
-  assert.ok(loadProfile().wallet.credit >= before + 25, 'full pockets: Credit instead');
+  assert.ok(loadProfile().wallet.credit >= before + 15, 'full pockets: Coins instead');
 });

@@ -6,6 +6,9 @@
 .shop-strip .ss-credit { background: var(--sun); color: var(--ink); }
 .shop-strip .ss-credit i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--ink); background: radial-gradient(circle at 35% 35%, #fff6b0, #ffb938 60%, #c98a10); }
 .shop-strip .ss-credit b { font: 15px/1 var(--display); background: none !important; padding: 0 !important; margin: 0 !important; }
+/* Bucks (#76): the premium currency, a green banknote chip beside the Coins. */
+.shop-strip .ss-bucks { background: #2fbf71; color: var(--ink); }
+.shop-strip .ss-bucks i { border-radius: 3px; width: 18px; height: 11px; background: linear-gradient(90deg, #bff5d2, #6fdc9c 40%, #bff5d2); }
 .shop-strip .ss-credit small, .shop-strip small { font: 9px/1 var(--display); color: inherit; opacity: .8; }
 .shop-strip .ss-level { background: var(--lime); color: var(--ink); }
 .shop-strip .ss-collect { flex: 1; min-width: 150px; background: #fffdf5; color: var(--ink); flex-direction: column; align-items: stretch; gap: 4px; border-radius: 10px; }

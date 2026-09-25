@@ -1,6 +1,6 @@
 import {SHOPS,shopStock} from '../data/shops';
 import {CreditEconomy,owns} from '../data/credit';
-import {catalogEntry,completeBoardSelections,bundlePrice,ownsBoard} from '../data/catalog';
+import {catalogEntry,completeBoardSelections,bundlePrice,ownsBoard,priceOf} from '../data/catalog';
 import {LONGBOARD_CATEGORIES,LONGBOARD_PARTS,longboardPart,type LongboardCategory} from '../data/longboardParts';
 import { AVATAR_PRESETS, randomAvatar } from '../avatar/config';
 import { RiderCreator, type Framing } from './creator';
@@ -9,12 +9,12 @@ import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryIte
 import {AccountPanel,cloud} from './account';
 /** Where saves go: this device, plus the account when signed in. */
 const savedWhere=()=>cloud.account?'saved to this device and your account.':'saved on this device.';
-import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
+import {collectibles,collection,levelFor,partRarity,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
 import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
 interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean; /** Left/right on the row steps it (a slider row, #71). */ adjust?: (step: number) => void }
 /** The product on the counter: rarity frame, colour swatch, price sticker. */
-function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false){
-  return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>CREDIT</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
+function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false,unit='COINS'){
+  return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>${unit}</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
 }
 import {loadProfile} from '../data/loadout';
 import { uiSound } from '../audio/audio';
@@ -361,10 +361,10 @@ export class GameMenu {
     ) => this.choices.push({ label, action, detail, selected, extra });
     // Grid cells come first on a screen so their indices line up with the page's items.
     const cell=(label:string,action:()=>void,detail?:string,selected=false,swatch?:number,extra?:ChoiceExtra)=>this.choices.push({label,action,detail,selected,cell:true,swatch,extra});
-    // Shop screens open with the wallet strip: Credit, level and the collection.
+    // Shop screens open with the wallet strip: Coins, Bucks, level and the collection.
     let header='';
-    const walletStrip=(w:{credit:number;owned:string[]})=>{const c=collection(w.owned),lv=levelFor(loadProfile().progress.xp);
-      return `<div class="shop-strip"><span class="ss-credit"><i></i><b>${w.credit.toLocaleString('en-US')}</b><small>CREDIT</small></span><span class="ss-level">LV ${lv.level}</span><span class="ss-collect"><small>COLLECTION ${c.have}/${c.total}</small><i><s style="width:${Math.round(c.have/Math.max(1,c.total)*100)}%"></s></i></span></div>`;};
+    const walletStrip=(w:{credit:number;bucks:number;owned:string[]})=>{const c=collection(w.owned),lv=levelFor(loadProfile().progress.xp);
+      return `<div class="shop-strip"><span class="ss-credit"><i></i><b>${w.credit.toLocaleString('en-US')}</b><small>COINS</small></span><span class="ss-credit ss-bucks"><i></i><b>${w.bucks.toLocaleString('en-US')}</b><small>BUCKS</small></span><span class="ss-level">LV ${lv.level}</span><span class="ss-collect"><small>COLLECTION ${c.have}/${c.total}</small><i><s style="width:${Math.round(c.have/Math.max(1,c.total)*100)}%"></s></i></span></div>`;};
     const pager=(pages:number,page:number,set:(page:number)=>void)=>{if(pages<2)return;
       add('‹ PREVIOUS PAGE',()=>{set((page+pages-1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / LT');
       add('NEXT PAGE ›',()=>{set((page+1)%pages);this.render();},'Page '+(page+1)+' of '+pages+' / RT');};
@@ -397,7 +397,7 @@ export class GameMenu {
         add("TRICK BOOK",()=>this.show("tricks"),"Inputs, combinations, and riding controls");break;
       case "tricks":
         add('CAMERA / STATIONARY TRICKS',()=>{},'On foot: RS looks around. On scooter: RS always preloads and tricks, even stopped. No setup toggle. R3/V recenters; L3/F runs on foot.');
-        add("CREDIT / ALPHA ECONOMY",()=>{},"Every 100 banked points earns 1 Credit. Buy authored parts at Techno Gravity. Cash is unavailable. Saves stay on this device.");
+        add("COINS & BUCKS / ALPHA ECONOMY",()=>{},"Every 250 banked points earns 1 Coin; missions pay Coins too. Every 5 levels pays 5 Bucks, which buy Mafioso parts (or pull them from a lucky crate). Buying Bucks with money is not available in this alpha.");
         title = "TRICK BOOK";
         subtitle = "READ THE MOVEMENT, THEN MAKE IT YOURS";
         add("BUNNY HOP / TUCK", () => {}, "RS fully down to crouch, then return it 90% up to pop. A neutral release stands up; holding a tuck reduces drag at speed and helps on downhills.");
@@ -455,7 +455,7 @@ export class GameMenu {
         for(const preset of AVATAR_PRESETS)add(preset.name.toUpperCase(),()=>{this.profile.avatar=structuredClone(preset.config);this.changed();this.render();},'Included',JSON.stringify(this.profile.avatar)===JSON.stringify(preset.config));
         break;
       case "shop":{
-        const wallet=loadProfile().wallet;title=this.activeShop.name.toUpperCase();subtitle='TODAY\'S DEALS / NEW DROPS / '+wallet.credit+' CREDIT'+(wallet.testCredit?' + '+wallet.testCredit+' TEST':'');
+        const wallet=loadProfile().wallet;title=this.activeShop.name.toUpperCase();subtitle='TODAY\'S DEALS / NEW DROPS / '+wallet.credit+' COINS'+(wallet.testCredit?' + '+wallet.testCredit+' TEST':'')+' / '+wallet.bucks+' BUCKS';
         header=walletStrip(wallet);
         // Today's deals first: marked down until midnight, one of each.
         const hours=Math.ceil(dealsRefreshIn()/3600);
@@ -471,7 +471,7 @@ export class GameMenu {
         break;}
       case "longboard":{
         const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard),mode=this.browseMode();this.browseBrand=BOARD_BRAND_ID;
-        title="SOMETIMES SUMMER";subtitle=(this.shopOpen?this.activeShop.name.toUpperCase()+' / NOT OWNED YET / '+wallet.credit+' CREDIT':'DROP-THROUGH LONGBOARD / OWNED PARTS');
+        title="SOMETIMES SUMMER";subtitle=(this.shopOpen?this.activeShop.name.toUpperCase()+' / NOT OWNED YET / '+wallet.credit+' COINS':'DROP-THROUGH LONGBOARD / OWNED PARTS');
         const items=inventoryItems(wallet,mode,{shopId:this.activeShop.id,brandId:BOARD_BRAND_ID});
         this.visibleCategories=[...new Set(items.map(i=>i.category))];
         for(const category of this.visibleCategories){const count=items.filter(i=>i.category===category).length,on=longboardPart(this.profile.longboard[category as LongboardCategory]);
@@ -485,13 +485,13 @@ export class GameMenu {
         const wallet=loadProfile().wallet;
         for(const variant of LONGBOARD_PARTS.find(p=>p.category==='deck')!.variants){
           const {missing,price}=bundlePrice(completeBoardSelections(variant.id,this.profile.longboard),s=>owns(wallet,s));
-          cell(variant.name.toUpperCase(),()=>{if(!missing.length){void this.equip('ss-drop-through-deck',variant.id);return;}this.pendingVariant=variant.id;this.show('board-purchase');},missing.length?price+' Credit for '+missing.length+' parts':'Owned / Equip',this.profile.longboard.deck.variantId===variant.id);
+          cell(variant.name.toUpperCase(),()=>{if(!missing.length){void this.equip('ss-drop-through-deck',variant.id);return;}this.pendingVariant=variant.id;this.show('board-purchase');},missing.length?price+' Coins for '+missing.length+' parts':'Owned / Equip',this.profile.longboard.deck.variantId===variant.id);
         }
         break;}
       case "board-purchase":{
         const wallet=loadProfile().wallet,{missing,price}=bundlePrice(completeBoardSelections(this.pendingVariant,this.profile.longboard),s=>owns(wallet,s));
         title='CONFIRM PURCHASE';subtitle='Sometimes Summer '+longboardPart({partId:'ss-drop-through-deck',variantId:this.pendingVariant}).variant.name+' complete / '+missing.length+' parts';
-        add(this.buying?'SAVING...':'BUY / '+price+' CREDIT',()=>{if(this.buying)return;this.buying=true;this.render();const deck=this.pendingVariant;void this.economy.buyCompleteBoard(deck).then(async result=>{this.buying=false;this.profile.wallet=loadProfile().wallet;if(result==='ok'){await this.equip('ss-drop-through-deck',deck);this.notice='Board purchased and saved. Ride it from Customization.';}else this.notice=result;this.show('longboard');});},wallet.credit+' earned Credit'+(wallet.testCredit?' + '+wallet.testCredit+' test Credit':''));
+        add(this.buying?'SAVING...':'BUY / '+price+' COINS',()=>{if(this.buying)return;this.buying=true;this.render();const deck=this.pendingVariant;void this.economy.buyCompleteBoard(deck).then(async result=>{this.buying=false;this.profile.wallet=loadProfile().wallet;if(result==='ok'){await this.equip('ss-drop-through-deck',deck);this.notice='Board purchased and saved. Ride it from Customization.';}else this.notice=result;this.show('longboard');});},wallet.credit+' earned Coins'+(wallet.testCredit?' + '+wallet.testCredit+' test Coins':''));
         add('CANCEL',()=>this.show('board-complete'),'No charge');break;}
       case "starter":{
         const draft=this.starterDraft??=validStarter(defaultScooter())!;
@@ -516,7 +516,7 @@ export class GameMenu {
         const wallet=loadProfile().wallet,mode=this.browseMode();
         const items=inventoryItems(wallet,mode,{shopId:this.activeShop.id,brandId:this.browseBrand});
         const {items:categories,page,pages}=paginate([...new Set(items.map(i=>i.category))],this.catPage,8);this.catPage=page;this.visibleCategories=categories;
-        title=this.brandName().toUpperCase();subtitle=(mode==='shop'?'NOT OWNED YET / '+wallet.credit+' CREDIT':'OWNED PARTS / PICK A CATEGORY')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'');
+        title=this.brandName().toUpperCase();subtitle=(mode==='shop'?'NOT OWNED YET / '+(this.browseBrand==='mafioso'?wallet.bucks+' BUCKS':wallet.credit+' COINS'):'OWNED PARTS / PICK A CATEGORY')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'');
         for(const category of categories){const count=items.filter(i=>i.category===category).length,on=selectedPart(this.selected(category as Category));
           cell(category.toUpperCase(),()=>{this.browseCategory=category;this.category=category as Category;this.itemPage=0;this.show('brand-items');},mode==='shop'?count+' for sale':plural(count,'owned colorway')+' / on: '+on.part.name.replace(on.part.brand+' ',''));}
         if(!categories.length)add(mode==='shop'?'ALL OWNED':'NOTHING OWNED YET',()=>{},mode==='shop'?'Every '+this.brandName()+' part here is already yours.':'Buy '+this.brandName()+' parts at Techno Gravity.');
@@ -527,29 +527,30 @@ export class GameMenu {
         const all=inventoryItems(wallet,mode,{shopId:this.activeShop.id,brandId:this.browseBrand,category:this.browseCategory});
         const {items,page,pages}=paginate(all,this.itemPage,8);this.itemPage=page;this.visibleItems=items;
         title=this.brandName().toUpperCase()+' / '+this.browseCategory.toUpperCase();
-        subtitle=(mode==='shop'?'NOT OWNED YET / '+wallet.credit+' CREDIT':this.seshOpen?'OWNED / CHOOSE, THEN APPLY':'OWNED / SELECT TO EQUIP')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'')+(this.browseCategory==='wheels'&&this.browseBrand!==BOARD_BRAND_ID?' / FRONT AND REAR':'');
+        subtitle=(mode==='shop'?'NOT OWNED YET / '+(this.browseBrand==='mafioso'?wallet.bucks+' BUCKS':wallet.credit+' COINS'):this.seshOpen?'OWNED / CHOOSE, THEN APPLY':'OWNED / SELECT TO EQUIP')+(pages>1?' / PAGE '+(page+1)+' OF '+pages:'')+(this.browseCategory==='wheels'&&this.browseBrand!==BOARD_BRAND_ID?' / FRONT AND REAR':'');
         for(const item of items){const on=this.equippedSelection(item),equipped=on.partId===item.partId&&on.variantId===item.variantId;
           const swatch=item.rideable==='scooter'?PARTS.find(p=>p.id===item.partId)?.variants.find(v=>v.id===item.variantId)?.color:undefined;
           const deal=mode==='shop'?dailyDeals(this.activeShop.id).find(d=>d.partId===item.partId&&d.variantId===item.variantId):undefined,price=deal?.price??item.price;
           const transit=mode==='shop'&&wallet.packages.some(k=>k.partId===item.partId&&k.variantId===item.variantId);
           cell(item.partName.toUpperCase()+' / '+item.variantName.toUpperCase(),()=>{if(transit){this.notice='Already on its way from your phone order.';this.render();return;}this.product=item.partId;this.pendingVariant=item.variantId;this.pendingDeal=deal??null;if(mode==='shop')this.show('purchase');else void this.equip(item.partId,item.variantId);},
             transit?'On its way (phone order)':mode==='shop'?RARITY_LABEL[item.rarity]+(deal?' · was '+deal.was:''):equipped?(this.seshOpen?'Chosen':'Equipped'):(this.seshOpen?'Owned / Choose':'Owned / Equip'),equipped,swatch,
-            {rarity:item.rarity,tag:mode==='shop'?String(price):undefined,badge:deal?'-'+deal.off+'%':item.exclusive?'CRATE':undefined,poor:mode==='shop'&&wallet.credit+wallet.testCredit<price});}
+            {rarity:item.rarity,tag:mode==='shop'?(item.currency==='bucks'?price+' B':String(price)):undefined,badge:deal?'-'+deal.off+'%':item.exclusive?'CRATE':item.currency==='bucks'?'BUCKS':undefined,poor:mode==='shop'&&(item.currency==='bucks'?wallet.bucks:wallet.credit+wallet.testCredit)<price});}
         if(!items.length)add(mode==='shop'?'SOLD OUT FOR YOU':'NOTHING OWNED HERE',()=>this.back(),mode==='shop'?'You own every colorway in this category.':'Buy these at Techno Gravity.');
         pager(pages,page,p=>{this.itemPage=p;});
         break;}
       case 'purchase':{
         const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!;const wallet=loadProfile().wallet;
-        const deal=this.pendingDeal&&this.pendingDeal.partId===p.id&&this.pendingDeal.variantId===variant.id?this.pendingDeal:null,price=deal?deal.price:p.creditPrice,rarity=priceRarity(p.creditPrice),after=wallet.credit+wallet.testCredit-price;
+        const deal=this.pendingDeal&&this.pendingDeal.partId===p.id&&this.pendingDeal.variantId===variant.id?this.pendingDeal:null,cost=priceOf(p),bucks=cost.currency==='bucks',unit=bucks?'Bucks':'Coins';
+        const price=deal?deal.price:cost.amount,rarity=partRarity(p),after=(bucks?wallet.bucks:wallet.credit+wallet.testCredit)-price;
         title='ON THE COUNTER';subtitle=(deal?'DEAL -'+deal.off+'% / ':'')+RARITY_LABEL[rarity]+' / '+p.name.toUpperCase();
-        header=walletStrip(wallet)+productCard(p.name,variant.name,rarity,this.swatchOf(p.id,variant.id),price,deal?.was,after<0?'Need '+(-after)+' more Credit':'Leaves you '+after+' Credit');
+        header=walletStrip(wallet)+productCard(p.name,variant.name,rarity,this.swatchOf(p.id,variant.id),price,deal?.was,after<0?'Need '+(-after)+' more '+unit:'Leaves you '+after+' '+unit,false,unit.toUpperCase());
         const back=()=>this.show(this.shopRoot==='longboard'&&p.rideable==='longboard'?'brand-items':deal&&this.screenBeforePurchase==='shop'?'shop':'brand-items');
-        add(after<0?'NOT ENOUGH CREDIT':this.buying?'SAVING...':'BUY IT / '+price+' CREDIT',()=>{if(this.buying||after<0)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id},deal?this.activeShop.id:undefined,price).then(result=>{this.buying=false;this.notice=result==='ok'?'Saved on this device.':result;this.profile.wallet=loadProfile().wallet;
+        add(after<0?'NOT ENOUGH '+unit.toUpperCase():this.buying?'SAVING...':'BUY IT / '+price+' '+unit.toUpperCase(),()=>{if(this.buying||after<0)return;this.buying=true;this.render();void this.economy.buy({partId:p.id,variantId:variant.id},deal?this.activeShop.id:undefined,price).then(result=>{this.buying=false;this.notice=result==='ok'?'Saved on this device.':result;this.profile.wallet=loadProfile().wallet;
           if(result==='ok')this.onPurchased({name:p.name,variant:variant.name,rarity,color:this.swatchOf(p.id,variant.id)});
-          if(result==='ok'||result==='Already owned')this.show('purchased');else back();});},after<0?'Land tricks and finish missions to earn Credit.':'Owned for good. Equip it any time.',false,{rarity,primary:after>=0});
+          if(result==='ok'||result==='Already owned')this.show('purchased');else back();});},after<0?(bucks?'Every 5 levels pays 5 Bucks. Buying Bucks with money is not available in this alpha.':'Land tricks and finish missions to earn Coins.'):'Owned for good. Equip it any time.',false,{rarity,primary:after>=0});
         add('NOT NOW',back,'No charge');break;}
       case 'purchased':{
-        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!,wallet=loadProfile().wallet,rarity=priceRarity(p.creditPrice);
+        const p=catalogEntry(this.product)!,variant=p.variants.find(v=>v.id===this.pendingVariant)!,wallet=loadProfile().wallet,rarity=partRarity(p);
         const brand=collection(wallet.owned).brands.find(b=>p.name.startsWith(b.brand));
         title='IT\'S YOURS!';subtitle=brand?`${brand.brand.toUpperCase()} COLLECTION ${brand.have}/${brand.total}${brand.total>brand.have?' / '+(brand.total-brand.have)+' TO GO':' / COMPLETE!'}`:this.notice;
         header=walletStrip(wallet)+productCard(p.name,variant.name,rarity,this.swatchOf(p.id,variant.id),0,undefined,'',true);

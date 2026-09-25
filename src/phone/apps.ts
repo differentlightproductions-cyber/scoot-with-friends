@@ -24,6 +24,7 @@ import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, level
 import { DELIVERY, type CreditEconomy, type Package } from '../data/credit';
 import { dailyDeals, type Deal } from '../data/deals';
 import { inventoryBrands, inventoryItems, type InventoryItem } from '../data/inventory';
+import { catalogEntry, priceOf } from '../data/catalog';
 import { BUCHANAN, DISTRICTS, PUEBLO, SPOTS, districtOf, type DistrictId, type Spot } from '../data/world';
 
 /** What the apps reach in the game. Every app is a front end to an existing system. */
@@ -63,6 +64,10 @@ const GENRE_COLOURS: Record<string, string> = { Rock: '#e0493a', 'Hip-Hop': '#f5
 const onFoot = (s: Simulation) => s.walking && !s.sitting;
 
 // ---- MUSIC --------------------------------------------------------------------
+
+/** What a part was paid in (#76): Bucks for Mafioso, Coins for everything else. */
+const unitOf = (partId: string) => { const e = catalogEntry(partId); return e && priceOf(e).currency === 'bucks' ? 'Bucks' : 'Coins'; };
+
 function musicApp(d: PhoneDeps): View {
   const covers = new Map<string, HTMLImageElement>();
   const cover = (url?: string) => {
@@ -450,7 +455,7 @@ function missionsApp(d: PhoneDeps): View {
           g.font = `44px ${DISPLAY}`; g.fillStyle = PAPER; g.fillText(String(level), x + 14, y + 72);
           const bx = x + 96, bw = w - 112;
           g.font = `800 12px ${BODY}`; g.fillStyle = '#cfd4d8'; g.fillText(`${fmt(into)} / ${fmt(need)} XP`, bx, y + 34);
-          g.textAlign = 'right'; g.fillStyle = '#ffd23f'; g.fillText(`${fmt(p.wallet.credit)} CREDIT`, x + w - 16, y + 34); g.textAlign = 'left';
+          g.textAlign = 'right'; g.fillStyle = '#ffd23f'; g.fillText(`${fmt(p.wallet.credit)} COINS · ${fmt(p.wallet.bucks)} BUCKS`, x + w - 16, y + 34); g.textAlign = 'left';
           g.fillStyle = '#ffffff22'; g.beginPath(); g.roundRect(bx, y + 46, bw, 14, 7); g.fill();
           const grad = g.createLinearGradient(bx, 0, bx + bw, 0); grad.addColorStop(0, LIME); grad.addColorStop(1, '#ffd23f');
           g.fillStyle = grad; g.beginPath(); g.roundRect(bx, y + 46, Math.max(14, bw * into / need), 14, 7); g.fill();
@@ -459,9 +464,9 @@ function missionsApp(d: PhoneDeps): View {
       ];
       // One row per crate tier, rarest first, so a stack of crates stays short.
       blocks.push({ type: 'list', rows: [{ id: 'crate-inventory', label: 'CRATE INVENTORY', detail: `${prog.crates.length} waiting`, value: prog.crates.length ? 'OPEN' : undefined, action: () => d.phone.push(crateInventory(d)) }] });
-      const stacks = (['legend', 'signature', 'pro', 'street'] as const).map(tier => ({ tier, crates: prog.crates.filter(c => c.tier === tier) })).filter(s => s.crates.length);
+      const stacks = (['legend', 'street'] as const).map(tier => ({ tier, crates: prog.crates.filter(c => c.tier === tier) })).filter(s => s.crates.length);
       if (stacks.length) {
-        blocks.push({ type: 'title', text: 'CRATES', sub: 'Parts or Credit inside. No dupes.' });
+        blocks.push({ type: 'title', text: 'CRATES', sub: 'Parts or Coins inside. No dupes.' });
         blocks.push({ type: 'list', rows: stacks.map(({ tier, crates }) => ({ id: 'crates-' + tier, label: CRATE_NAME[tier].toUpperCase() + (crates.length > 1 ? ' ×' + crates.length : ''), detail: 'From ' + crates[0].source, value: 'OPEN', action: () => d.phone.close(() => d.openCrate(crates[0].id)) })) });
       }
       // Starter missions teach the game: the next few still to do, one-time pay.
@@ -471,10 +476,10 @@ function missionsApp(d: PhoneDeps): View {
         blocks.push({ type: 'list', rows: todo.slice(0, 6).map(m => ({ id: 'starter-' + m.id, label: m.title.toUpperCase(), detail: m.goal > 1 ? `${m.how} · ${m.value}/${m.goal}` : m.how, value: '+' + m.reward.credit })) });
       }
       blocks.push({ type: 'title', text: 'DAILY', sub: board.bonus ? 'All done. New ones at midnight.' : 'All three = a Pro Crate' });
-      blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Credit · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
+      blocks.push({ type: 'list', rows: board.daily.map(m => ({ id: 'daily-' + m.id, label: m.title.toUpperCase(), detail: `${fmt(m.value)} / ${fmt(m.goal)} · +${m.reward.credit} Coins · +${m.reward.xp} XP`, value: m.done ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
       blocks.push({ type: 'title', text: 'CAREER', sub: 'Stage II and up drop crates.' });
       const career = board.career.slice().sort((a, b) => Number(a.complete) - Number(b.complete) || b.value / b.goal - a.value / a.goal);
-      blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Credit${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
+      blocks.push({ type: 'list', rows: career.map(m => ({ id: 'career-' + m.id, label: m.title.toUpperCase(), detail: m.complete ? 'Every stage complete' : `${fmt(m.value)} / ${fmt(m.goal)} · stage ${m.stage + 1} of ${m.stages} · +${m.reward.credit} Coins${m.reward.crate ? ' · ' + CRATE_NAME[m.reward.crate] : ''}`, value: m.complete ? 'DONE' : Math.floor(m.value / m.goal * 100) + '%' })) });
       blocks.push({ type: 'text', text: owned.brands.map(b => `${b.brand} ${b.have}/${b.total}`).join(' · '), muted: true });
       return { blocks, initial: prog.crates.length ? 'crate-inventory' : undefined };
     },
@@ -557,17 +562,17 @@ function shopApp(d: PhoneDeps): View {
     return { blocks: [
       { type: 'title', text: still ? 'ORDERED!' : 'DELIVERED!', sub: nameOf(k) },
       box(k, still ? 'ON ITS WAY · ' + eta(still) : 'IN YOUR PARTS'),
-      { type: 'text', text: still ? 'Paid ' + fmt(k.price) + ' Credit. It lands in your parts when the timer runs out, even if you close the game.' : 'Equip it from RIDES or the pause menu.', muted: true },
+      { type: 'text', text: still ? 'Paid ' + fmt(k.price) + ' ' + unitOf(k.partId) + '. It lands in your parts when the timer runs out, even if you close the game.' : 'Equip it from RIDES or the pause menu.', muted: true },
       { type: 'list', rows: [{ id: 'more', label: 'KEEP SHOPPING', action: () => d.phone.back() }] },
     ] };
   } });
   const confirm = (item: InventoryItem, deal?: Deal): View => ({ title: 'SHOP', page: () => {
-    const price = deal?.price ?? item.price, w = wallet(), afford = w.credit + w.testCredit >= price;
+    const price = deal?.price ?? item.price, w = wallet(), bucks = item.currency === 'bucks', afford = (bucks ? w.bucks : w.credit + w.testCredit) >= price;
     return { blocks: [
       { type: 'title', text: item.partName.toUpperCase(), sub: item.brand + ' · ' + item.variantName },
       box(item, RARITY_LABEL[item.rarity] + (deal ? ' · -' + deal.off + '%' : '')),
       { type: 'list', rows: [
-        { id: 'order', label: afford ? 'ORDER IT' : 'NOT ENOUGH CREDIT', detail: 'Delivered in ' + DELIVERY.seconds + ' s · you have ' + fmt(w.credit), value: fmt(price) + ' CR', disabled: !afford,
+        { id: 'order', label: afford ? 'ORDER IT' : bucks ? 'NOT ENOUGH BUCKS' : 'NOT ENOUGH COINS', detail: 'Delivered in ' + DELIVERY.seconds + ' s · you have ' + (bucks ? fmt(w.bucks) + ' Bucks' : fmt(w.credit) + ' Coins'), value: fmt(price) + (bucks ? ' B' : ' C'), disabled: !afford,
           action: afford ? async () => {
             status = 'Ordering...'; d.phone.refresh();
             const r = await d.economy.order({ partId: item.partId, variantId: item.variantId }, price);
@@ -581,7 +586,7 @@ function shopApp(d: PhoneDeps): View {
   } });
   const row = (item: InventoryItem): Row => {
     const deal = dailyDeals(shopId).find(x => x.partId === item.partId && x.variantId === item.variantId);
-    return { id: 'item-' + item.partId + ':' + item.variantId, label: item.partName.toUpperCase(), detail: item.variantName + ' · ' + RARITY_LABEL[item.rarity] + (deal ? ' · -' + deal.off + '%' : ''), value: fmt(deal?.price ?? item.price), action: () => { status = ''; d.phone.push(confirm(item, deal)); } };
+    return { id: 'item-' + item.partId + ':' + item.variantId, label: item.partName.toUpperCase(), detail: item.variantName + ' · ' + RARITY_LABEL[item.rarity] + (deal ? ' · -' + deal.off + '%' : ''), value: fmt(deal?.price ?? item.price) + (item.currency === 'bucks' ? ' B' : ''), action: () => { status = ''; d.phone.push(confirm(item, deal)); } };
   };
   const category = (brandId: string, brand: string, cat: string): View => ({ title: 'SHOP', page: () => ({ blocks: [
     { type: 'title', text: cat.toUpperCase(), sub: brand },
@@ -601,12 +606,12 @@ function shopApp(d: PhoneDeps): View {
         g.fillStyle = INK; g.beginPath(); g.roundRect(x, y, width, 58, 12); g.fill();
         g.textAlign = 'left'; g.font = `15px ${DISPLAY}`; g.fillStyle = LIME; g.fillText('PHONE SHOP', x + 14, y + 25);
         g.font = `700 11px ${BODY}`; g.fillStyle = '#9aa3a9'; g.fillText('Techno Gravity stock · delivered', x + 14, y + 44);
-        g.textAlign = 'right'; g.font = `15px ${DISPLAY}`; g.fillStyle = '#ffd23f'; g.fillText(fmt(w.credit) + ' CR', x + width - 14, y + 34); g.textAlign = 'left';
+        g.textAlign = 'right'; g.font = `15px ${DISPLAY}`; g.fillStyle = '#ffd23f'; g.fillText(fmt(w.credit) + ' C · ' + fmt(w.bucks) + ' B', x + width - 14, y + 34); g.textAlign = 'left';
       } },
     ];
     if (w.packages.length) {
       blocks.push({ type: 'title', text: 'ON ITS WAY', sub: w.packages.length + ' package' + (w.packages.length > 1 ? 's' : '') });
-      blocks.push({ type: 'list', rows: w.packages.map(k => ({ id: 'pkg-' + k.id, label: nameOf(k).toUpperCase(), detail: 'Paid ' + fmt(k.price) + ' Credit', value: eta(k), action: () => d.phone.push(done(k)) })) });
+      blocks.push({ type: 'list', rows: w.packages.map(k => ({ id: 'pkg-' + k.id, label: nameOf(k).toUpperCase(), detail: 'Paid ' + fmt(k.price) + ' ' + unitOf(k.partId), value: eta(k), action: () => d.phone.push(done(k)) })) });
     }
     const deals = dailyDeals(shopId).filter(x => !ordered(x));
     const dealItems = deals.map(x => inventoryItems(w, 'shop', { shopId }).find(i => i.partId === x.partId && i.variantId === x.variantId)).filter((i): i is InventoryItem => !!i);

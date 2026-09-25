@@ -244,6 +244,6 @@ export const ZH_CN: Record<string, string> = {
   "doves.hit": "被鸽子拉到身上了！",
   "item.can": "空罐子",
   "item.paper": "纸团",
-  "reward.credits.one": "你获得了 {count} Credits",
-  "reward.credits.other": "你获得了 {count} Credits",
+  "reward.credits.one": "你获得了 {count} Coins",
+  "reward.credits.other": "你获得了 {count} Coins",
 };

@@ -121,7 +121,7 @@ async function boot() {
   // instead of one per line (missions already show their own sticker).
   let noteCredit=0,noteAt=-Infinity,noteTimer:ReturnType<typeof setTimeout>|null=null,deliveryCheck=0;
   const creditNote=(earned:number)=>{noteCredit+=earned;if(noteTimer)return;const wait=Math.max(0,noteAt+60000-performance.now());
-    noteTimer=setTimeout(()=>{noteTimer=null;noteAt=performance.now();phone.notify('Credit earned','+'+noteCredit+' Credit · '+profile.wallet.credit+' total','star');noteCredit=0;},wait);};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
+    noteTimer=setTimeout(()=>{noteTimer=null;noteAt=performance.now();phone.notify('Coins earned','+'+noteCredit+' Coins · '+profile.wallet.credit+' total','star');noteCredit=0;},wait);};window.addEventListener("storage",()=>{const saved=loadProfile();profile.wallet=saved.wallet;profile.progress=saved.progress;});
   // Missions, XP and crates (data/progress.ts): riding events count toward
   // missions; completions, level-ups and crate openings play on screen.
   const rewards=new RewardFx(economy,()=>profile.progress),missions=new MissionTracker(events,economy);
@@ -784,7 +784,7 @@ async function boot() {
     if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
     else {renderer.setClearColor(0x15161a);renderer.clear();menu.preview(renderer);}
     hud.update(sim, input, dt, fps, renderer.info.render.calls);
-    const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Credit";
+    const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Coins";
     rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen);
     // Minimap: only over live riding, never over menus, the phone, loading or building.
     camera.camera.getWorldDirection(minimapView);

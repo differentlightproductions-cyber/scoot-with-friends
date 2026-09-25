@@ -244,6 +244,6 @@ export const ES: Record<string, string> = {
   "doves.hit": "¡TE CAGÓ UNA PALOMA!",
   "item.can": "lata vacía",
   "item.paper": "bola de papel",
-  "reward.credits.one": "Ganaste {count} Credit",
-  "reward.credits.other": "Ganaste {count} Credits",
+  "reward.credits.one": "Ganaste {count} Coin",
+  "reward.credits.other": "Ganaste {count} Coins",
 };

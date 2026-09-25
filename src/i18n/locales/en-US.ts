@@ -153,7 +153,7 @@ export const EN_US: Record<string, string> = {
   "phone.ui.saved_replays": "SAVED REPLAYS", "phone.ui.saved_detail": "Watch, edit, rename or delete", "phone.ui.replay_history": "REPLAY HISTORY", "phone.ui.history_detail": "How much is kept: Settings / Gameplay",
   "settings.option.held_item": "USE HELD ITEM",
   "settings.test.subtitle": "PRESS BUTTONS AND MOVE THE STICKS", "settings.test.copy": "COPY DIAGNOSTICS", "settings.test.copied": "Diagnostics copied (no account or personal data).", "settings.test.unavailable": "Clipboard unavailable.", "settings.test.copy.desc": "Controller id, mapping, source, preset and live buttons. No personal data.", "settings.test.show_touch": "SHOW TOUCH CONTROLS HERE", "settings.test.show_touch.desc": "Preview and test the on-screen controller.",
-  "settings.owner_credit": "OWNER / ALPHA TEST CREDIT", "settings.owner_credit.desc": "Local testing only; separate from earned Credit.",
+  "settings.owner_credit": "OWNER / ALPHA TEST COINS", "settings.owner_credit.desc": "Local testing only; separate from earned Coins.",
   "settings.apply": "APPLY / SAVE CHANGES", "settings.unsaved": "Unsaved choices. Appearance refreshes when safely grounded.", "settings.nothing": "Nothing to apply yet.",
   "settings.save_failed": "Could not save. Retry before leaving.", "settings.saved_account": "Progress saves to your account.", "settings.saved_device": "Progress saves on this device. Sign in to sync it.", "settings.cash_unavailable": "Cash purchases unavailable in this alpha.",
   "settings.controls_hint": "D-PAD / LS SELECT · A CONFIRM · B BACK", "settings.controls_more": "RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC",
@@ -252,6 +252,6 @@ export const EN_US: Record<string, string> = {
   "item.can": "empty can",
   "item.paper": "paper ball",
   // counted phrases (plural rules per language)
-  "reward.credits.one": "You earned {count} Credit",
-  "reward.credits.other": "You earned {count} Credits",
+  "reward.credits.one": "You earned {count} Coin",
+  "reward.credits.other": "You earned {count} Coins",
 };
