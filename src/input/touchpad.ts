@@ -27,6 +27,8 @@ export class TouchPad {
   mode: TouchMode = "auto";
   size = 1;
   opacity = 0.5;
+  leftHanded = false;
+  haptics = false;
   readonly device = touchDevice();
   /** Whether the overlay is currently shown and feeding input. */
   visible = false;
@@ -75,9 +77,11 @@ export class TouchPad {
 
   private bindButton(el: HTMLElement, index: number) {
     el.addEventListener("pointerdown", (e) => {
+      if (this.preview) return;
       e.preventDefault();
       el.setPointerCapture(e.pointerId);
       this.set(index, 1);
+      if (this.haptics && typeof navigator.vibrate === 'function') navigator.vibrate(10);
       el.classList.add("down");
       this.releases.set(e.pointerId, () => { this.set(index, 0); el.classList.remove("down"); });
     });
@@ -104,6 +108,7 @@ export class TouchPad {
       knob.style.transform = `translate(${x * radius * 0.72}px, ${y * radius * 0.72}px)`;
     };
     el.addEventListener("pointerdown", (e) => {
+      if (this.preview) return;
       e.preventDefault();
       if ([...this.owners.keys()].some((id) => this.owners.get(id) === move)) return;
       el.setPointerCapture(e.pointerId);
@@ -153,6 +158,9 @@ export class TouchPad {
       if (!wanted) this.clear();
     }
     document.body.classList.toggle("touch-controls", this.visible);
+    this.root.classList.toggle('tp-preview',this.preview);
+    this.root.classList.toggle('tp-left-handed',this.leftHanded);
+    if(this.preview)this.clear();
     // Clamp to what the screen height allows so larger sizes never overlap the stacks.
     const fits = Math.max(0.8, Math.min(1.3, (innerHeight - 30) / 330));
     this.root.style.setProperty("--tp-scale", String(Math.min(fits, Math.min(1.3, Math.max(0.8, this.size)))));
@@ -161,7 +169,7 @@ export class TouchPad {
 
   /** The pad as a standard-mapped source, or null when hidden. */
   state(): VirtualPadState | null {
-    if (!this.visible) return null;
+    if (!this.visible || this.preview || this.suspended) return null;
     return { id: "Touch controls (virtual standard pad)", index: -2, mapping: "standard", connected: true, timestamp: performance.now(), axes: [...this.axes], buttons: this.buttons.map((b) => ({ ...b })) };
   }
 }

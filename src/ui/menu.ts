@@ -262,6 +262,7 @@ export class GameMenu {
   private screenBeforePurchase='brand-items';
   private swatchOf(partId:string,variantId:string){return (PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color)??0x888888;}
   show(screen: string) {
+    if(screen==='settings-touch' || (this.screen==='settings-touch'&&screen!=='settings-touch')){this.touchPreviewOn=screen==='settings-touch';this.touchPreview(this.touchPreviewOn);}
     if(screen==='purchase'&&this.screen!=='purchase')this.screenBeforePurchase=this.screen;
     // Returning to a screen restores where focus was, so a category keeps its place.
     if(screen!==this.screen){this.memory.set(this.memoryKey(this.screen),this.index);this.index=this.memory.get(this.memoryKey(screen))??0;}
@@ -511,7 +512,7 @@ export class GameMenu {
       case 'test-controller':{
         title=t('settings.option.test_controller');subtitle=t('settings.test.subtitle');
         add(t('settings.test.copy'),()=>{const text=JSON.stringify(this.controllerReport(),null,2);void navigator.clipboard?.writeText(text).then(()=>{this.notice=t('settings.test.copied');this.render();},()=>{this.notice=t('settings.test.unavailable');this.render();});},t('settings.test.copy.desc'));
-        add(t('settings.test.show_touch'),()=>{this.touchPreview(!this.touchPreviewOn);this.render();},t('settings.test.show_touch.desc'));
+        add(t('settings.test.show_touch'),()=>{this.touchPreviewOn=!this.touchPreviewOn;this.touchPreview(this.touchPreviewOn);this.render();},t('settings.test.show_touch.desc'));
         break;}
       case 'leave-sesh':{title='UNSAVED CHANGES';subtitle='APPLY THEM OR LEAVE THEM BEHIND';
         add('APPLY & CLOSE',()=>{this.applySesh();if(!this.dirty())this.closeSesh();},'Saves this setup on this device.');
@@ -603,14 +604,18 @@ export class GameMenu {
         add(t('settings.option.phone_hand')+' '+t('settings.value.'+this.profile.settings.phoneHand),()=>phone(c=>{c.phoneHand=c.phoneHand==='right'?'left':'right';}),t('settings.detail.phone_hand'));
         add(t('settings.option.notifications')+' '+t(this.profile.settings.phoneNotifications?'common.on':'common.off'),()=>phone(c=>{c.phoneNotifications=!c.phoneNotifications;}),t('settings.detail.notifications'));
         break;}
-      case 'settings-touch':
+      case 'settings-touch':{
         title=t('settings.touch');subtitle=t('settings.title')+' / '+t('settings.touch');
         const touch=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add(t('settings.option.touch_controls')+' '+(this.profile.settings.touchControls==='auto'?t('settings.value.auto'):t('common.'+this.profile.settings.touchControls)),()=>touch(c=>{c.touchControls=c.touchControls==='auto'?'on':c.touchControls==='on'?'off':'auto';}),t('settings.detail.touch_controls'));
-        add(t('settings.option.touch_size')+' '+this.profile.settings.touchSize+'%',()=>touch(c=>{c.touchSize=c.touchSize>=130?80:c.touchSize+10;}),t('settings.detail.touch_size'));
-        add(t('settings.option.touch_opacity')+' '+this.profile.settings.touchOpacity+'%',()=>touch(c=>{c.touchOpacity=c.touchOpacity>=85?20:Math.min(85,c.touchOpacity+15);}),t('settings.detail.touch_opacity'));
-        add(t('settings.option.touch_reset'),()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;}),t('settings.detail.touch_reset'));
-        break;
+        const sizes=[80,100,130] as const, size=this.profile.settings.touchSize<=90?'small':this.profile.settings.touchSize<=110?'medium':'large';
+        add(t('settings.option.touch_size')+' '+t('settings.value.'+size),()=>touch(c=>{c.touchSize=sizes[size==='small'?1:size==='medium'?2:0];}),t('settings.detail.touch_size'));
+        const opacities=[25,50,75] as const;
+        add(t('settings.option.touch_opacity')+' '+this.profile.settings.touchOpacity+'%',()=>touch(c=>{c.touchOpacity=opacities[(opacities.findIndex(n=>n>=c.touchOpacity)+1)%opacities.length]??25;}),t('settings.detail.touch_opacity'));
+        add(t('settings.option.touch_left_handed')+' '+t(this.profile.settings.touchLeftHanded?'common.on':'common.off'),()=>touch(c=>{c.touchLeftHanded=!c.touchLeftHanded;}),t('settings.detail.touch_left_handed'));
+        if(typeof navigator.vibrate==='function')add(t('settings.option.touch_haptics')+' '+t(this.profile.settings.touchHaptics?'common.on':'common.off'),()=>touch(c=>{c.touchHaptics=!c.touchHaptics;}),t('settings.detail.touch_haptics'));
+        add(t('settings.option.touch_reset'),()=>touch(c=>{c.touchControls='auto';c.touchSize=100;c.touchOpacity=50;c.touchLeftHanded=false;c.touchHaptics=false;}),t('settings.detail.touch_reset'));
+        break;}
       case 'settings-audio':
         title=t('settings.audio');subtitle=t('settings.title')+' / '+t('settings.audio');
         add(t('pause.sound')+' '+t(this.profile.settings.sound?'common.on':'common.off'), () => {
@@ -796,7 +801,7 @@ export class GameMenu {
   }
   update(input: InputFrame, dt: number) {
     if(this.screen==='test-controller'){let pre=this.root.querySelector<HTMLElement>('#controller-test');if(!pre){pre=document.createElement('pre');pre.id='controller-test';this.root.querySelector('nav')?.after(pre);}pre.textContent=JSON.stringify(this.controllerReport(),null,1).replace(/[{}"]/g,'');}
-    else if(this.touchPreviewOn)this.touchPreview(false);
+    else if(this.touchPreviewOn&&this.screen!=='settings-touch'){this.touchPreviewOn=false;this.touchPreview(false);}
     if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
     if(this.screen==='creator'){
       this.creator.update(input,dt);this.frameCreator();

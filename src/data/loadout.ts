@@ -70,6 +70,8 @@ export interface LocalProfile {
     touchControls: 'auto'|'on'|'off';
     touchSize: number;
     touchOpacity: number;
+    touchLeftHanded: boolean;
+    touchHaptics: boolean;
   };
 }
 export const PROFILE_KEY = "lazer-profile-v1";
@@ -142,6 +144,8 @@ export function loadProfile(): LocalProfile {
       touchControls:'auto',
       touchSize:100,
       touchOpacity:50,
+      touchLeftHanded:false,
+      touchHaptics:false,
       fidelity: typeof matchMedia==='function' && matchMedia('(pointer: coarse)').matches ? 'medium' : 'high',
       fidelityVersion:2,
     },
@@ -181,6 +185,8 @@ export function loadProfile(): LocalProfile {
     if(['auto','on','off'].includes(saved.settings?.touchControls))profile.settings.touchControls=saved.settings.touchControls;
     if(Number.isFinite(saved.settings?.touchSize))profile.settings.touchSize=Math.min(130,Math.max(80,Math.round(saved.settings.touchSize)));
     if(Number.isFinite(saved.settings?.touchOpacity))profile.settings.touchOpacity=Math.min(85,Math.max(20,Math.round(saved.settings.touchOpacity)));
+    if(typeof saved.settings?.touchLeftHanded==='boolean')profile.settings.touchLeftHanded=saved.settings.touchLeftHanded;
+    if(typeof saved.settings?.touchHaptics==='boolean')profile.settings.touchHaptics=saved.settings.touchHaptics;
     if(Number.isFinite(saved.settings?.filterStrength))profile.settings.filterStrength=Math.min(100,Math.max(0,Math.round(saved.settings.filterStrength)));
     for (const slot of Object.keys(
       profile.scooter,

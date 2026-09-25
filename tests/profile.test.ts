@@ -79,3 +79,14 @@ test('phones start on Medium graphics; an old auto Low on a phone moves up once,
  phone(false);store.set(PROFILE_KEY,JSON.stringify(old));assert.equal(loadProfile().settings.fidelity,'low');
  delete (globalThis as any).matchMedia;
 });
+test('touch layout preferences save safely and old profiles keep defaults',()=>{
+ const store=new Map<string,string>();
+ Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:(k:string)=>store.get(k)??null,setItem:(k:string,v:string)=>store.set(k,v)}});
+ store.set(PROFILE_KEY,JSON.stringify({version:4,settings:{touchSize:85,touchOpacity:80}}));
+ const old=loadProfile();assert.equal(old.settings.touchLeftHanded,false);assert.equal(old.settings.touchHaptics,false);
+ old.settings.touchLeftHanded=true;old.settings.touchHaptics=true;saveProfile(old);
+ assert.equal(loadProfile().settings.touchLeftHanded,true);assert.equal(loadProfile().settings.touchHaptics,true);
+ const bad=JSON.parse(store.get(PROFILE_KEY)!);bad.settings.touchLeftHanded='yes';bad.settings.touchHaptics=1;store.set(PROFILE_KEY,JSON.stringify(bad));
+ const safe=loadProfile();assert.equal(safe.settings.touchLeftHanded,false);assert.equal(safe.settings.touchHaptics,false);
+ assert.equal(safe.settings.touchSize,85);assert.equal(safe.settings.touchOpacity,80);
+});
