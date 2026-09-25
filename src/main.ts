@@ -650,7 +650,7 @@ async function boot() {
     const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
     daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal});
     weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer});
-    tracks.update(dt,sim,weather.snowDepth);
+    tracks.update(dt,sim,weather.snowDepth,weather.wetness);
     audio.weather(weather.rain);
     fidelity.update(sim.position,dt);
     waterEffects.update(dt, sim.elapsed);
