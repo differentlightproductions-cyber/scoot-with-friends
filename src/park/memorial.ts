@@ -579,6 +579,8 @@ export function buildMemorialGrounds(park: Park) {
     park.bench("Shelter bench " + x + " " + z, x - 1.7, 0, z, 0.85, 3);
   };
   for (const [x, z] of PAVILIONS) pavilion(x, z);
+  // Weather (#85): dry ground under each pavilion roof.
+  scene.userData.shelters = PAVILIONS.map(([x, z]) => ({ x0: x - 3, z0: z - 3, x1: x + 3, z1: z + 3, top: 3.2 }));
   // The adjoining recreation lawns complete the southern edge of the reference layout.
   path(
     [

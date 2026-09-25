@@ -88,7 +88,7 @@ try {
   const fall = await scene('fall', 'day', 30, 'fall-day'); await shot('fall-day');
   check('Fall: leaves drift down and litter gathers; the rain dries off', fall.leaves && fall.autumn > 0.99 && fall.litter > 0.9 && !fall.drops && fall.wet < rain.wet, fall);
   const foliage = await page.evaluate(() => { let key = null; window.__LAZER.park.scene.traverse((o) => { const m = o.material; if (!key && m?.name?.includes('foliage') && m.customProgramCacheKey) key = m.customProgramCacheKey(); }); return key; });
-  check('Fall: tree and plant foliage takes the autumn shading', /swf-weather-v5-foliage/.test(foliage ?? ''), foliage);
+  check('Fall: tree and plant foliage takes the autumn shading', /swf-weather-v\d+-foliage/.test(foliage ?? ''), foliage);
   await scene('fall', 'sunset', 10, 'fall-sunset'); await shot('fall-sunset');
 
   const snow = await scene('snow', 'day', 60, 'snow-day'); await shot('snow-day');

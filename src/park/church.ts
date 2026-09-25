@@ -453,6 +453,8 @@ function buildChurch(park: Park) {
   block(17.7, P + 3.2, 12, 18, H + 0.6, 15, M.stucco); // courtyard door head
   wall(-17.7, 29.7, -9.6, 30); wall(-6.2, 29.7, 18, 30);
   block(-9.6, P + 3, 29.7, -6.2, H + 0.6, 30, M.stucco); // rear door head
+  // Weather (#85): no rain, snow or leaves inside the building or under the plaza canopy.
+  scene.userData.shelters = [{ x0: -18, z0: 0, x1: 18, z1: 30, top: H + 0.1 }, { x0: -12.3, z0: -6.7, x1: 12.3, z1: 0.1, top: P + 4.35 }];
   // Roof: slab, parapet cap, rooftop units; camera-only lid so the view stays inside.
   block(-18, H, 0, 18, H + 0.3, 30, M.stuccoShade, false);
   camOnly(-18, H, 0, 18, H + 0.3, 30);

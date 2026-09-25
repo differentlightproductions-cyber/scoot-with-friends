@@ -24,6 +24,30 @@ const TAU=Math.PI*2;
 //    sway of a few centimetres, about once a second.
 // Flakes live in a box around the camera and wrap at its faces.
 const BOX=new THREE.Vector3(28,14,28);
+/**
+ * The open-air weather, carried across map changes (#85): Veterans, B Hill and
+ * the Church are one city under one sky, so snow on the ground, wet streets and
+ * leaf litter stay as they were when the rider moves between them. Indoors it
+ * holds still until the rider is out again.
+ */
+const carried={coverage:0,wet:0,litter:0,intensity:0,rain:0,autumn:0,mode:'sunny' as WeatherMode};
+/** Maps open to the sky; the Warehouse and the Techno Gravity shop are indoors. */
+export const WEATHER_MAPS=new Set(['outdoor','b_hill','church']);
+/**
+ * Roofed ground (#85): a church interior, a canopy, a picnic pavilion. Nothing
+ * falls, settles or soaks below `top` inside x0..x1, z0..z1. Maps list theirs in
+ * scene.userData.shelters (world metres).
+ */
+export interface Shelter{x0:number;z0:number;x1:number;z1:number;top:number}
+const MAX_SHELTERS=8;
+const shelterBoxes={value:Array.from({length:MAX_SHELTERS},()=>new THREE.Vector4(1,1,0,0))},shelterTops={value:new Array<number>(MAX_SHELTERS).fill(-1e4)};
+const SHELTER_GLSL=`uniform vec4 uShelter[${MAX_SHELTERS}];
+uniform float uShelterTop[${MAX_SHELTERS}];
+float swfOpenSky(vec3 p){
+ for (int i = 0; i < ${MAX_SHELTERS}; i++) { vec4 b = uShelter[i]; if (p.x > b.x && p.x < b.z && p.z > b.y && p.z < b.w && p.y < uShelterTop[i]) return 0.0; }
+ return 1.0;
+}
+`;
 /** Sprite size (world metres at 1 m) for a flake of `mm` millimetres: exaggerated so it reads on screen. */
 const spriteSize=(mm:number)=>.018+mm*.011;
 function softDisc(){
@@ -120,7 +144,9 @@ export class Weather {
  }
  update(dt:number,mode:WeatherMode,player:THREE.Vector3,quality:Fidelity,rider:WeatherRider={}){
   this.live=rider.live??null;
-  const outdoors=ACTIVE_MAP==='outdoor'||ACTIVE_MAP==='b_hill';if(!outdoors){delete this.scene.userData.cloudCover;this.coverage.value=0;this.wet.value=0;this.litter.value=0;this.rain=this.autumn=this.intensity=0;this.group.visible=false;this.applyFog(0);this.setSky(0,0,0);return;}
+  const outdoors=WEATHER_MAPS.has(ACTIVE_MAP);this.syncShelters();
+  if(outdoors&&!this.resumed){this.resumed=true;this.coverage.value=carried.coverage;this.wet.value=carried.wet;this.litter.value=carried.litter;this.intensity=carried.intensity;this.rain=carried.rain;this.autumn=carried.autumn;this.mode=carried.mode;}
+  if(!outdoors){delete this.scene.userData.cloudCover;this.coverage.value=0;this.wet.value=0;this.litter.value=0;this.rain=this.autumn=this.intensity=0;this.group.visible=false;this.applyFog(0);this.setSky(0,0,0);return;}
   if(quality!==this.quality){this.quality=quality;this.buildFlakes();if(this.drops)this.buildDrops();if(this.leaves)this.buildLeaves();}if(mode==='snow'&&this.mode!=='snow')this.coverage.value=Math.max(.12,this.coverage.value);this.mode=mode;
   // Ground cover builds over about 45 s of snowfall and melts off in a few seconds after it.
   this.coverage.value=THREE.MathUtils.clamp(this.coverage.value+(mode==='snow'?dt/45:-dt/3),0,1);
@@ -132,6 +158,7 @@ export class Weather {
   // Fall: leaves drift down and gather on open ground over about 15 s.
   this.autumn=THREE.MathUtils.clamp(this.autumn+(mode==='fall'?dt/4:-dt/2),0,1);
   this.litter.value=THREE.MathUtils.clamp(this.litter.value+(mode==='fall'?Math.max(.15-this.litter.value,0)+dt/15:-dt/4),0,1);
+  Object.assign(carried,{coverage:this.coverage.value,wet:this.wet.value,litter:this.litter.value,intensity:this.intensity,rain:this.rain,autumn:this.autumn,mode});
   const d=Math.min(dt,.05),centre=rider.camera??player;
   this.time+=d;
   this.stepLightning(d);
@@ -155,6 +182,7 @@ export class Weather {
   const devils=mode!=='sunny'?0:live?live.devils:.15*(1-THREE.MathUtils.smoothstep(night,.05,.3));
   this.desert?.update(dt,{player,wind:gust,dust:this.dust,devils,quality});
   this.scanAge+=dt;if(this.scanAge>1){this.scanAge=0;this.scan();}
+  this.gatherShelters(centre);
   if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(d,centre);}
   else if(this.flakes)this.flakes.visible=false;
   if(this.rain>0){if(!this.drops)this.buildDrops();this.stepDrops(d,centre);this.splash(d,player);}
@@ -194,14 +222,14 @@ export class Weather {
  private stepDrops(dt:number,centre:THREE.Vector3){
   const drops=this.drops!;drops.visible=true;(drops.material as THREE.LineBasicMaterial).opacity=.32*this.rain;
   const wind=this.wind(this.time),pos=drops.geometry.getAttribute('position') as THREE.BufferAttribute,p=pos.array as Float32Array,half=BOX.clone().multiplyScalar(.5);
-  const n=pos.count/2,shown=Math.floor(n*this.rain);
+  const n=pos.count/2,shown=Math.floor(n*this.rain),roofs=this.nearShelters;
   for(let i=0;i<n;i++){
    const k=i*6,vy=-this.dropFall[i],vx=wind.x*1.6,vz=wind.z*1.6;
    let x=p[k]+vx*dt,y=p[k+1]+vy*dt,z=p[k+2]+vz*dt;
    x=centre.x+((x-centre.x+half.x)%BOX.x+BOX.x)%BOX.x-half.x;
    y=centre.y+((y-centre.y+half.y)%BOX.y+BOX.y)%BOX.y-half.y;
    z=centre.z+((z-centre.z+half.z)%BOX.z+BOX.z)%BOX.z-half.z;
-   const len=i<shown?.05:0;
+   const len=i<shown&&!(roofs.length&&this.sheltered(x,y,z,roofs))?.05:0;
    p[k]=x;p[k+1]=y;p[k+2]=z;p[k+3]=x-vx*len;p[k+4]=y-vy*len;p[k+5]=z-vz*len;
   }
   pos.needsUpdate=true;
@@ -210,28 +238,29 @@ export class Weather {
  private splash(dt:number,player:THREE.Vector3){
   if(!this.spray)this.buildSpray();
   this.sprayDebt+=dt*this.rain*(this.quality==='low'?40:110);
-  while(this.sprayDebt>=1){this.sprayDebt--;const a=Math.random()*TAU,r=1+Math.random()*9,x=player.x+Math.cos(a)*r,z=player.z+Math.sin(a)*r;
-   this.emit(x,terrainHeight(x,z)+.02,z,(Math.random()-.5)*.6,.9+Math.random()*.9,(Math.random()-.5)*.6,.18+Math.random()*.12);}
+  while(this.sprayDebt>=1){this.sprayDebt--;const a=Math.random()*TAU,r=1+Math.random()*9,x=player.x+Math.cos(a)*r,z=player.z+Math.sin(a)*r,y=terrainHeight(x,z);
+   if(this.sheltered(x,y+.05,z))continue;
+   this.emit(x,y+.02,z,(Math.random()-.5)*.6,.9+Math.random()*.9,(Math.random()-.5)*.6,.18+Math.random()*.12);}
  }
  /** Leaves: slower than rain, tumbling and swinging side to side, carried by the wind. */
  private stepLeaves(dt:number,centre:THREE.Vector3){
   const leaves=this.leaves!;leaves.visible=true;
   const t=this.time,wind=this.wind(t),g=leaves.geometry,pos=g.getAttribute('position') as THREE.BufferAttribute,rot=g.getAttribute('aRot') as THREE.BufferAttribute,flip=g.getAttribute('aFlip') as THREE.BufferAttribute,alpha=g.getAttribute('aAlpha') as THREE.BufferAttribute;
-  const p=pos.array as Float32Array,r=rot.array as Float32Array,f=flip.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5),n=pos.count;
+  const p=pos.array as Float32Array,r=rot.array as Float32Array,f=flip.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5),n=pos.count,roofs=this.nearShelters;
   for(let i=0;i<n;i++){
    const k=i*3,ph=this.leafPhase[i]+t*this.leafTumble[i];
    let x=p[k]+(wind.x*1.2+Math.cos(ph)*.9)*dt,y=p[k+1]-(.9+.5*Math.abs(Math.sin(ph)))*dt,z=p[k+2]+(wind.z*1.2+Math.sin(ph*.7)*.5)*dt;
    x=centre.x+((x-centre.x+half.x)%BOX.x+BOX.x)%BOX.x-half.x;
    y=centre.y+((y-centre.y+half.y)%BOX.y+BOX.y)%BOX.y-half.y;
    z=centre.z+((z-centre.z+half.z)%BOX.z+BOX.z)%BOX.z-half.z;
-   p[k]=x;p[k+1]=y;p[k+2]=z;r[i]+=this.leafSpin[i]*dt;f[i]=Math.cos(ph*1.7);a[i]=i<n*this.autumn?1:0;
+   p[k]=x;p[k+1]=y;p[k+2]=z;r[i]+=this.leafSpin[i]*dt;f[i]=Math.cos(ph*1.7);a[i]=i<n*this.autumn&&!(roofs.length&&this.sheltered(x,y,z,roofs))?1:0;
   }
   pos.needsUpdate=rot.needsUpdate=flip.needsUpdate=alpha.needsUpdate=true;
  }
  private stepFlakes(dt:number,centre:THREE.Vector3){
   const flakes=this.flakes!;flakes.visible=true;
   const t=this.time,wind=this.wind(t),positions=flakes.geometry.getAttribute('position') as THREE.BufferAttribute,alpha=flakes.geometry.getAttribute('aAlpha') as THREE.BufferAttribute;
-  const p=positions.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5);
+  const p=positions.array as Float32Array,a=alpha.array as Float32Array,half=BOX.clone().multiplyScalar(.5),roofs=this.nearShelters;
   for(let i=0;i<positions.count;i++){
    const k=i*3;let x=p[k],y=p[k+1],z=p[k+2];
    // Eddies: a smooth, slowly evolving velocity field, so nearby flakes swirl together.
@@ -244,7 +273,7 @@ export class Weather {
    x=centre.x+((x-centre.x+half.x)%BOX.x+BOX.x)%BOX.x-half.x;
    y=centre.y+((y-centre.y+half.y)%BOX.y+BOX.y)%BOX.y-half.y;
    z=centre.z+((z-centre.z+half.z)%BOX.z+BOX.z)%BOX.z-half.z;
-   p[k]=x;p[k+1]=y;p[k+2]=z;a[i]=this.intensity*(i<positions.count*this.intensity?1:0);
+   p[k]=x;p[k+1]=y;p[k+2]=z;a[i]=this.intensity*(i<positions.count*this.intensity&&!(roofs.length&&this.sheltered(x,y,z,roofs))?1:0);
   }
   positions.needsUpdate=true;alpha.needsUpdate=true;
  }
@@ -293,7 +322,23 @@ export class Weather {
   * before it compiles the shaders, so the compile already carries the weather
   * code and nothing recompiles (a hitch) in the first second of riding.
   */
- prepare(){this.scanAge=0;this.scan();}
+ prepare(){this.scanAge=0;this.syncShelters();this.scan();}
+ private resumed=false; private shelterSource:Shelter[]|undefined;private shelters:Shelter[]=[];private nearShelters:Shelter[]=[];
+ /** Copies the map's shelters into the shader uniforms when the list changes. */
+ private syncShelters(){
+  const list=WEATHER_MAPS.has(ACTIVE_MAP)?this.scene.userData.shelters as Shelter[]|undefined:undefined;if(list===this.shelterSource)return;this.shelterSource=list;
+  this.shelters=(list??[]).slice(0,MAX_SHELTERS);
+  for(let i=0;i<MAX_SHELTERS;i++){const b=this.shelters[i];if(b){shelterBoxes.value[i].set(b.x0,b.z0,b.x1,b.z1);shelterTops.value[i]=b.top;}else{shelterBoxes.value[i].set(1,1,0,0);shelterTops.value[i]=-1e4;}}
+ }
+ /** The shelters that reach into the particle box around the camera this frame. */
+ private gatherShelters(centre:THREE.Vector3){
+  const near=this.nearShelters;near.length=0;const hx=BOX.x/2,hz=BOX.z/2;
+  for(const b of this.shelters)if(b.x1>centre.x-hx&&b.x0<centre.x+hx&&b.z1>centre.z-hz&&b.z0<centre.z+hz)near.push(b);
+  return near;
+ }
+ /** True under a roof (see Shelter). */
+ sheltered(x:number,y:number,z:number,list:Shelter[]=this.shelters){for(const b of list)if(x>b.x0&&x<b.x1&&z>b.z0&&z<b.z1&&y<b.top)return true;return false;}
+
  private scan(){this.scene.traverse(object=>{if(!(object instanceof THREE.Mesh)||object instanceof THREE.SkinnedMesh)return;
   // Most materials are hooked already: skip those before the walk up the parents.
   const list=Array.isArray(object.material)?object.material:[object.material],fresh=list.filter(m=>m instanceof THREE.MeshStandardMaterial&&!m.transparent&&!m.userData.characterQuality&&!this.hooked.has(m));
@@ -307,7 +352,7 @@ export class Weather {
   const compile=material.onBeforeCompile,cache=material.customProgramCacheKey.bind(material),key=cache(),coverage=this.coverage,wet=this.wet,litter=this.litter;
   // Plant cards (art/flora.ts names them "<kind> foliage") turn autumn colours instead of gathering litter.
   const foliage=/foliage/.test(material.name);
-  material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;shader.uniforms.uWet=wet;shader.uniforms.uLitter=litter;
+  material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;shader.uniforms.uWet=wet;shader.uniforms.uLitter=litter;shader.uniforms.uShelter=shelterBoxes;shader.uniforms.uShelterTop=shelterTops;
    // The park's lamps light what is around them (#75).
    shader.uniforms.uParkLamps=particleLight.uParkLamps;shader.uniforms.uParkLampTint=parkLampLight.uParkLampTint;shader.uniforms.uParkLampPower=parkLampLight.uParkLampPower;
    shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n'+PARK_LAMP_BODY);
@@ -321,7 +366,7 @@ vSnowWorld = (modelMatrix * snowWorld).xyz;`);
    // spreads to steeper faces as it deepens; snow does not hold past about
    // 60 degrees. Fresh snow is bright and matte; a few crystals face the sun
    // and glint as the camera moves.
-   shader.fragmentShader=(foliage?'#define SWF_FOLIAGE\n':'')+shader.fragmentShader.replace('void main() {',PARK_LAMP_HEAD+`uniform float uSnowCoverage, uWet, uLitter;
+   shader.fragmentShader=(foliage?'#define SWF_FOLIAGE\n':'')+shader.fragmentShader.replace('void main() {',PARK_LAMP_HEAD+SHELTER_GLSL+`uniform float uSnowCoverage, uWet, uLitter;
 varying vec3 vSnowWorld;
 float snowHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float snowNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -330,7 +375,9 @@ void main() {`).replace('#include <lights_physical_fragment>',`float snowNy = in
 // Each weather's work sits behind a branch on its own uniform, so a clear day
 // (and the phone map's top-down photo) pays for none of the noise below.
 float snowAmount = 0.0;
-if (uSnowCoverage > 0.001) {
+// Under a roof (Shelter) nothing settles, gathers or soaks.
+float swfOpen = uSnowCoverage > 0.001 || uWet > 0.001 || uLitter > 0.001 ? swfOpenSky(vSnowWorld) : 1.0;
+if (uSnowCoverage > 0.001 && swfOpen > 0.0) {
 float snowUp = smoothstep(mix(0.9, 0.5, uSnowCoverage), mix(0.97, 0.78, uSnowCoverage), snowNy);
 float snowPatch = snowNoise(vSnowWorld.xz * 0.35) * 0.65 + snowNoise(vSnowWorld.xz * 1.9) * 0.35;
 snowAmount = smoothstep(snowPatch * 0.7 - 0.05, snowPatch * 0.7 + 0.2, uSnowCoverage) * snowUp;
@@ -355,7 +402,7 @@ vec2 leafGrid = vSnowWorld.xz * 4.4, leafCell = floor(leafGrid);
 vec2 leafAt = fract(leafGrid) - 0.5 - (vec2(snowHash(leafCell + 2.3), snowHash(leafCell + 5.9)) - 0.5) * 0.35;
 float leafTurn = snowHash(leafCell + 8.1) * 6.2832;
 vec2 leafQ = mat2(cos(leafTurn), -sin(leafTurn), sin(leafTurn), cos(leafTurn)) * leafAt;
-float leafHere = step(1.0 - uLitter * 0.42, snowHash(leafCell + 11.7)) * smoothstep(0.8, 0.95, snowNy) * (1.0 - snowAmount);
+float leafHere = step(1.0 - uLitter * 0.42, snowHash(leafCell + 11.7)) * smoothstep(0.8, 0.95, snowNy) * (1.0 - snowAmount) * swfOpen;
 leafMask = (1.0 - smoothstep(0.24, 0.29, length(vec2(leafQ.x * 2.1, leafQ.y)))) * leafHere;
 float leafPick = snowHash(leafCell + 13.3);
 vec3 leafColor = leafPick < 0.3 ? vec3(0.8, 0.43, 0.1) : leafPick < 0.55 ? vec3(0.62, 0.19, 0.08) : leafPick < 0.8 ? vec3(0.86, 0.67, 0.2) : vec3(0.45, 0.3, 0.15);
@@ -364,7 +411,7 @@ roughnessFactor = mix(roughnessFactor, 0.7, leafMask);
 }
 // Rain: everything darkens as it soaks; flat ground turns glossy and puddles
 // collect in low patches, mirroring the sky.
-if (uWet > 0.001) {
+if (uWet > 0.001 && swfOpen > 0.0) {
 float wetUp = smoothstep(0.55, 0.95, snowNy);
 float puddle = smoothstep(0.64, 0.74, snowNoise(vSnowWorld.xz * 0.23) * 0.7 + snowNoise(vSnowWorld.xz * 0.95) * 0.3) * wetUp * smoothstep(0.45, 1.0, uWet) * (1.0 - leafMask);
 diffuseColor.rgb *= 1.0 - uWet * (0.22 + 0.14 * wetUp) - puddle * 0.18;
@@ -373,7 +420,7 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
 }
 #endif
 #include <lights_physical_fragment>`);
-  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v5-foliage':'|swf-weather-v5');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
+  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v6-foliage':'|swf-weather-v6');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
  }
  private buildFlakes(){
   if(this.flakes){this.flakes.removeFromParent();this.flakes.geometry.dispose();(this.flakes.material as THREE.Material).dispose();}
