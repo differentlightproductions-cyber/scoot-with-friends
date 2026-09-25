@@ -41,6 +41,8 @@ export const TUNE = {
   fastplantContactTime: 0.18,
   fastplantChordWindow: 0.09,
   fastplantMinAirtime: 0.8,
+  /** The plant's kick off flat ground (m/s up): about 1.3 m and 0.83 s of air, room for a fastplant flip (#84). */
+  fastplantPop: 6.2,
   /** Pro Goofy (A whips): RT + A arms a Fastplant only this close to touchdown (s). */
   fastplantLateArm: 0.3,
   // A pop on a ramp adds a leg extension's worth of HEIGHT to the air the ramp

@@ -1016,7 +1016,7 @@ export class Simulation {
       terrainHeight(this.position.x, this.position.z) >= popLip.module.h * 0.6 &&
       popLip.distance > 0.1;
     const popHeight = boxPop ? TUNE.boxTrickPopHeight + charge * TUNE.boxTrickPopChargeHeight : TUNE.rampTrickPopHeight + charge * TUNE.rampTrickPopChargeHeight;
-    const hop = origin==='fastplant' ? (rampPop?2.4:4.8) : rampPop
+    const hop = origin==='fastplant' ? (rampPop?2.4:TUNE.fastplantPop) : rampPop
       ? Math.sqrt(rampRise * rampRise + 2 * TUNE.gravity * popHeight) - rampRise
       : TUNE.hopMin + (TUNE.hopMax - TUNE.hopMin) * charge;
     if (!rampPop && origin!=='fastplant')
@@ -1108,10 +1108,17 @@ export class Simulation {
     this.airSpin.reset();
     if (!replacing) this.events.emit({ type: "pop", charge });
   }
+  /**
+   * Where RT + A can plant on the ground (#84): riding along the flat, going up
+   * any ramp or transition, off a drop, or at a lip. Not on a longboard, and
+   * not with a rail or ledge just ahead: there RT + A is still the pop onto it
+   * (RT is the grind assist).
+   */
   fastplantOpportunity() {
-    if(!this.grounded||this.walking||this.grind||this.stall||this.dropIn.phase||this.state==='Bail'||this.speed<3||this.tricks.airborne)return null;
+    if(!this.grounded||this.walking||this.rideable==='longboard'||this.grind||this.stall||this.dropIn.phase||this.state==='Bail'||this.speed<1.5||this.tricks.airborne)return null;
     const forward=new THREE.Vector3(Math.sin(this.yaw),0,Math.cos(this.yaw));
     if(this.velocity.clone().setY(0).normalize().dot(forward)<.65)return null;
+    if(this.grindableAhead(forward))return null;
     const supportAt=(p:THREE.Vector3)=>{
       const ray=new RAPIER.Ray({x:p.x,y:this.position.y+.35,z:p.z},{x:0,y:-1,z:0});
       const hit=this.world.castRayAndGetNormal(ray,6,true,undefined,undefined,undefined,this.body,c=>!this.park.railHandles.has(c.handle));
@@ -1124,13 +1131,27 @@ export class Simulation {
     foot.y=ground;
     let drop=0;
     for(const distance of [.6,1,1.6]){const h=supportAt(this.position.clone().addScaledVector(forward,distance));if(h!==null)drop=Math.max(drop,ground-h);}
-    const lip=this.currentLip();
-    const ramp=!!lip&&lip.distance>-.1&&lip.distance<.85&&this.normal.y<.85&&this.velocity.y>1;
-    if(!ramp&&drop<.75)return null;
-    const vy=Math.max(0,this.velocity.y)+(ramp?2.4:4.8);
+    // The plant's pop matches pop(): a smaller kick when it already rises off a steep wall.
+    const vy=Math.max(0,this.velocity.y)+(this.normal.y<.85&&this.velocity.y>1?2.4:TUNE.fastplantPop);
     const airtime=(vy+Math.sqrt(vy*vy+2*TUNE.gravity*drop))/TUNE.gravity;
     return airtime>=TUNE.fastplantMinAirtime?{foot,airtime}:null;
   }
+  /** A rail or ledge (not coping) within a few metres ahead, at a height a pop can reach. */
+  private grindableAhead(forward:THREE.Vector3){
+    const reach=Math.min(5,1.2+this.speed*.35);
+    for(const rail of this.park.rails){
+      if(rail.coping)continue;
+      const ab=this.scratchAB.subVectors(rail.b,rail.a),len2=ab.x*ab.x+ab.z*ab.z;
+      for(let d=.4;d<=reach;d+=.4){
+        const px=this.position.x+forward.x*d,pz=this.position.z+forward.z*d;
+        const t=len2>0?clamp(((px-rail.a.x)*ab.x+(pz-rail.a.z)*ab.z)/len2,0,1):0;
+        const cx=rail.a.x+ab.x*t-px,cz=rail.a.z+ab.z*t-pz,cy=rail.a.y+ab.y*t-this.position.y;
+        if(cx*cx+cz*cz<1.1*1.1&&cy>-.6&&cy<1.6)return true;
+      }
+    }
+    return false;
+  }
+  private scratchAB=new THREE.Vector3();
   private updateFastplant(dt:number,input:InputFrame):InputFrame|null {
     if(input.held.hop<.5&&!input.pressed.hop)this.plantLatched=false;
     if(this.fastplant){
