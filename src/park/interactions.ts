@@ -1,6 +1,7 @@
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { drinkingFountain, scooterRack, vendingMachine } from './props';
+import { drinkingFountain, scooterRack, servicePad, trashCan, vendingMachine } from './props';
 import { DIVE_DOCK } from "./dive-dock";
+import { DIY, PARK_BINS, PAVILIONS } from "./memorial";
 import * as THREE from 'three';
 import type { Park } from './park';
 import { OUTDOOR, ACTIVE_MAP, terrainHeight } from './park';
@@ -28,6 +29,8 @@ interface StoredRide {ownerId:string; rackId:string; slot:number; rideable:Ridea
 const rideName=(kind:RideableKind)=>kind==='longboard'?'Longboard':'Scooter';
 export class WorldInteractions {
  readonly items:Interactable[]=[];
+ /** Trash can mouths (#58), for With Friends' throw-it-away. */
+ readonly bins:THREE.Vector3[]=[];
  online=false;
  readonly prompt=document.createElement('div');
  stored:StoredRide|null=null;
@@ -54,21 +57,29 @@ export class WorldInteractions {
   // stood out on the sidewalk showing its plain back to everyone arriving from
   // the street; it now backs onto the storefront and faces the approach.
   // The lake's dive dock gets a rack of its own (no fountain): rack the ride, go for a dip.
-  const clusters:{x:number;z:number;vending:boolean;spread:number;facing?:1|-1;fountain?:boolean}[]=OUTDOOR
-   ?[{x:22,z:-31.4,vending:false,spread:2.2},{x:-42,z:-20,vending:true,spread:3},{x:48,z:-25.5,vending:true,spread:3},{x:DIVE_DOCK.rack[0],z:DIVE_DOCK.rack[1],vending:false,spread:2.2,fountain:false}]
+  // `yaw` turns a whole cluster (#58): machines, fountain, rack and trash can
+  // stay square to the sidewalk or slab edge they sit along. `bin` is the trash
+  // can's offset along the row (0: none); `pad` lays a concrete pad under it.
+  // [-42,-20] straddled the plaza's straight north edge and the angled path over
+  // its corner, square to neither; it now sits wholly on the plaza, along its edge.
+  // [48,-25.5] stood on bare dirt, square to the world below the sidewalk that
+  // runs 15 degrees off east; it now lines that sidewalk on its own pad, facing it.
+  const clusters:{x:number;z:number;vending:boolean;spread:number;facing?:1|-1;yaw?:number;fountain?:boolean;bin?:number;pad?:[number,number,number]}[]=OUTDOOR
+   ?[{x:22,z:-31.4,vending:false,spread:2.2,bin:-3.3},{x:-43.2,z:-18.6,vending:true,spread:2.6,bin:-3.6},{x:45.5,z:-29.8,vending:true,spread:2.6,yaw:Math.PI-Math.atan2(4.76,18),bin:3.75,pad:[-0.41,9.4,2.0]},{x:DIVE_DOCK.rack[0],z:DIVE_DOCK.rack[1],vending:false,spread:2.2,fountain:false,bin:1.9}]
    :ACTIVE_MAP==="techno_gravity"?[{x:5.2,z:-6,vending:true,spread:2.4,facing:-1}]
    // The Church: a rack and machine at the corner of the front lot, by the sidewalk.
    :ACTIVE_MAP==="church"?[{x:25.5,z:-41,vending:true,spread:3}]:[{x:24,z:-31,vending:true,spread:3}];
   for(const [index,cluster] of clusters.entries()){
    const {x,z,spread}=cluster,f=cluster.facing??1;
    const y=terrainHeight(x,z),base=new THREE.Vector3(x,y,z);
-   // Offsets are authored for a machine facing +z; a mirrored cluster flips
-   // both axes, which leaves every axis-aligned box and collider valid.
-   const at=(origin:THREE.Vector3,dx:number,dy:number,dz:number)=>origin.clone().add(new THREE.Vector3(dx*f,dy,dz*f));
-   const yaw=f===1?0:Math.PI;
+   // Offsets are authored for a machine facing +z and turned with the cluster.
+   const yaw=cluster.yaw??(f===1?0:Math.PI);
+   const at=(origin:THREE.Vector3,dx:number,dy:number,dz:number)=>origin.clone().add(new THREE.Vector3(dx,dy,dz).applyAxisAngle(new THREE.Vector3(0,1,0),yaw));
+   if(cluster.pad){const [along,length,depth]=cluster.pad;servicePad(park,at(base,along,0,-depth/2+.62),yaw,length,depth);}
+   if(cluster.bin){const can=at(base,cluster.bin,0,0);can.y=terrainHeight(can.x,can.z);this.bins.push(trashCan(park,can,yaw).mouth);}
    scooterRack(park,base,yaw);
    const rackId=`rack-${index}`;
-   this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab '+rideName(this.stored.rideable):s.hasScooter?'Store '+rideName(s.rideable):rideName(this.stored?.rideable??s.rideable)+' stored at another rack',action:s=>this.rack(s,rackId,base)});
+   this.items.push({id:rackId,interactionType:'rack',position:base.clone(),radius:2,prompt:s=>this.stored?.rackId===rackId?'Grab '+rideName(this.stored.rideable):s.hasScooter?'Store '+rideName(s.rideable):rideName(this.stored?.rideable??s.rideable)+' stored at another rack',action:s=>this.rack(s,rackId,base,false,yaw)});
    if(cluster.vending){
    const machine=at(base,spread,0,0);
    vendingMachine(park,machine,yaw);
@@ -78,6 +89,14 @@ export class WorldInteractions {
    const fountain=at(base,-spread,0,0);
    drinkingFountain(park,fountain,yaw);
    this.items.push({id:`fountain-${index}`,interactionType:'fountain',position:fountain,radius:1.5,prompt:()=> 'Use Fountain',action:s=>this.fountain(s,fountain)});
+  }
+  // Loose trash cans (#58): one inside each picnic pavilion by a corner post,
+  // mouth to the table, one on the grass between the DIY lot and the ballfield
+  // path, clear of every grind line, and the lawns' old bins facing into the park.
+  if(OUTDOOR){
+   // [x, z, yaw, lift]: a pavilion's can stands on its 0.12 m slab.
+   const cans:[number,number,number,number][]=[...PAVILIONS.map(([x,z]):[number,number,number,number]=>[x+2.6,z-1.9,-Math.PI/2,.12]),[DIY.x1+1,DIY.z1-1.2,Math.PI/2,0],...PARK_BINS.map(([x,z]):[number,number,number,number]=>[x,z,Math.atan2(-x,-z),0])];
+   for(const [x,z,yaw,lift] of cans)this.bins.push(trashCan(park,new THREE.Vector3(x,terrainHeight(x,z)+lift,z),yaw).mouth);
   }
   for(const bench of park.benches)this.items.push({id:bench.id,interactionType:'bench',position:new THREE.Vector3(bench.x,bench.base,bench.z),radius:Math.max(1.3,bench.length/2+.3),prompt:()=> 'Sit',action:()=>{}});
   scene.add(this.prop,this.water);this.prop.visible=false;this.water.visible=false;
@@ -104,7 +123,7 @@ export class WorldInteractions {
   this.items.push({id:'shore',interactionType:'rack',position:at,radius:2.2,prompt:()=>'Grab your '+rideName(this.stored?.rideable??s.rideable).toLowerCase(),action:s=>this.rack(s,'shore',at,true)});
  }
  private dropShore(){const i=this.items.findIndex(i=>i.id==='shore');if(i>=0)this.items.splice(i,1);}
- private rack(s:Simulation,id:string,base:THREE.Vector3,own=false){
+ private rack(s:Simulation,id:string,base:THREE.Vector3,own=false,yaw=0){
   if(this.online&&!own){this.openOptions('RACKS',[{label:'OK',detail:'Shared rack storage is still in testing online',action:()=>{}}],'Unavailable in a room');return;}
   if(this.active)return;
   if(this.stored){
@@ -122,7 +141,7 @@ export class WorldInteractions {
    this.stored={ownerId:'local-player',rackId:id,slot:1,rideable:s.rideable,loadout,mesh};
    // A board stands nose-up in the slot rather than borrowing the scooter's pose.
    const to=board?new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI/2+.12,0,0)):new THREE.Quaternion();
-   this.active={type:'store',time:0,duration:.65,start,end:base.clone().add(new THREE.Vector3(.25,board?.5:.07,board?.06:0)),from:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),to,mesh};
+   this.active={type:'store',time:0,duration:.65,start,end:base.clone().add(new THREE.Vector3(.25,board?.5:.07,board?.06:0).applyAxisAngle(new THREE.Vector3(0,1,0),yaw)),from:new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),s.yaw),to,mesh};
   }
   s.emote={id:'place',time:0,duration:.65};
  }

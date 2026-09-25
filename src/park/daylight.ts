@@ -30,13 +30,15 @@ export class Daylight {
   // Checked from screenshots, not just coordinates:
   // [21,-34] removed: it stood in the sidewalk entrance beside the rack.
   // [-42,-20] stood inside the scooter rack slab; it now closes the same service
-  // row beyond the fountain, in line with the furniture.
+  // row beyond the fountain and trash can, in line with the furniture (#58).
+  // [50,-28] stood in the dirt off the end of the east service row; it now
+  // ends that row on its pad, in line with the fountain (#58).
   // [-20,32] stood a metre onto the wood park riding apron; it now sits on the
   // lawn just past the apron edge.
   // The parking lamp (first [20,-73], then [24,-84]) never had a good spot in
   // the lot: a wheel stop, then the drive aisle beside a floodlight. It now
   // lights the south footpath from the verge between the floodlight poles.
-  for(const [x,z] of [[-20,34.3],[-47.3,-20],[50,-28],[-75,30],[46,-94.4]]){
+  for(const [x,z] of [[-20,34.3],[-48.4,-18.6],[49.95,-28.62],[-75,30],[46,-94.4]]){
    const y=terrainHeight(x,z);
    this.lamps.push(lampPost(park,new THREE.Vector3(x,y,z)));
    const pool=new THREE.Mesh(new THREE.CircleGeometry(5,24),new THREE.MeshBasicMaterial({color:0xffdc9a,transparent:true,opacity:0,depthWrite:false}));

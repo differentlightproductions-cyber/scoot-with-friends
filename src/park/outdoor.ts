@@ -353,18 +353,16 @@ export function buildOutdoor(park: Park) {
     };
     buildWoodRamp(scene, m, (z) => profile(m, z), [surfaceSpan[i][0], surfaceSpan[i][1]], [floor(m.x0), floor(m.x1)]);
   });
+  // The steel pipe runs the whole lip, flush with the ramp's sides (#68): the
+  // grind collider keeps its own, slightly shorter span, so a grind still
+  // starts and ends exactly where it did.
   for (const m of modules) {
     if (m.kind === "spine")
-      rampLips(m).forEach((lip, i) =>
-        park.rail(
-          "Spine coping",
-          new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
-          new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip),
-          "ledge",
-          true,
-          new THREE.Vector3(0, 0, i === 0 ? 1 : -1),
-        ),
-      );
+      rampLips(m).forEach((lip, i) => {
+        const a = new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
+          b = new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip);
+        park.extendPipe(park.rail("Spine coping", a, b, "ledge", true, new THREE.Vector3(0, 0, i === 0 ? 1 : -1)), a, b, 0.09, 0.09);
+      });
     if (m.kind === "box") {
       const lip = rampLips(m)[0];
       box(
@@ -380,26 +378,24 @@ export function buildOutdoor(park: Park) {
       // like quarter coping when rolling or launching over it.
       // The small box carries its ledge near the right-hand edge, so its coping
       // stops short of the ledge and of a rider grinding the ledge's left side.
+      // Its pipe still runs right up to the ledge's side, as built (#68).
       const end = m.id === "small-box" ? m.x1 - 1.4 : m.x1 - 0.1;
-      park.rail(
-        "Box coping " + m.id,
-        new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
-        new THREE.Vector3(end, m.h + 0.025, lip),
-        "ledge",
-        true,
-        new THREE.Vector3(0, 0, -1),
+      const a = new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
+        b = new THREE.Vector3(end, m.h + 0.025, lip);
+      const ledge = smallBoxLedge();
+      park.extendPipe(
+        park.rail("Box coping " + m.id, a, b, "ledge", true, new THREE.Vector3(0, 0, -1)),
+        a,
+        b,
+        0.09,
+        (m.id === "small-box" ? ledge.line[0].x - ledge.width / 2 - 0.01 : m.x1 - 0.01) - end,
       );
     }
     if (m.kind === "quarter") {
       const lip = rampLips(m)[0];
-      park.rail(
-        "Quarter coping",
-        new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
-        new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip),
-        "ledge",
-        true,
-        new THREE.Vector3(0, 0, m.reverse ? -1 : 1),
-      );
+      const a = new THREE.Vector3(m.x0 + 0.1, m.h + 0.025, lip),
+        b = new THREE.Vector3(m.x1 - 0.1, m.h + 0.025, lip);
+      park.extendPipe(park.rail("Quarter coping", a, b, "ledge", true, new THREE.Vector3(0, 0, m.reverse ? -1 : 1)), a, b, 0.09, 0.09);
       const back = m.reverse ? m.z0 : m.z1;
       // Back guardrail spans the whole deck; nothing arrives from behind now.
       const rail: THREE.Mesh[] = [];

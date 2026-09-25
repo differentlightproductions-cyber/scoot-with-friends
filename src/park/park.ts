@@ -647,6 +647,15 @@ export class Park {
   groundHeight(x: number, z: number) {
     return terrainHeight(x, z);
   }
+  /**
+   * Lengthens a pipe `rail()` built from `a` to `b` by `before` metres past `a`
+   * and `after` past `b`: the mesh only, never its grind collider (#68).
+   */
+  extendPipe(pipe: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3, before: number, after: number) {
+    const length = a.distanceTo(b), direction = b.clone().sub(a).normalize();
+    pipe.scale.y = (length + before + after) / length;
+    pipe.position.copy(a).addScaledVector(direction, -before).add(b.clone().addScaledVector(direction, after)).multiplyScalar(0.5);
+  }
   /** `floor` is where the support posts stand: given for a layout piece, whose points are local to it (its base is 0). */
   rail(id: string, a: THREE.Vector3, b: THREE.Vector3, kind: "rail" | "ledge", coping = /(?:quarter|spine).*coping/i.test(id), solid?: THREE.Vector3, floor?: number) {
     this.rails.push({ id, a, b, kind, coping, solid: solid?.clone().setY(0).normalize() });
@@ -694,6 +703,7 @@ export class Park {
           0x344b49,
         ).name = id + " support";
       }
+    return mesh;
   }
   private sign(
     text: string,

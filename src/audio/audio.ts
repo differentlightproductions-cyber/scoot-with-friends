@@ -176,6 +176,7 @@ export class AudioEngine {
     }
     if(e.type==='worldInteraction'&&e.interaction==='open'){f=1300;g=.08;d=.075;}
     if(e.type==='worldInteraction'&&e.interaction==='vend'){f=340;g=.045;d=.12;}
+    if(e.type==='worldInteraction'&&e.interaction==='bin'){f=190;g=.09;d=.16;}
     if(e.type==='worldInteraction'&&e.interaction==='novelty'){this.novelty(e.item);return;}
     if (!f) return;
     const o = this.context.createOscillator(),

@@ -220,6 +220,22 @@ export function trashCan(park: Park, base: THREE.Vector3, yaw = 0) {
   return { group, mouth: turn(base, yaw, V(0, 0.95, r)) };
 }
 
+/**
+ * A poured concrete pad under a service cluster (#58), `length` along the row
+ * and `depth` across it. Visual only: flush with the ground, nothing to trip on.
+ */
+export function servicePad(park: Park, centre: THREE.Vector3, yaw: number, length: number, depth: number) {
+  const m = (concrete() as THREE.MeshStandardMaterial).clone();
+  m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -4;
+  const pad = new THREE.Mesh(new THREE.PlaneGeometry(length, depth).rotateX(-Math.PI / 2), m);
+  pad.position.set(centre.x, centre.y + 0.012, centre.z);
+  pad.rotation.y = yaw;
+  pad.receiveShadow = true;
+  pad.name = "Service pad";
+  park.scene.add(pad);
+  return pad;
+}
+
 // ---- Scooter rack -------------------------------------------------------------
 /** Three galvanised inverted-U hoops on a footing, 2.3 m long, running along x. */
 export function scooterRack(park: Park, base: THREE.Vector3, yaw = 0) {

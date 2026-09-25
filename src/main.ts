@@ -129,6 +129,12 @@ async function boot() {
     // Acorns under the lawn's trees, rocks by the paths, a paper ball and cans by the benches and the DIY lot.
     const scatter: [number, number, ThrowableKind][] = [[-31.5, 1.5, "acorn"], [-29, 5.5, "acorn"], [-32, 4, "pinecone"], [-83, 11, "rock"], [-85.5, 5, "acorn"], [-44.5, -119, "can"], [-47.5, -123, "rock"], [-45, -124.5, "paper"], [30, -42, "acorn"], [33, -38.5, "rock"], [-22, -34, "paper"], [-25.5, -39.5, "can"]];
     f.populate(VETERANS_LOCALS, capture(sim), profile, scatter);
+    // Trash cans (#58): B beside one throws litter away; someone else's counts toward Clean-Up Crew.
+    f.bins = interactions.bins;
+    f.onBinned = (fromOthers) => {
+      events.emit({ type: "worldInteraction", interaction: "bin", item: "litter" });
+      if (fromOthers) { missions.litter(); hud.feedback("LITTER BINNED · CLEAN-UP CREW", "good"); } else hud.feedback("BINNED", "good");
+    };
     f.local.onHit = (hit) => {
       const what = hit.item === "paper" ? "A PAPER BALL" : hit.item === "can" ? "A CAN" : hit.item === "rock" ? "A PEBBLE" : hit.item === "pinecone" ? "A PINECONE" : "AN ACORN";
       hud.feedback(hit.strength === "cosmetic" ? `${what} BOUNCES OFF` : `BONK! ${what}`, "warn");
