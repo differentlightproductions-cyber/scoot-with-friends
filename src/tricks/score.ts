@@ -10,13 +10,17 @@ export function trickSignature(raw?: TrickPrimitives, name = "") {
     raw.deckReversals?.length ?? 0, raw.barReversals?.length ?? 0,
     [...raw.states].sort(), raw.fakieSeconds !== undefined]);
 }
+/** A held pose past its first TUNE.bodyHoldFree seconds pays per second, up to TUNE.bodyHoldMax (#84). */
+export function holdPoints(raw: TrickPrimitives) {
+  return Math.round(Object.values(raw.holds ?? {}).reduce((sum, held) => sum + Math.max(0, Math.min(held, TUNE.bodyHoldMax) - TUNE.bodyHoldFree), 0) * TUNE.bodyHoldPoints);
+}
 export function trickValue(raw?: TrickPrimitives) {
   if (!raw) return TUNE.contactTrickPoints;
   if (raw.fakieSeconds !== undefined) return TUNE.fakieEntryPoints;
   const values = [completedDegrees(raw.bodyYaw) / 180 * TUNE.rotationPointsPer180,
     Math.floor((Math.abs(raw.flipPitch)*180/Math.PI+TUNE.flipNameTolerance)/360)*450,
     Math.abs(raw.deckTurns) * TUNE.deckTurnPoints * (raw.finger ? 1.35 : 1),
-    Math.abs(raw.barTurns) * TUNE.barTurnPoints, Math.abs(raw.decadeTurns ?? 0) * TUNE.decadePoints, raw.states.length * TUNE.bodyTrickPoints,
+    Math.abs(raw.barTurns) * TUNE.barTurnPoints, Math.abs(raw.decadeTurns ?? 0) * TUNE.decadePoints, raw.states.length * TUNE.bodyTrickPoints + holdPoints(raw),
     Math.trunc((Math.abs(raw.briAngle ?? 0) + 0.2) / (Math.PI * 2)) * 300,
     Math.trunc((Math.abs(raw.kicklessAngle ?? 0) + 0.2) / (Math.PI * 2)) * 200,
     ((raw.deckReversals?.length ?? 0) + (raw.barReversals?.length ?? 0)) * 100];

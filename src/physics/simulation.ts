@@ -21,7 +21,7 @@ import {
   terrainSurface,
   authoredDropAhead,
 } from "../park/park";
-import { Tricks } from "../tricks/tricks";
+import { GRAB_POSES, Tricks } from "../tricks/tricks";
 import { ManualBalance } from "../player/manual";
 import { classifyLanding, crookedLandingAngle, surfaceAxis } from "../player/landing";
 import { pushFoot, sideSign } from "../core/stance";
@@ -3362,16 +3362,20 @@ export class Simulation {
         this.flipYaw0 = this.yaw;
         this.flipRoll0 = this.roll;
       }
+      // A held hand grab (#84): LS under TUNE.grabLeanStick only leans the body
+      // (TrickSystem.tweak); a fuller push still spins, rescaled from there.
+      const grabbing = GRAB_POSES.has(this.tricks.visualPose) && this.tricks.poseBlend > .3;
+      const spinSteer = grabbing ? Math.sign(input.steer) * Math.max(0, (Math.abs(input.steer) - TUNE.grabLeanStick) / (1 - TUNE.grabLeanStick)) : input.steer;
       this.spin = this.airSpin.step(
         dt,
         this.spin,
-        input.steer,
+        spinSteer,
         this.velocity.y,
         Math.max(0, verticalGap),
         this.airTime,
         this.bodyFlip.active?TUNE.flipYawRateScale:1,
       );
-      if (Math.abs(input.steer) < TUNE.spinStickDeadzone && !this.copingDrop && !this.hopRail && Math.abs(this.spin) > 0.05)
+      if (Math.abs(spinSteer) < TUNE.spinStickDeadzone && !this.copingDrop && !this.hopRail && Math.abs(this.spin) > 0.05)
         this.spin = this.guideSpin(dt, fall);
       const rotation = this.spin * dt;
       this.yaw += rotation;

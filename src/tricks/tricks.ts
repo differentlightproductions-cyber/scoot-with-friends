@@ -11,6 +11,8 @@ const CLAMP_RELEASE_TIME = 0.17;
 const DECADE_TAP_TIME = 0.35;
 // A torque-limited rotational channel. Inputs add angular targets; angle and angular
 // velocity remain continuous, and an unfinished catch remains a landing hazard.
+/** Hand grabs: while one is held a gentle LS leans the body and only a full push spins (#84). */
+export const GRAB_POSES = new Set(["Toboggan", "Deck Grab", "Clamp Grab"]);
 export class RotationChannel {
   angle = 0;
   velocity = 0;
@@ -281,6 +283,12 @@ export class Tricks {
   poseBlend = 0;
   visualPose = "";
   poseSide = 1;
+  /**
+   * LS while a pose is held (#84), damped: x leans the body toward the stick,
+   * y tips it fore and aft. Visual only (RiderModel); held grabs also raise the
+   * stick push a spin needs (GRAB_POSES, simulation).
+   */
+  tweak = { x: 0, y: 0 };
   inputContext = "air";
   motionOrder: string[] = [];
   private completed = { deck: 0, bri: 0, kickless: 0 };
@@ -323,7 +331,9 @@ export class Tricks {
     const pro = this.controlStyle !== "arcade", rt = input.held.pumpGrind > 0.5;
     const stick = Math.abs(input.steer) > 0.5 || Math.abs(input.lean) > 0.5;
     const twistPress = pro && rt && input.pressed.brakeBars && stick && !clampWanted && !this.decadeActive;
-    const tobogganWanted = pro && rt && input.held.brakeBars > 0.5 && !stick && !clampWanted && !this.twisting && poseAllowed("Toboggan", busy) && this.landingIn > CLAMP_RELEASE_TIME;
+    // Once held, LS leans the Toboggan (B is already down, so it cannot start a twist).
+    const tobogganHeld = this.visualPose === "Toboggan" && this.poseBlend > 0;
+    const tobogganWanted = pro && rt && input.held.brakeBars > 0.5 && (!stick || tobogganHeld) && !clampWanted && !this.twisting && poseAllowed("Toboggan", busy) && this.landingIn > CLAMP_RELEASE_TIME;
     const finger = !flipChord && !clampWanted && !tobogganWanted && input.held.pumpGrind > 0.5;
     const direction = this.naturalDirection * (heel ? -1 : 1);
     for (const action of ["leftModifier", "rightModifier"] as const)
@@ -499,6 +509,9 @@ export class Tricks {
       this.visualPose = pose;
       this.poseSide = Math.sign(input.steer) || this.naturalDirection;
     } else if (this.poseBlend === 0) this.visualPose = "";
+    const leaning = !!pose && this.poseBlend > 0.3, ease = 1 - Math.exp(-dt * 6);
+    this.tweak.x += ((leaning ? clamp(input.steer, -1, 1) : 0) - this.tweak.x) * ease;
+    this.tweak.y += ((leaning ? clamp(input.lean, -1, 1) : 0) - this.tweak.y) * ease;
     this.step(dt, pose, input.rx);
   }
   deck = new RotationChannel(TUNE.deckAcceleration, TUNE.deckMaxSpeed);
@@ -509,6 +522,8 @@ export class Tricks {
   fastplant = false;
   body = new Set<string>();
   bodyTime = 0;
+  /** Longest unbroken hold of each body state this air, in seconds (scored in trickValue). */
+  holds: Record<string, number> = {};
   bodyState = "";
   airborne = false;
   fromLink = false;
@@ -583,6 +598,7 @@ export class Tricks {
     this.flip = 0;this.flairContext=false;this.quarterAir=false;
     this.fastplant = false;
     this.body.clear();
+    this.holds = {};
     this.bodyTime = 0;
     this.airborne = true;
     this.landingIn = 99;
@@ -607,7 +623,10 @@ export class Tricks {
     }
     if (bodyState) {
       this.bodyTime = this.bodyState === bodyState ? this.bodyTime + dt : 0;
-      if (this.bodyTime > 0.12) this.body.add(bodyState);
+      if (this.bodyTime > 0.12) {
+        this.body.add(bodyState);
+        this.holds[bodyState] = Math.max(this.holds[bodyState] ?? 0, this.bodyTime);
+      }
     } else this.bodyTime = 0;
     this.bodyState = bodyState;
   }
@@ -643,6 +662,7 @@ export class Tricks {
     this.kickless.reset();
     this.poseBlend = 0;
     this.visualPose = "";
+    this.tweak.x = this.tweak.y = 0;
     this.gesture.reset();
     this.fingerTargets = [];
     this.pendingBumper = null;
@@ -679,6 +699,7 @@ export class Tricks {
     raw.originalDeckDirection = this.deck.originalDirection;
     raw.finger = this.finger;
     raw.barTwist = this.barTwist;
+    if (Object.keys(this.holds).length) raw.holds = { ...this.holds };
     raw.fingerTurns = this.fingerTargets.filter(
       (f) =>
         f.direction === Math.sign(this.deck.angle) &&
@@ -746,6 +767,8 @@ export class Tricks {
     this.motionOrder = [];
     this.inputContext = "air";
     this.body.clear();
+    this.holds = {};
+    this.tweak.x = this.tweak.y = 0;
     this.yaw = 0;
     this.airborne = false;
     this.bodyState = "";

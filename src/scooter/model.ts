@@ -54,11 +54,15 @@ if (import.meta.env?.DEV && typeof window !== "undefined") (window as any).__DEC
 // (back), nose up (pitch) and tipped toward the grabbing hand (roll), so the free hand closes on the deck's edge
 // `along` of the way from the neck to the tail, beside the front foot.
 export const DECK_GRAB = { crouch: 0.8, lift: 0.3, back: -0.05, pitch: -0.6, roll: 0.2, along: 0.35 };
-// Toboggan: the stance-side hand (Regular right, Goofy left; hands.ts) lets go
-// of the bar and holds the rear of the deck, `along` of the way to the tail, the
-// scooter pulled up nose-high and tipped toward that hand (values from a reach
-// sweep: both hands on their anchors with the knees under 125 degrees).
-export const TOBOGGAN = { crouch: 0.6, lift: 0.2, back: -0.1, pitch: -0.5, roll: 0.15, along: 0.75 };
+// Toboggan (#84): the stance-side hand (Regular right, Goofy left; hands.ts)
+// lets go of the bar and reaches down under the deck by the rear wheel, `along`
+// of the way to the tail, palm up on the deck's underside with the fingers
+// wrapped in from the edge (`under` below the deck top, `tuck` in from the
+// edge); the other hand stays on its grip and both feet stay on the deck. The
+// scooter comes up and tips toward the grabbing hand like a sled.
+export const TOBOGGAN = { crouch: 0.9, lift: 0.4, back: 0.35, pitch: 0.5, roll: 0.2, along: 0.9, under: 0.05, tuck: 0.03, lean: 0, shift: 0, kneesUp: 1, fold: 0.2 };
+// LS lean while a pose is held (#84): radians at full stick, about a pivot this high (the hips).
+export const TWEAK = { roll: 0.42, pitch: 0.32, pivot: 0.75 };
 // Bar Twist: the bars spin tipped forward and down about the headtube.
 export const BAR_TWIST = { tilt: 0.7, headtube: 0.33 };
 if (import.meta.env?.DEV && typeof window !== "undefined") Object.assign(window as any, { __TOBOGGAN: TOBOGGAN, __BAR_TWIST: BAR_TWIST });
@@ -449,6 +453,14 @@ export class RiderModel {
         .sub(pivot.clone().applyQuaternion(q));
       this.root.quaternion.copy(q);
     }
+    // LS while a pose is held (#84): rider and scooter lean together about the
+    // hips, rolled toward the stick and tipped with its fore/aft push.
+    const tweak=riding&&!s.grounded?s.tricks.tweak:undefined;
+    if(tweak&&(Math.abs(tweak.x)>1e-3||Math.abs(tweak.y)>1e-3)){
+      const hip=v(0,TWEAK.pivot,0),turned=hip.clone().applyQuaternion(this.root.quaternion);
+      this.root.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(-tweak.y*TWEAK.pitch,0,tweak.x*TWEAK.roll)));
+      this.root.position.add(turned.sub(hip.applyQuaternion(this.root.quaternion)));
+    }
     // Riding, walking and carrying on the longboard have their own pose;
     // sitting, emotes and getting up share the scooter's.
     if (onBoard && !s.sitting && !s.emote && s.getUpTimer <= 0) {
@@ -617,6 +629,10 @@ export class RiderModel {
     this.torso.position.z -= this.flipTuck(s) * TUCK.torsoBack;
     this.torso.rotation.y=briActive?bp.torsoYaw:0;
     this.torso.position.x-=briActive?side*bp.clearance*.055:0;
+    // Toboggan: the chest leans over the grabbing side so that shoulder drops toward the deck.
+    this.torso.rotation.z=-tobogganEase*TOBOGGAN.lean*tobogganSide;
+    this.torso.rotation.x+=tobogganEase*TOBOGGAN.fold;
+    this.torso.position.x+=tobogganEase*TOBOGGAN.shift*tobogganSide;
     this.torso.rotation.x+=fountainBlend*.39;
     this.torso.position.z+=fountainBlend*.16;
     const weight = s.airWeight.shift;
@@ -826,7 +842,7 @@ export class RiderModel {
       foot.add(v(0,this.avatar.ankleOffsets[i],0).applyQuaternion(this.shoes[i].quaternion));
       this.shoes[i].position.copy(foot);
       const hip=hipJoint(this.hips,sign as -1|1,this.avatar.shape);
-      if(!s.sitting){const delta=foot.clone().sub(hip),length=delta.length(),direction=delta.clone().normalize();const bendDirection=v(sign*.07,0,1);const pole=bendDirection.addScaledVector(direction,-bendDirection.dot(direction)).normalize();knee.copy(hip).lerp(foot,.5).addScaledVector(pole,Math.sqrt(Math.max(.0001,RIG.thigh*RIG.thigh-Math.min(RIG.thigh-.002,length/2)**2)));}
+      if(!s.sitting){const delta=foot.clone().sub(hip),length=delta.length(),direction=delta.clone().normalize();const bendDirection=v(sign*.07,tobogganEase*TOBOGGAN.kneesUp,1);const pole=bendDirection.addScaledVector(direction,-bendDirection.dot(direction)).normalize();knee.copy(hip).lerp(foot,.5).addScaledVector(pole,Math.sqrt(Math.max(.0001,RIG.thigh*RIG.thigh-Math.min(RIG.thigh-.002,length/2)**2)));}
       this.knees[i].position.copy(knee);
       poseRod(this.thighs[i], hip, knee);
       poseRod(this.shins[i], knee, foot);
@@ -997,12 +1013,17 @@ export class RiderModel {
         hand.copy(aroundThigh.lerp(deckTarget,THREE.MathUtils.smoothstep(blend,.55,1)));
       }
       if(tobogganHand){
-        // The deck's edge on the hand's side, TOBOGGAN.along of the way from the neck to the tail.
-        const edge=this.assembly.deckSocket.position.clone();edge.x=sign*Math.abs(edge.x);edge.z*=TOBOGGAN.along/.5;
-        const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(edge));
-        const deckRotation=this.assembly.deckSocket.getWorldQuaternion(new THREE.Quaternion());deckRotation.premultiply(this.rider.getWorldQuaternion(new THREE.Quaternion()).invert());deckRotation.multiply(new THREE.Quaternion().setFromAxisAngle(v(0,1,0),-sign*Math.PI/2));
+        // Under the deck by the rear wheel: TOBOGGAN.along of the way from the neck
+        // to the tail, just in from the hand's edge and below the deck.
+        const under=this.assembly.deckSocket.position.clone();under.x=sign*(Math.abs(under.x)-TOBOGGAN.tuck);under.y-=TOBOGGAN.under;under.z*=TOBOGGAN.along/.5;
+        const deckTarget=this.rider.worldToLocal(this.deckPivot.localToWorld(under));
+        // Palm up against the underside, fingers pointing in across the deck:
+        // the hand's +z (fingers) along the deck's -x on this side, its -y (palm) up the deck's +y.
+        const deckRotation=this.assembly.deckSocket.getWorldQuaternion(new THREE.Quaternion());deckRotation.premultiply(this.rider.getWorldQuaternion(new THREE.Quaternion()).invert());
+        const palmUp=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(v(0,0,-sign),v(0,-1,0),v(-sign,0,0)));
+        deckRotation.multiply(palmUp);
         gripRotation.copy(deckRotation);
-        deckTarget.sub(v(0,-.035,this.hands[i].userData.palmLength??RIG.palm).applyQuaternion(deckRotation));
+        deckTarget.sub(v(0,-.03,this.hands[i].userData.palmLength??RIG.palm).applyQuaternion(deckRotation));
         const aroundHip=deckTarget.clone().add(v(sign*.24,.12,-.02));
         hand.copy(aroundHip.lerp(deckTarget,THREE.MathUtils.smoothstep(tobogganEase,.5,1)));
       }
@@ -1029,13 +1050,13 @@ export class RiderModel {
         poseRod(this.upperArms[i],shoulder,elbow);
       }
       poseRod(this.forearms[i], elbow, hand);
-      this.hands[i].userData.openHand=holdingGrip||fingerContact||grabbingHand||this.carry>.5?0:s.emote?1:s.walking?.35:.7;
+      this.hands[i].userData.openHand=holdingGrip||fingerContact||grabbingHand||this.carry>.5?0:tobogganHand?.25:s.emote?1:s.walking?.35:.7;
       this.hands[i].position.copy(hand);
       this.hands[i].quaternion.setFromUnitVectors(
         v(0, 1, 0),
         elbow.clone().sub(hand).normalize(),
       );
-      if(holdingGrip||grabbingHand||carryingContact)this.hands[i].quaternion.copy(gripRotation);
+      if(holdingGrip||grabbingHand||tobogganHand||carryingContact)this.hands[i].quaternion.copy(gripRotation);
       else if(s.walking&&!s.emote&&!s.sitting&&!s.heldItem){
         const fingers=hand.clone().sub(elbow).normalize(),back=v(sign,0,0);
         back.addScaledVector(fingers,-back.dot(fingers)).normalize();
@@ -1044,7 +1065,7 @@ export class RiderModel {
       }
       if(s.walking&&s.heldItem&&i===0){const t=s.emote?.time??0,sip=s.emote?.id==='drink'?THREE.MathUtils.smoothstep(t,.48,1)*(1-THREE.MathUtils.smoothstep(t,1.75,2.35)):0;this.hands[i].quaternion.setFromEuler(new THREE.Euler(-.9*sip,0,Math.PI/2));this.hands[i].userData.openHand=0;}
       // A hand gripping nothing lets the arm carry the wrist naturally.
-      this.hands[i].userData.freeWrist=!(holdingGrip||grabbingHand||carryingContact)&&!(s.walking&&s.heldItem&&i===0);
+      this.hands[i].userData.freeWrist=!(holdingGrip||grabbingHand||tobogganHand||carryingContact)&&!(s.walking&&s.heldItem&&i===0);
       // Palm height above a held bar's axis; the avatar's fist may roll around the bar.
       this.hands[i].userData.barLift=holdingGrip&&!carryingContact?(walkingGrip?.012:this.hands[i].userData.gripRadius??.0165)+GRIP_PALM_OFFSET:0;
     }

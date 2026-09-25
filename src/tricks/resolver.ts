@@ -9,6 +9,8 @@ export interface TrickPrimitives {
   deckTurns: number;
   barTurns: number;
   states: string[];
+  /** Longest hold of each state in seconds; longer holds score more (#84). */
+  holds?: Record<string, number>;
   out: boolean;
   direction: { body: number; deck: number; bars: number };
   fakieSeconds?: number;

@@ -294,6 +294,12 @@ export const TUNE = {
   deckTurnPoints: 150,
   barTurnPoints: 100,
   bodyTrickPoints: 100,
+  // Holding a pose longer (#84): points per second past the first bodyHoldFree, capped at bodyHoldMax.
+  bodyHoldPoints: 150,
+  bodyHoldFree: 0.3,
+  bodyHoldMax: 2.5,
+  // A held hand grab: LS under this only leans the body; past it the push spins (rescaled).
+  grabLeanStick: 0.55,
   decadePoints: 200,
   contactTrickPoints: 75,
   hopMin: 3.7,

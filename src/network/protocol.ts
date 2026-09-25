@@ -22,6 +22,7 @@ export function pose(value:any){
  if(value.tricks.decade!==undefined&&!numeric(value.tricks.decade,['angle','velocity','mismatch']))return null;
  if(!['regular','goofy'].includes(value.tricks.stance)||!numeric(value.tricks,['naturalDirection','poseBlend','poseSide','fingerTime','fingerHand']))return null;
  if(value.fastplant&&(!numeric(value.fastplant,['time'])||!Array.isArray(value.fastplant.foot)||value.fastplant.foot.length!==3||!value.fastplant.foot.every((n:any)=>typeof n==='number'&&Number.isFinite(n))||typeof value.fastplant.launched!=='boolean'))return null;
+ if(value.tricks.tweak!==undefined&&(!numeric(value.tricks.tweak,['x','y'])||Math.abs(value.tricks.tweak.x)>1||Math.abs(value.tricks.tweak.y)>1))return null;
  if(value.rideable!==undefined&&!['scooter','longboard'].includes(value.rideable))return null;
  if(value.board!==undefined&&(typeof value.board!=='object'||!Object.values(value.board).every(n=>typeof n==='number'&&Number.isFinite(n))))return null;
  if(value.emote&&!numeric(value.emote,['time','duration']))return null;

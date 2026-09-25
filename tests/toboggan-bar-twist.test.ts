@@ -160,3 +160,58 @@ test("Pro: plain B is still a Barspin; Arcade RT + B is unchanged (no Toboggan)"
   assert.notEqual(a.visualPose, "Toboggan");
   assert.equal(a.barTwist, false);
 });
+
+test("#84 Toboggan held: LS then leans it (tweak) instead of dropping it for a Bar Twist", () => {
+  const t = air("regular");
+  press(t, i => {
+    rtB(i);
+    i.pressed.brakeBars = true;
+  });
+  run(t, 0.3, rtB);
+  assert.equal(t.visualPose, "Toboggan");
+  run(t, 0.6, i => {
+    rtB(i);
+    i.steer = 0.8;
+    i.lean = -0.6;
+  });
+  assert.equal(t.visualPose, "Toboggan", "still the Toboggan with the stick pushed");
+  assert.ok(t.poseBlend > 0.95);
+  assert.equal(t.twisting, false, "no Bar Twist from a stick pushed after B");
+  assert.equal(t.bars.target, 0);
+  assert.ok(t.tweak.x > 0.7 && t.tweak.y < -0.5, `leans with the stick: ${JSON.stringify(t.tweak)}`);
+  // Released: the lean eases back out with the pose.
+  run(t, 1);
+  assert.ok(Math.abs(t.tweak.x) < 0.01 && Math.abs(t.tweak.y) < 0.01);
+});
+
+test("#84 no pose held: LS never leans the body (tweak stays 0)", () => {
+  const t = air("regular");
+  run(t, 0.5, i => {
+    i.steer = 1;
+    i.lean = 1;
+  });
+  assert.equal(t.tweak.x, 0);
+  assert.equal(t.tweak.y, 0);
+});
+
+test("#84 a longer hold scores more: holds are recorded per pose", async () => {
+  const { trickValue, holdPoints } = await import("../src/tricks/score");
+  const held = (seconds: number) => {
+    const t = air("regular");
+    press(t, i => {
+      rtB(i);
+      i.pressed.brakeBars = true;
+    });
+    run(t, seconds, rtB);
+    return t.primitives();
+  };
+  const short = held(0.4), long = held(2);
+  assert.ok(short.holds?.Toboggan! > 0.2 && long.holds?.Toboggan! > 1.8, JSON.stringify([short.holds, long.holds]));
+  assert.ok(holdPoints(long) > holdPoints(short) + 200, `${holdPoints(short)} vs ${holdPoints(long)}`);
+  assert.ok(trickValue(long) > trickValue(short));
+  // Capped: a very long hold is not worth unlimited points.
+  assert.equal(holdPoints(held(6)), holdPoints(held(3)));
+  // A new air starts with no holds.
+  const t = air("regular");
+  assert.equal(t.primitives().holds, undefined);
+});
