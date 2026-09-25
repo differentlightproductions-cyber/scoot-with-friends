@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
 import type { Park } from './park';
 import { OUTDOOR, terrainHeight } from './park';
 import type { SkyDome } from '../art/sky';
@@ -15,6 +14,8 @@ export const MIN_SHADOW_ELEVATION=THREE.MathUtils.degToRad(24);
 export const SHADOW_DISTANCE=70;
 const phases={day:{sky:0xb3d2df,sun:0xffedce,power:3.2,ambient:1.15,environment:.35,night:0},sunset:{sky:0xb28283,sun:0xffa05f,power:2,ambient:.75,environment:.24,night:.35},night:{sky:0x111d31,sun:0x9bb9e8,power:.3,ambient:.2,environment:.07,night:1},sunrise:{sky:0xccabb1,sun:0xffc695,power:1.7,ambient:1.25,environment:.28,night:.25}};
 /** [x, z, yaw, height] of the metal plaza's amber street lights; checked in renders. */
+/** Every park light glows sodium amber (#83: the owner's pick). */
+const AMBER=0xff9a3c;
 export const AMBER_POLES:[number,number,number,number][]=[[-76,29.2,Math.PI/2,9.5],[-52,29.2,Math.PI/2,7]];
 export class Daylight {
  private sky=new THREE.Color();private color=new THREE.Color();private shadowDir=new THREE.Vector3();
@@ -27,12 +28,6 @@ export class Daylight {
   * it on or off never changes the light count and recompiles every shader.
   */
  private flashlight=new THREE.SpotLight(0xfff0da,0,40,.62,.55,1.25);
- /**
-  * Where the beam lands (#75): a little of its light bounces back off the ramp,
-  * wall or ground it hits, softly filling the rider and whatever is beside it.
-  */
- private bounce=new THREE.PointLight(0xffe8cc,0,7,2);
- private beamRay=new RAPIER.Ray({x:0,y:0,z:0},{x:0,y:-1,z:0});private beamDir=new THREE.Vector3();private bounceTarget=0;
  private heading=new THREE.Vector3();
  private evening?:number;private sidereal=NaN;private ambientBase?:number;
  /** The real moon (#74): worked out every few seconds; `live` places it in the real sky, otherwise it hangs where the night light is. */
@@ -40,10 +35,13 @@ export class Daylight {
  /** How much moonlight reaches the ground (0 new or set .. 1 full and high). */
  moonlight=1;
  /** Lamp heads (xyz, reach) that light falling snow, rain and leaves at night (#74). */
- private lampHeads:THREE.Vector4[]=[];private lampTints:number[]=[];
+ private lampHeads:THREE.Vector4[]=[];private lampTints:number[]=[];private lampGains:number[]=[];private nearLamps:number[]=[];
  phase:DayPhase='day';
  constructor(private park:Park){
   park.scene.traverse(o=>{if(o instanceof THREE.DirectionalLight)this.sun=o;if(o instanceof THREE.HemisphereLight)this.ambient=o;});
+  // The headlamp belongs to every map (#83: it used to be added only at Veterans, so it never lit B Hill, the church or the shop).
+  this.flashlight.name='Rider flashlight';
+  park.scene.add(this.flashlight,this.flashlight.target);
   if(!OUTDOOR)return;
   // Checked from screenshots, not just coordinates:
   // [21,-34] removed: it stood in the sidewalk entrance beside the rack.
@@ -59,22 +57,14 @@ export class Daylight {
   for(const [x,z] of [[-20,34.3],[-48.4,-18.6],[49.95,-28.62],[-75,30],[46,-94.4]]){
    const y=terrainHeight(x,z);
    this.lamps.push(lampPost(park,new THREE.Vector3(x,y,z)));
-   // Real light on what is under it (#75), where a painted circle of light used to lie.
-   this.lampHeads.push(new THREE.Vector4(x+1.05,y+5.8,z,11));this.lampTints.push(0xffdca0);
+   // Real light on what is under it (#75), where a painted circle of light used to lie; amber like the sodium poles (#83).
+   this.lampHeads.push(new THREE.Vector4(x+1.05,y+5.8,z,11));this.lampTints.push(AMBER);
   }
   // Two dim sodium lights over the metal plaza (#44), on its street side away
   // from the parking lot: one tall behind the metal quarter, one by the street.
-  for(const [x,z,yaw,h] of AMBER_POLES){sodiumLamp(park,new THREE.Vector3(x,terrainHeight(x,z),z),yaw,h);this.lampHeads.push(new THREE.Vector4(x+Math.cos(yaw)*1.7,terrainHeight(x,z)+h+.15,z-Math.sin(yaw)*1.7,13));this.lampTints.push(0xff9a3c);}
-  this.flashlight.name='Rider flashlight';
-  // A real headlamp's beam (#75): a hot centre inside the reflector's ring and a
-  // ragged, slightly wide edge, not a perfect disc. It casts shadows, so a ramp,
-  // rail or the bars block and shape it; the shadow map is drawn only while it is on.
-  this.flashlight.map=beamPattern();
-  // Whether it casts, and the map's size, follow the graphics preset (render/fidelity.ts).
-  this.flashlight.castShadow=park.scene.userData.fidelity!=='low';
-  const s=this.flashlight.shadow;s.mapSize.set(256,256);s.camera.near=.2;s.camera.far=30;s.bias=-.0006;s.normalBias=.02;s.autoUpdate=false;s.needsUpdate=true;
-  this.bounce.name='Headlamp bounce';
-  park.scene.add(this.flashlight,this.flashlight.target,this.bounce);
+  for(const [x,z,yaw,h] of AMBER_POLES){sodiumLamp(park,new THREE.Vector3(x,terrainHeight(x,z),z),yaw,h);this.lampHeads.push(new THREE.Vector4(x+Math.cos(yaw)*1.7,terrainHeight(x,z)+h+.15,z-Math.sin(yaw)*1.7,13));this.lampTints.push(AMBER);}
+  // The parking lot's floodlights (props.ts registers their heads) light the lot the same way.
+  for(const head of (park.scene.userData.floodHeads??[]) as THREE.Vector3[]){this.lampHeads.push(new THREE.Vector4(head.x,head.y,head.z,19));this.lampTints.push(AMBER);this.lampGains[this.lampHeads.length-1]=2.2;}
  }
  /**
   * `flashlight`: the rider's torch at night (a setting). `yaw`: which way the
@@ -135,14 +125,11 @@ export class Daylight {
   this.flashlight.position.set(player.x+f.x*.35,player.y+1.35,player.z+f.z*.35);
   this.flashlight.target.position.set(player.x+f.x*11,player.y-.4,player.z+f.z*11);
   this.flashlight.target.updateMatrixWorld();
-  const on=this.flashlight.intensity>.5;this.flashlight.shadow.autoUpdate=on;
-  if(!on){this.bounceTarget=0;this.bounce.intensity=0;}
-  this.bounce.intensity+=(this.bounceTarget-this.bounce.intensity)*(1-Math.exp(-dt*10));
   this.nightLevel=p.night;
-  this.lightParticles(dome,cloud);
+  this.lightParticles(dome,cloud,player);
  }
  /** Weather particles at night (#74): dark but for the headlamp, the lamps and the moon. */
- private lightParticles(dome:SkyDome|undefined,cloud:number){
+ private lightParticles(dome:SkyDome|undefined,cloud:number,player:THREE.Vector3){
   const L=particleLight,night=dome?dome.uniforms.uNight.value:this.nightLevel;
   L.uNightDark.value=THREE.MathUtils.clamp((night-.1)/.8,0,1);
   L.uNightBase.value=.1+.3*this.moonlight*(1-cloud);
@@ -150,7 +137,11 @@ export class Daylight {
   L.uBeamPos.value.copy(this.flashlight.position);
   L.uBeamDir.value.copy(this.flashlight.target.position).sub(this.flashlight.position).normalize();
   L.uMoonToward.value.copy(this.moonDir);L.uMoonGlint.value=this.moonlight*(1-cloud);
-  for(let i=0;i<MAX_PARTICLE_LAMPS;i++){const head=this.lampHeads[i],out=L.uParkLamps.value[i];if(head){out.set(head.x,head.y,head.z,head.w*Math.min(1,night*1.5));parkLampLight.uParkLampTint.value[i].set(this.lampTints[i]);}else out.w=0;}
+  // The shaders light from the MAX_PARTICLE_LAMPS lamps nearest the rider (there are more in the park).
+  const near=this.nearLamps;near.length=0;for(let i=0;i<this.lampHeads.length;i++)near.push(i);
+  const d2=(i:number)=>{const h=this.lampHeads[i];return (h.x-player.x)**2+(h.z-player.z)**2;};
+  if(near.length>MAX_PARTICLE_LAMPS)near.sort((a,b)=>d2(a)-d2(b));
+  for(let i=0;i<MAX_PARTICLE_LAMPS;i++){const index=near[i],head=index===undefined?undefined:this.lampHeads[index],out=L.uParkLamps.value[i];if(head){out.set(head.x,head.y,head.z,head.w*Math.min(1,night*1.5));parkLampLight.uParkLampTint.value[i].set(this.lampTints[index]).multiplyScalar(this.lampGains[index]??1);}else out.w=0;}
   parkLampLight.uParkLampPower.value=22*THREE.MathUtils.smoothstep(night,.15,.8);
  }
  private stepMoon(dt:number,dome:SkyDome,live:boolean,now=new Date()){
@@ -177,32 +168,6 @@ export class Daylight {
   this.flashlight.position.copy(position);
   this.flashlight.target.position.copy(position).addScaledVector(direction,11);
   this.flashlight.target.updateMatrixWorld();
-  this.bounceFrom(position,direction);
- }
- /** Finds what the beam's centre hits (surfaces only: not the rider, rails or coping) and puts the bounce there. */
- private bounceFrom(position:THREE.Vector3,direction:THREE.Vector3){
-  const d=this.beamDir.copy(direction).normalize(),start=.4,r=this.beamRay;
-  r.origin={x:position.x+d.x*start,y:position.y+d.y*start,z:position.z+d.z*start};r.dir={x:d.x,y:d.y,z:d.z};
-  const hit=this.park.world.castRay(r,28,true,undefined,(1<<16)|1);
-  if(!hit){this.bounceTarget=0;return;}
-  const t=hit.timeOfImpact+start,beam=THREE.MathUtils.clamp(this.flashlight.intensity/60,0,1);
-  // Back off the surface toward the lamp so the bounce lights the rider's side of it, not the inside.
-  this.bounce.position.copy(position).addScaledVector(d,Math.max(.3,t-.6));
-  this.bounceTarget=beam*1.6*THREE.MathUtils.clamp(8/(t*t+4),.05,1.2);
  }
 }
 
-/** The headlamp's beam pattern: its projected light, looking down the beam. */
-function beamPattern(){
- const n=256,c=document.createElement('canvas');c.width=c.height=n;const g=c.getContext('2d')!,image=g.createImageData(n,n);
- // Fixed "random" ripples round the rim, so the edge is irregular but never flickers.
- const ripple=(a:number)=>.045*Math.sin(a*5+.7)+.03*Math.sin(a*11+2.1)+.02*Math.sin(a*23+4.4);
- for(let y=0;y<n;y++)for(let x=0;x<n;x++){
-  // A little wider than tall, as lamp reflectors spread the beam sideways.
-  const u=(x+.5)/n*2-1,v=((y+.5)/n*2-1)*1.12,r=Math.hypot(u,v),a=Math.atan2(v,u),edge=.93+ripple(a);
-  const hot=Math.exp(-r*r*18)*.9,ring=Math.exp(-Math.pow((r-.42)*9,2))*.16,body=.5*(1-THREE.MathUtils.smoothstep(r,.2,edge));
-  const fall=1-THREE.MathUtils.smoothstep(r,edge-.12,edge+.04),value=Math.min(1,(hot+ring+body+.12)*fall);
-  const i=(y*n+x)*4,warm=value*255;image.data[i]=warm;image.data[i+1]=warm*.985;image.data[i+2]=warm*.95;image.data[i+3]=255;
- }
- g.putImageData(image,0,0);const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.name='Headlamp beam';return t;
-}

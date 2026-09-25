@@ -278,7 +278,8 @@ export function drinkingFountain(park: Park, base: THREE.Vector3, yaw = 0) {
 }
 
 // ---- Lamp posts ------------------------------------------------------------------
-const lampLens = () => new THREE.MeshStandardMaterial({ color: 0xfff2d8, emissive: 0xffd698, emissiveIntensity: 0, roughness: 0.3 });
+// Every lamp in the park glows sodium amber (#83), like the old street lights.
+const lampLens = () => new THREE.MeshStandardMaterial({ color: 0xffd9a8, emissive: 0xff9a3c, emissiveIntensity: 0, roughness: 0.3 });
 /**
  * A park path light: footing, shroud, tapered bronze pole, a swept arm and an
  * LED head. Returns the lens material for the day/night cycle to light.
@@ -308,6 +309,8 @@ export function floodlight(park: Park, base: THREE.Vector3, yaw = 0) {
   for (const s of [-1, 1]) { k.box(V(0.5, 0.12, 0.42), head, V(s * 0.6, 8.3, 0), 0.03, new THREE.Euler(0, 0, s * 0.18)); k.box(V(0.44, 0.02, 0.36), lens, V(s * 0.6, 8.23, 0), 0.006, new THREE.Euler(0, 0, s * 0.18)); }
   k.build(park.scene, "Parking floodlight");
   (park.scene.userData.lampLenses ??= []).push(lens);
+  // Where its light comes from, for daylight.ts to light the lot at night.
+  (park.scene.userData.floodHeads ??= []).push(turn(base, yaw, V(0, 8.2, 0)));
   solid(park, turn(base, yaw, V(0, 4.25, 0)), V(0.2, 8.5, 0.2), yaw);
   return lens;
 }
