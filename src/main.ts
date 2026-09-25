@@ -386,16 +386,62 @@ async function boot() {
     if (id === "outdoor" && publicLayout) applyLayout(publicLayout, false);
     // Hold the loading screen until the authored ramps, trees and clouds have
     // replaced the simple stand-ins, so they never flash on screen first.
-    await loadingStage("Placing the ramps and trees",60);
-    await Promise.race([Promise.allSettled(scene.userData.assetLoads ?? []), new Promise((resolve) => setTimeout(resolve, 20000))]);
-    await loadingStage("Preparing the view",80);
-    weather.prepare();
-    await renderer.compileAsync(scene,camera.camera);
+    await loadingStage("Placing the ramps and trees",50);
+    await assetProgress(50,68);
+    await warmUp(68,100);
     await loadingStage("Ready to ride",100);finishLoading();
     }catch(error){loadingFailed();throw error;}finally{input.clear();pending=emptyInput();accumulator=0;}
     })();
     destinationLoading=loading;
     try{await loading;}finally{if(destinationLoading===loading)destinationLoading=null;}
+  };
+  /** The authored models still loading (#85): the bar moves as each one lands (20 s cap, as before). */
+  const assetProgress=async(from:number,to:number)=>{
+    const loads=(scene.userData.assetLoads??[]) as Promise<unknown>[];let done=0;
+    const all=Promise.allSettled(loads.map(p=>Promise.resolve(p).finally(()=>{done++;})));
+    const cap=performance.now()+20000;
+    while(done<loads.length&&performance.now()<cap){
+      await Promise.race([all,new Promise(resolve=>setTimeout(resolve,120))]);
+      await loadingStage(`Placing the ramps and trees (${done}/${loads.length})`,from+(to-from)*(loads.length?done/loads.length:1));
+    }
+  };
+  /**
+   * Everything the first seconds of riding used to do on the GPU, done behind
+   * the loading screen with the bar following it (#85). One real frame puts the
+   * sky, its environment map, fog and weather in place (their state changes
+   * which shaders every material needs); every texture is uploaded; every
+   * shader compiled for the real lights; then real frames looking four ways
+   * upload the meshes and build the shadow and environment passes. Before, the
+   * loading screen closed with a sixth of this done and the first frame did the
+   * rest in one long freeze.
+   */
+  const warmUp=async(from:number,to:number)=>{
+    const at=(f:number)=>from+(to-from)*f;
+    await loadingStage("Lighting the sky",at(0));
+    weather.prepare();
+    render(1/60);
+    const textures=new Set<THREE.Texture>();
+    scene.traverse(o=>{const m=(o as THREE.Mesh).material;if(!m)return;for(const x of Array.isArray(m)?m:[m])for(const v of Object.values(x as unknown as Record<string,unknown>))if(v instanceof THREE.Texture&&!(v as THREE.Texture&{isRenderTargetTexture?:boolean}).isRenderTargetTexture)textures.add(v);});
+    const list=[...textures];
+    for(let i=0;i<list.length;){
+      const until=performance.now()+40;
+      while(i<list.length&&performance.now()<until)renderer.initTexture(list[i++]);
+      await loadingStage(`Loading textures (${i}/${list.length})`,at(.05+.3*i/Math.max(1,list.length)));
+    }
+    await loadingStage("Compiling shaders",at(.4));
+    weather.showAllForCompile();
+    await renderer.compileAsync(scene,camera.camera);
+    const view=camera.camera,position=view.position.clone(),rotation=view.quaternion.clone(),turn=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2);
+    for(let i=0;i<4;i++){
+      await loadingStage(`Preparing the view (${i+1}/4)`,at(.6+.1*i));
+      if(i)view.quaternion.premultiply(turn);view.updateMatrixWorld();
+      renderer.render(scene,view);
+    }
+    view.position.copy(position);view.quaternion.copy(rotation);view.updateMatrixWorld();
+    // The overhead photo for the minimap and phone map renders the whole park once more (off screen).
+    await loadingStage("Drawing the map",at(.95));
+    phoneMap.prepare(ACTIVE_MAP);
+    render(1/60);
   };
   network.loadMap=async id=>{await loadDestination(id as MapId);};
   menu.onRide=async id=>{if(network.id){await network.changeMap(id);return;}await loadDestination(id);};

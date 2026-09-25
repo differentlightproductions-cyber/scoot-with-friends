@@ -75,6 +75,8 @@ export class PhoneMap {
   reset() { this.photo = null; this.local = null; this.key = ''; this.follow = true; this.zoom = 2; }
   /** Retake the photo next time it is drawn (the map changed: build pieces placed). */
   invalidate() { this.photo = null; this.local = null; }
+  /** Loading (#85): take the map's photo now, behind the loading screen, not in the first second of riding. */
+  prepare(mapKey: string) { this.miniPhoto(mapKey, 72); }
 
   private area(features: MapFeature[]) {
     const box = new THREE.Box2();

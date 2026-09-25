@@ -323,6 +323,12 @@ export class Weather {
   * code and nothing recompiles (a hitch) in the first second of riding.
   */
  prepare(){this.scanAge=0;this.syncShelters();this.scan();}
+ /**
+  * Loading only (#85): every particle system built and shown for one compile,
+  * so switching the weather mid-ride compiles nothing. The next update() puts
+  * their visibility back.
+  */
+ showAllForCompile(){if(!WEATHER_MAPS.has(ACTIVE_MAP))return;if(!this.flakes)this.buildFlakes();if(!this.drops)this.buildDrops();if(!this.leaves)this.buildLeaves();if(!this.spray)this.buildSpray();this.group.visible=true;for(const p of [this.flakes,this.drops,this.leaves,this.spray])p!.visible=true;}
  private resumed=false; private shelterSource:Shelter[]|undefined;private shelters:Shelter[]=[];private nearShelters:Shelter[]=[];
  /** Copies the map's shelters into the shader uniforms when the list changes. */
  private syncShelters(){
