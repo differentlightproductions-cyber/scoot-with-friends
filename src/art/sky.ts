@@ -5,6 +5,7 @@
 // real sky and horizon colour instead of an indoor studio.
 import * as THREE from "three";
 import { StarField } from "./stars";
+import { SkyEvents } from "./sky-events";
 
 export type SkyPhase = "day" | "sunset" | "night" | "sunrise";
 
@@ -60,11 +61,14 @@ void main() {
   if (h > 0.0) {
     vec2 uv = d.xz / (h + 0.06) * 0.55 + vec2(uTime * 0.0035, uTime * 0.0012);
     float n = fbm(uv * 1.6);
-    float cover = mix(uCover, 0.92, uOvercast);
-    cloud = smoothstep(1.0 - cover, 1.0 - cover + 0.2, n) * smoothstep(0.0, 0.12, h);
+    // A thunderstorm (#63) closes the deck completely, down to the horizon.
+    float cover = mix(mix(uCover, 0.92, uOvercast), 1.05, uStorm);
+    cloud = smoothstep(1.0 - cover, 1.0 - cover + 0.2, n) * smoothstep(0.0, mix(0.12, 0.015, uStorm), h);
     float lit = fbm(uv * 1.6 + uSunDir.xz * 0.12);
     vec3 cc = mix(uCloudLit, uCloudShade, clamp((lit - n) * 4.0 + 0.4 + uOvercast * 0.4, 0.0, 1.0));
     cc += uSunColor * pow(sd, 8.0) * 0.45 * (1.0 - uOvercast);
+    // Its underside hangs in heavy, uneven lumps: darker where the cloud is thickest.
+    cc = mix(cc, cc * (0.45 + 0.9 * (1.0 - n)) * mix(1.0, 0.8, smoothstep(0.35, 0.0, h)), uStorm);
     sky = mix(sky, cc, cloud * 0.95);
   }
   // The disk last, dimmed behind cloud.
@@ -75,7 +79,8 @@ void main() {
   sky = mix(sky, vec3(grey) * vec3(0.92, 0.95, 1.0), uOvercast * 0.75);
   // A rain storm darkens the cloud deck to slate; lightning lights it from inside.
   sky *= 1.0 - uStorm * 0.42;
-  sky += vec3(0.72, 0.78, 0.95) * uFlash * (0.35 + 0.65 * cloud);
+  // A flash lights the deck from inside, strongest in its thick lumps, never as bright as the channel itself.
+  sky += vec3(0.62, 0.68, 0.85) * uFlash * (0.12 + 0.3 * cloud);
   gl_FragColor = vec4(sky, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -109,6 +114,8 @@ export class SkyDome {
   private dirScratch = new THREE.Vector3();
   /** The night sky: real constellations for Boulder City, drawn just inside the dome. */
   readonly stars: StarField;
+  /** Lightning channels and shooting stars (#63). */
+  readonly events = new SkyEvents();
 
   constructor(private scene: THREE.Scene, phase: SkyPhase = "day") {
     (scene.userData.sky as SkyDome | undefined)?.dispose();
@@ -125,8 +132,8 @@ export class SkyDome {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = -1000;
     this.mesh.scale.setScalar(1000);
-    this.mesh.onBeforeRender = (_r, _s, camera) => { this.mesh.position.copy(camera.position); this.mesh.updateMatrixWorld(); };
-    scene.add(this.mesh, this.stars.points);
+    this.mesh.onBeforeRender = (_r, _s, camera) => { this.mesh.position.copy(camera.position); this.mesh.updateMatrixWorld(); this.events.follow(camera); };
+    scene.add(this.mesh, this.stars.points, this.events.group);
     scene.background = null;
     scene.userData.sky = this;
     this.envScene.add(new THREE.Mesh(this.mesh.geometry, material));
@@ -164,6 +171,9 @@ export class SkyDome {
     // shows only the brightest (sunset and sunrise carry a small uNight).
     const u = this.uniforms;
     this.stars.setVisibility(THREE.MathUtils.smoothstep(u.uNight.value, 0.05, 0.9) * (1 - u.uOvercast.value) * (1 - 0.8 * u.uStorm.value));
+    // A strike's channel flickers with its return strokes (weather.ts); shooting
+    // stars need a properly dark, clear night.
+    this.events.step(dt, THREE.MathUtils.clamp(this.scene.userData.lightningChannel ?? 0, 0, 1), THREE.MathUtils.smoothstep(u.uNight.value, 0.6, 0.95) * (1 - u.uOvercast.value) * (1 - u.uStorm.value));
     if (renderer) this.updateEnvironment(renderer, dt);
   }
 
@@ -194,6 +204,7 @@ export class SkyDome {
   dispose() {
     this.mesh.removeFromParent();
     this.stars.dispose();
+    this.events.dispose();
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
     this.envTarget?.dispose();

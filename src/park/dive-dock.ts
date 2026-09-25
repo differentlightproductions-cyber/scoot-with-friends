@@ -101,7 +101,7 @@ export function buildDiveDock(park: Park) {
   // Deck: planks across the dock with narrow gaps, on stringers and pilings.
   for (let z = d.z0 + 0.075; z < d.z1; z += 0.155) box(wood, cx, d.deck - 0.02, z, width, 0.04, 0.14);
   for (const x of [d.x0 + 0.1, cx, d.x1 - 0.1]) box(darkWood, x, d.deck - 0.1, (d.z0 + d.z1) / 2, 0.08, 0.16, d.z1 - d.z0);
-  for (let z = d.z0 + 0.3; z <= d.z1; z += 1.95) for (const x of [d.x0 + 0.08, d.x1 - 0.08]) post(darkWood, x, z, -0.6, d.deck - 0.02, 0.09);
+  for (let z = d.z0 + 0.3; z <= d.z1; z += 1.95) for (const x of [d.x0 + 0.08, d.x1 - 0.08]) post(darkWood, x, z, -2.6, d.deck - 0.02, 0.09);
   solid(cx, d.deck - 0.06, (d.z0 + d.z1) / 2, width / 2, 0.06, (d.z1 - d.z0) / 2);
   // Fascia boards along the sides.
   for (const x of [d.x0 - 0.015, d.x1 + 0.015]) box(darkWood, x, d.deck - 0.08, (d.z0 + d.z1) / 2, 0.03, 0.14, d.z1 - d.z0);
@@ -139,7 +139,7 @@ export function buildDiveDock(park: Park) {
   const t = d.tower, tcx = (t.x0 + t.x1) / 2, tcz = (t.z0 + t.z1) / 2;
   for (let z = t.z0 + 0.075; z < t.z1; z += 0.155) box(wood, tcx, t.y - 0.02, z, t.x1 - t.x0, 0.04, 0.14);
   box(darkWood, tcx, t.y - 0.12, tcz, t.x1 - t.x0, 0.16, t.z1 - t.z0 - 0.1);
-  for (const x of [t.x0 + 0.1, t.x1 - 0.1]) for (const z of [t.z0 + 0.1, t.z1 - 0.1]) post(darkWood, x, z, -0.6, t.y - 0.2, 0.11);
+  for (const x of [t.x0 + 0.1, t.x1 - 0.1]) for (const z of [t.z0 + 0.1, t.z1 - 0.1]) post(darkWood, x, z, -2.6, t.y - 0.2, 0.11);
   // Cross bracing on the tower legs.
   for (const x of [t.x0 + 0.1, t.x1 - 0.1]) {
     const brace = Math.atan2(t.y - d.deck - 0.6, t.z1 - t.z0 - 0.2);

@@ -8,6 +8,9 @@ export class AudioEngine {
   /** Rain on the ground: a soft high hiss, set by weather(). */
   private rain:GainNode|null=null;
   private noiseBuffer:AudioBuffer|null=null;
+  private muffle:BiquadFilterNode|null=null;private underwater=false;
+  /** Head under water: the world goes dull and far away (#62). */
+  setUnderwater(on:boolean){this.underwater=on;if(this.context&&this.muffle)this.muffle.frequency.setTargetAtTime(on?520:20000,this.context.currentTime,.06);}
   filter: BiquadFilterNode | null = null;
   private nextFootstep = 0;
   enabled = true;
@@ -16,7 +19,12 @@ export class AudioEngine {
       this.context = new AudioContext();
       this.master = this.context.createGain();
       this.master.gain.value = 0.32;
-      this.master.connect(this.context.destination);
+      // Everything passes one low-pass on its way out: wide open, closing to a muffle with the head under water (#62).
+      this.muffle = this.context.createBiquadFilter();
+      this.muffle.type = "lowpass";
+      this.muffle.frequency.value = 20000;
+      this.master.connect(this.muffle).connect(this.context.destination);
+      this.muffle.frequency.value = this.underwater ? 520 : 20000;
       const buffer = this.context.createBuffer(
         1,
         this.context.sampleRate * 2,
@@ -54,20 +62,50 @@ export class AudioEngine {
     if(!this.context||!this.rain)return;
     this.rain.gain.setTargetAtTime(rain*.2,this.context.currentTime,.5);
   }
+  /** The last thunder shape, so the next one always sounds different. */
+  private lastThunder=-1;
   /**
-   * Thunder `delay` seconds from now: a crack for a near strike, then a low
-   * rumble that rolls and fades over several seconds. Strength 0..1.
+   * Thunder `delay` seconds from now, from a strike `km` away (#63). No two are
+   * alike: each is built fresh from random pieces, and its kind follows the
+   * distance. A near strike tears and cracks before its boom; a mid one booms
+   * and rolls in peals; a far one is only a low rumble that swells and fades.
+   * Strength 0..1.
    */
-  thunder(delay:number,strength:number){
+  thunder(delay:number,strength:number,km=3){
     if(!this.context||!this.master||!this.noiseBuffer||!this.enabled)return;
-    const c=this.context,t=c.currentTime+delay,src=c.createBufferSource(),low=c.createBiquadFilter(),gain=c.createGain(),length=4+strength*2.5;
-    src.buffer=this.noiseBuffer;src.loop=true;
-    low.type='lowpass';low.Q.value=.7;low.frequency.setValueAtTime(260+900*strength*strength,t);low.frequency.exponentialRampToValueAtTime(70,t+length*.6);
-    gain.gain.setValueAtTime(0,t);gain.gain.linearRampToValueAtTime(1.1*strength,t+.05);gain.gain.exponentialRampToValueAtTime(.4*strength,t+.6);
-    // The roll: a few swells as the sound comes back off distant cloud and hills.
-    for(let i=1;i<4;i++){const at=t+.6+i*length/5;gain.gain.linearRampToValueAtTime((.45-.08*i)*strength*(.7+Math.random()*.6),at);}
-    gain.gain.exponentialRampToValueAtTime(.001,t+length);
-    src.connect(low).connect(gain).connect(this.master);src.start(t,Math.random()*1.5);src.stop(t+length+.1);
+    const c=this.context,t0=c.currentTime+delay,r=Math.random;
+    // Shapes: close crack-boom, crack and long roll, one heavy boom, rolling peals, low grumble, distant rumble.
+    const SHAPES=[{crack:1,cutoff:1300,peaks:2,length:6,attack:.01},{crack:.7,cutoff:1000,peaks:4,length:8,attack:.02},{crack:0,cutoff:750,peaks:2,length:6,attack:.05},{crack:0,cutoff:500,peaks:5,length:9,attack:.15},{crack:0,cutoff:300,peaks:3,length:10,attack:.5},{crack:0,cutoff:200,peaks:6,length:12,attack:.9}];
+    const near=km<2?[0,1]:km<5?[1,2,3]:[3,4,5];
+    let pick=near[Math.floor(r()*near.length)];
+    if(pick===this.lastThunder)pick=near[(near.indexOf(pick)+1)%near.length];
+    this.lastThunder=pick;
+    const shape=SHAPES[pick],length=shape.length*(.8+r()*.45),cut=shape.cutoff*(.8+r()*.4),peak=1.1*strength;
+    // The body: low-passed noise, played a little faster or slower each time for its own timbre.
+    const src=c.createBufferSource(),low=c.createBiquadFilter(),gain=c.createGain();
+    src.buffer=this.noiseBuffer;src.loop=true;src.playbackRate.value=.75+r()*.5;
+    low.type='lowpass';low.Q.value=.5+r()*.6;low.frequency.setValueAtTime(cut,t0);low.frequency.exponentialRampToValueAtTime(Math.max(45,cut*.12),t0+length*.7);
+    gain.gain.setValueAtTime(.0001,t0);gain.gain.exponentialRampToValueAtTime(peak,t0+shape.attack+.02);
+    // Peals: swells at random moments as sound arrives from further along the channel and back off the hills.
+    let at=t0+shape.attack+.1;
+    for(let i=0;i<shape.peaks;i++){
+      at+=(length*.55/shape.peaks)*(.5+r());
+      const level=peak*(.25+r()*.6)*(1-(i/(shape.peaks+1))*.6);
+      gain.gain.linearRampToValueAtTime(level*.55,at-.04-r()*.08);gain.gain.linearRampToValueAtTime(level,at);
+    }
+    gain.gain.exponentialRampToValueAtTime(.0008,t0+length);
+    src.connect(low).connect(gain).connect(this.master);src.start(t0,r()*1.9);src.stop(t0+length+.1);
+    // A near strike first tears the air: a quick run of bright clicks, then the crack.
+    if(shape.crack>0){
+      const hs=c.createBufferSource(),high=c.createBiquadFilter(),hg=c.createGain();
+      hs.buffer=this.noiseBuffer;hs.loop=true;hs.playbackRate.value=.9+r()*.3;
+      high.type='highpass';high.frequency.value=1400+r()*1800;
+      const loud=strength*shape.crack;let tt=t0;
+      hg.gain.setValueAtTime(.0001,t0);
+      for(let i=0,n=5+Math.floor(r()*8);i<n;i++){tt+=.016+r()*.03;hg.gain.linearRampToValueAtTime(loud*(.3+r()*.5),tt);hg.gain.exponentialRampToValueAtTime(.002,tt+.012);}
+      hg.gain.linearRampToValueAtTime(loud*1.2,tt+.03);hg.gain.exponentialRampToValueAtTime(.0005,tt+.35+r()*.3);
+      hs.connect(high).connect(hg).connect(this.master);hs.start(t0,r()*1.9);hs.stop(tt+.8);
+    }
   }
   update(
     speed: number,
@@ -176,6 +214,7 @@ export class AudioEngine {
     }
     if(e.type==='worldInteraction'&&e.interaction==='open'){f=1300;g=.08;d=.075;}
     if(e.type==='worldInteraction'&&e.interaction==='vend'){f=340;g=.045;d=.12;}
+    if(e.type==='worldInteraction'&&e.interaction==='bin'){f=190;g=.09;d=.16;}
     if(e.type==='worldInteraction'&&e.interaction==='novelty'){this.novelty(e.item);return;}
     if (!f) return;
     const o = this.context.createOscillator(),

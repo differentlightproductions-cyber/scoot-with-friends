@@ -75,9 +75,14 @@ export class Weather {
  private drops?:THREE.LineSegments;private dropFall=new Float32Array(0);private leaves?:THREE.Points;private leafSpin=new Float32Array(0);private leafTumble=new Float32Array(0);private leafPhase=new Float32Array(0);private leafTex=leafSprite();
  /** How hard it is raining (0..1) and how many leaves are in the air, after easing. */
  rain=0;autumn=0;
- /** Lightning: the flash envelope and seconds to the next strike. `onThunder` hears each strike (delay s, strength 0..1). */
- private flash=0;private flashAge=9;private nextBolt=6;
- onThunder?:(delay:number,strength:number)=>void;private hooked=new Map<THREE.MeshStandardMaterial,Hook>();private scanAge=99;
+ /**
+  * Lightning: the flash envelope, the visible channel's flicker and seconds to
+  * the next flash. `onThunder` hears each one (delay s, strength 0..1, distance km).
+  */
+ private flash=0;private channel=0;private flashAge=9;private nextBolt=6;private strokes:{at:number;hold:number;peak:number;decay:number;ground:boolean}[]=[];
+ onThunder?:(delay:number,strength:number,km:number)=>void;
+ /** Flashes so far and the last one (tests). */
+ strikes=0;lastStrike:{ground:boolean;km:number}|null=null;private hooked=new Map<THREE.MeshStandardMaterial,Hook>();private scanAge=99;
  // Per flake: fall speed (m/s), flutter frequency (rad/s), amplitude (m), phase, and 1 for a spiral / 0 for a side-to-side sway.
  private fall=new Float32Array(0);private flutter=new Float32Array(0);private sway=new Float32Array(0);private phase=new Float32Array(0);private spiral=new Uint8Array(0);
  /** Hidden for an overhead photo (the phone's map). */
@@ -113,7 +118,7 @@ export class Weather {
   // Falling snow and rain cloud over the sky dome (art/sky.ts) and dim the sun (daylight.ts).
   // The flash lights the scene through the park's own ambient light (daylight.ts):
   // a light of its own would put one more light in every material's shader.
-  this.setSky(Math.max(this.intensity,this.rain),this.rain,this.flash*this.rain);
+  this.setSky(Math.max(this.intensity,this.rain),this.rain,this.flash*this.rain,this.channel*this.rain);
   this.applyFog(Math.max(this.intensity,this.rain*.7));
   this.scanAge+=dt;if(this.scanAge>1){this.scanAge=0;this.scan();}
   if(this.intensity>0){if(!this.flakes)this.buildFlakes();this.stepFlakes(d,centre);}
@@ -124,17 +129,32 @@ export class Weather {
   else if(this.leaves)this.leaves.visible=false;
   this.stepSpray(d,player,rider);
  }
- private setSky(overcast:number,storm:number,flash:number){this.scene.userData.overcast=overcast;this.scene.userData.storm=storm;this.scene.userData.lightning=flash;}
- /**
-  * A strike every 7-22 s in heavy rain: a bright flicker (two or three pulses)
-  * that lights the scene and the cloud deck, and thunder that follows the
-  * flash by the time sound takes to arrive (1-4 s, fainter when further).
-  */
+ private setSky(overcast:number,storm:number,flash:number,channel=0){this.scene.userData.overcast=overcast;this.scene.userData.storm=storm;this.scene.userData.lightning=flash;this.scene.userData.lightningChannel=channel;}
+ /** In heavy rain: the flash envelope from the current strike's strokes, and the next strike when it is due. */
  private stepLightning(dt:number){
   this.flashAge+=dt;
-  if(this.rain>.6){this.nextBolt-=dt;if(this.nextBolt<=0){this.nextBolt=7+Math.random()*15;this.flashAge=0;const delay=.9+Math.random()*3.1;this.onThunder?.(delay,THREE.MathUtils.clamp(1.25-delay/4,.35,1));}}
-  const t=this.flashAge;
-  this.flash=t<.07?1:t<.13?.18:t<.2?.75:t<.24?.1:t<.3?.45:Math.max(0,.45*Math.exp(-(t-.3)*7));
+  if(this.rain>.6){this.nextBolt-=dt;if(this.nextBolt<=0)this.strike();}
+  const t=this.flashAge;let flash=0,channel=0;
+  for(const s of this.strokes){if(t<s.at)continue;const k=Math.exp(-Math.max(0,t-s.at-s.hold)/s.decay);flash=Math.max(flash,s.peak*k);if(s.ground)channel=Math.max(channel,k);}
+  this.flash=flash;this.channel=channel;
+ }
+ /**
+  * One flash, paced like a medium thunderstorm (#63): about four a minute,
+  * 4 to 40 s apart. About a third reach the ground, 1-10 km off: several return
+  * strokes 40-120 ms apart (the first holding its light a little, the continuing
+  * current) flicker the light and draw a visible channel (sky-events.ts).
+  * The rest light the cloud from inside, softer and longer, 2-15 km off. Thunder
+  * follows at the speed of sound (about 2.9 s a km) and fades with distance.
+  */
+ strike(ground=Math.random()<.32,km=ground?1+9*Math.random()**1.4:2+13*Math.random()){
+  this.nextBolt=Math.min(40,4-Math.log(1-Math.random())*11);
+  this.flashAge=0;this.strikes++;this.lastStrike={ground,km};
+  const count=ground?2+Math.floor(Math.random()*4):1+Math.floor(Math.random()*3);
+  const light=ground?THREE.MathUtils.clamp(1.3-km/10,.35,1):THREE.MathUtils.clamp(.85-km/25,.25,.75);
+  this.strokes=[];let at=0;
+  for(let i=0;i<count;i++){this.strokes.push({at,hold:i===0?.05+Math.random()*.04:.01+Math.random()*.03,peak:light*(i===0?1:.45+Math.random()*.5),decay:ground?.035+Math.random()*.035:.09+Math.random()*.12,ground});at+=ground?.04+Math.random()*.08:.08+Math.random()*.25;}
+  if(ground)(this.scene.userData.sky as {events?:{strike(distance:number):void}}|undefined)?.events?.strike(km*1000);
+  this.onThunder?.(km*2.9,THREE.MathUtils.clamp(1.15-km/9,.1,1),km);
  }
  /** Rain: streaks along the drop's velocity (a drop falls 7-9 m/s and leans with the wind), wrapping around the camera. */
  private stepDrops(dt:number,centre:THREE.Vector3){

@@ -14,7 +14,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url + '/?map=outdoor');
   await page.waitForFunction(() => window.__LAZER?.startSession, null, { timeout: 900000 });
-  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.profile.settings.daylight = 'day'; g.profile.settings.liveSky = false; });
+  await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.profile.settings.daylight = 'day'; g.profile.settings.liveSky = false; window.__draw = g.renderer.render; g.renderer.render = () => {}; });
   const kinds = ['Rubber Duck', 'Kazoo', 'Foam Finger', 'Party Popper', 'Bubble Wand'];
   const used = await page.evaluate(async (kinds) => {
     const g = window.__LAZER, s = g.sim, { receiveItem } = await import('/src/data/items.ts'), { emptyInput } = await import('/src/input/input.ts'), out = {};
@@ -47,8 +47,10 @@ try {
       const cam = g.camera.camera, hand = g.rider.hands[0].getWorldPosition(cam.position.clone());
       const at = kind === 'confetti' ? s.position.clone().add({ x: 0, y: 1.6, z: 0.6 }) : hand;
       cam.position.copy(at).add(kind === 'confetti' ? { x: 1.8, y: 0.4, z: 2.4 } : { x: 0.55, y: 0.18, z: 0.62 }); cam.lookAt(at); cam.updateMatrixWorld();
-      g.renderer.render(g.park.scene, cam);
-      return g.renderer.domElement.toDataURL('image/jpeg', 0.85);
+      // Frames above step without drawing (SwiftShader is slow); only the picture is drawn.
+      g.renderer.render = window.__draw; g.renderer.render(g.park.scene, cam);
+      const url = g.renderer.domElement.toDataURL('image/jpeg', 0.85); g.renderer.render = () => {};
+      return url;
     }, kind);
     writeFileSync(`${out}/${kind.toLowerCase().replace(/ /g, '-')}.jpg`, Buffer.from(shot.split(',')[1], 'base64'));
   }

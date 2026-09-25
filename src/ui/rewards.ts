@@ -239,7 +239,7 @@ export class RewardFx {
     this.stickers.push(() => {
       const el = document.createElement("div");
       el.className = "reward-toast first-swim";
-      el.innerHTML = `<span class="rt-label">FIRST SWIM</span><strong>Cannonball season is open</strong><span class="rt-gain">Swim with LS · A strokes harder · Swim to the edge to climb out</span>`;
+      el.innerHTML = `<span class="rt-label">FIRST SWIM</span><strong>Cannonball season is open</strong><span class="rt-gain">Swim with LS · Click LS to swim faster · A splashes up · Swim to the edge to climb out</span>`;
       this.toasts.append(el); sfx.coin();
       confetti(el, ["#1ecbe1", "#86c3d5", "#ffffff", "#c6ff00"], 40);
       setTimeout(() => el.classList.add("out"), 3400);

@@ -7,6 +7,7 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
 import { WATER, buildShoreline, dressLake } from "./water";
+import { buildLakeBasin } from "./underwater";
 import { floodlight, monumentSign, pavilion as buildPavilion, veteransPanel } from "./props";
 import { buildDiveDock } from "./dive-dock";
 import { surfaceMaterial } from "./art";
@@ -103,6 +104,13 @@ export function bmxHeight(x: number, z: number) {
  * waxed manual pad. Heights are terrain, like the metal plaza's, so every
  * feature rides with the same physics; grinds are the park's rails and benches.
  */
+/**
+ * Litter bins on the lawns (x, z), just off the paths: built as trash cans by
+ * interactions.ts. [29, -37] stood in the middle of the path; it is on its edge now.
+ */
+export const PARK_BINS: readonly (readonly [number, number])[] = [[29, -38.7], [-27, 32], [89, 29]];
+/** Picnic pavilions (x, z): the lawns' five and the one on the ballfield path. */
+export const PAVILIONS: readonly (readonly [number, number])[] = [[-28, -40], [90, -40], [-87, -30], [-83, 42], [-52, -51], [27, -113]];
 export const DIY = { x0: -88, x1: -34, z0: -146, z1: -104 };
 export const DIY_PAD = { x0: -50, x1: -44, z0: -113.5, z1: -111.5, h: 0.3 };
 export function diyHeight(x: number, z: number) {
@@ -316,20 +324,17 @@ export function buildMemorialGrounds(park: Park) {
     solid?: THREE.Vector3,
   ) => {
     const before = scene.children.length;
-    park.rail(name, a, b, kind, undefined, solid);
+    const pipe = park.rail(name, a, b, kind, undefined, solid);
     for (const m of scene.children.slice(before))
       if (m instanceof THREE.Mesh)
         (m.material as THREE.MeshStandardMaterial).color.set(0x899396);
+    return pipe;
   };
   for (const m of metalQuarters) {
     const lip = m.reverse ? m.x1 - 3.2 : m.x0 + 3.2;
-    metalRail(
-      m.id + " coping",
-      v(lip, m.h + 0.025, m.z0 + 0.1),
-      v(lip, m.h + 0.025, m.z1 - 0.1),
-      "ledge",
-      v(m.reverse ? -1 : 1, 0, 0),
-    );
+    // The pipe runs the full lip, flush with both sides; the grind span is unchanged (#68).
+    const a = v(lip, m.h + 0.025, m.z0 + 0.1), b = v(lip, m.h + 0.025, m.z1 - 0.1);
+    park.extendPipe(metalRail(m.id + " coping", a, b, "ledge", v(m.reverse ? -1 : 1, 0, 0)), a, b, 0.09, 0.09);
     const back = m.reverse ? m.x0 + 0.15 : m.x1 - 0.15;
     for (let z = m.z0; z <= m.z1; z += 2)
       box(back, m.h + 0.6, z, 0.08, 1.2, 0.08, 0x343d42, true);
@@ -561,6 +566,8 @@ export function buildMemorialGrounds(park: Park) {
   lake.scale.set(WATER.radiusX, WATER.radiusZ, 1);
   lake.position.set(WATER.x, WATER.surface, WATER.z);
   scene.add(lake);
+  // Under the surface: the basin, its stones and the surface seen from below (#62).
+  scene.userData.lakeBasin = buildLakeBasin(scene);
   const shoreline = surfaceMaterial(0xdedad0, "concrete", 2.4, 2.4);
   shoreline.polygonOffset = true;
   shoreline.polygonOffsetUnits = -40;
@@ -571,14 +578,7 @@ export function buildMemorialGrounds(park: Park) {
     surfaceRect("road", x - 3.5, x + 3.5, z - 3.5, z + 3.5);
     park.bench("Shelter bench " + x + " " + z, x - 1.7, 0, z, 0.85, 3);
   };
-  for (const [x, z] of [
-    [-28, -40],
-    [90, -40],
-    [-87, -30],
-    [-83, 42],
-    [-52, -51],
-  ])
-    pavilion(x, z);
+  for (const [x, z] of PAVILIONS) pavilion(x, z);
   // The adjoining recreation lawns complete the southern edge of the reference layout.
   path(
     [
@@ -644,7 +644,6 @@ export function buildMemorialGrounds(park: Park) {
     }
     park.bench("Ballfield bench " + x, x + 19, 0, -107, 1, 4);
   }
-  pavilion(27, -113);
   // ---- Ballfield DIY lot (#46) ----
   // A cracked poured slab, the riders' concrete, and a painted tag.
   const slab = box((DIY.x0 + DIY.x1) / 2, 0.002, (DIY.z0 + DIY.z1) / 2, DIY.x1 - DIY.x0, 0.004, DIY.z1 - DIY.z0, 0xa29c8e);
@@ -735,18 +734,7 @@ export function buildMemorialGrounds(park: Park) {
     plant(scene, model, mine.map(([x, z, h], i) => ({ x, y: park.groundHeight(x, z) - 0.05, z, scale: (h * 2.3) / model.height, yaw: i * 2.399 + k })), "tree-pines");
   });
   addParkPeople(scene);
-  // Bins and lamp bases use the same modest polygon and material budget as
-  // nearby furniture, placed clear of riding paths.
-  const binMat=new THREE.MeshStandardMaterial({color:0x354e48,metalness:.3,roughness:.7});
-  const rimMat=new THREE.MeshStandardMaterial({color:0x89938c,metalness:.65,roughness:.35});
-  for(const [x,z] of [[29,-37],[-27,32],[89,29],[31,-109]]){
-    const bin=new THREE.Mesh(new THREE.CylinderGeometry(.3,.26,.85,12),binMat);
-    bin.position.set(x,.425,z);bin.castShadow=true;bin.name='Park bin';scene.add(bin);
-    const rim=new THREE.Mesh(new THREE.TorusGeometry(.29,.035,5,12),rimMat);
-    rim.rotation.x=Math.PI/2;rim.position.set(x,.86,z);scene.add(rim);
-    const lid=new THREE.Mesh(new THREE.CylinderGeometry(.27,.29,.04,12),rimMat);
-    lid.position.set(x,.84,z);scene.add(lid);
-  }
+  // The old decorative park bins became usable trash cans (see PARK_BINS, #58).
   // Xeriscape beds along the paths: white bursage with the odd Mojave yucca.
   const beds: Placement[] = [], accents: Placement[] = [];
   for (let i = 0; i < 120; i++) {

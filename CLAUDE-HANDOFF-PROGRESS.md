@@ -51,3 +51,7 @@ Room contact decisions use client-reported rider positions. This is unranked alp
 Friend-list durability still requires an approved persistent Railway volume. Existing guest codes survive reloads; clearing browser storage creates a new guest identity.
 
 The owner requested a push back, then explicitly asked us to wait for their "go": Claude is about to publish another GitHub update. Finish local verification, fetch that update only after the signal, integrate it in this isolated branch, and rerun affected checks before a push. The next task list has not arrived yet.
+
+## Combined publication checkpoint
+
+Owner gave go after Claude published eb8759d. Merged eb8759d without conflicts. Combined full unit suite, TypeScript and production build pass; affected weather (21/21), underwater (7/7), litter (8/8), early-pop, localization and network-playful browser suites all pass on RTX 4060 Ti. Windows package and Sites archive rebuilt. Owner requests GitHub plus live publication before starting codex-handoff-2.md; that second handoff is not started.

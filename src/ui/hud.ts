@@ -318,7 +318,7 @@ export class HUD {
       track(s.manual.balance + s.manual.command * 0.25);
     const hints: Record<string, string> = {
       Walking: s.swim
-        ? "LS SWIM / HOLD A STROKE HARDER / SWIM TO A LADDER OR THE BANK TO CLIMB OUT"
+        ? "LS SWIM / CLICK LS SWIM FASTER / A SPLASH UP / SWIM TO A LADDER OR THE BANK TO CLIMB OUT"
         : s.footAir && !s.grounded
           ? "LT+RT + LS FLIP / LB RB TWIST / X TUCK / B SWAN · LET GO TO OPEN UP"
           : s.running
