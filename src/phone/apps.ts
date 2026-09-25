@@ -19,6 +19,7 @@ import { BODY, DISPLAY, INK, LIME, ORANGE, PAPER, TEAL, icon, type Block, type I
 import type { Phone, View } from './phone';
 import type { PhoneMap } from './map';
 import { fictionalNumber, type MessageStore } from './messages';
+import {uiColors} from '../ui/palette';
 import { CRATE_NAME, RARITY_COLOR, RARITY_LABEL, collectibles, collection, levelFor, missionBoard, trickBook } from '../data/progress';
 import { DELIVERY, type CreditEconomy, type Package } from '../data/credit';
 import { dailyDeals, type Deal } from '../data/deals';
@@ -650,7 +651,21 @@ function messagesApp(d: PhoneDeps): View {
 
 /** The home screen: a clock widget over the dusk wallpaper, then the app grid. */
 export function homePage(d: PhoneDeps): Page {
-  const tiles: Tile[] = d.phone.apps.map(a => ({ id: 'app-' + a.id, label: translate('phone.'+a.id) || a.label, icon: a.icon, color: a.color, badge: a.badge?.(), action: () => d.phone.push(a.open()) }));
+  const phone=d.phone;
+  const palette=uiColors(),recolor=document.documentElement.dataset.uiPalette!=='default'&&!!document.documentElement.dataset.uiPalette;
+  const accents=[palette.orange,palette.lime,palette.teal,palette.sun,palette.pink];
+  const tiles: Tile[] = phone.homeApps.map((a,i) => ({ id: 'app-' + a.id, label: translate('phone.'+a.id) || a.label, icon: a.icon, color: recolor?accents[(phone.homePageIndex*6+i)%accents.length]:a.color, badge: phone.homeEditing&&phone.editingAppId===a.id?'✓':a.badge?.(), action: () => { if(phone.homeEditing){phone.editingAppId=a.id;phone.refresh();}else phone.push(a.open()); } }));
+  const selected=phone.apps.find(a=>a.id===phone.editingAppId);
+  const rows:Row[]=[];
+  if(phone.homePageCount>1){
+    rows.push({id:'home-prev',label:'◀ PREVIOUS APPS',disabled:phone.homePageIndex===0,action:()=>phone.shiftHomePage(-1)});
+    rows.push({id:'home-next',label:'NEXT APPS ▶',disabled:phone.homePageIndex===phone.homePageCount-1,action:()=>phone.shiftHomePage(1)});
+  }
+  if(phone.homeEditing){
+    rows.push({id:'home-earlier',label:'MOVE EARLIER',detail:selected?.label??'Select an app above',disabled:!selected||phone.apps[0]===selected,action:()=>phone.moveApp(selected!.id,-1)});
+    rows.push({id:'home-later',label:'MOVE LATER',detail:selected?.label??'Select an app above',disabled:!selected||phone.apps.at(-1)===selected,action:()=>phone.moveApp(selected!.id,1)});
+    rows.push({id:'home-edit',label:'DONE',action:()=>{phone.homeEditing=false;phone.editingAppId='';phone.refresh();}});
+  }else rows.push({id:'home-edit',label:'EDIT APP ORDER',action:()=>{phone.homeEditing=true;phone.refresh();}});
   const now = new Date();
   return {
     wallpaper: 'dusk',
@@ -671,6 +686,8 @@ export function homePage(d: PhoneDeps): Page {
         }
       } },
       { type: 'grid', cols: 3, tiles },
+      { type: 'text', text: `APPS ${phone.homePageIndex+1} / ${phone.homePageCount}`, muted: true },
+      { type: 'list', rows },
     ],
   };
 }

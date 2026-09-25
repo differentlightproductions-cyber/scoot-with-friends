@@ -1,5 +1,10 @@
 /** 简体中文。招式名、品牌和地名保持原样。 */
 export const ZH_CN: Record<string, string> = {
+  "settings.ui_palette": "界面配色",
+  "settings.ui_palette.desc": "菜单和手机配色。立即保存，不改变场景和商品颜色。",
+  "palette.default": "默认",
+  "palette.grayscale": "灰度",
+  "palette.earth": "大地色",
   "common.on": "开",
   "common.off": "关",
   "common.back": "返回",

@@ -17,7 +17,7 @@ html:lang(ar), html:lang(hi), html:lang(zh-CN) {
 body.rtl #start .game-menu, body.rtl #pause .pause-sheet { direction: rtl; text-align: right; }
 body.rtl #start .game-menu { left: auto; right: clamp(18px, 4vw, 76px); }
 body.rtl #pause .pause-sheet { margin-left: auto; margin-right: 0; }
-#start[data-screen="settings"] .game-menu nav button:first-child { background: #1ecbe1; color: #0b0c0d; }
+#start[data-screen="settings"] .game-menu nav button:first-child { background: var(--teal); color: var(--ink); }
 :root {
   --ink: #0b0c0d;
   --paper: #f4f1e8;
@@ -528,6 +528,8 @@ body.ui-open #minimap, body.editing #minimap { visibility: hidden; }
 #account-dialog p { color: #30343a; }
 #account-dialog label { font: 12px/1 var(--display); letter-spacing: .06em; color: var(--ink); }
 #account-dialog input, #account-dialog textarea { border: 3px solid var(--ink); border-radius: 10px; background: #fff; color: var(--ink); box-shadow: inset 3px 3px 0 #0000000f; }
+#account-dialog input[type="checkbox"] { display: inline-block; width: 20px; height: 20px; padding: 0; margin: 0 8px 0 0; vertical-align: middle; accent-color: var(--ink); box-shadow: none; }
+#account-dialog label:has(input[type="checkbox"]) { line-height: 1.5; letter-spacing: 0; font-family: var(--body); }
 #account-dialog small { display: block; margin-top: 6px; color: #5b6168; font-size: 12px; }
 #account-dialog button {
   font: 14px/1.1 var(--display); letter-spacing: .03em; text-align: center; padding: 12px 14px 10px;
@@ -686,3 +688,30 @@ body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
 @media (max-height: 520px) and (orientation: landscape) {
   #start:has(.main-tabs) .game-menu { top: max(62px, env(safe-area-inset-top)); }
 }
+
+/* Alternate palettes recolor interface surfaces, never canvas or product swatches. */
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start[data-screen="creator"] {
+  --ink: inherit; --paper: inherit; --lime: inherit; --orange: inherit; --teal: inherit; --pink: inherit;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu {
+  --face: var(--paper); --pick: var(--lime); --pick-shadow: var(--orange);
+  background: var(--paper); color: var(--ink);
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu h1 {
+  background: none; color: var(--ink); -webkit-text-fill-color: var(--ink); -webkit-text-stroke: 0; filter: none; text-shadow: none;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu :is(.eyebrow,.menu-save-note,.menu-controls,.build-number,.menu-subtitle) { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button {
+  background: var(--paper) !important; color: var(--ink); border: 2px solid var(--ink); text-shadow: none;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button.selected {
+  background: var(--lime) !important; color: var(--ink); box-shadow: 4px 4px 0 var(--ink); outline: 2px solid var(--ink); outline-offset: 2px;
+}
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu button small { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .game-menu .eyebrow { background: var(--paper); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs { background: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs button { background: var(--paper); color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #start .main-tabs button[aria-selected="true"] { background: var(--lime); outline: 2px solid var(--paper); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) .cr-grid.presets .cr-tile { --card: var(--teal); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog :is(.account-identity,[role="status"],.account-save strong) { color: var(--ink); }
+html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog .recovery-code { background: var(--paper); }

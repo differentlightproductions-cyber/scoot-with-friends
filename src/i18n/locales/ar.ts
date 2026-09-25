@@ -1,5 +1,10 @@
 /** العربية (الفصحى المبسطة، من اليمين إلى اليسار). أسماء الحركات والعلامات التجارية والأماكن تبقى كما هي. */
 export const AR: Record<string, string> = {
+  "settings.ui_palette": "ألوان الواجهة",
+  "settings.ui_palette.desc": "ألوان القوائم والهاتف. تُحفظ فورًا دون تغيير ألوان العالم والمنتجات.",
+  "palette.default": "الافتراضي",
+  "palette.grayscale": "تدرج رمادي",
+  "palette.earth": "ألوان ترابية",
   "common.on": "تشغيل",
   "common.off": "إيقاف",
   "common.back": "رجوع",

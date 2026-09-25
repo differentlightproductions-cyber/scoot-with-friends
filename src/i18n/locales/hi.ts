@@ -1,5 +1,10 @@
 /** हिन्दी। ट्रिक के नाम, ब्रांड और जगहों के नाम जैसे हैं वैसे ही रहते हैं। */
 export const HI: Record<string, string> = {
+  "settings.ui_palette": "इंटरफ़ेस के रंग",
+  "settings.ui_palette.desc": "मेन्यू और फ़ोन के रंग। तुरंत सहेजे जाते हैं; दुनिया और उत्पादों के रंग नहीं बदलते।",
+  "palette.default": "डिफ़ॉल्ट",
+  "palette.grayscale": "ग्रे रंग",
+  "palette.earth": "मिट्टी के रंग",
   "common.on": "चालू",
   "common.off": "बंद",
   "common.back": "वापस",

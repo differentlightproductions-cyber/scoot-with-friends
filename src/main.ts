@@ -48,6 +48,7 @@ import { EMOTES, SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
 import { loadProfile, saveProfile } from "./data/loadout";
 import {setLocale,t} from './i18n';
+import {applyUiPalette} from './ui/palette';
 import {networkPlayful} from './network/playful';
 import type { MapId } from "./data/maps";
 import { VisualFidelity } from './render/fidelity';
@@ -75,6 +76,7 @@ async function boot() {
   await loadingStage("Loading your rider",15);
   const profile = loadProfile();
   setLocale(profile.settings.language);
+  applyUiPalette(profile.settings.uiPalette);
   if(ACTIVE_MAP==="techno_gravity"){const shop=await import("./park/shop");shop.installShop();setActiveLayout(shop.shopLayout);selectPark("techno_gravity");}
   if(ACTIVE_MAP==="church"){const church=await import("./park/church");church.installChurch();setActiveLayout(church.churchLayout);selectPark("church");}
   const events = new Events(),
@@ -201,7 +203,8 @@ async function boot() {
   messages.onChange=()=>phone.refresh();
   const menu = new GameMenu(document.querySelector("#start")!, profile);
   // Cloud save starts once the account dialog exists to ask questions in.
-  void cloud.start();
+  if(new URLSearchParams(location.search).has('account_reset')||new URLSearchParams(location.search).has('account_verify'))void menu.accountPanel.open();
+  else void cloud.start();
   network.prepare=async()=>{showRoomConfirmation=menu.screen==='online'&&!menu.root.hidden;if(!hud.started||ACTIVE_MAP!=='outdoor')await menu.onRide('outdoor');};
   menu.networkChoices=()=>!network.endpoint?[{label:'PRIVATE FREE-RIDE / LOCAL TESTING',detail:'An internet room server is not connected to this build yet. Solo and shop visits are available.',action:()=>{}},{label:'PLAY SOLO',action:()=>menu.show('maps')}]:[
     {label:network.status==='Connected'?'ROOM CONNECTED':(network.lan?'LAN / ':'')+network.status,detail:network.status==='Connected'?'Your private room is ready. Share an invite, then enter the park.':network.lastError||(network.lan?'All riders need this Windows release. Host LAN on one PC; Join LAN on the others. Up to eight players per room.':''),action:()=>{}},
@@ -289,7 +292,7 @@ async function boot() {
   menu.overlayOwnsInput=()=>rewards.open;
   menu.onOpenCrate=(id,all=false)=>{if(rewards.open)return;const crates=[...profile.progress.crates],crate=crates.find(c=>c.id===id);if(!crate)return;input.clear();pending=emptyInput();accumulator=0;if(all)void rewards.openAll(crates);else rewards.openCrate(crate);};
   menu.onPurchased=item=>rewards.purchase(item);
-  menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:riderAppearance(profile)});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
+  menu.onChange = () => {setLocale(profile.settings.language);applyUiPalette(profile.settings.uiPalette);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:riderAppearance(profile)});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
     sim.tricks.stance = profile.settings.stance;
     sim.tricks.controlStyle = profile.settings.controlStyle;

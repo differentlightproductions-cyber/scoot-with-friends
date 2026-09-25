@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {chromium} from 'playwright';
+
+const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/phone-home-check.html',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html><body></body></html>'}));
+ await page.goto((process.env.LAZER_URL||'http://127.0.0.1:5192')+'/phone-home-check.html');
+ const result=await page.evaluate(async()=>{
+  const {Phone}=await import('/src/phone/phone.ts');
+  const {homePage}=await import('/src/phone/apps.ts');
+  const {emptyInput}=await import('/src/input/input.ts');
+  const create=()=>{const phone=new Phone();for(let i=0;i<14;i++)phone.register({id:'test'+i,label:'APP '+i,icon:'music',color:'#ff5a1f',open:()=>({title:'APP '+i,page:()=>({blocks:[]})})});phone.homePage=()=>homePage({phone});phone.open();phone.tick(1);return phone;};
+  const phone=create();
+  const page0=phone.homePage().blocks.find(b=>b.type==='grid').tiles.map(t=>t.id);
+  phone.select('home-next');phone.tick(.3);
+  const page1=phone.homePage().blocks.find(b=>b.type==='grid').tiles.map(t=>t.id);
+  phone.screen.focusId='app-test11';phone.tick(.3);
+  const input=emptyInput();input.steer=1;phone.update(input,1/60);phone.tick(.3);
+  const controllerPage=phone.homePageIndex;
+  phone.setHomePage(0);phone.select('home-edit');phone.tick(.3);
+  phone.select('app-test0');phone.tick(.3);
+  phone.screen.scrollBy(350);phone.tick(.3);
+  const scrollBefore=phone.screen.scroll;phone.tick(.3);const scrollAfter=phone.screen.scroll;
+  phone.screen.scrollBy(-10000);phone.tick(.3);phone.tick(.3);
+  const backAtTop=phone.screen.scroll===0;
+  phone.select('home-later');phone.tick(.3);
+  const order=phone.apps.map(a=>a.id);
+  phone.homeEditing=false;phone.setHomePage(0);phone.tick(.3);
+  const canvas=phone.screen.canvas;canvas.setPointerCapture=()=>{};
+  canvas.dispatchEvent(new PointerEvent('pointerdown',{pointerId:1,clientX:250,clientY:300,bubbles:true}));
+  canvas.dispatchEvent(new PointerEvent('pointermove',{pointerId:1,clientX:100,clientY:302,bubbles:true}));
+  canvas.dispatchEvent(new PointerEvent('pointerup',{pointerId:1,clientX:100,clientY:302,bubbles:true}));
+  const swipePage=phone.homePageIndex;
+  const {applyUiPalette,uiColors}=await import('/src/ui/palette.ts');
+  const canvasUi=await import('/src/phone/canvas-ui.ts');
+  applyUiPalette('grayscale');phone.tick(.3);
+  const pixel=[...phone.screen.g.getImageData(10,200,1,1).data];
+  const paletteOk=canvasUi.TEAL===uiColors().teal&&phone.homePage().blocks.find(b=>b.type==='grid').tiles[0].color===uiColors().lime&&Math.max(...pixel.slice(0,3))-Math.min(...pixel.slice(0,3))<3;
+  applyUiPalette('default');
+  const restored=create();
+  return {page0,page1,controllerPage,scrollBefore,scrollAfter,backAtTop,order,swipePage,paletteOk,restored:restored.apps.map(a=>a.id),saved:localStorage.getItem('swf-phone-app-order-v1')};
+ });
+ assert.deepEqual(result.page0,['app-test0','app-test1','app-test2','app-test3','app-test4','app-test5']);
+ assert.deepEqual(result.page1,['app-test6','app-test7','app-test8','app-test9','app-test10','app-test11']);
+ assert.equal(result.controllerPage,2);
+ assert.equal(result.swipePage,1);
+ assert.equal(result.paletteOk,true);
+ assert(result.scrollBefore>0);assert.equal(result.scrollAfter,result.scrollBefore);
+ assert.equal(result.backAtTop,true,'scrolling back to the clock stays at the top');
+ assert.deepEqual(result.order.slice(0,3),['test1','test0','test2']);
+ assert.deepEqual(result.restored,result.order);
+ assert.equal(errors.length,0,errors.join('\n'));
+ console.log('PASS: mobile home pages, controller edge, manual scroll, and persisted app order.');
+}finally{await browser.close();}

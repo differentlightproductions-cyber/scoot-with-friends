@@ -24,12 +24,16 @@ body.rtl .phone-overlay { right: auto; left: max(18px, 3vw); }
   box-sizing: border-box;
   background:
     radial-gradient(120% 60% at 20% 0%, #ffffff66, transparent 55%),
-    linear-gradient(160deg, #7ff2ff 0%, #1ecbe1 38%, #0e8fae 100%);
+    linear-gradient(160deg, #7ff2ff 0%, var(--teal, #1ecbe1) 38%, #0e8fae 100%);
   box-shadow:
-    inset 0 0 0 3px #0b0c0d,
+    inset 0 0 0 3px var(--ink, #0b0c0d),
     inset 0 0 0 7px #bff6ff99,
     inset 0 -14px 26px #04354a66,
-    6px 6px 0 #0b0c0d;
+    6px 6px 0 var(--ink, #0b0c0d);
+}
+[data-ui-palette="grayscale"] .phone-bezel,
+[data-ui-palette="earth"] .phone-bezel {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--teal) 55%, white), var(--teal) 38%, color-mix(in srgb, var(--teal) 65%, black));
 }
 .phone-overlay canvas.phone-screen {
   position: static;
@@ -38,7 +42,7 @@ body.rtl .phone-overlay { right: auto; left: max(18px, 3vw); }
   width: 100%;
   height: 100%;
   border-radius: 6px;
-  outline: 3px solid #0b0c0d;
+  outline: 3px solid var(--ink, #0b0c0d);
   background: #111;
   touch-action: none;
   cursor: pointer;
@@ -61,8 +65,8 @@ body.rtl .phone-overlay { right: auto; left: max(18px, 3vw); }
   padding: 0.35em 0.7em 0.25em;
   font: 400 clamp(10px, 1.6vh, 15px) Bungee, Impact, sans-serif;
   color: #0b0c0d;
-  background: #c6ff00;
-  border: 2px solid #0b0c0d;
+  background: var(--lime, #c6ff00);
+  border: 2px solid var(--ink, #0b0c0d);
   border-radius: 6px;
   transform: rotate(-9deg);
   box-shadow: 3px 3px 0 #0b0c0d;

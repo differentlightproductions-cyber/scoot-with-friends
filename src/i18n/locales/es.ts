@@ -1,5 +1,10 @@
 /** Español (neutral / internacional). Trick names, brands and place names stay as they are. */
 export const ES: Record<string, string> = {
+  "settings.ui_palette": "COLORES DE LA INTERFAZ",
+  "settings.ui_palette.desc": "Colores del menú y teléfono. Se guardan al instante; el mundo y los productos no cambian.",
+  "palette.default": "ORIGINAL",
+  "palette.grayscale": "ESCALA DE GRISES",
+  "palette.earth": "TONOS TIERRA",
   "common.on": "SÍ",
   "common.off": "NO",
   "common.back": "ATRÁS",

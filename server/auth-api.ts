@@ -1,6 +1,7 @@
 import { pbkdf2Async } from '@noble/hashes/pbkdf2.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
+import { emailReady, sendAccountEmail, type EmailEnv } from './email';
 interface Statement { bind(...args: unknown[]): Statement; first<T = any>(): Promise<T | null>; run(): Promise<unknown> }
 export interface AuthDB { prepare(sql: string): Statement; batch(statements: Statement[]): Promise<unknown> }
 const COOKIE = '__Host-swf-session', AGE = 604800;
@@ -20,16 +21,18 @@ async function limited(db: AuthDB, key: string, max: number) {
 // devices; the client validates everything it loads from it, and anything paid
 // for with real money must live in its own server-authoritative table.
 const SAVE_LIMIT = 65536;
-export async function authAPI(request: Request, env: { DB?: AuthDB }): Promise<Response | null> {
+const validEmail = (value: unknown): value is string => typeof value === 'string' && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+export async function authAPI(request: Request, env: { DB?: AuthDB } & EmailEnv, ctx?: { waitUntil(promise: Promise<unknown>): void }): Promise<Response | null> {
   const url = new URL(request.url), action = url.pathname.slice('/api/account/'.length);
   if (!url.pathname.startsWith('/api/account/')) return null;
-  if (!['session', 'register', 'login', 'logout', 'recover', 'delete', 'save'].includes(action)) return json({ error: 'Not found.' }, 404);
+  if (!['session', 'register', 'login', 'logout', 'recover', 'delete', 'save', 'email-request', 'email-verify', 'email-reset-request', 'email-reset', 'email-consent'].includes(action)) return json({ error: 'Not found.' }, 404);
   if (!env.DB) return json({ error: 'Online accounts are unavailable here. Open the published website to sign in.' }, 503);
   const db = env.DB;
   const token = request.headers.get('cookie')?.split(';').map(s => s.trim()).find(s => s.startsWith(COOKIE + '='))?.slice(COOKIE.length + 1) ?? '';
-  const session = async () => /^[a-f0-9]{64}$/.test(token) ? db.prepare('SELECT a.id,a.username FROM game_sessions s JOIN game_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').bind(digest(token), Date.now()).first<{ id: string; username: string }>() : null;
+  const session = async () => /^[a-f0-9]{64}$/.test(token) ? db.prepare('SELECT a.id,a.username,a.email,a.pending_email,a.marketing_consent FROM game_sessions s JOIN game_accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.expires>?').bind(digest(token), Date.now()).first<{ id: string; username: string; email: string | null; pending_email: string | null; marketing_consent: number }>() : null;
+  const publicAccount = (a: { id: string; username: string; email?: string | null; pending_email?: string | null; marketing_consent?: number }) => ({ id: a.id, username: a.username, email: a.email ?? null, pendingEmail: a.pending_email ?? null, marketingConsent: !!a.marketing_consent });
   try {
-    if (action === 'session' && request.method === 'GET') return json({ account: await session() });
+    if (action === 'session' && request.method === 'GET') { const a = await session(); return json({ account: a ? publicAccount(a) : null, emailReady: emailReady(env) }); }
     if (action === 'save' && request.method === 'GET') {
       const account = await session(); if (!account) return json({ error: 'Sign in first.' }, 401);
       const row = await db.prepare('SELECT data,revision,updated FROM game_saves WHERE account_id=?').bind(account.id).first<{ data: string; revision: number; updated: number }>();
@@ -56,6 +59,66 @@ export async function authAPI(request: Request, env: { DB?: AuthDB }): Promise<R
       return json({ error: 'Your progress changed on another device.', save: row ? { data: JSON.parse(row.data), revision: row.revision, updated: row.updated } : null }, 409);
     }
     if (await limited(db, 'ip:' + digest(request.headers.get('cf-connecting-ip') ?? 'local'), 24)) return json({ error: 'Too many attempts. Try again in 15 minutes.' }, 429);
+    if (action === 'email-reset-request') {
+      if (!emailReady(env)) return json({ error: 'Email recovery is not available yet. Use your recovery code.' }, 503);
+      const email = validEmail(data.email) ? data.email.trim().toLowerCase() : '';
+      if (!email) return json({ error: 'Enter a valid email address.' }, 400);
+      if (await limited(db, 'reset:' + digest(email), 3)) return json({ ok: true });
+      const a = await db.prepare('SELECT id,email FROM game_accounts WHERE email=?').bind(email).first<{ id: string; email: string }>();
+      if (a) {
+        const secret = random(), expires = Date.now() + 1800000;
+        const deliver = (async () => {
+          let sent = false; try { sent = await sendAccountEmail(env, a.email, 'Reset your Scoot with Friends password', 'reset', secret); } catch { /* keep account existence private */ }
+          if (sent) await db.prepare('UPDATE game_accounts SET reset_token_hash=?,reset_token_expires=? WHERE id=? AND email=?').bind(digest(secret), expires, a.id, email).run();
+        })();
+        if (ctx?.waitUntil) ctx.waitUntil(deliver.catch(() => {})); else await deliver;
+      }
+      return json({ ok: true });
+    }
+    if (action === 'email-reset') {
+      if (typeof data.token !== 'string' || !/^[a-f0-9]{64}$/.test(data.token) || typeof data.password !== 'string' || data.password.length < 12 || data.password.length > 128) return json({ error: 'Invalid or expired reset link.' }, 400);
+      const now = Date.now(), oldHash = digest(data.token);
+      const a = await db.prepare('SELECT id,username,email,pending_email,marketing_consent FROM game_accounts WHERE reset_token_hash=? AND reset_token_expires>?').bind(oldHash, now).first<{ id: string; username: string; email: string | null; pending_email: string | null; marketing_consent: number }>();
+      if (!a) return json({ error: 'Invalid or expired reset link.' }, 401);
+      const salt = random(), nextRecovery = random(), nextToken = random(), nextHash = digest(nextToken);
+      await db.batch([
+        db.prepare('UPDATE game_accounts SET password_hash=?,salt=?,recovery_hash=?,reset_token_hash=NULL,reset_token_expires=NULL WHERE id=? AND reset_token_hash=? AND reset_token_expires>?').bind(await hash(data.password, salt), salt, digest(nextRecovery), a.id, oldHash, now),
+        db.prepare('INSERT INTO game_sessions(token_hash,account_id,expires) SELECT ?,?,? WHERE changes()=1').bind(nextHash, a.id, now + AGE * 1000),
+        db.prepare('DELETE FROM game_sessions WHERE account_id=? AND token_hash<>? AND EXISTS (SELECT 1 FROM game_sessions WHERE token_hash=? AND account_id=?)').bind(a.id, nextHash, nextHash, a.id)
+      ]);
+      if (!await db.prepare('SELECT 1 FROM game_sessions WHERE token_hash=? AND account_id=?').bind(nextHash, a.id).first()) return json({ error: 'Invalid or expired reset link.' }, 401);
+      return json({ account: publicAccount(a), recovery: nextRecovery }, 200, cookie(nextToken));
+    }
+    if (action === 'email-verify') {
+      if (typeof data.token !== 'string' || !/^[a-f0-9]{64}$/.test(data.token)) return json({ error: 'Invalid or expired verification link.' }, 400);
+      const a = await session();
+      if (!a) return json({ error: 'Sign in to verify your email.' }, 401);
+      const verified = await db.prepare('UPDATE game_accounts SET email=pending_email,pending_email=NULL,email_token_hash=NULL,email_token_expires=NULL,reset_token_hash=NULL,reset_token_expires=NULL WHERE id=? AND email_token_hash=? AND email_token_expires>? AND pending_email IS NOT NULL AND NOT EXISTS (SELECT 1 FROM game_accounts other WHERE other.email=game_accounts.pending_email AND other.id<>game_accounts.id) RETURNING id').bind(a.id, digest(data.token), Date.now()).first();
+      if (!verified) return json({ error: 'Invalid, expired, or already used verification link.' }, 401);
+      return json({ account: publicAccount((await session())!) });
+    }
+    if (action === 'email-request') {
+      const a = await session();
+      if (!a) return json({ error: 'Sign in first.' }, 401);
+      if (!emailReady(env)) return json({ error: 'Email verification is not available yet. Your recovery code still works.' }, 503);
+      if (!validEmail(data.email) || typeof data.password !== 'string' || data.password.length > 128) return json({ error: 'Enter a valid email and current password.' }, 400);
+      const current = await db.prepare('SELECT password_hash,salt FROM game_accounts WHERE id=?').bind(a.id).first<{ password_hash: string; salt: string }>();
+      if (!current || !same(await hash(data.password, current.salt), current.password_hash)) return json({ error: 'Incorrect password.' }, 401);
+      const email = data.email.trim().toLowerCase();
+      if (await db.prepare('SELECT id FROM game_accounts WHERE email=? AND id<>?').bind(email, a.id).first()) return json({ error: 'That email is unavailable.' }, 409);
+      if (await limited(db, 'verify:' + a.id, 3)) return json({ error: 'Too many attempts. Try again in 15 minutes.' }, 429);
+      const secret = random();
+      await db.prepare('UPDATE game_accounts SET pending_email=?,email_token_hash=?,email_token_expires=? WHERE id=?').bind(email, digest(secret), Date.now() + 1800000, a.id).run();
+      let sent = false; try { sent = await sendAccountEmail(env, email, 'Verify your Scoot with Friends email', 'verify', secret); } catch { /* provider unavailable */ }
+      if (!sent) return json({ error: 'Could not send verification email. Please try again later.' }, 503);
+      return json({ account: publicAccount((await session())!), sent: true });
+    }
+    if (action === 'email-consent') {
+      const a = await session(); if (!a) return json({ error: 'Sign in first.' }, 401);
+      if (typeof data.consent !== 'boolean') return json({ error: 'Invalid choice.' }, 400);
+      await db.prepare('UPDATE game_accounts SET marketing_consent=?,marketing_consented_at=? WHERE id=?').bind(data.consent ? 1 : 0, data.consent ? Date.now() : null, a.id).run();
+      return json({ account: publicAccount((await session())!) });
+    }
     if (action === 'logout') { await db.prepare('DELETE FROM game_sessions WHERE token_hash=?').bind(digest(token)).run(); return json({ account: null }, 200, cookie('', 0)); }
     if (action === 'delete') {
       const account = await session(); if (!account) return json({ error: 'Sign in first.' }, 401);
@@ -71,9 +134,18 @@ export async function authAPI(request: Request, env: { DB?: AuthDB }): Promise<R
     if (action === 'register') {
       if (account || username === 'charizard495') return json({ error: 'That username is unavailable.' }, 409);
       const salt = random(); recovery = random(); const id = crypto.randomUUID(), hashed = await hash(password, salt);
-      try { await db.prepare('INSERT INTO game_accounts(id,username,password_hash,salt,recovery_hash,created) VALUES (?,?,?,?,?,?)').bind(id, username, hashed, salt, digest(recovery), Date.now()).run(); }
+      if (!validEmail(data.email) || typeof data.marketingConsent !== 'boolean') return json({ error: 'Enter a valid email and choose your email preference.' }, 400);
+      const email = data.email.trim().toLowerCase();
+      try { await db.prepare('INSERT INTO game_accounts(id,username,password_hash,salt,recovery_hash,created,marketing_consent,marketing_consented_at) VALUES (?,?,?,?,?,?,?,?)').bind(id, username, hashed, salt, digest(recovery), Date.now(), data.marketingConsent ? 1 : 0, data.marketingConsent ? Date.now() : null).run(); }
       catch (e) { if (await db.prepare('SELECT id FROM game_accounts WHERE username=?').bind(username).first()) return json({ error: 'That username is unavailable.' }, 409); throw e; }
-      account = { id, username };
+      account = { id, username, email: null, pending_email: null, marketing_consent: data.marketingConsent ? 1 : 0 };
+      await db.prepare('UPDATE game_accounts SET pending_email=? WHERE id=?').bind(email, id).run();
+      account.pending_email = email;
+      if (emailReady(env)) {
+        const secret = random();
+        await db.prepare('UPDATE game_accounts SET pending_email=?,email_token_hash=?,email_token_expires=? WHERE id=?').bind(email, digest(secret), Date.now() + 1800000, id).run();
+        try { await sendAccountEmail(env, email, 'Verify your Scoot with Friends email', 'verify', secret); } catch { /* account and recovery code still work */ }
+      }
     } else if (action === 'recover') {
       if (!account || typeof data.recovery !== 'string' || !same(digest(data.recovery.trim()), account.recovery_hash)) return json({ error: 'Username or recovery code is incorrect.' }, 401);
       const salt = random(); recovery = random();
@@ -86,6 +158,7 @@ export async function authAPI(request: Request, env: { DB?: AuthDB }): Promise<R
     }
     const nextToken = random();
     await db.batch([db.prepare('DELETE FROM game_sessions WHERE expires<? OR token_hash=?').bind(Date.now(), digest(token)), db.prepare('INSERT INTO game_sessions(token_hash,account_id,expires) VALUES (?,?,?)').bind(digest(nextToken), account.id, Date.now() + AGE * 1000), db.prepare('DELETE FROM auth_limits WHERE expires<?').bind(Date.now())]);
-    return json({ account: { id: account.id, username: account.username }, ...(recovery ? { recovery } : {}) }, 200, cookie(nextToken));
+    const complete = await db.prepare('SELECT id,username,email,pending_email,marketing_consent FROM game_accounts WHERE id=?').bind(account.id).first();
+    return json({ account: publicAccount(complete), ...(recovery ? { recovery } : {}), emailReady: emailReady(env) }, 200, cookie(nextToken));
   } catch { return json({ error: 'Accounts are temporarily unavailable. Please try again shortly.' }, 503); }
 }

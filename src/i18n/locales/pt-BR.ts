@@ -1,5 +1,10 @@
 /** Português (Brasil): termos brasileiros. Nomes de manobras, marcas e lugares não mudam. */
 export const PT_BR: Record<string, string> = {
+  "settings.ui_palette": "CORES DA INTERFACE",
+  "settings.ui_palette.desc": "Cores do menu e celular. Salvas na hora; o mundo e os produtos não mudam.",
+  "palette.default": "PADRÃO",
+  "palette.grayscale": "ESCALA DE CINZA",
+  "palette.earth": "TONS TERROSOS",
   "common.on": "LIGADO",
   "common.off": "DESLIGADO",
   "common.back": "VOLTAR",

@@ -1,5 +1,10 @@
 /** English (United States): the master table every other language falls back to. */
 export const EN_US: Record<string, string> = {
+  "settings.ui_palette": "UI COLORS",
+  "settings.ui_palette.desc": "Menu and phone colors. Saves immediately; world and product colors stay unchanged.",
+  "palette.default": "DEFAULT",
+  "palette.grayscale": "GRAYSCALE",
+  "palette.earth": "EARTH",
   // common
   "common.on": "ON",
   "common.off": "OFF",

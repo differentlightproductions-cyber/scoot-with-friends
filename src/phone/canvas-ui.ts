@@ -12,11 +12,13 @@ export const STATUS_H = 30;
 export const NAV_H = 58;
 const PAD = 16;
 
-export const INK = '#0b0c0d';
-export const PAPER = '#f4f1e8';
-export const LIME = '#c6ff00';
-export const ORANGE = '#ff5a1f';
-export const TEAL = '#1ecbe1';
+import {uiColors} from '../ui/palette';
+export let INK = uiColors().ink;
+export let PAPER = uiColors().paper;
+export let LIME = uiColors().lime;
+export let ORANGE = uiColors().orange;
+export let TEAL = uiColors().teal;
+if(typeof window!=='undefined')window.addEventListener('swf-palette-change',()=>{const c=uiColors();INK=c.ink;PAPER=c.paper;LIME=c.lime;ORANGE=c.orange;TEAL=c.teal;});
 import { direction } from '../i18n';
 import { t } from '../i18n';
 export const DISPLAY = 'Bungee, ParkDisplay, Impact, "Arial Black", "Segoe UI", "Noto Sans Arabic", "Noto Sans Devanagari", "Microsoft YaHei", sans-serif';
@@ -189,6 +191,7 @@ export class PhoneScreen {
   private targets: Target[] = [];
   focusId = '';
   private scroll = 0;
+  private manualScroll = false;
   private contentH = 0;
   private scale = 2;
   /** Drawn behind every page; set by the phone (status bar, nav, wallpaper). */
@@ -200,6 +203,7 @@ export class PhoneScreen {
     this.canvas.width = SCREEN_W * this.scale;
     this.canvas.height = SCREEN_H * this.scale;
     this.g = this.canvas.getContext('2d')!;
+    window.addEventListener('swf-palette-change',()=>this.wallpapers.clear());
   }
 
   /** Lays out and draws a page. Keeps focus on the same id when it still exists. */
@@ -220,7 +224,7 @@ export class PhoneScreen {
     g.clip();
     // Scroll so the focused target stays visible (computed from the unscrolled layout).
     const focusY = this.locate(page, heights, this.focusId);
-    if (focusY) {
+    if (focusY && !this.manualScroll) {
       if (focusY.y - this.scroll < 6) this.scroll = Math.max(0, focusY.y - 6);
       if (focusY.y + focusY.h - this.scroll > view - 6) this.scroll = focusY.y + focusY.h - view + 6;
     }
@@ -252,20 +256,21 @@ export class PhoneScreen {
     this.g.drawImage(paper, 0, 0, SCREEN_W, SCREEN_H);
   }
   private paintWallpaper(g: Ctx, kind: 'dusk' | 'grip') {
+    const themed=document.documentElement.dataset.uiPalette&&document.documentElement.dataset.uiPalette!=='default';
     if (kind === 'dusk') {
       const sky = g.createLinearGradient(0, 0, 0, SCREEN_H);
-      sky.addColorStop(0, '#1d2350'); sky.addColorStop(0.45, '#6a3f80'); sky.addColorStop(0.75, '#e0697a'); sky.addColorStop(1, '#f7a35c');
+      sky.addColorStop(0, themed?INK:'#1d2350'); sky.addColorStop(0.45, themed?TEAL:'#6a3f80'); sky.addColorStop(0.75, themed?ORANGE:'#e0697a'); sky.addColorStop(1, themed?uiColors().sun:'#f7a35c');
       g.fillStyle = sky; g.fillRect(0, 0, SCREEN_W, SCREEN_H);
       // Striped sun and a ridge, like the creator's set.
       g.save(); g.beginPath(); g.arc(SCREEN_W * 0.66, SCREEN_H * 0.8, 70, 0, Math.PI * 2); g.clip();
-      g.fillStyle = '#ffc070'; g.fillRect(0, 0, SCREEN_W, SCREEN_H);
-      g.fillStyle = '#e0697a'; for (let i = 0; i < 6; i++) g.fillRect(0, SCREEN_H * 0.8 + 10 + i * 11, SCREEN_W, 2 + i);
+      g.fillStyle = themed?uiColors().sun:'#ffc070'; g.fillRect(0, 0, SCREEN_W, SCREEN_H);
+      g.fillStyle = themed?ORANGE:'#e0697a'; for (let i = 0; i < 6; i++) g.fillRect(0, SCREEN_H * 0.8 + 10 + i * 11, SCREEN_W, 2 + i);
       g.restore();
-      g.fillStyle = '#4a3560'; g.beginPath(); g.moveTo(0, SCREEN_H);
+      g.fillStyle = themed?INK:'#4a3560'; g.beginPath(); g.moveTo(0, SCREEN_H);
       for (let x = 0; x <= SCREEN_W; x += 6) g.lineTo(x, SCREEN_H * 0.86 - 22 * Math.sin(x / 41 + 1) - 9 * Math.sin(x / 13));
       g.lineTo(SCREEN_W, SCREEN_H); g.fill();
     } else {
-      g.fillStyle = '#17191c'; g.fillRect(0, 0, SCREEN_W, SCREEN_H);
+      g.fillStyle = themed?INK:'#17191c'; g.fillRect(0, 0, SCREEN_W, SCREEN_H);
       // Grip-tape speckle (deterministic).
       let seed = 7;
       const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -486,7 +491,7 @@ export class PhoneScreen {
       const score = along + across * 2.2;
       if (score < bestScore) { bestScore = score; best = t; }
     }
-    if (best) this.focusId = best.id;
+    if (best) { this.focusId = best.id; this.manualScroll = false; }
   }
   /** Left/right on a slider or adjustable row changes it; returns false when nothing adjusts. */
   adjust(step: -1 | 1) {
@@ -504,10 +509,10 @@ export class PhoneScreen {
     const t = [...this.targets].reverse().find(r => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h);
     if (!t) return;
     if (t.set && t.w > 0) { t.set(Math.max(0, Math.min(1, (x - t.x) / t.w))); return; }
-    if (!t.id.startsWith('__')) this.focusId = t.id;
+    if (!t.id.startsWith('__')) { this.focusId = t.id; this.manualScroll = false; }
     if (!t.disabled) t.action?.();
   }
   /** Scroll by a drag or wheel (content pixels). */
-  scrollBy(dy: number) { this.scroll = Math.max(0, this.scroll + dy); }
-  resetScroll() { this.scroll = 0; }
+  scrollBy(dy: number) { this.manualScroll = true; this.scroll = Math.max(0, this.scroll + dy); }
+  resetScroll() { this.scroll = 0; this.manualScroll = false; }
 }

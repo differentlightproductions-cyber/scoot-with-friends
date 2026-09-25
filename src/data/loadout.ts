@@ -7,6 +7,7 @@ import { emptyProgress, validProgress, type Progress } from "./progress";
 import { defaultAvatar, sanitizeAvatar, type AvatarConfig } from '../avatar/config';
 import { CONTROLS_VERSION } from "../input/riding";
 import { isLocale, LOCALES, type Locale } from "../i18n";
+import { isUiPalette, type UiPalette } from '../ui/palette';
 import { validBuild, type SavedBuild } from "./builds";
 import { FP_FOV_DEFAULT, FP_FOV_MAX, FP_FOV_MIN, TP_FOV_DEFAULT, TP_FOV_MAX, TP_FOV_MIN } from "../camera/fov";
 export interface LocalProfile {
@@ -27,6 +28,7 @@ export interface LocalProfile {
   builds?: { warehouse?: SavedBuild };
   settings: {
     language: Locale;
+    uiPalette: UiPalette;
     controlStyle: "pro" | "arcade";
     sound: boolean;
     grindAssist: boolean;
@@ -119,6 +121,7 @@ export function loadProfile(): LocalProfile {
     progress: emptyProgress(),
     settings: {
       language: browserLocale(),
+      uiPalette: 'default',
       controlStyle: "pro",
       sound: true,
       grindAssist: true,
@@ -155,6 +158,7 @@ export function loadProfile(): LocalProfile {
     const saved = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
     if (!saved || ![1,2,3,4].includes(saved.version)) return profile;
     if(isLocale(saved.settings?.language))profile.settings.language=saved.settings.language;
+    if(isUiPalette(saved.settings?.uiPalette))profile.settings.uiPalette=saved.settings.uiPalette;
     profile.wallet=validWallet(saved.wallet);
     profile.progress=validProgress(saved.progress);
     const warehouse=validBuild(saved.builds?.warehouse);if(warehouse)profile.builds={warehouse};

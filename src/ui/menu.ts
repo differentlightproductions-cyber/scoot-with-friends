@@ -18,6 +18,7 @@ function productCard(name:string,variant:string,rarity:Rarity,color:number,price
 }
 import {loadProfile} from '../data/loadout';
 import { LOCALES, onLocale, setLocale, t } from '../i18n';
+import { applyUiPalette, UI_PALETTES } from './palette';
 import {display,DISPLAY_LABEL,DISPLAY_MODES,fullscreenSupported} from './display';
 import {FP_FOV_DEFAULT,FP_FOV_MAX,FP_FOV_MIN,TP_FOV_DEFAULT,TP_FOV_MAX,TP_FOV_MIN,TP_FOV_STEP} from '../camera/fov';
 import { version } from '../../package.json';
@@ -600,6 +601,13 @@ export class GameMenu {
         break;
       case 'settings-graphics':
         title=t('settings.graphics');subtitle=t('settings.title')+' / '+t('settings.graphics');
+        add(t('settings.ui_palette')+': '+t('palette.'+this.profile.settings.uiPalette),()=>{
+          const next=UI_PALETTES[(UI_PALETTES.indexOf(this.profile.settings.uiPalette)+1)%UI_PALETTES.length];
+          this.profile.settings.uiPalette=next;
+          if(this.savedProfile)this.savedProfile.settings.uiPalette=next;
+          this.saveFailed=!saveProfile(this.savedProfile??this.profile);
+          applyUiPalette(next);this.render();
+        },t('settings.ui_palette.desc'));
         add(t('settings.graphics')+' '+t('settings.value.'+this.profile.settings.fidelity),()=>{const levels=['low','medium','high'] as const;this.profile.settings.fidelity=levels[(levels.indexOf(this.profile.settings.fidelity)+1)%3];this.changed();this.render();},t('settings.graphics.desc'));
         add(t('settings.option.display')+' '+t('settings.value.'+this.profile.settings.displayMode),()=>{
           const next=DISPLAY_MODES[(DISPLAY_MODES.indexOf(this.profile.settings.displayMode)+1)%DISPLAY_MODES.length];
