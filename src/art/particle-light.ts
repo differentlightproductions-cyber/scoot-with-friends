@@ -64,3 +64,38 @@ export function lightParticles<T extends THREE.Material>(material: T): T {
   material.customProgramCacheKey = () => key + "|night-lit-v1";
   return material;
 }
+
+/**
+ * The park's lamps lighting the ground, ramps and walls around them (#75):
+ * each lamp head (particleLight.uParkLamps: position and reach, reach 0 by
+ * day) shines down in its own colour, falling off with distance and with the
+ * angle of each surface, so its light takes the shape of what is under it
+ * instead of a painted circle. weather.ts adds it to every static material.
+ */
+export const parkLampLight = {
+  uParkLampTint: { value: Array.from({ length: MAX_PARTICLE_LAMPS }, () => new THREE.Color(0xffdca0)) },
+  uParkLampPower: { value: 0 },
+};
+export const PARK_LAMP_HEAD = /* glsl */ `
+uniform vec4 uParkLamps[${MAX_PARTICLE_LAMPS}];
+uniform vec3 uParkLampTint[${MAX_PARTICLE_LAMPS}];
+uniform float uParkLampPower;
+`;
+/** After lights_fragment_end in a physical material; needs the world position (vSnowWorld). */
+export const PARK_LAMP_BODY = /* glsl */ `
+if (uParkLampPower > 0.001) {
+  vec3 lampNormal = inverseTransformDirection(normal, viewMatrix), lampSum = vec3(0.0);
+  for (int i = 0; i < ${MAX_PARTICLE_LAMPS}; i++) {
+    vec4 lamp = uParkLamps[i];
+    if (lamp.w <= 0.0) continue;
+    vec3 toLamp = lamp.xyz - vSnowWorld;
+    float d2 = max(dot(toLamp, toLamp), 0.04);
+    vec3 l = toLamp * inversesqrt(d2);
+    // The fixture shines down: nothing above its level, softening toward the horizon.
+    float cone = smoothstep(0.08, 0.55, l.y);
+    float reach = lamp.w * lamp.w;
+    lampSum += uParkLampTint[i] * max(dot(lampNormal, l), 0.0) * cone * smoothstep(reach, reach * 0.25, d2) / (1.0 + d2 * 0.3);
+  }
+  reflectedLight.directDiffuse += lampSum * uParkLampPower * BRDF_Lambert(material.diffuseColor);
+}
+`;

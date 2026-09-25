@@ -46,7 +46,8 @@ try {
   // The flash lights the scene through the park's ambient light; no extra light joins every shader.
   await page.evaluate(() => { const g = window.__LAZER; let hemi = null; g.park.scene.traverse((o) => { if (!hemi && o.isHemisphereLight) hemi = o; }); window.__ambient = () => hemi.intensity / 4.2; for (let i = 0; i < 30; i++) g.daylight.update(0.1, 'day', g.sim.position); window.__ambientBase = window.__ambient(); });
   const lights = await page.evaluate(() => { let n = 0; window.__LAZER.park.scene.traverse((o) => { if (o.isLight) n++; }); return n; });
-  check('Rain adds no lights: the park keeps its light count (every shader pays for each light)', lights <= 3, lights);
+  // Sun, sky, the headlamp and its bounce (#75): four, and never more.
+  check('Rain adds no lights: the park keeps its light count (every shader pays for each light)', lights <= 4, lights);
   const flash = await page.evaluate(() => { const g = window.__LAZER, w = g.weather, s = g.sim; w.strike(true, 1.2); let peak = 0; for (let i = 0; i < 20; i++) { w.update(0.02, 'rain', s.position, g.profile.settings.fidelity, {}); g.daylight.update(0.02, 'day', s.position); peak = Math.max(peak, Math.min(g.park.scene.userData.lightning, window.__ambient() - window.__ambientBase)); } return peak; });
   check('Rain: a strike flashes the scene and the cloud deck', flash > 0.9, flash);
   // A ground strike draws its channel in the sky, flickering with the return strokes, then it is gone.
@@ -87,7 +88,7 @@ try {
   const fall = await scene('fall', 'day', 30, 'fall-day'); await shot('fall-day');
   check('Fall: leaves drift down and litter gathers; the rain dries off', fall.leaves && fall.autumn > 0.99 && fall.litter > 0.9 && !fall.drops && fall.wet < rain.wet, fall);
   const foliage = await page.evaluate(() => { let key = null; window.__LAZER.park.scene.traverse((o) => { const m = o.material; if (!key && m?.name?.includes('foliage') && m.customProgramCacheKey) key = m.customProgramCacheKey(); }); return key; });
-  check('Fall: tree and plant foliage takes the autumn shading', /swf-weather-v4-foliage/.test(foliage ?? ''), foliage);
+  check('Fall: tree and plant foliage takes the autumn shading', /swf-weather-v5-foliage/.test(foliage ?? ''), foliage);
   await scene('fall', 'sunset', 10, 'fall-sunset'); await shot('fall-sunset');
 
   const snow = await scene('snow', 'day', 60, 'snow-day'); await shot('snow-day');

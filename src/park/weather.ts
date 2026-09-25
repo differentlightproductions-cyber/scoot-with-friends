@@ -1,4 +1,4 @@
-import { lightParticles } from '../art/particle-light';
+import { lightParticles, particleLight, parkLampLight, PARK_LAMP_HEAD, PARK_LAMP_BODY } from '../art/particle-light';
 import * as THREE from 'three';
 import type { Fidelity } from '../render/fidelity';
 import { ACTIVE_MAP, terrainHeight } from './park';
@@ -308,6 +308,9 @@ export class Weather {
   // Plant cards (art/flora.ts names them "<kind> foliage") turn autumn colours instead of gathering litter.
   const foliage=/foliage/.test(material.name);
   material.onBeforeCompile=(shader,renderer)=>{compile(shader,renderer);shader.uniforms.uSnowCoverage=coverage;shader.uniforms.uWet=wet;shader.uniforms.uLitter=litter;
+   // The park's lamps light what is around them (#75).
+   shader.uniforms.uParkLamps=particleLight.uParkLamps;shader.uniforms.uParkLampTint=parkLampLight.uParkLampTint;shader.uniforms.uParkLampPower=parkLampLight.uParkLampPower;
+   shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n'+PARK_LAMP_BODY);
    shader.vertexShader=shader.vertexShader.replace('void main() {','varying vec3 vSnowWorld;\nvoid main() {').replace('#include <begin_vertex>',`#include <begin_vertex>
 vec4 snowWorld = vec4(transformed, 1.0);
 #ifdef USE_INSTANCING
@@ -318,7 +321,7 @@ vSnowWorld = (modelMatrix * snowWorld).xyz;`);
    // spreads to steeper faces as it deepens; snow does not hold past about
    // 60 degrees. Fresh snow is bright and matte; a few crystals face the sun
    // and glint as the camera moves.
-   shader.fragmentShader=(foliage?'#define SWF_FOLIAGE\n':'')+shader.fragmentShader.replace('void main() {',`uniform float uSnowCoverage, uWet, uLitter;
+   shader.fragmentShader=(foliage?'#define SWF_FOLIAGE\n':'')+shader.fragmentShader.replace('void main() {',PARK_LAMP_HEAD+`uniform float uSnowCoverage, uWet, uLitter;
 varying vec3 vSnowWorld;
 float snowHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float snowNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -370,7 +373,7 @@ roughnessFactor = mix(roughnessFactor, 0.05, puddle);
 }
 #endif
 #include <lights_physical_fragment>`);
-  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v4-foliage':'|swf-weather-v4');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
+  };material.customProgramCacheKey=()=>key+(foliage?'|swf-weather-v5-foliage':'|swf-weather-v5');material.needsUpdate=true;this.hooked.set(material,{compile,cache});
  }
  private buildFlakes(){
   if(this.flakes){this.flakes.removeFromParent();this.flakes.geometry.dispose();(this.flakes.material as THREE.Material).dispose();}
