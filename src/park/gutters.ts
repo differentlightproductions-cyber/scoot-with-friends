@@ -57,6 +57,8 @@ const ON_GRADE_CAPTURE = 0.7;
 
 /** Kept from map to map, like the weather, so the city's gutters agree. */
 const carried = { runoff: 0, bank: 0, ice: 0 };
+/** How high the snow bank stands against the curb when full (m). */
+const BANK_HEIGHT = 0.16;
 
 interface Built {
   line: GutterLine;
@@ -214,9 +216,14 @@ export class Drainage {
           float ripple = sin(run * 11.0 + vAcross * 17.0) * 0.5 + sin(run * 27.0 - vAcross * 29.0 + 1.7) * 0.3 + sin(run * 5.0 + vAcross * 7.0) * 0.2;
           normal = normalize(normal + vec3(ripple * 0.22, 0.0, ripple * 0.12));
           float edge = smoothstep(0.08, 0.0, spreadNow - vAcross) * 0.35;`)
-        .replace("#include <dithering_fragment>", "#include <dithering_fragment>\ngl_FragColor.rgb += edge * 0.25;\ngl_FragColor.a *= cover * (0.5 + 0.3 * runoff);");
+        // The sky's sheen on the moving surface (there is no environment map to
+        // reflect), brighter at a glancing look and on the ripples' crests.
+        .replace("#include <dithering_fragment>", `#include <dithering_fragment>
+          float fres = pow(1.0 - clamp(dot(normalize(vViewPosition), normal), 0.0, 1.0), 3.0);
+          gl_FragColor.rgb += vec3(0.6, 0.7, 0.8) * (0.18 + 0.55 * fres) + max(ripple, 0.0) * 0.12 + edge * 0.25;
+          gl_FragColor.a *= cover * (0.55 + 0.3 * runoff);`);
     };
-    material.customProgramCacheKey = () => "swf-gutter-water-v1";
+    material.customProgramCacheKey = () => "swf-gutter-water-v2";
     const mesh = new THREE.Mesh(g, material);
     mesh.name = "Gutter water";
     mesh.renderOrder = 2;
@@ -233,14 +240,37 @@ export class Drainage {
         return shape * (0.72 + 0.28 * Math.sin(i * 0.9 + k) * Math.sin(i * 0.37 + 1.3));
       },
     })))!;
-    const material = new THREE.MeshStandardMaterial({ color: 0xf3f6fa, roughness: 0.82, name: "Curb snow bank" });
+    // The mound's own normals (at full height), so it is shaded as a bank, not a stripe.
+    const full = g.clone(), fp = full.getAttribute("position") as THREE.BufferAttribute, fb = full.getAttribute("aBank") as THREE.BufferAttribute;
+    for (let i = 0; i < fp.count; i++) fp.setY(i, fp.getY(i) + fb.getX(i) * BANK_HEIGHT);
+    full.computeVertexNormals();
+    g.setAttribute("aBankNormal", full.getAttribute("normal").clone());
+    full.dispose();
+    const material = new THREE.MeshStandardMaterial({ color: 0xf6f8fb, roughness: 0.78, name: "Curb snow bank" });
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uBank = this.uniforms.uBank;
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", "#include <common>\nattribute float aBank;\nuniform float uBank;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed.y += aBank * uBank * 0.16 - 0.01 * (1.0 - step(0.001, aBank * uBank));");
+        .replace("#include <common>", "#include <common>\nattribute float aBank;\nattribute vec3 aBankNormal;\nuniform float uBank;\nvarying float vBank; varying vec2 vPlan;")
+        .replace("#include <beginnormal_vertex>", "vec3 objectNormal = normalize(mix(normal, aBankNormal, clamp(uBank * 1.5, 0.0, 1.0)));")
+        .replace("#include <begin_vertex>", `#include <begin_vertex>
+          transformed.y += aBank * uBank * ${BANK_HEIGHT.toFixed(3)} - 0.01 * (1.0 - step(0.001, aBank * uBank));
+          vBank = aBank; vPlan = (modelMatrix * vec4(transformed, 1.0)).xz;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", `#include <common>
+          varying float vBank; varying vec2 vPlan;
+          float snowHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          float snowNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(snowHash(i), snowHash(i + vec2(1, 0)), f.x), mix(snowHash(i + vec2(0, 1)), snowHash(i + 1.0), f.x), f.y); }`)
+        .replace("#include <color_fragment>", `#include <color_fragment>
+          // A ragged street edge where the plough and the tyres have broken it off.
+          float ragged = snowNoise(vPlan * 2.2) * 0.28 + snowNoise(vPlan * 8.0) * 0.12;
+          if (vBank < ragged) discard;
+          // Grainy snow, packed grey where wheels and plough have pushed it at the street edge.
+          float grain = snowHash(floor(vPlan * 60.0)) * 0.06 + snowHash(floor(vPlan * 9.0)) * 0.05 + (snowNoise(vPlan * 3.5) - 0.5) * 0.08;
+          diffuseColor.rgb *= 0.93 + grain;
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.6, 0.57), smoothstep(0.45, 0.1, vBank) * 0.55);`);
     };
-    material.customProgramCacheKey = () => "swf-curb-bank-v1";
+    material.customProgramCacheKey = () => "swf-curb-bank-v3";
     const mesh = new THREE.Mesh(g, material);
     mesh.name = "Curb snow bank";
     mesh.receiveShadow = true;
@@ -252,7 +282,8 @@ export class Drainage {
   private buildIce() {
     const offsets = [0.01, 0.15, 0.3, 0.45, 0.6];
     const g = mergeGeometries(this.built.map((b) => this.strip(b, offsets, () => 0.005, { aAcross: (_i, k) => offsets[k] })))!;
-    const material = new THREE.MeshStandardMaterial({ color: 0xd8e9f2, roughness: 0.05, metalness: 0.15, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetUnits: -70, name: "Gutter ice" });
+    // Black ice: thin, dark and glassy over the concrete, frosted white in patches.
+    const material = new THREE.MeshStandardMaterial({ color: 0x7f97a4, roughness: 0.04, metalness: 0.3, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetUnits: -70, name: "Gutter ice" });
     material.onBeforeCompile = (shader) => {
       shader.uniforms.uIce = this.uniforms.uIce;
       shader.vertexShader = shader.vertexShader
@@ -269,9 +300,11 @@ export class Drainage {
           float patch = iceNoise(vPlan * 1.7) * 0.6 + iceNoise(vPlan * 5.3) * 0.4;
           float reach = 0.12 + 0.48 * uIce;
           float a = smoothstep(reach, reach - 0.12, vAcross + (patch - 0.5) * 0.25) * smoothstep(0.2, 0.55, patch + uIce * 0.5);
-          gl_FragColor.a *= a * min(1.0, uIce * 1.6) * 0.85;`);
+          float frost = smoothstep(0.62, 0.82, iceNoise(vPlan * 3.1 + 7.0) * 0.7 + iceNoise(vPlan * 11.0) * 0.3);
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.9, 0.94, 0.97), frost * 0.75);
+          gl_FragColor.a *= a * min(1.0, uIce * 1.6) * (0.5 + 0.35 * frost);`);
     };
-    material.customProgramCacheKey = () => "swf-gutter-ice-v1";
+    material.customProgramCacheKey = () => "swf-gutter-ice-v2";
     const mesh = new THREE.Mesh(g, material);
     mesh.name = "Gutter ice";
     mesh.renderOrder = 3;
