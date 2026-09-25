@@ -667,3 +667,22 @@ body.ui-open #now-playing, body.editing #now-playing { visibility: hidden; }
 }
 /* With Friends (#47): the throw / shove / pick-up prompt sits just above the world prompt. */
 .world-prompt.playful-prompt { bottom: calc(19% + 52px); background: var(--ink, #172b2d); color: var(--lime, #c6ff00); }
+
+/* Main-menu tabs only; Sesh and in-world shop overlays keep their own navigation. */
+#start .menu-tab-panel { position: absolute; inset: 0; pointer-events: none; }
+#start .main-tabs { position: absolute; z-index: 40; top: 8px; left: 50%; transform: translateX(-50%); width: min(960px, calc(100% - 24px)); display: flex; gap: 5px; padding: 5px; box-sizing: border-box; border: 2px solid var(--ink); border-radius: 12px; background: #15191de8; box-shadow: 4px 4px 0 var(--orange); }
+#start .main-tabs button { flex: 1 1 0; min-width: 0; min-height: 44px; border: 0; border-radius: 7px; padding: 4px; background: #303640; color: white; font: 12px/1.1 var(--display); cursor: pointer; }
+#start .main-tabs button[aria-selected="true"] { background: var(--lime); color: var(--ink); }
+#start .main-tabs button:focus-visible { outline: 3px solid var(--orange); outline-offset: -2px; }
+#start .main-tabs button:disabled { opacity: .6; cursor: not-allowed; }
+#start:has(.main-tabs) .game-menu { top: max(70px, 9vh); }
+@media (orientation: portrait) and (max-width: 700px) {
+  #start .main-tabs { top: max(44px, env(safe-area-inset-top)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #start .main-tabs button { min-height: 44px; font-size: 11px; }
+  #start:has(.main-tabs) .game-menu { top: max(155px, env(safe-area-inset-top)); }
+  #start[data-screen="settings-touch"]:has(.main-tabs) .game-menu { top: max(325px, env(safe-area-inset-top)); }
+  body:has(#start[data-screen="settings-touch"] .main-tabs) #touch-pad.tp-preview { top: 155px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  #start:has(.main-tabs) .game-menu { top: max(62px, env(safe-area-inset-top)); }
+}

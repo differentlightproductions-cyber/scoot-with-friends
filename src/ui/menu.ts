@@ -9,7 +9,7 @@ import {inventoryBrands,inventoryItems,paginate,BOARD_BRAND_ID,type InventoryIte
 import {AccountPanel,cloud} from './account';
 /** Where saves go: this device, plus the account when signed in. */
 const savedWhere=()=>cloud.account?'saved to this device and your account.':'saved on this device.';
-import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,type Rarity} from '../data/progress';
+import {collectibles,collection,levelFor,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
 import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
 interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean }
 /** The product on the counter: rarity frame, colour swatch, price sticker. */
@@ -46,9 +46,38 @@ import './shop.css';
 import { cityForMap, liveSky } from '../park/liveSky';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
 const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
+const MAIN_TABS=['play','locker','shop','crates','settings','account'] as const;
+type MainTab=typeof MAIN_TABS[number];
 export class GameMenu {
   accountPanel = new AccountPanel();
   screen = "home";
+  private shopBrowse=false;
+  onOpenCrate=(_id:string,_all=false)=>{};
+  overlayOwnsInput=()=>false;
+  private shellActive(){return !this.seshOpen&&!this.shopOpen&&!this.root.hidden;}
+  private tabsLocked(){return this.buying||this.accountPanel.dialog.open||this.overlayOwnsInput()||['creator','starter','starter-pick'].includes(this.screen);}
+  private activeTab():MainTab{
+    if(this.shopBrowse||['shop','purchase','purchased','board-complete','board-purchase'].includes(this.screen))return 'shop';
+    if(this.screen==='crates')return 'crates';
+    if(this.screen==='account')return 'account';
+    if(this.screen.startsWith('settings')||['guide','tricks','test-controller'].includes(this.screen))return 'settings';
+    if(['rides','rider','rider-presets','creator','scooter','longboard','brand','brand-items'].includes(this.screen))return 'locker';
+    return 'play';
+  }
+  tabPanel(name:MainTab){return this.root.querySelector<HTMLElement>(`[data-tab-panel="${name}"]`);}
+  private switchTab(tab:MainTab){
+    if(!this.shellActive()||this.tabsLocked())return;
+    this.shopBrowse=tab==='shop';
+    if(tab==='shop')this.activeShop=SHOPS[0];
+    this.show(({play:'home',locker:'rides',shop:'shop',crates:'crates',settings:'settings',account:'account'} as const)[tab]);
+  }
+  private renderTabs(){
+    if(!this.shellActive())return;
+    const locked=this.tabsLocked(),active=this.activeTab();
+    const bar=document.createElement('div');bar.className='main-tabs';bar.setAttribute('role','tablist');bar.setAttribute('aria-label','Main menu');
+    for(const name of MAIN_TABS){const button=document.createElement('button');button.type='button';button.textContent=name.toUpperCase();button.dataset.tab=name;button.setAttribute('role','tab');button.setAttribute('aria-selected',String(active===name));button.disabled=locked;button.title=locked?'Finish or leave this draft before switching tabs':'';button.onclick=()=>this.switchTab(name);bar.append(button);}
+    this.root.prepend(bar);
+  }
   seshOpen=false;currentMap:MapId='outdoor';onCloseSesh=()=>{};
   private savedProfile:LocalProfile|null=null;private travelMap:MapId='outdoor';
   openSesh(screen:string,map:MapId){this.seshOpen=true;this.currentMap=map;this.savedProfile=this.profile;const latest=loadProfile();if((latest.equipmentRevision??0)>(this.profile.equipmentRevision??0)){this.profile.scooter=structuredClone(latest.scooter);this.profile.longboard=structuredClone(latest.longboard);this.profile.activeRideable=latest.activeRideable;this.profile.equipmentRevision=latest.equipmentRevision;this.onChange();}this.profile=structuredClone(this.profile);this.root.hidden=false;this.show(screen);}
@@ -117,7 +146,7 @@ export class GameMenu {
     if(this.afterStarter==='ride')this.onRide('outdoor');else this.show('scooter');
   }
   private memory=new Map<string,number>();private repeatKey='';private repeatTimer=0;private equipRequest=0;private previewing=false;
-  private browseMode():BrowseMode{return this.shopOpen?'shop':'owned';}
+  private browseMode():BrowseMode{return this.shopOpen||this.shopBrowse?'shop':'owned';}
   private memoryKey(screen:string){return screen+'/'+(['brand','brand-items'].includes(screen)?this.browseBrand:'')+'/'+(screen==='brand-items'?this.browseCategory:'');}
   private brandName(){return this.browseBrand===BOARD_BRAND_ID?'Sometimes Summer':PARTS.find(p=>p.brandId===this.browseBrand)?.brand??this.browseBrand;}
   private equippedSelection(item:{rideable:string;category:string}){return item.rideable==='longboard'?this.profile.longboard[item.category as LongboardCategory]:this.selected(item.category as Category);}
@@ -185,6 +214,12 @@ export class GameMenu {
     public profile: LocalProfile,
   ) {
     onLocale(() => { if (!this.root.hidden) this.render(); });
+    window.addEventListener('keydown',e=>{
+      if(e.repeat||!['KeyQ','KeyE'].includes(e.code)||!this.shellActive()||this.tabsLocked()||e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const index=MAIN_TABS.indexOf(this.activeTab());this.switchTab(MAIN_TABS[(index+(e.code==='KeyQ'?-1:1)+MAIN_TABS.length)%MAIN_TABS.length]);
+    },true);
     // DISPLAY (#60): the saved mode starts on the first click or key; leaving
     // fullscreen through the browser sets it back to Windowed.
     display.onLeft=()=>{this.profile.settings.displayMode='windowed';this.changed();if(!this.root.hidden)this.render();};
@@ -262,6 +297,7 @@ export class GameMenu {
   private screenBeforePurchase='brand-items';
   private swatchOf(partId:string,variantId:string){return (PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===partId)?.variants.find(v=>v.id===variantId)?.color)??0x888888;}
   show(screen: string) {
+    if(screen==='home')this.shopBrowse=false;
     if(screen==='settings-touch' || (this.screen==='settings-touch'&&screen!=='settings-touch')){this.touchPreviewOn=screen==='settings-touch';this.touchPreview(this.touchPreviewOn);}
     if(screen==='purchase'&&this.screen!=='purchase')this.screenBeforePurchase=this.screen;
     // Returning to a screen restores where focus was, so a category keeps its place.
@@ -269,7 +305,7 @@ export class GameMenu {
     if(this.screen==='creator'&&screen!=='creator')this.leaveCreator();
     const entering=screen==='creator'&&this.screen!=='creator';
     this.screen = screen;
-    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop('dusk');this.creator.start(this.root,this.profile.avatar);return;}
+    if(entering){this.root.dataset.screen='creator';this.root.classList.toggle('sesh-overlay',this.seshOpen);this.creatorFraming='';this.previewScene.background=creatorBackdrop('dusk');this.creator.start(this.root,this.profile.avatar);this.renderTabs();return;}
     // A direction still held from the previous screen waits before repeating here.
     this.repeatTimer=Math.max(this.repeatTimer,.38);
     this.render();
@@ -308,7 +344,7 @@ export class GameMenu {
   }
   private render() {
     this.root.classList.toggle('shop-overlay',this.shopOpen);this.root.classList.toggle('sesh-overlay',this.seshOpen);
-    if(this.screen==='creator'){this.root.dataset.screen='creator';this.creator.render();return;}
+    if(this.screen==='creator'){this.root.dataset.screen='creator';this.creator.render();this.renderTabs();return;}
     const parkMaps=PARK_MAPS;
     this.root.dataset.screen=this.screen;
     const add = (
@@ -335,18 +371,11 @@ export class GameMenu {
       case "online":
         title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
-        if(this.needsStarter())add("BUILD YOUR SCOOTER",()=>this.startStarter('ride'),"Pick your first Lazer parts: they are yours to keep");
-        else add("PLAY",()=>this.show("play"),"Find your next line");
-        add("SHOPS",()=>this.show("shops"),"Visit, browse, and ride");
-        add("RIDES",()=>this.show("rides"),"Ride and customize your scooter or longboard");
-        add("RIDER",()=>this.show("rider"),"Your avatar: riders, body type, randomize");
-        add("SETTINGS",()=>this.show("settings"),"Preferences and trick book");
-        add("ACCOUNT",()=>{void this.accountPanel.open();},"Sign in / Create account");
-        break;
       case "play":
         title="PLAY";subtitle="YOUR NEXT SESH";
-        add("SOLO",()=>this.show("maps"),"Choose a park and ride");
-        add("PRIVATE FREE-RIDE",()=>this.show("online"),"Invite friends to a private room");break;
+        if(this.needsStarter())add("BUILD YOUR SCOOTER",()=>this.startStarter('ride'),"Pick your first Lazer parts: they are yours to keep");
+        add("SOLO",()=>this.needsStarter()?this.startStarter('ride'):this.show("maps"),"Choose a park and ride");
+        add("PRIVATE FREE-RIDE",()=>this.needsStarter()?this.startStarter('ride'):this.show("online"),"Invite friends to a private room");break;
       case "rides":{
         title="RIDES";subtitle="A RIDE IT / X CUSTOMIZE";
         const boardOwned=ownsBoard(loadProfile().wallet,this.profile.longboard),active=this.profile.activeRideable;
@@ -356,6 +385,7 @@ export class GameMenu {
         add('LONGBOARD',()=>void this.ride('longboard'),!boardOwned?'Buy a complete Sometimes Summer board at Techno Gravity first':(active==='longboard'?'Riding now':'A to ride it')+' · X to customize',active==='longboard',{primary:true});
         add('CUSTOMIZE SCOOTER',()=>this.needsStarter()?this.startStarter('scooter'):this.show('scooter'),this.needsStarter()?'Build your starter scooter first':'Your parts by brand / '+selectedPart(this.profile.scooter.deck).part.name);
         add('CUSTOMIZE LONGBOARD',()=>this.show('longboard'),boardOwned?'Sometimes Summer / '+longboardPart(this.profile.longboard.deck).variant.name+' build':'Your board parts by category');
+        if(!this.seshOpen)add('RIDER',()=>this.show('rider'),'Face, hair, body, outfit and accessories');
         break;}
       case "guide":
         title="HELP & CONTROLS";subtitle="LEARN YOUR NEXT TRICK";
@@ -386,8 +416,19 @@ export class GameMenu {
         title='TRAVEL TO '+MAPS.find(m=>m.id===this.travelMap)!.name;subtitle='YOUR OWNED GEAR TRAVELS WITH YOU';
         add('TRAVEL',()=>{const target=this.travelMap;this.closeSesh();this.onRide(target);},'Unapplied setup edits are discarded. Current attempt ends.');add('CANCEL',()=>this.show('maps'));break;
       case "shops":
-        title='SHOPS';subtitle='LOCAL SHOPS / PLACES TO RIDE';
+        title='TECHNO GRAVITY';subtitle='VISIT THE SHOP';
         for(const shop of SHOPS)add(shop.name,()=>{if(this.seshOpen){this.travelMap=shop.mapId;this.show('travel');}else this.onRide(shop.mapId);},shop.description,this.currentMap===shop.mapId);
+        break;
+      case 'crates':{
+        title='CRATES';subtitle='UNOPENED REWARDS / OPEN WHEN YOU WANT';
+        const crates=this.profile.progress.crates;
+        if(!crates.length)add('NO CRATES YET',()=>{},'Earn crates from missions and level-ups.');
+        for(const crate of crates)add(CRATE_NAME[crate.tier].toUpperCase(),()=>this.onOpenCrate(crate.id),crate.source);
+        if(crates.length>1)add('OPEN ALL',()=>this.onOpenCrate(crates[0].id,true),`${crates.length} crates in order`);
+        break;}
+      case 'account':
+        title='ACCOUNT';subtitle='YOUR RIDER / YOUR SAVE';
+        add(cloud.account?'MANAGE ACCOUNT':'SIGN IN / CREATE ACCOUNT',()=>{void this.accountPanel.open();},cloud.account?'View account and cloud save':'Save progress across your devices');
         break;
       case "maps":
         title = "MAP SELECT";
@@ -416,11 +457,12 @@ export class GameMenu {
         for(const deal of dailyDeals(this.activeShop.id)){const entry=catalogEntry(deal.partId)!,variant=entry.variants.find(v=>v.id===deal.variantId)!,owned=owns(wallet,deal),color=PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color??LONGBOARD_PARTS.find(p=>p.id===deal.partId)?.variants.find(v=>v.id===deal.variantId)?.color;
           cell(entry.name.replace(/^(Mafioso|Sometimes Summer) /,'').toUpperCase()+' / '+variant.name.toUpperCase(),()=>{if(owned)return;this.product=deal.partId;this.pendingVariant=deal.variantId;this.pendingDeal=deal;this.show('purchase');},
             owned?'Yours already':'Was '+deal.was+' · ends in '+hours+'h',false,color,{rarity:priceRarity(deal.was),badge:owned?'SOLD':'-'+deal.off+'%',tag:owned?'':String(deal.price),poor:!owned&&wallet.credit+wallet.testCredit<deal.price,sold:owned});}
+        if(!this.shopOpen)add('VISIT TECHNO GRAVITY',()=>this.onRide(this.activeShop.mapId),'Ride to the shop, browse its displays and skate the DIY alley');
         const brands=inventoryBrands(wallet,'shop',{shopId:this.activeShop.id}),collected=collection(wallet.owned).brands;
         for(const b of brands){const c=collected.find(x=>x.brand===b.brand);add(b.brand.toUpperCase(),()=>{this.browseBrand=b.brandId;this.catPage=0;this.show(b.rideable==='longboard'?'longboard':'brand');},plural(b.count,'colorway')+' left to collect / '+plural(b.categories.length,'category'),false,{meter:c?[c.have,c.total]:undefined});}
         if(!brands.length)add('ALL STOCK OWNED',()=>{},'Everything this shop sells is already yours. Equip it from Customization.');
         const exclusive=collectibles().filter(c=>c.exclusive),found=exclusive.filter(c=>wallet.owned.includes(c.partId+':'+c.variantId)).length;
-        add('CRATE EXCLUSIVES',()=>{this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.';this.render();},`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
+        add('CRATE EXCLUSIVES',()=>this.shopOpen?(this.notice='Crates come from missions and level-ups: open them from MISSIONS on your phone.',this.render()):this.switchTab('crates'),`${exclusive.length} colourways you can only pull from crates / ${found} found`,false,{badge:'CRATES ONLY',meter:[found,exclusive.length]});
         break;}
       case "longboard":{
         const wallet=loadProfile().wallet,ownsIt=ownsBoard(wallet,this.profile.longboard),mode=this.browseMode();this.browseBrand=BOARD_BRAND_ID;
@@ -641,8 +683,9 @@ export class GameMenu {
     const localizedSettings=this.screen.startsWith('settings')||this.screen==='test-controller';
     const saveNote=localizedSettings?(this.saveFailed?t('settings.save_failed'):this.notice||t(cloud.account?'settings.saved_account':'settings.saved_device')+' '+t('settings.cash_unavailable')):this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||(cloud.account?'Progress saves to your account. ':'Progress saves on this device. Sign in to sync it. ')+'Cash purchases unavailable in this alpha.');
     const controls=localizedSettings?t('settings.controls_hint'):"D-PAD / LS SELECT · A CONFIRM · B BACK";
-    const controlsMore=localizedSettings?t('settings.controls_more'):"RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC";
+    const controlsMore=this.shellActive()?"LB / RB OR Q / E TABS · RS ROTATE / ZOOM · DRAG / WHEEL · W / S, ENTER, ESC":localizedSettings?t('settings.controls_more'):"RS ROTATE / ZOOM · LB+RS PAN · DRAG / WHEEL · KEYBOARD W/S, ENTER, ESC";
     this.root.innerHTML = `<section class="game-menu"><div class="eyebrow">${subtitle}</div><h1${Math.max(...String(title).split(/\s+/).map((w)=>w.length))>10?' class="long-title"':''}>${title}</h1>${header}<nav>${cells?`<div class="menu-grid">${cells}</div>`:""}${rows}</nav><p class="menu-save-note">${saveNote}</p><p class="menu-controls">${controls}${this.choices.some(c=>c.label==='NEXT PAGE ›')?' · LT / RT PAGE':''}<br>${controlsMore}</p><div id="connection"></div><small class="build-number">SCOOT WITH FRIENDS · ALPHA ${version}</small></section>${this.showsPreview()&&!this.shopOpen?`<div class="preview-frame" data-mood="${this.backdropMood()}" aria-hidden="true"><i class="pf-tape"></i><i class="pf-tape"></i><b class="pf-label">${this.backdropMood()==='shop'?'ON THE BENCH':this.backdropMood()==='sunrise'?'RIDER CAM':'LIVE'}</b></div>`:''}${this.screen === "maps" ? `<aside class="map-preview"><img src="${PARK_MAPS[Math.min(this.index, PARK_MAPS.length - 1)].preview}" alt="Park preview"><div class="eyebrow" id="map-type"></div><h2 id="map-name"></h2><p id="map-description"></p></aside>` : ""}`;
+    if(this.shellActive()){this.root.insertAdjacentHTML('afterbegin',`<div class="menu-tab-panel" data-tab-panel="${this.activeTab()}" aria-hidden="true"></div>`);this.renderTabs();}
     this.root
       .querySelectorAll<HTMLButtonElement>("[data-menu-index]")
       .forEach((button, i) => {
@@ -754,6 +797,7 @@ export class GameMenu {
     }
   }
   select() {
+    if(this.overlayOwnsInput()||this.accountPanel.dialog.open)return;
     if(this.screen==='creator'){this.creator.select();return;}
     this.choices[this.index]?.action();
   }
@@ -769,14 +813,14 @@ export class GameMenu {
     if(this.shopOpen&&(this.screen==="longboard"||this.screen==="shop")){if(this.screen==="shop")this.closeShop();else this.show("shop");return;}
     if(["purchase","purchased"].includes(this.screen)){this.show('brand-items');return;}
     if(this.screen==='brand-items'){this.show(this.browseBrand===BOARD_BRAND_ID?'longboard':'brand');return;}
-    if(this.screen==='brand'){this.show(this.shopOpen?'shop':'scooter');return;}
+    if(this.screen==='brand'){this.show(this.shopOpen||this.shopBrowse?'shop':'scooter');return;}
     if(this.screen==="board-complete"){this.show("longboard");return;}
     if(this.screen==="board-purchase"){this.show("board-complete");return;}
-    if(this.screen==="longboard"){this.show("rides");return;}
+    if(this.screen==="longboard"){this.show(this.shopBrowse?'shop':"rides");return;}
     if(this.screen==="starter-pick"){this.show("starter");return;}
     if(this.screen==="starter"){this.starterDraft=null;this.previewRider.applyProfile(this.profile);this.show(this.afterStarter==='ride'?'home':'rides');return;}
     this.show(
-      this.screen==='maps'?'play':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
+      this.screen==='maps'?'home':this.screen==='tricks'?'guide':this.screen==='guide'?'settings':this.screen==='scooter'?'rides':this.screen==='rider-presets'?'rider':"home",
     );
   }
   /** One focus step. Grid cells move by column/row; the rows below move one at a time. */
@@ -800,9 +844,12 @@ export class GameMenu {
     this.highlight();
   }
   update(input: InputFrame, dt: number) {
+    if(this.overlayOwnsInput())return;
     if(this.screen==='test-controller'){let pre=this.root.querySelector<HTMLElement>('#controller-test');if(!pre){pre=document.createElement('pre');pre.id='controller-test';this.root.querySelector('nav')?.after(pre);}pre.textContent=JSON.stringify(this.controllerReport(),null,1).replace(/[{}"]/g,'');}
     else if(this.touchPreviewOn&&this.screen!=='settings-touch'){this.touchPreviewOn=false;this.touchPreview(false);}
     if(this.accountPanel.dialog.open){this.accountPanel.update(input,dt);return;}
+    const tabStep=input.pressed.leftModifier?-1:input.pressed.rightModifier?1:0;
+    if(this.shellActive()&&!this.tabsLocked()&&tabStep){const index=MAIN_TABS.indexOf(this.activeTab());this.switchTab(MAIN_TABS[(index+tabStep+MAIN_TABS.length)%MAIN_TABS.length]);return;}
     if(this.screen==='creator'){
       this.creator.update(input,dt);this.frameCreator();
       // RS turns the rider, the triggers zoom (LT out, RT in).

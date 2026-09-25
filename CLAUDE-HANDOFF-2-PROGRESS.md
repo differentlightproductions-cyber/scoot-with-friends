@@ -15,7 +15,7 @@ Base: 86dcadfccec11ce7780d39302623f2ab8d384fc5, combining handoff 1 with Claude 
 ## Ordered work
 1. Touch settings: complete. Mirror, optional haptics, sizes, opacity, reset and input-safe live preview. TypeScript and 13 profile/i18n tests pass; browser checks pass at 390x844 and 844x390, including persistence, unsupported haptics, no leaked input and >=44px rows. Screenshots inspected and bundled in artifacts/touch-settings/screenshots.zip.
 2. Portrait layouts: complete; existing responsive CSS passed 50 screen-size cases at 390x844 and 360x740 (plus two clean page-error checks). No unnecessary CSS changes. Includes maps, trick book, settings, account forms, pause, unopened/revealed crates and shop. Screenshots bundled in artifacts/mobile-portrait/screenshots.zip. Desktop Chrome mobile emulation, not physical-device testing.
-3. Main-menu tabs: in progress.
-4. Crate inventory flow: not started.
+3. Main-menu tabs: complete. Six tabs reuse current pages; Locker exposes ride and rider editors; Shop browses Techno Gravity directly. Keyboard/controller navigation, draft locks, dialog ownership and backdrop hooks tested. TypeScript, three-size tab browser suite and touch regression pass. Review corrected a shop grid ordering issue and added coverage. Screenshots bundled in artifacts/menu-tabs/screenshots.zip.
+4. Crate inventory flow: in progress. Existing saved inventory/transactions retained; improving access, batch opening, retry safety and actual part previews.
 
 Keep riding/physics, models, materials and scene graphics unchanged. No edits in Claude's checkout. Add browser coverage for each task and retain six-language UI support. Handoff 2 has not been pushed or published.

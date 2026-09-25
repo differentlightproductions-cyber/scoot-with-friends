@@ -283,6 +283,8 @@ async function boot() {
   };
   rewards.equip=async(partId,variantId)=>{const r=await economy.equip({partId,variantId},profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not equip.';};
   rewards.onClose=()=>{input.clear();pending=emptyInput();accumulator=0;};
+  menu.overlayOwnsInput=()=>rewards.open;
+  menu.onOpenCrate=(id,all=false)=>{const crates=profile.progress.crates,crate=crates.find(c=>c.id===id);if(crate)rewards.openCrate(crate,all?crates:[]);};
   menu.onPurchased=item=>rewards.purchase(item);
   menu.onChange = () => {setLocale(profile.settings.language);appearancePending=true;network.send({type:"appearance",generation:network.generation,appearance:profile});network.send({type:'playful-contact',generation:network.generation,contact:profile.settings.playfulContact});
     sim.grindAssist = true;
@@ -621,7 +623,7 @@ async function boot() {
       }),
     );
   window.addEventListener("keydown", (e) => {
-    if (e.code === "Enter" && !hud.started && !e.repeat) menu.select();
+    if (e.code === "Enter" && !hud.started && !e.repeat && !rewards.open && !menu.accountPanel.dialog.open && !menu.root.hidden && !(e.target instanceof HTMLElement && e.target.closest('button,input,textarea,select,[contenteditable="true"]'))) menu.select();
   });
   const suspend=()=>{input.clear();sim.preload.reset();sim.tricks.gesture.clear();sim.hopBuffer=0;sim.groundIntent=null;sim.tricks.pendingBumper=null;sim.tricks.deck.holdTime=sim.tricks.bars.holdTime=0;pending=emptyInput();accumulator=0;if(hud.started)hud.setPaused(true);};
   const mobile=new MobileGate(()=>void audio.start(),suspend);
