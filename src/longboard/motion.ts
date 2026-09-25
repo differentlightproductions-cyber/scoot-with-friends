@@ -16,6 +16,8 @@ export interface BoardInput {
   tuck: number;
   /** RB: allows a controlled slide when leaning hard enough. */
   slide: number;
+  /** How much of the wheels' hold the ground gives (1; less on ice, #87). */
+  traction?: number;
 }
 
 /**
@@ -99,9 +101,11 @@ export class LongboardMotion {
     // the direction of travel the same way whichever end leads (a rotation is a
     // left or right turn for either direction), so the carve needs no travel
     // sign here: the old `* travel` made LS right carve left when rolling fakie.
+    // Bombing a hill the rider leans far harder into a carve than when cruising (#87).
+    const carveAccel = THREE.MathUtils.lerp(TUNE.boardCarveAccel, TUNE.boardRaceCarveAccel, THREE.MathUtils.smoothstep(speed, TUNE.boardPushMaxSpeed, 20));
     const curvature =
       -this.lean *
-      Math.min(TUNE.boardMaxCurvature, TUNE.boardCarveAccel / Math.max(1, speed * speed));
+      Math.min(TUNE.boardMaxCurvature, (carveAccel * (input.traction ?? 1)) / Math.max(1, speed * speed));
     let yawRate = curvature * speed * (1 - this.slide);
     // Nearly stopped, a rider can still pivot the board with their feet.
     if (speed < TUNE.boardPivotSpeed)
@@ -130,7 +134,7 @@ export class LongboardMotion {
     const lengthwise = velocity.dot(newTangent);
     const across = velocity.clone().addScaledVector(newTangent, -lengthwise).projectOnPlane(normal);
     const before = velocity.length(),
-      bite = Math.min(1, TUNE.boardGrip * dt * (1 - this.slide) ** 2);
+      bite = Math.min(1, TUNE.boardGrip * (input.traction ?? 1) * dt * (1 - this.slide) ** 2);
     velocity.addScaledVector(across, -bite);
     // A carve turns the board's momentum rather than deleting it: keep the
     // speed, less a little tyre scrub for the sideways slip taken out. In a
@@ -144,7 +148,7 @@ export class LongboardMotion {
     const loss =
       (TUNE.boardRollingDrag +
         aero * speed * speed +
-        this.brake * TUNE.boardFootBrake +
+        this.brake * TUNE.boardFootBrake * (input.traction ?? 1) +
         this.slide * TUNE.boardSlideScrub * (0.6 + 0.4 * Math.min(1, speed / 12))) *
       dt;
     if (speed > 0) velocity.multiplyScalar(Math.max(0, speed - loss) / speed);

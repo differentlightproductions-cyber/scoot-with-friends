@@ -32,6 +32,8 @@ import { GROUPS } from "./groups";
 import { ScoreSystem } from "../tricks/score";
 import { MarkerSystem } from "../player/marker";
 import { outdoorLip } from "../park/outdoor";
+import { activeStreets, curbCrossed } from "../park/streets";
+import { iceAt } from "../park/gutters";
 import { DropIn } from "../player/drop-in";
 import { AirWeightControl } from "../player/air-weight";
 import { BodyFlipControl, type TakeoffOrigin } from '../player/body-flip';
@@ -213,7 +215,7 @@ export class Simulation {
    * bars and deck; past 1 the rider goes down.
    */
   speedWobble = { amount: 0, phase: 0, steer: 0, side: 0, sideAge: 9, rollOffset: 0 };
-  private stepSpeedWobble(dt: number, steer: number, slip: number, calm = 1) {
+  private stepSpeedWobble(dt: number, steer: number, slip: number, calm = 1, onset = 0) {
     const w = this.speedWobble, speed = this.speed;
     // Only steering away from centre counts (a turn-in or a correction), and
     // doubly when it throws the bars across to the side just left: a quick
@@ -224,10 +226,10 @@ export class Simulation {
     w.steer = steer;
     w.sideAge += dt;
     if (Math.abs(steer) > 0.35) { if (Math.sign(steer) !== w.side) w.side = Math.sign(steer); w.sideAge = 0; }
-    const f = clamp((speed - TUNE.wobbleSpeed) / (TUNE.wobbleFullSpeed - TUNE.wobbleSpeed), 0, 1.3);
+    const f = clamp((speed - onset - TUNE.wobbleSpeed) / (TUNE.wobbleFullSpeed - TUNE.wobbleSpeed), 0, 1.3);
     if (f <= 0 && w.amount < 1e-3) { w.amount = 0; this.roll -= w.rollOffset; w.rollOffset = 0; return; }
     const surface = terrainSurface(this.position.x, this.position.z);
-    const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : this.position.y < TUNE.groundSurfaceHeight ? (surface === "sand" ? 0.6 : surface === "grass" ? 0.4 : 0) : 0;
+    const rough = surface === "dirt" ? 1 : surface === "shoulder" ? 0.25 : this.onLowGround() ? (surface === "sand" ? 0.6 : surface === "grass" ? 0.4 : 0) : 0;
     const feed = f * f * (Math.max(0, rate - TUNE.wobbleSteerRate) * TUNE.wobbleGain * calm +
       Math.max(0, slip - 0.08) * TUNE.wobbleSlipGain + rough * TUNE.wobbleRoughGain);
     const settle = TUNE.wobbleDamping * (1 - 0.45 * Math.min(1, f));
@@ -968,10 +970,19 @@ export class Simulation {
    * and a map's lawns and ballfield sand (#46). Lawns and sand only count at
    * ground level, never on top of a pad, ledge or ramp built over them.
    */
+  /**
+   * Whether the wheels are down on low ground (a lawn or infield), not on a
+   * pad, ledge or ramp built over it. The rider's centre rides a wheel radius
+   * above whatever it rolls on.
+   */
+  private onLowGround() {
+    const ground = terrainHeight(this.position.x, this.position.z);
+    return ground < TUNE.groundSurfaceHeight && this.position.y - ground < TUNE.radius + TUNE.groundSurfaceHeight;
+  }
   private groundDrag() {
     const surface = terrainSurface(this.position.x, this.position.z);
     if (surface === "dirt") return TUNE.dirtDrag;
-    if (this.position.y >= TUNE.groundSurfaceHeight) return 0;
+    if (!this.onLowGround()) return 0;
     return surface === "grass" ? TUNE.grassDrag : surface === "sand" ? TUNE.sandDrag : 0;
   }
   private pop(charge: number, lean = 0, origin:TakeoffOrigin='trick_initiated_pop') {
@@ -2237,10 +2248,17 @@ export class Simulation {
       memory.normal.x * (this.position.x - memory.point.x) +
       memory.normal.y * (support.height - memory.point.y) +
       memory.normal.z * (this.position.z - memory.point.z);
-    if (rise <= TUNE.stepUpHeight) return null;
+    const heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    // A curb (#87): the leading wheel meets its face even where the wheelbase
+    // average would split the step into two small ones. A small wheel cannot
+    // climb it, so it is a wall, and a lower one to be thrown by.
+    let curb = 0;
+    if (activeStreets())
+      for (const reach of [TUNE.curbWheelReach, -TUNE.curbWheelReach])
+        curb = Math.max(curb, curbCrossed(memory.point.x + heading.x * reach, memory.point.z + heading.z * reach, this.position.x + heading.x * reach, this.position.z + heading.z * reach));
+    if (curb < TUNE.curbFaceMin && rise <= TUNE.stepUpHeight) return null;
     // The wall faces the way the ground climbs. Sample across the wheelbase so
     // the face is found whichever wheel reached it first.
-    const heading = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const into = new THREE.Vector3();
     for (const reach of [0, 0.16, 0.32, -0.16, -0.32]) {
       const x = this.position.x + heading.x * reach,
@@ -2262,16 +2280,29 @@ export class Simulation {
     if (into.lengthSq() < 1e-6) return null;
     into.normalize();
     const impact = Math.max(0, this.velocity.dot(into));
+    const isCurb = curb >= TUNE.curbFaceMin;
+    const moved = new THREE.Vector3(this.position.x - memory.point.x, 0, this.position.z - memory.point.z);
     this.position.set(
       memory.point.x,
       memory.centre,
       memory.point.z,
     );
-    this.body.setTranslation(this.position, true);
-    if (impact > TUNE.wallBailSpeed) {
-      this.bail("Rode into a wall");
+    if (impact > (isCurb ? TUNE.curbBailSpeed : TUNE.wallBailSpeed)) {
+      this.body.setTranslation(this.position, true);
+      this.bail(isCurb ? "Clipped the curb" : "Rode into a wall");
       return "bail" as const;
     }
+    if (isCurb) {
+      // A glancing touch: the wheel is turned along the curb and the rider
+      // carries on beside it, only the push into it taken away.
+      this.position.addScaledVector(moved.addScaledVector(into, -Math.max(0, moved.dot(into))), 1);
+      const toward = heading.dot(into);
+      if (toward > 0) {
+        const along = heading.clone().addScaledVector(into, -toward);
+        if (along.lengthSq() > 1e-4) this.yaw = Math.atan2(along.x, along.z);
+      }
+    }
+    this.body.setTranslation(this.position, true);
     this.velocity.addScaledVector(into, -impact);
     this.body.setLinvel(this.velocity, true);
     if (impact > TUNE.wallWobbleSpeed)
@@ -3036,6 +3067,7 @@ export class Simulation {
           push: input.pressed[buttons.push],
           pushHeld: input.held[buttons.push] > 0.5,
           brake: input.held.brake,
+          traction: 1 - TUNE.iceGripLoss * iceAt(this.position.x, this.position.z),
           tuck: input.held.pumpGrind,
           slide: input.held.rightModifier,
         },
@@ -3059,7 +3091,7 @@ export class Simulation {
       if (groundDrag && this.speed > 0.5)
         this.velocity.multiplyScalar(Math.max(0, this.speed - groundDrag * dt) / this.speed);
       // A committed tuck steadies the board a little; a slide is steered on purpose.
-      this.stepSpeedWobble(dt, this.board.lean * (1 - this.board.slide), 0, 1 - 0.3 * this.board.tuck);
+      this.stepSpeedWobble(dt, this.board.lean * (1 - this.board.slide), 0, 1 - TUNE.boardTuckCalm * this.board.tuck, TUNE.boardWobbleOnset);
       if ((this.state as RideState) === "Bail") return;
       this.rampLean = damp(this.rampLean, 0, 6, dt);
       this.pitch = damp(
@@ -3160,22 +3192,26 @@ export class Simulation {
         .clone()
         .addScaledVector(tangent, -along)
         .projectOnPlane(this.normal);
+      // Ice beside a curb (#87) gives the tyres a fraction of their grip.
+      const ice = iceAt(this.position.x, this.position.z), grip = 1 - TUNE.iceGripLoss * ice;
       const hold = side.clone().multiplyScalar(
         -Math.min(
           1,
           TUNE.carveGrip *
+            grip *
             dt *
             (revert.reverting ? 0 : this.recovery > 0 ? 0.35 : 1),
         ),
       );
       // Past pushing speed the tyres hold only so much sideways acceleration:
       // steer harder than that and the front slides wide instead of turning.
-      if (speed > TUNE.pushMaxSpeed && hold.length() > TUNE.scooterGripAccel * dt)
-        hold.setLength(TUNE.scooterGripAccel * dt);
+      // On ice that limit is low at any speed.
+      if ((speed > TUNE.pushMaxSpeed || ice > 0) && hold.length() > TUNE.scooterGripAccel * grip * dt)
+        hold.setLength(TUNE.scooterGripAccel * grip * dt);
       this.velocity.add(hold);
       const slip = speed > 1 && !revert.reverting && along > 0 ? side.length() / speed : 0;
-      // Held too long, the slide becomes a lowside.
-      if (slip > TUNE.washOutSlip && speed > TUNE.wobbleSpeed && !this.manual.active) {
+      // Held too long, the slide becomes a lowside, at a walking pace on ice.
+      if (slip > TUNE.washOutSlip && speed > (ice > 0.3 ? TUNE.iceWashOutSpeed : TUNE.wobbleSpeed) && !this.manual.active) {
         this.bail("Front washed out at speed", true);
         return;
       }
@@ -3196,7 +3232,7 @@ export class Simulation {
         ? TUNE.scooterAero * (crouching ? TUNE.crouchFastDragMultiplier : 1) * (speed * speed - TUNE.pushMaxSpeed ** 2)
         : 0;
       const dirt = this.groundDrag();
-      const loss = (rollingDrag + aero + dirt + brake * TUNE.brake) * dt;
+      const loss = (rollingDrag + aero + dirt + brake * TUNE.brake * grip) * dt;
       const current = this.velocity.length();
       if (current > 0)
         this.velocity.multiplyScalar(Math.max(0, current - loss) / current);

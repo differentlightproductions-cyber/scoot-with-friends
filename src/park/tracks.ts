@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { terrainSurface } from "./park";
+import { terrainHeight, terrainSurface } from "./park";
 import { TUNE } from "../core/config";
 
 /**
@@ -60,7 +60,9 @@ export class WheelTracks {
   static ground(rider: TrackRider, snow: number): TrackGround | null {
     if (!rider.grounded || rider.walking || rider.normal.y < 0.9) return null;
     if (snow > 0.3) return "snow";
-    if (rider.position.y >= TUNE.groundSurfaceHeight) return null;
+    // The ground under the wheels, not a ramp over it: the rider's centre rides a wheel radius above it.
+    const ground = terrainHeight(rider.position.x, rider.position.z);
+    if (ground >= TUNE.groundSurfaceHeight || rider.position.y - ground > TUNE.radius + TUNE.groundSurfaceHeight) return null;
     const surface = terrainSurface(rider.position.x, rider.position.z);
     return surface === "grass" || surface === "sand" ? surface : null;
   }
@@ -201,7 +203,7 @@ export class FootPrints {
   static ground(rider: TrackRider, snow: number, wet: number): PrintGround | null {
     if (!rider.walking || !rider.grounded || rider.swim || rider.state === "Bail" || rider.normal.y < 0.85) return null;
     if (snow > 0.3) return "snow";
-    const low = rider.position.y < TUNE.groundSurfaceHeight;
+    const low = terrainHeight(rider.position.x, rider.position.z) < TUNE.groundSurfaceHeight;
     const surface = low ? terrainSurface(rider.position.x, rider.position.z) : "road";
     if (surface === "sand" || surface === "dirt") return wet > 0.35 ? "mud" : surface === "sand" ? "sand" : null;
     return wet > 0.45 ? "wet" : null;

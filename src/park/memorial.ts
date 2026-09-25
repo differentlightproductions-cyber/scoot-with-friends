@@ -11,6 +11,8 @@ import { buildLakeBasin } from "./underwater";
 import { floodlight, monumentSign, pavilion as buildPavilion, veteransPanel } from "./props";
 import { buildDiveDock } from "./dive-dock";
 import { surfaceMaterial } from "./art";
+import { CURB, StreetPlan, setStreets, type Ramp, type Rect } from "./streets";
+import { Drainage } from "./gutters";
 const clamp = THREE.MathUtils.clamp;
 // The compact metal street plaza and BMX track have traded sides.  Keep the
 // metal layout authored in its original local coordinates, then place it in
@@ -128,6 +130,60 @@ export function diyHeight(x: number, z: number) {
   if (x >= DIY_PAD.x0 && x <= DIY_PAD.x1 && z >= DIY_PAD.z0 && z <= DIY_PAD.z1) h = Math.max(h, DIY_PAD.h);
   return h;
 }
+// ---- Streets and the parking lot (#87) ----
+// The lot, its drive aisle and the two streets are sunk a curb below the park
+// (streets.ts): the lot's sidewalks and a walk along each street stay at the
+// park's level behind a curb, with curb ramps where the paths cross.
+/** Planted parking islands, centred on whole stalls in the lot's rear row. */
+const PARKING_ISLANDS: [number, number][] = [
+  [-22, -77],
+  [24, -77],
+  [66, -77],
+];
+const ISLAND_HX = 2.1,
+  ISLAND_HZ = 4.5,
+  ISLAND_EDGE = 0.17;
+/** The world's extent at Veterans (the ground slab the park is built on). */
+export const VETERANS_BOUNDS: Rect = { x0: -116, x1: 116, z0: -170, z1: 80 };
+const LOT: Rect = { x0: -38, x1: 92, z0: -89, z1: -49 };
+const walkRamp = (axis: "x" | "z", at: number, from: number, to: number, dir: 1 | -1): Ramp => ({ axis, at, from, to, dir, run: 1.5 });
+const streetEnd = (axis: "x" | "z", at: number, from: number, to: number, dir: 1 | -1): Ramp => ({ axis, at, from, to, dir, run: 3, flare: 1, paving: "asphalt" });
+export const VETERANS_STREETS = new StreetPlan(
+  [
+    LOT,
+    { x0: 92, x1: 98.5, z0: -69.5, z1: -60.5 }, // the drive aisle out to the street
+    { x0: 98.5, x1: 107.5, z0: -99.125, z1: 69.5 }, // the east street
+    { x0: -110.125, x1: 107.5, z0: 60.5, z1: 69.5 }, // the south street
+  ],
+  PARKING_ISLANDS.map(([x, z]) => ({ x0: x - ISLAND_HX - ISLAND_EDGE, x1: x + ISLAND_HX + ISLAND_EDGE, z0: z - ISLAND_HZ - ISLAND_EDGE, z1: z + ISLAND_HZ + ISLAND_EDGE })),
+  [
+    // From the park's two paths and the ballfield path down into the lot.
+    walkRamp("x", LOT.z1, -3.5, 3.5, 1),
+    walkRamp("x", LOT.z1, 61.5, 68.5, 1),
+    walkRamp("x", LOT.z0, 25, 29, -1),
+    // The east walk crosses the drive aisle.
+    walkRamp("x", -69.5, 96.4, 98.5, -1),
+    walkRamp("x", -60.5, 96.4, 98.5, 1),
+    // Both corners where the streets meet.
+    walkRamp("z", 98.5, 57, 59.5, -1),
+    walkRamp("x", 60.5, 95, 97.5, -1),
+    walkRamp("z", 107.5, 65.5, 68, 1),
+    walkRamp("x", 69.5, 102.5, 105, 1),
+    // Where each street runs out into the desert.
+    streetEnd("x", -99.125, 98.5, 107.5, -1),
+    streetEnd("z", -110.125, 60.5, 69.5, -1),
+  ],
+  [
+    { x0: -38, x1: 92, z0: -49, z1: -45 }, // the lot's south walk, along the park
+    { x0: -38, x1: 92, z0: -93, z1: -89 }, // its north walk, along the ballfields
+    { x0: 96.4, x1: 98.5, z0: -99.125, z1: -69.5 }, // the east street's park-side walk
+    { x0: 96.4, x1: 98.5, z0: -60.5, z1: 60.5 },
+    { x0: -110.125, x1: 98.5, z0: 58.4, z1: 60.5 }, // the south street's
+    { x0: 107.5, x1: 109.6, z0: -99.125, z1: 71.6 }, // and the far walks
+    { x0: -110.125, x1: 107.5, z0: 69.5, z1: 71.6 },
+  ],
+);
+
 export function extensionHeight(x: number, z: number) {
   return Math.max(metalHeight(x, z), bmxHeight(x, z), diyHeight(x, z));
 }
@@ -156,13 +212,11 @@ export function buildMemorialGrounds(park: Park) {
     return mesh;
   };
   // Continuous flat collider under the connected grounds. Existing wooden ramp triangles stay untouched.
-  if (!activeLayout?.terrain.length)
-    world.createCollider(
-      RAPIER.ColliderDesc.cuboid(116, 0.1, 125)
-        .setTranslation(0, -0.1, -45)
-        .setCollisionGroups(GROUPS.surface),
-    );
+  setStreets(VETERANS_STREETS);
+  if (!activeLayout?.terrain.length) VETERANS_STREETS.colliders(world, VETERANS_BOUNDS);
   else {
+    // Edited ground: the coarse grid never rises above a street or ramp it spans.
+    const low = (x: number, z: number) => Math.min(0, ...[[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]].map(([dx, dz]) => VETERANS_STREETS.offset(x + dx, z + dz)));
     const verts: number[] = [],
       indices: number[] = [],
       nx = 116,
@@ -171,7 +225,7 @@ export function buildMemorialGrounds(park: Park) {
       for (let i = 0; i <= nx; i++) {
         const x = -116 + i * 2,
           z = -170 + j * 2;
-        verts.push(x, brushHeight(x, z, 0), z);
+        verts.push(x, brushHeight(x, z, low(x, z)), z);
       }
     for (let j = 0; j < nz; j++)
       for (let i = 0; i < nx; i++) {
@@ -185,8 +239,24 @@ export function buildMemorialGrounds(park: Park) {
       ).setCollisionGroups(GROUPS.surface),
     );
   }
-  box(0, -0.045, -45, 232, 0.06, 250, 0xb49a73);
-  box(5, -0.014, 18, 195, 0.012, 82, 0x7f9b55);
+  // The ground slab and the lawn, with the streets cut out of them.
+  const cover = (bounds: Rect, top: number, color: number, kind: "wood" | "grass", name: string) => {
+    const material = surfaceMaterial(color, kind, bounds.x1 - bounds.x0, bounds.z1 - bounds.z0);
+    material.polygonOffset = true;
+    material.polygonOffsetUnits = Math.round(-top * 3000);
+    scene.add(VETERANS_STREETS.cover(bounds, top, material, name));
+  };
+  cover(VETERANS_BOUNDS, -0.015, 0xb49a73, "wood", "Veterans ground");
+  cover({ x0: 5 - 97.5, x1: 5 + 97.5, z0: 18 - 41, z1: 18 + 41 }, -0.008, 0x7f9b55, "grass", "Veterans lawn");
+  VETERANS_STREETS.build(scene, { bounds: VETERANS_BOUNDS });
+  // Gutters and storm drains: the lot's curbs gather a wider apron than a street's.
+  const lotSide = (c: { axis: "x" | "z"; at: number; from: number; to: number }) => {
+    const mid = (c.from + c.to) / 2, [x, z] = c.axis === "x" ? [mid, c.at] : [c.at, mid];
+    return x >= LOT.x0 - 0.5 && x <= LOT.x1 + 0.5 && z >= LOT.z0 - 0.5 && z <= LOT.z1 + 0.5;
+  };
+  new Drainage(scene, VETERANS_STREETS.gutterLines({ catchment: (c) => (lotSide(c) ? 10 : 4.5) }), (x, z) => VETERANS_STREETS.offset(x, z));
+  for (const r of VETERANS_STREETS.streets) surfaceRect("road", r.x0, r.x1, r.z0, r.z1);
+  for (const r of VETERANS_STREETS.walks) surfaceRect("road", r.x0, r.x1, r.z0, r.z1);
   box(mx(65), 0.001, mz(0), 46, 0.008, 48, 0xb8bab3).name = "Metal street park base";
   box(65, -0.005, 0, 42, 0.008, 48, 0xc3a16f).name = "Dirt riding track base";
   // What the wheels feel (#46): the lawn drags; the plaza and the BMX track's
@@ -464,36 +534,25 @@ export function buildMemorialGrounds(park: Park) {
     ],
     4,
   );
-  // Planted parking islands, centred on whole stalls in the rear row so the
-  // striping, curb and trees all agree. Trees are rooted from these positions.
-  const PARKING_ISLANDS: [number, number][] = [
-    [-22, -77],
-    [24, -77],
-    [66, -77],
-  ];
-  // Parking apron, clear ride-through aisles and planted islands.
-  box(27, -0.005, -68, 130, 0.015, 44, 0x62696c);
-  surfaceRect("road", 27 - 65, 27 + 65, -68 - 22, -68 + 22);
-  path(
-    [
-      [-38, -47],
-      [92, -47],
-    ],
-    4,
-  );
-  path(
-    [
-      [-38, -91],
-      [92, -91],
-    ],
-    4,
-  );
+  // The lot, the drive aisle and the streets are drawn by the street plan
+  // (streets.ts); these are their clearances for planting.
+  for (const [a, b, width] of [
+    [[-38, -47], [92, -47], 4], [[-38, -91], [92, -91], 4], [[-35, -65], [89, -65], 7],
+    [[103, -99], [103, 65], 9], [[103, 65], [-110, 65], 9], [[89, -65], [103, -65], 9],
+    [[97.45, -99], [97.45, 60.5], 2.1], [[-110, 59.45], [98.5, 59.45], 2.1],
+    [[108.55, -99], [108.55, 71.6], 2.1], [[-110, 70.55], [107.5, 70.55], 2.1],
+  ] as [number[], number[], number][])
+    pathClearance.push({ a, b, width });
+  // Paint, wheel stops and islands stand on the sunk asphalt, a curb below the park.
+  const low = (x: number, y: number, z: number, w: number, h: number, d: number, c: number, solid = false) => {
+    const mesh = box(x, y - CURB, z, w, h, d, c, solid);
+    if (h <= 0.06) (mesh.material as THREE.MeshStandardMaterial).polygonOffsetUnits = Math.round(-(y + h / 2) * 3000);
+    return mesh;
+  };
   // Landscaped islands occupy whole stalls in the rear row. Stall striping and
   // wheel stops stop at their curb instead of being drawn across soil and tree
-  // trunks, and the island height, soil and collision agree so a tree is never
-  // left standing on an invisible plane.
-  const ISLAND_HX = 2.1,
-    ISLAND_HZ = 4.5;
+  // trunks; each island is a raised planter at the park's level, curbed round
+  // by the street plan, so a tree is never left standing on an invisible plane.
   for (const z of [-50, -72])
     for (let x = -30; x <= 85; x += 4) {
       const island = PARKING_ISLANDS.find(
@@ -501,60 +560,24 @@ export function buildMemorialGrounds(park: Park) {
       );
       // A stripe meeting an island is trimmed back to the curb rather than
       // continuing through it; one fully inside the island is dropped.
-      if (!island) box(x, 0.011, z - 5, 0.1, 0.008, 9, 0xeee6d3);
+      if (!island) low(x, 0.011, z - 5, 0.1, 0.008, 9, 0xeee6d3);
       // Wheel stops stay out of aisle / path crossings and out of the islands.
       const stopX = x + 1.8;
       const blocked = PARKING_ISLANDS.some(
         (i) => i[1] === z - 5 && Math.abs(stopX - i[0]) < ISLAND_HX + 1.4,
       );
       if (Math.abs(x) > 4 && Math.abs(x - 65) > 5 && !blocked)
-        box(stopX, 0.095, z - 1, 2.8, 0.19, 0.3, 0xaeb2af, true);
+        low(stopX, 0.095, z - 1, 2.8, 0.19, 0.3, 0xaeb2af, true);
     }
-  for (const [ix, iz] of PARKING_ISLANDS) {
-    for (const s of [-1, 1]) {
-      box(ix, 0.08, iz + s * ISLAND_HZ, ISLAND_HX * 2 + 0.34, 0.16, 0.34, 0xccd0c9, true);
-      box(ix + s * ISLAND_HX, 0.08, iz, 0.34, 0.16, ISLAND_HZ * 2 + 0.34, 0xccd0c9, true);
-    }
-    box(ix, 0.045, iz, ISLAND_HX * 2 - 0.3, 0.09, ISLAND_HZ * 2 - 0.3, 0x8d7048);
-  }
+  for (const [ix, iz] of PARKING_ISLANDS)
+    box(ix, -0.035, iz, (ISLAND_HX + ISLAND_EDGE - 0.15) * 2, 0.06, (ISLAND_HZ + ISLAND_EDGE - 0.15) * 2, 0x8d7048).name = "Parking island soil";
   for (const x of [-3, 5, 57, 65]) {
-    box(x, 0.012, -54, 3.3, 0.01, 7, 0x376888);
-    box(x, 0.019, -54, 0.18, 0.008, 3.5, 0xf0efe7);
+    low(x, 0.012, -54, 3.3, 0.01, 7, 0x376888);
+    low(x, 0.019, -54, 0.18, 0.008, 3.5, 0xf0efe7);
   }
-  path(
-    [
-      [-35, -65],
-      [89, -65],
-    ],
-    7,
-    0x656b6d,
-  );
-  path(
-    [
-      [103, -99],
-      [103, 65],
-      [-110, 65],
-    ],
-    9,
-    0x596164,
-  );
-  path(
-    [
-      [89, -65],
-      [103, -65],
-    ],
-    9,
-    0x596164,
-  );
-  for (let z = -95; z < 60; z += 8) box(103, 0.017, z, 0.12, 0.01, 3, 0xe9d797);
-  for (let i = 0; i < 8; i++)
-    box(96 + i * 0.7, 0.023, -65, 0.32, 0.012, 7, 0xe9e7d9);
-  for (const [a, b] of [
-    [-37, -5],
-    [9, 58],
-    [72, 92],
-  ])
-    box((a + b) / 2, 0.08, -47, b - a, 0.16, 0.22, 0xcac8bb, true);
+  // The east street's centre line, and the crosswalk where its walk crosses the aisle.
+  for (let z = -95; z < 60; z += 8) low(103, 0.017, z, 0.12, 0.01, 3, 0xe9d797);
+  for (let i = 0; i < 4; i++) low(96.6 + i * 0.6, 0.023, -65, 0.32, 0.012, 7.4, 0xe9e7d9);
 
   // Lake and surrounding trail, set outside the usable skatepark lines: the
   // water itself (water.ts), a slim concrete edge between it and the grass, and

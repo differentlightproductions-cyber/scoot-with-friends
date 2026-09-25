@@ -17,6 +17,7 @@ import { buildTerrain, desertMaterial, paintDesert, scatterDesert } from "../art
 import { buildHouses, planHouse, type HouseLot } from "../art/houses";
 import { asphaltTexture, gravelTexture } from "../art/textures";
 import { bursage, fanPalm, plant, yucca, type Placement } from "../art/flora";
+import { Drainage, type GutterLine } from "./gutters";
 
 /** Plan-view control points (metres), top of the hill first. */
 const CONTROL: [number, number][] = [
@@ -250,6 +251,28 @@ export function buildBHill(park: Park) {
     scene.add(mesh);
     park.solids.push(mesh);
     if (name === "B Hill road") mesh.userData.collider = colliderHandle;
+  }
+
+  // ---- Gutters and storm drains (#87): water runs down both rolled gutters,
+  // most of it into an inlet pair every 80 m; what gets past runs on to the
+  // next. The dip before the runout climbs is a sag: its inlets take all of it.
+  {
+    const lines: GutterLine[] = [];
+    const first = 30, last = ROUTE.length - 26;
+    for (const side of [-1, 1]) {
+      const o = (ROAD_HALF_WIDTH + 0.3) * side, points: THREE.Vector3[] = [], across: [number, number][] = [];
+      for (let i = first; i <= last; i++) {
+        const p = ROUTE[i], x = p.x + p.tz * o, z = p.z - p.tx * o;
+        points.push(new THREE.Vector3(x, bHillHeight(x, z), z));
+        across.push([-p.tz * side, p.tx * side]);
+      }
+      let sag = 0;
+      points.forEach((p, i) => { if (p.y < points[sag].y) sag = i; });
+      const inlets = [sag];
+      for (let s = 100; s < last - 40; s += 80) if (Math.abs(s - first - sag) > 30) inlets.push(s - first);
+      lines.push({ points, across, catchment: 9, inlets: inlets.sort((a, b) => a - b), face: 0 });
+    }
+    new Drainage(scene, lines, bHillHeight);
   }
 
   // ---- The land around the road: the hill it descends and the ranges beyond --

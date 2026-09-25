@@ -71,7 +71,7 @@ try {
         steer = style === "aggressive" ? want : steer + (want - steer) * 0.5;
         let brake = 0, tuck = style === "aggressive" ? 1 : 0;
         if (style === "controlled") {
-          const grip = ride === "longboard" ? 6.2 : 13;
+          const grip = 13; // #87: the longboard corners as fast as the scooter
           let allowed = 1e9;
           for (let k = 4; k < Math.max(40, speed * 3); k += 4) {
             const a = hill.routePose(at + k - 4), b = hill.routePose(at + k + 4);
@@ -173,6 +173,26 @@ try {
   });
   check("Beyond the shoulder is loose ground", dirt.surface === "dirt", dirt);
 
+  // #87: tucked, a longboard keeps pulling away down the steep lower section;
+  // standing up, air holds it back.
+  const tuck = await run(() => {
+    const { g, s, hill, place } = window.__bhill, out = {};
+    for (const held of [1, 0]) {
+      place(1090, 24, "longboard");
+      let t = 0, max = 0;
+      while (t < 4 && s.state !== "Bail") {
+        const p = s.position, at = hill.routeProgress(p.x, p.z), ahead = hill.routePose(at + 25);
+        let err = Math.atan2(ahead.x - p.x, ahead.z - p.z) - s.yaw;
+        err = Math.atan2(Math.sin(err), Math.cos(err));
+        g.advance(0.05, { steer: Math.max(-0.8, Math.min(0.8, -1.6 * err)), held: { pumpGrind: held } }, false); t += 0.05;
+        max = Math.max(max, s.speed);
+      }
+      out[held ? "tucked" : "standing"] = { end: +s.speed.toFixed(1), max: +max.toFixed(1), state: s.state };
+    }
+    return out;
+  });
+  check("Tucked longboard pulls away on the steep section; standing it holds back", tuck.tucked.end > 26.5 && tuck.tucked.state !== "Bail" && tuck.standing.end < 25 && tuck.tucked.end - tuck.standing.end > 2, tuck);
+
   // Full descents.
   const runs = [];
   for (const [ride, style] of [["scooter", "controlled"], ["scooter", "aggressive"], ["longboard", "controlled"], ["longboard", "aggressive"]]) {
@@ -185,7 +205,8 @@ try {
   check("Scooter controlled: clean run to the bottom", sc.finished && sc.bails.length === 0, sc);
   check("Scooter builds speed through the descent, well past pushing speed", sc.marks[100] < sc.marks[200] && sc.marks[200] < sc.marks[600] && sc.marks[600] <= sc.marks[1200] + 1 && sc.maxSpeed > push * 1.7, { marks: sc.marks, max: sc.maxSpeed, push });
   check("Longboard controlled: clean run to the bottom", lc.finished && lc.bails.length === 0, lc);
-  check("Longboard builds substantial downhill speed", lc.marks[200] > 12 && lc.maxSpeed > 20, { marks: lc.marks, max: lc.maxSpeed });
+  check("Longboard builds substantial downhill speed", lc.marks[200] > 12 && lc.maxSpeed > 27, { marks: lc.marks, max: lc.maxSpeed });
+  check("Longboard races at a scooter's pace (#87)", lc.time <= sc.time * 1.05, { longboard: lc.time, scooter: sc.time });
   check("Careless riding at speed is punished (bail or heavy wobble)", sa.bails.length > 0 || sa.maxWobble > 0.6 || la.bails.length > 0, { scooter: { bails: sa.bails, wobble: sa.maxWobble }, longboard: { bails: la.bails, wobble: la.maxWobble } });
   check("No collision explosions: no bail on a clean line", [sc, lc].every((r) => r.bails.every((b) => b.reason !== "Heavy collision")), null);
   check("No page errors", errors.length === 0, errors);

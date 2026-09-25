@@ -16,15 +16,17 @@ try {
   await page.waitForFunction(() => window.__LAZER?.startSession, null, { timeout: 900000 });
   await page.evaluate(async () => { const g = window.__LAZER; g.testing(true); await g.startSession('outdoor', true); g.__render = g.renderer.render; g.renderer.render = () => {}; });
 
-  // Roll 2 s from 6 m/s on each ground, heading east, and compare the speed kept.
+  // Roll 2 s from 6 m/s on each ground and compare the speed kept: heading east,
+  // except along the ballfield path, which runs north-south (a rider heading
+  // east crosses it onto the lawn in a third of a second).
   const roll = await page.evaluate(() => {
     const g = window.__LAZER, out = {};
-    const spots = { slab: [0, 0, 10], lawn: [40, 0, 45], infield: [-9, 0, -123], outfield: [-3, 0, -141], path: [27, 0, -120] };
-    for (const [name, [x, , z]] of Object.entries(spots)) {
+    const spots = { slab: [0, 0, 10, Math.PI / 2], lawn: [40, 0, 45, Math.PI / 2], infield: [-9, 0, -123, Math.PI / 2], outfield: [-3, 0, -141, Math.PI / 2], path: [27, 0, -100, Math.PI] };
+    for (const [name, [x, , z, yaw]] of Object.entries(spots)) {
       const s = g.sim; s.reset(0, true); s.walking = false; s.rideable = 'scooter';
-      s.position.set(x, 0.3, z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.yaw = Math.PI / 2; s.previousYaw = s.yaw;
+      s.position.set(x, 0.3, z); s.previousPosition.copy(s.position); s.body.setTranslation(s.position, true); s.yaw = yaw; s.previousYaw = s.yaw;
       for (let i = 0; i < 20; i++) g.advance(1 / 60, {}, true);
-      s.velocity.set(6, 0, 0); s.body.setLinvel(s.velocity, true);
+      s.velocity.set(Math.sin(yaw) * 6, 0, Math.cos(yaw) * 6); s.body.setLinvel(s.velocity, true);
       for (let i = 0; i < 120; i++) g.advance(1 / 60, {}, true);
       out[name] = { speed: +Math.hypot(s.velocity.x, s.velocity.z).toFixed(2), grounded: s.grounded };
     }

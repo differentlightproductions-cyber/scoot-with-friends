@@ -100,6 +100,9 @@ export class Weather {
  get snowDepth(){return THREE.MathUtils.smoothstep(this.coverage.value,.35,.8);}
  /** How soaked the ground is (0..1): footprints turn to mud and wet prints (#61). */
  get wetness(){return this.wet.value;}
+ /** Snow lying on the ground and autumn leaf litter (0..1), for the gutters (#87). */
+ get snowCover(){return this.coverage.value;}
+ get leafLitter(){return this.litter.value;}
  // Rain: wet ground (0..1) builds while it rains and dries slowly after; fall: leaf litter.
  private wet={value:0};private litter={value:0};
  private drops?:THREE.LineSegments;private dropFall=new Float32Array(0);private leaves?:THREE.Points;private leafSpin=new Float32Array(0);private leafTumble=new Float32Array(0);private leafPhase=new Float32Array(0);private leafTex=leafSprite();

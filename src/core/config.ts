@@ -168,14 +168,20 @@ export const TUNE = {
   boardLeanResponse: 5,
   boardTuckResponse: 5,
   boardMaxCurvature: 0.34, // about a 2.9 m radius at walking pace
-  boardCarveAccel: 7.5, // sideways acceleration a full lean holds (about 0.75 g)
+  boardCarveAccel: 7.5, // sideways acceleration a full lean holds cruising (about 0.75 g)
+  boardRaceCarveAccel: 16, // and bombing a hill (#87): a scooter's corner speed on B Hill
   boardCarveScrub: 0.03,
   boardPivotSpeed: 1.2,
   boardPivotRate: 1.4,
   boardGrip: 10,
   boardRollingDrag: 0.05,
-  boardAero: 0.0055, // standing: on a 6% grade air alone settles near 13 m/s
-  boardTuckAero: 0.0029, // tucked: on B Hill's 16% sections air settles near 29 m/s
+  // #87: a longboard is the faster downhill racer. Standing up, air settles
+  // near 12 m/s on a 6% grade and 20 m/s on B Hill's 16% sections; a tuck
+  // lets it run on to about 36 m/s there.
+  boardAero: 0.0036,
+  boardTuckAero: 0.0011,
+  boardTuckCalm: 0.5, // a committed tuck damps this much of the steering that feeds speed wobble
+  boardWobbleOnset: 3, // a board's long wheelbase starts to wobble this much faster than a scooter's bars
   boardFootBrake: 3.4,
   // Stamping the foot down above this speed throws the rider forward and the board runs on.
   boardFootBrakeCrashSpeed: 14,
@@ -199,6 +205,15 @@ export const TUNE = {
   // the top of the tallest quarter).
   steepRideNormal: 0.15,
   wallBailSpeed: 5.5,
+  // Curbs (#87): the wheels meet the face this far ahead of and behind the
+  // rider's centre; a face this tall stops them; faster into it than this throws the rider.
+  curbWheelReach: 0.32,
+  curbFaceMin: 0.08,
+  curbBailSpeed: 2.2,
+  // Ice in a gutter (#87): the share of grip and braking it takes away, and the
+  // speed above which a slide on it washes the front out.
+  iceGripLoss: 0.8,
+  iceWashOutSpeed: 5,
   wallWobbleSpeed: 1.5,
   rollingDrag: 0.1,
   fakieRollingDrag: 0.4, // extra wheel/deck scrub while coasting backward

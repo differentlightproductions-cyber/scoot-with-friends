@@ -1,5 +1,7 @@
 import { brushHeight, objectHeight, editedHeightQuery } from "../editor/layout";
 import { clearSurfaces, surfaceAt, type Surface } from "./surfaces";
+import { setStreets } from "./streets";
+import { clearDrainage } from "./gutters";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { grainTexture } from "./materials";
@@ -229,6 +231,8 @@ export class Park {
     scene.userData.parkGeneration = (scene.userData.parkGeneration ?? 0) + 1;
     scene.userData.assetLoads = [];
     clearSurfaces();
+    setStreets(null);
+    clearDrainage();
     // B Hill builds its own continuous road and hillside collision.
     if (ACTIVE_MAP === "b_hill") {
       buildBHill(this);

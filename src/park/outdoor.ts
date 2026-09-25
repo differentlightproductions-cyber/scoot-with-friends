@@ -12,6 +12,7 @@ import {
   buildMemorialGrounds,
   extensionHeight,
   metalQuarters,
+  VETERANS_STREETS,
 } from "./memorial";
 
 export const outdoorSpawns = [
@@ -272,7 +273,8 @@ export function outdoorHeight(x: number, z: number) {
   let height = extensionHeight(x, z);
   for (let i = 0; i < modules.length; i++)
     if (x >= surfaceSpan[i][0] && x <= surfaceSpan[i][1]) height = Math.max(height, profile(modules[i], z));
-  return height;
+  // The streets and the lot lie a curb below the park (#87).
+  return height > 0 ? height : height + VETERANS_STREETS.offset(x, z);
 }
 /**
  * The small box hub ledge: the slab centre line (three straight pieces), the
@@ -327,15 +329,18 @@ export function buildOutdoor(park: Park) {
     solid = false,
   ) =>
     park.box(new THREE.Vector3(x, y, z), new THREE.Vector3(w, h, d), c, solid);
-  box(0, -0.15, 0, 230, 0.2, 230, 0x719253);
-  // Beyond the park's lawns the Mojave runs out to the River Mountains.
+  // The lawn south of the park's ground slab (memorial.ts lays the rest, with
+  // the streets cut out of it: under them this would show through).
+  box(0, -0.15, 97.75, 230, 0.2, 35.5, 0x719253);
+  // Beyond the park's lawns the Mojave runs out to the River Mountains. Under
+  // the park it lies below the sunk streets and their gutters (#87).
   const keepOut = (x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x) - 115), Math.max(0, Math.abs(z) - 115));
-  const desert = buildDesert(scene, { center: new THREE.Vector2(0, -20), base: -0.05, keepOut, rangeStart: 640, apron: { x: 0, z: 0, halfX: 115, halfZ: 115, width: 9 } });
+  const desert = buildDesert(scene, { center: new THREE.Vector2(0, -20), base: -0.2, keepOut, rangeStart: 640, apron: { x: 0, z: 0, halfX: 115, halfZ: 115, width: 9 } });
   // A concrete mow curb finishes the lawn's edge where the rock border starts.
   const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xc9c2b6, roughness: 0.9, name: "Mow curb concrete" });
   for (const [x, z, w, d] of [[0, 115.14, 230.56, 0.28], [0, -115.14, 230.56, 0.28], [115.14, 0, 0.28, 230], [-115.14, 0, 0.28, 230]]) {
-    const curb = new THREE.Mesh(new THREE.BoxGeometry(w, 0.24, d), curbMaterial);
-    curb.position.set(x, -0.1, z);
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), curbMaterial);
+    curb.position.set(x, -0.18, z);
     curb.receiveShadow = true;
     curb.name = "Mow curb";
     scene.add(curb);

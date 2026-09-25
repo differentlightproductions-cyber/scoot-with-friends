@@ -60,6 +60,7 @@ import { WorldInteractions } from './park/interactions';
 import { WarehouseBuilder } from './editor/warehouse';
 import { Daylight } from './park/daylight';
 import { Weather } from './park/weather';
+import type { Drainage } from './park/gutters';
 import { ACTIVE_MAP } from './park/park';
 import { cityForMap, liveSky } from './park/liveSky';
 import {MobileGate} from './ui/mobile';
@@ -136,6 +137,10 @@ async function boot() {
     else if (ACTIVE_MAP === "b_hill") w.desert = new DesertWind(scene, terrainHeight, (x, z) => terrainSurface(x, z) === "dirt");
     return w; }
   let interactions = new WorldInteractions(park,profile), builder = new WarehouseBuilder(park, () => profile), daylight = new Daylight(park), weather = makeWeather();
+  /** Gutters and storm drains (#87) follow the weather: runoff, leaves, the curb's snow bank and ice. */
+  const stepDrainage=(dt:number)=>{const drains=scene.userData.drainage as Drainage|undefined;if(!drains)return;
+    const night=(scene.userData.sky as {uniforms?:{uNight:{value:number}}}|undefined)?.uniforms?.uNight.value??0;
+    drains.update(dt,{rain:weather.rain,wet:weather.wetness,litter:weather.leafLitter,snow:weather.snowCover,night});};
   // Wheel marks in lawns, ballfield sand and snow (#46); rebuilt with each park.
   let tracks = new WheelTracks(scene);
   // "With Friends" (#47): the park's locals and small things to throw; Veterans only for now.
@@ -608,7 +613,7 @@ async function boot() {
       // The scene object is reused: what one map's builders listed on it (lamp
       // lenses and heads, shelters, perches, pending loads) must not carry into
       // the next map, where old lamp positions lit phantom spots (#85).
-      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch"])delete scene.userData[key];
+      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch","drainage"])delete scene.userData[key];
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -752,6 +757,7 @@ async function boot() {
       const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
       daylight.update(dt,live?.phase??profile.settings.daylight,focus,renderer,{flashlight:profile.settings.flashlight,yaw,sidereal:live?.sidereal,live:!!live});
       weather.update(dt,live?.weather??profile.settings.weather,focus,profile.settings.fidelity,{camera:view.position,live:live?.conditions});
+      stepDrainage(dt);
       camcorder.render(renderer,scene,view);
     },
     setLiveHidden:hidden=>{
@@ -790,6 +796,7 @@ async function boot() {
     const live=profile.settings.liveSky?liveSky.current(cityForMap(ACTIVE_MAP)):null;
     daylight.update(dt,live?.phase??profile.settings.daylight,sim.position,renderer,{flashlight:profile.settings.flashlight,yaw:sim.yaw,sidereal:live?.sidereal,live:!!live});
     weather.update(dt,live?.weather??profile.settings.weather,sim.position,profile.settings.fidelity,{camera:camera.camera.position,velocity:sim.velocity,yaw:sim.yaw,riding:!sim.walking&&!sim.sitting&&sim.rideable==='scooter',grounded:sim.grounded,landing:sim.landTimer,live:live?.conditions});
+    stepDrainage(dt);
     tracks.update(dt,sim,weather.snowDepth,weather.wetness);
     audio.weather(weather.rain);
     fidelity.update(sim.position,dt);
