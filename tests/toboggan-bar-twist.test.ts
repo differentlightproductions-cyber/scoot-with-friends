@@ -215,3 +215,73 @@ test("#84 a longer hold scores more: holds are recorded per pose", async () => {
   const t = air("regular");
   assert.equal(t.primitives().holds, undefined);
 });
+
+// #80 audit (#30 / #31): release timing, the stick deadzone and multiples.
+test("Toboggan held into the landing lets go first: the hand is back on the bars at touchdown", () => {
+  const t = air();
+  press(t, i => {
+    rtB(i);
+    i.pressed.brakeBars = true;
+  });
+  run(t, 0.4, rtB);
+  assert.ok(t.poseBlend > 0.95);
+  // Still holding RT + B while the ground comes up (the simulation counts landingIn down).
+  for (let left = 0.35; left > 0; left -= dt) {
+    t.landingIn = left;
+    const i = emptyInput();
+    rtB(i);
+    t.input(dt, i);
+  }
+  assert.equal(t.poseBlend, 0, "hand back before touchdown");
+  assert.ok(t.body.has("Toboggan"), "and the Toboggan still counts");
+});
+
+test("A quick RT + B tap is a Toboggan and the hand comes straight back", () => {
+  const t = air();
+  press(t, i => {
+    rtB(i);
+    i.pressed.brakeBars = true;
+  });
+  run(t, 0.12, rtB);
+  run(t, 0.3);
+  assert.ok(t.body.has("Toboggan"));
+  assert.equal(t.poseBlend, 0);
+  assert.equal(t.bars.target, 0, "no bar spin");
+});
+
+test("A stick resting inside the deadzone with RT + B is a Toboggan, not a Bar Twist", () => {
+  const t = air();
+  press(t, i => {
+    rtB(i);
+    i.pressed.brakeBars = true;
+    i.steer = 0.35;
+    i.lean = -0.3;
+  });
+  run(t, 0.4, i => {
+    rtB(i);
+    i.steer = 0.35;
+  });
+  assert.equal(t.twisting, false);
+  assert.equal(t.visualPose, "Toboggan");
+});
+
+test("Bar Twist held longer counts its real revolutions: Triple after three", () => {
+  const t = air();
+  press(t, i => {
+    rtB(i);
+    i.pressed.brakeBars = true;
+    i.steer = 1;
+  });
+  let turns = 0;
+  for (let n = 0; n < 600 && turns < 3; n++) {
+    const i = emptyInput();
+    rtB(i);
+    i.steer = 1;
+    t.input(dt, i);
+    turns = Math.abs(t.bars.target) / (2 * Math.PI);
+  }
+  assert.ok(turns >= 3, `held into a third revolution (${turns})`);
+  run(t, 1.2);
+  assert.equal(Math.abs(t.bars.turns), 3);
+  assert.equal(t.attempt?.name, "Triple Bar Twist");
+});
