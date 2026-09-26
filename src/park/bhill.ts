@@ -20,6 +20,7 @@ import { Noise2, mulberry } from "../art/noise";
 import { buildTerrain, desertMaterial, paintDesert, scatterDesert } from "../art/desert";
 import { buildHouses, drivewayAt, planHouse, POOL_DEPTH, type HouseLot, type HousePlan } from "../art/houses";
 import { asphaltTexture, gravelTexture } from "../art/textures";
+import { roadMarksMesh, scatterAlongRoad } from "../art/road-marks";
 import { aleppoPine, bursage, fanPalm, plant, yucca, type Placement } from "../art/flora";
 import { Drainage, type GutterLine } from "./gutters";
 
@@ -619,6 +620,10 @@ export function buildBHill(park: Park) {
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
+
+  // Cracks and oil stains here and there (road-marks.ts): the asphalt's tile has none, so nothing repeats.
+  const marks = roadMarksMesh(scatterAlongRoad(B_HILL_LENGTH, routePose, ROAD_HALF_WIDTH, 20260926), bHillHeight, "B Hill cracks and oil");
+  if (marks) scene.add(marks);
 
   // ---- Side streets: pavement over their ground, a barricade where they end for now.
   {

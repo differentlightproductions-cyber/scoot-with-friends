@@ -4,6 +4,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GROUPS } from "../physics/groups";
 import { surfaceTexture } from "./art";
 import { asphaltTexture } from "../art/textures";
+import { roadMarksMesh, scatterInRects } from "../art/road-marks";
 import type { GutterLine } from "./gutters";
 
 /**
@@ -299,6 +300,9 @@ export class StreetPlan {
     // Asphalt over the streets, less the gutter pans (which fall below it).
     const street = this.pieces(bounds).filter((p) => p.top === -CURB).map((p) => p.rect);
     add(quads(street, -CURB, world(7)), M.asphalt, "Street asphalt");
+    // Cracks and oil stains, sparse and all different (road-marks.ts).
+    const marks = roadMarksMesh(scatterInRects(street, 70, 7031), () => -CURB, "Street cracks and oil");
+    if (marks) group.add(marks);
     // Gutter pans, falling to the curb.
     add(mergeGeometries(this.pans.map((r) => sheet(r, height, 1, world(1.2)))), M.pan, "Gutter pans");
     // Walks, less the ramps cut into them; the ramps (and their flares).

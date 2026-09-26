@@ -140,8 +140,9 @@ export function gravelTexture() {
 
 /**
  * Sun-bleached residential asphalt: grey binder packed with pale and dark
- * aggregate, faded patches, hairline cracks and glossy black crack-seal
- * lines. Tiles every 4 m.
+ * aggregate, gently faded. Tiles every few metres, so it carries no cracks or
+ * stains (any one would repeat with the tile): those are laid sparsely on each
+ * road as marks of their own (road-marks.ts).
  */
 export function asphaltTexture() {
   const hit = cache.get("asphalt");
@@ -160,25 +161,6 @@ export function asphaltTexture() {
       img.data[i] = 96 * shade; img.data[i + 1] = 96 * shade; img.data[i + 2] = 94 * shade; img.data[i + 3] = 255;
     }
   ctx.putImageData(img, 0, 0);
-  ctx.lineCap = "round";
-  // Hairline cracks, then the tar lines that seal the bigger ones.
-  for (let k = 0; k < 6; k++) {
-    let x = random() * size, y = random() * size, angle = random() * Math.PI * 2;
-    const seal = k < 1;
-    ctx.strokeStyle = seal ? "rgba(30,30,32,.7)" : "rgba(52,52,52,.45)";
-    ctx.lineWidth = seal ? 3.2 : 1;
-    const points: [number, number][] = [[x, y]];
-    for (let s = 0; s < 18; s++) {
-      angle += (random() - 0.5) * 0.9; x += Math.cos(angle) * 14; y += Math.sin(angle) * 14;
-      points.push([x, y]);
-    }
-    // Drawn with its wrapped copies so the tile has no seams.
-    for (const dx of [-size, 0, size]) for (const dy of [-size, 0, size]) {
-      ctx.beginPath(); ctx.moveTo(points[0][0] + dx, points[0][1] + dy);
-      for (const [px, py] of points) ctx.lineTo(px + dx, py + dy);
-      ctx.stroke();
-    }
-  }
   const t = finish(c);
   cache.set("asphalt", t);
   return t;
