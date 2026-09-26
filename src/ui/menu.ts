@@ -11,7 +11,7 @@ import {AccountPanel,cloud} from './account';
 const savedWhere=()=>cloud.account?'saved to this device and your account.':'saved on this device.';
 import {collectibles,collection,levelFor,partRarity,priceRarity,RARITY_COLOR,RARITY_LABEL,CRATE_NAME,type Rarity} from '../data/progress';
 import {dailyDeals,dealsRefreshIn,type Deal} from '../data/deals';
-interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean; /** Left/right on the row steps it (a slider row, #71). */ adjust?: (step: number) => void }
+interface ChoiceExtra { rarity?: Rarity; tag?: string; badge?: string; meter?: [number, number]; poor?: boolean; sold?: boolean; primary?: boolean; /** The 🌐 language entry: #00C2FF on every palette. */ language?: boolean; /** Left/right on the row steps it (a slider row, #71). */ adjust?: (step: number) => void }
 /** The product on the counter: rarity frame, colour swatch, price sticker. */
 function productCard(name:string,variant:string,rarity:Rarity,color:number,price:number,was:number|undefined,note:string,sold=false,unit='COINS'){
   return `<div class="product-card rarity-${rarity}" style="--rarity:${RARITY_COLOR[rarity]}"><span class="pc-rarity">${RARITY_LABEL[rarity]}</span><i class="pc-swatch" style="--c:#${color.toString(16).padStart(6,'0')}"></i><div class="pc-name"><small>${(name.match(/^(Mafioso|Sometimes Summer|Lazer)/)?.[1]??'').toUpperCase()}</small><strong>${name.replace(/^(Mafioso|Sometimes Summer|Lazer) /,'')}</strong><em>${variant}</em></div>${sold?'<b class="pc-stamp">SOLD!</b>':`<b class="pc-price">${was?`<s>${was}</s>`:''}${price}<small>${unit}</small></b>`}${note?`<p>${note}</p>`:''}</div>`;
@@ -586,7 +586,7 @@ export class GameMenu {
         add('STAY',()=>this.show(this.leaveReturn),'Keep editing.');break;}
       case "settings":
         title=t('settings.title');subtitle=t('settings.subtitle');
-        add('🌐 '+t('settings.language')+(this.profile.settings.language==='en-US'?'':' · LANGUAGE'),()=>this.show('settings-language'),t('settings.language.desc'),false,{primary:true});
+        add('🌐 '+t('settings.language')+(this.profile.settings.language==='en-US'?'':' · LANGUAGE'),()=>this.show('settings-language'),t('settings.language.desc'),false,{language:true});
         add(t('settings.help'),()=>this.show("guide"),t('settings.help.desc'));
         add(t('settings.riding'),()=>this.show('settings-riding'),t('settings.riding.desc'));
         add(t('settings.camera'),()=>this.show('settings-camera'),t('settings.camera.desc'));
@@ -611,7 +611,6 @@ export class GameMenu {
       case 'settings-riding':
         title=t('settings.riding');subtitle=t('settings.title')+' / '+t('settings.riding');
         add(t('settings.option.held_item'),()=>{const a=['pushDeck','leftModifier','rightModifier'] as const;this.profile.pockets.useAction=a[(a.indexOf(this.profile.pockets.useAction)+1)%3];this.changed();this.render();},({pushDeck:'X / keyboard X',leftModifier:'LB / left Shift',rightModifier:'RB / E'})[this.profile.pockets.useAction]+' / '+t('settings.option.on_foot'));
-        add(t('settings.option.mount_camera')+' '+t(this.profile.settings.mountFlourish?'common.on':'common.off'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
         add(t('settings.option.controls')+' '+t('settings.value.'+this.profile.settings.controlStyle),()=>{this.profile.settings.controlStyle=this.profile.settings.controlStyle==='pro'?'arcade':'pro';this.changed();this.render();});
         add(t('settings.option.preset')+' '+t('settings.value.'+this.profile.settings.stance),()=>{this.profile.settings.stance=this.profile.settings.stance==='regular'?'goofy':'regular';this.changed();this.render();});
         add(t('settings.option.test_controller'),()=>this.show('test-controller'),t('settings.riding.desc'));
@@ -665,6 +664,7 @@ export class GameMenu {
         // Camera settings take effect at once, in the Sesh too, and are saved straight away.
         const camera=(edit:(c:LocalProfile['settings'])=>void)=>{edit(this.profile.settings);if(this.savedProfile){edit(this.savedProfile.settings);saveProfile(this.savedProfile);this.onCameraChange(this.savedProfile.settings);}else{this.saveFailed=!saveProfile(this.profile);this.onCameraChange(this.profile.settings);}this.render();};
         add(t('settings.option.camera_view')+' '+t('settings.value.'+this.profile.settings.cameraView),()=>camera(c=>{c.cameraView=c.cameraView==='first'?'third':'first';}),t('settings.detail.camera_view'));
+        add(t('settings.option.mount_camera')+' '+t(this.profile.settings.mountFlourish?'common.on':'common.off'),()=>{this.profile.settings.mountFlourish=!this.profile.settings.mountFlourish;this.changed();this.render();});
         add(t('settings.option.first_fov',{degrees:this.profile.settings.firstPersonFov}),()=>camera(c=>{c.firstPersonFov=c.firstPersonFov>=FP_FOV_MAX?FP_FOV_MIN:c.firstPersonFov+5;}),t('settings.detail.first_fov',{min:FP_FOV_MIN,max:FP_FOV_MAX,default:FP_FOV_DEFAULT}));
         add(t('settings.option.third_fov',{degrees:this.profile.settings.thirdPersonFov}),()=>camera(c=>{c.thirdPersonFov=c.thirdPersonFov>=TP_FOV_MAX?TP_FOV_MIN:Math.min(TP_FOV_MAX,c.thirdPersonFov+TP_FOV_STEP);}),t('settings.detail.third_fov',{min:TP_FOV_MIN,max:TP_FOV_MAX,default:TP_FOV_DEFAULT}));
         add(t('settings.option.camera_motion')+' '+t('settings.value.'+this.profile.settings.cameraMotion),()=>camera(c=>{c.cameraMotion=c.cameraMotion==='reduced'?'full':'reduced';}),t('settings.detail.camera_motion'));
@@ -721,7 +721,7 @@ export class GameMenu {
     this.index=Math.min(this.index,Math.max(0,this.choices.length-1));
     this.cellCount=this.choices.filter(c=>c.cell).length;
     const x=(c:(typeof this.choices)[number])=>c.extra??{};
-    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen " : ""}${x(c).rarity?"rarity-"+x(c).rarity+" ":""}${x(c).poor?"poor ":""}${x(c).sold?"sold ":""}${x(c).primary?"menu-primary ":""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}${x(c).badge?`<em class="menu-badge">${x(c).badge}</em>`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}${x(c).tag?`<b class="price-tag">${x(c).tag}</b>`:""}${x(c).meter?`<i class="menu-meter"><s style="width:${Math.round(x(c).meter![0]/Math.max(1,x(c).meter![1])*100)}%"></s></i>`:""}</button>`;
+    const button=(c:(typeof this.choices)[number],i:number)=>`<button ${this.screen === "home" && i === 0 ? 'id="ride"' : ""} data-menu-index="${i}" class="${c.cell?"menu-cell ":""}${/PAGE/.test(c.label)&&!c.cell?"menu-page ":""}${i === this.index ? "selected " : ""}${c.selected ? "chosen " : ""}${x(c).rarity?"rarity-"+x(c).rarity+" ":""}${x(c).poor?"poor ":""}${x(c).sold?"sold ":""}${x(c).primary?"menu-primary ":""}${x(c).language?"menu-language ":""}">${this.screen==="maps"&&i<parkMaps.length?`<img class="map-list-thumb" src="${parkMaps[i].preview}" alt="${parkMaps[i].name}">`:""}${c.swatch===undefined?"":`<i class="colorway-swatch" style="--swatch:#${c.swatch.toString(16).padStart(6,"0")}"></i>`}${x(c).badge?`<em class="menu-badge">${x(c).badge}</em>`:""}<span>${c.label}</span>${c.selected ? "<b>✓</b>" : ""}${c.detail ? `<small>${c.detail}</small>` : ""}${x(c).tag?`<b class="price-tag">${x(c).tag}</b>`:""}${x(c).meter?`<i class="menu-meter"><s style="width:${Math.round(x(c).meter![0]/Math.max(1,x(c).meter![1])*100)}%"></s></i>`:""}</button>`;
     const cells=this.choices.slice(0,this.cellCount).map(button).join(""),rows=this.choices.slice(this.cellCount).map((c,i)=>button(c,i+this.cellCount)).join("");
     const localizedSettings=this.screen.startsWith('settings')||this.screen==='test-controller';
     const saveNote=localizedSettings?(this.saveFailed?t('settings.save_failed'):this.notice||t(cloud.account?'settings.saved_account':'settings.saved_device')+' '+t('settings.cash_unavailable')):this.saveFailed ? "Could not save. Retry before leaving." : (this.notice||(cloud.account?'Progress saves to your account. ':'Progress saves on this device. Sign in to sync it. ')+'Cash purchases unavailable in this alpha.');
@@ -856,7 +856,9 @@ export class GameMenu {
     if(this.screen==='creator'){this.creator.back();return;}
     if(this.seshOpen&&["rides","rider","settings","maps","shops","online"].includes(this.screen)){if(this.dirty()){this.leaveReturn=this.screen;this.show('leave-sesh');return;}this.closeSesh();return;}
     if(this.screen==='leave-sesh'){this.show(this.leaveReturn);return;}
-    if(this.screen.startsWith('settings-')||this.screen==='test-controller'){this.show('settings');return;}
+    // B backs out one level: the controller test sits inside RIDING & CONTROLS.
+    if(this.screen==='test-controller'){this.show('settings-riding');return;}
+    if(this.screen.startsWith('settings-')){this.show('settings');return;}
     if(this.seshOpen&&this.screen==="travel"){this.show("maps");return;}
     if(this.shopOpen&&this.screen===this.shopRoot){this.closeShop();return;}
     if(this.shopOpen&&(this.screen==="longboard"||this.screen==="shop")){if(this.screen==="shop")this.closeShop();else this.show("shop");return;}

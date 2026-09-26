@@ -717,3 +717,10 @@ html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog
 html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) #account-dialog .recovery-code { background: var(--paper); }
 /* The level chip's crate count sits on ink: in the quieter palettes the dark accent would vanish there. */
 html:is([data-ui-palette="grayscale"],[data-ui-palette="earth"]) .level-chip em { color: var(--lime); }
+
+/* The 🌐 language entry keeps one colour, #00C2FF, on every screen and UI palette,
+   so anyone can find it whatever language the game is showing. */
+html #start .game-menu nav button.menu-language,
+html #start .game-menu nav button.menu-language.selected { background: #00C2FF !important; color: #04161d !important; text-shadow: none !important; }
+html #start .game-menu nav button.menu-language small { color: #0b2a36 !important; }
+html #start .game-menu nav button.menu-language.selected { box-shadow: 0 2px 0 #000, 5px 6px 0 var(--pink); outline: 3px solid var(--ink); outline-offset: 2px; }

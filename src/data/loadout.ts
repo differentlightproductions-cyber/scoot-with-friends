@@ -33,7 +33,6 @@ export interface LocalProfile {
     sound: boolean;
     /** Mixer levels 0..100 (#71). Music has its own level in the music player, shared with the phone's MUSIC app. */
     volumes: { master: number; effects: number; ui: number; ambience: number };
-    grindAssist: boolean;
     /** The controls preset: "regular" is shown as Normal. See input/riding.ts. */
     stance: "regular" | "goofy";
     controlsVersion: number;
@@ -127,7 +126,6 @@ export function loadProfile(): LocalProfile {
       controlStyle: "pro",
       sound: true,
       volumes: { master: 100, effects: 100, ui: 70, ambience: 100 },
-      grindAssist: true,
       stance: "regular",
       controlsVersion: CONTROLS_VERSION,
       daylight: 'day',
