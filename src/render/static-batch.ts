@@ -18,10 +18,17 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
  * uses it; one-off materials with an identical look share one.
  */
 const CELL = 40;
+/**
+ * Bolts, brackets, cable ties, plank ends and other bits smaller than this
+ * (bounding radius, metres) are merged apart from the rest of their cell and
+ * drawn only near the viewer (#98; `scene.userData.smallDetail`, fidelity.ts).
+ * Glowing parts (lamp lenses) always draw.
+ */
+const SMALL = 0.45;
 const SKIP_ANCESTOR = /NPC|visitor|dove|Throwable|vending|Trash can|Preview floor|editor/i;
 const SKIP_NAME = new Set(["lake-water", "Preview floor", "editor-collisions"]);
 
-export interface BatchReport { before: number; merged: number; batches: number; skipped: Record<string, number> }
+export interface BatchReport { before: number; merged: number; batches: number; skipped: Record<string, number>; small?: number }
 
 const textureKey = (t: THREE.Texture | null | undefined) => {
   if (!t) return "";
@@ -60,7 +67,7 @@ export function batchStatic(scene: THREE.Scene): BatchReport {
   scene.updateMatrixWorld(true);
   const users = new Map<THREE.Material, number>();
   scene.traverse((o) => { const mesh = o as THREE.Mesh; if (mesh.isMesh && !Array.isArray(mesh.material)) users.set(mesh.material, (users.get(mesh.material) ?? 0) + 1); });
-  const groups = new Map<string, { material: THREE.Material; meshes: THREE.Mesh[]; template: THREE.Mesh }>();
+  const groups = new Map<string, { material: THREE.Material; meshes: THREE.Mesh[]; template: THREE.Mesh; small: boolean }>();
   let before = 0;
   const skipped: Record<string, number> = {}, skip = (why: string) => { skipped[why] = (skipped[why] ?? 0) + 1; };
   const centre = new THREE.Vector3();
@@ -86,14 +93,21 @@ export function batchStatic(scene: THREE.Scene): BatchReport {
     // whose intensity daylight.ts eases each evening per lamp. One-offs merge by look.
     const emissive = (mesh.material as THREE.MeshStandardMaterial).emissive;
     const owner = (users.get(mesh.material) ?? 0) > 1 || (emissive && emissive.getHex() !== 0) ? mesh.material.uuid : "";
-    const key = [look, owner, cell, attributeKey(g), g.index ? "ix" : "nx", mesh.castShadow, mesh.receiveShadow, mesh.renderOrder, mesh.layers.mask, mesh.frustumCulled].join("#");
+    const glowing = !!emissive && emissive.getHex() !== 0;
+    const small = !glowing && g.boundingSphere!.radius * mesh.matrixWorld.getMaxScaleOnAxis() < SMALL;
+    const key = [look, owner, cell, attributeKey(g), g.index ? "ix" : "nx", mesh.castShadow, mesh.receiveShadow, mesh.renderOrder, mesh.layers.mask, mesh.frustumCulled, small ? "small" : ""].join("#");
     let group = groups.get(key);
-    if (!group) groups.set(key, (group = { material: mesh.material, meshes: [], template: mesh }));
+    if (!group) groups.set(key, (group = { material: mesh.material, meshes: [], template: mesh, small }));
     group.meshes.push(mesh);
   });
   let merged = 0, batches = 0;
+  const smallDetail: { center: THREE.Vector3; radius: number; meshes: THREE.Object3D[] }[] = [];
+  const near = (object: THREE.Mesh) => {
+    const sphere = object.geometry.boundingSphere ?? (object.geometry.computeBoundingSphere(), object.geometry.boundingSphere!);
+    smallDetail.push({ center: sphere.center.clone().applyMatrix4(object.matrixWorld), radius: sphere.radius * object.matrixWorld.getMaxScaleOnAxis(), meshes: [object] });
+  };
   for (const group of groups.values()) {
-    if (group.meshes.length < 2) continue;
+    if (group.meshes.length < 2) { if (group.small) near(group.meshes[0]); continue; }
     const geometries = group.meshes.map((mesh) => {
       const g = mesh.geometry.clone();
       g.applyMatrix4(mesh.matrixWorld);
@@ -115,8 +129,11 @@ export function batchStatic(scene: THREE.Scene): BatchReport {
     batch.userData.staticBatch = group.meshes.length;
     for (const mesh of group.meshes) mesh.removeFromParent();
     scene.add(batch);
+    batch.updateMatrixWorld();
+    if (group.small) near(batch);
     merged += group.meshes.length;
     batches++;
   }
-  return { before, merged, batches, skipped };
+  scene.userData.smallDetail = smallDetail;
+  return { before, merged, batches, skipped, small: smallDetail.length };
 }

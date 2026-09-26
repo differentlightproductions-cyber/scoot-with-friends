@@ -17,10 +17,12 @@ try {
   // What the renderer is really doing right now, read off three.js itself.
   const state = () => page.evaluate(() => {
     const g = window.__LAZER, r = g.renderer, scene = g.fidelity.scene;
-    let sun = null, scatter = 0, scatterFull = 0, bump = 0, rough = 0, aniso = new Set();
+    g.render(); // one frame, so the distance LOD (#98) has repacked for the preset
+    let sun = null, scatter = 0, scatterFull = 0, drawn = 0, bump = 0, rough = 0, aniso = new Set();
     scene.traverse((o) => {
       if (o.isDirectionalLight && o.castShadow && !sun) sun = o.shadow.mapSize.x;
-      if (o.isInstancedMesh && o.userData.scatterCount) { scatter += o.count; scatterFull += o.userData.scatterCount; }
+      // Scenery thins by preset (density); distance LOD (#98) then draws the share of those in range.
+      if (o.isInstancedMesh && o.userData.scatterCount) { const lod = o.userData.instanceLod; scatter += lod ? Math.max(1, Math.round(lod.total * lod.density)) : o.count; scatterFull += o.userData.scatterCount; drawn += o.count; }
       if (o.isMesh) for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
         if (!m?.isMeshStandardMaterial) continue;
         if (m.bumpMap) bump++;
@@ -32,7 +34,7 @@ try {
     return {
       preset: g.profile.settings.fidelity, applied: scene.userData.fidelity, pixelRatio: r.getPixelRatio(),
       shadowFilter: r.shadowMap.type === 2 ? 'PCFSoft' : r.shadowMap.type === 1 ? 'PCF' : String(r.shadowMap.type), sunShadowMap: sun,
-      scatter, scatterFull, bumpMaps: bump, roughnessMaps: rough, anisotropy: [...aniso].sort((a, b) => a - b),
+      scatter, scatterFull, drawn, bumpMaps: bump, roughnessMaps: rough, anisotropy: [...aniso].sort((a, b) => a - b),
       detailChunksShown: chunks ? chunks.filter((c) => c.meshes[0]?.visible).length + '/' + chunks.length : null,
       cameraFilter: g.profile.settings.cameraFilter, filterStrength: g.profile.settings.filterStrength,
     };
@@ -67,6 +69,7 @@ try {
   check('Resolution: Low < Medium < High', low.pixelRatio < medium.pixelRatio && medium.pixelRatio < high.pixelRatio, [low.pixelRatio, medium.pixelRatio, high.pixelRatio]);
   check('Sun shadow map: 512 / 1024 / 2048, soft filter only on High', low.sunShadowMap === 512 && medium.sunShadowMap === 1024 && high.sunShadowMap === 2048 && high.shadowFilter === 'PCFSoft' && medium.shadowFilter === 'PCF', [low.sunShadowMap, medium.sunShadowMap, high.sunShadowMap, low.shadowFilter, medium.shadowFilter, high.shadowFilter]);
   check('Plants and rocks: Low < Medium < High (High draws all of them)', low.scatter < medium.scatter && medium.scatter < high.scatter && high.scatter === high.scatterFull, [low.scatter, medium.scatter, high.scatter, high.scatterFull]);
+  check('Distance LOD (#98): scenery out of range is not drawn, what is near is', high.drawn > 0 && high.drawn < high.scatter && low.drawn <= medium.drawn && medium.drawn <= high.drawn, [low.drawn, medium.drawn, high.drawn, high.scatter]);
   check('Low drops bump and roughness maps, Medium and High keep them', low.bumpMaps === 0 && low.roughnessMaps === 0 && medium.bumpMaps > 0 && high.bumpMaps === medium.bumpMaps && high.roughnessMaps === medium.roughnessMaps, [low.bumpMaps, medium.bumpMaps, high.bumpMaps]);
   check('Texture filtering: High sharper than Low and Medium', Math.max(...high.anisotropy) > Math.max(...medium.anisotropy) && JSON.stringify(low.anisotropy) === JSON.stringify(medium.anisotropy), [low.anisotropy, medium.anisotropy, high.anisotropy]);
   check('Low draws fewer triangles than High', low.triangles < high.triangles, [low.triangles, medium.triangles, high.triangles]);

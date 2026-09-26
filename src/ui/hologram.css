@@ -1,0 +1,60 @@
+/* The hologram mini editor (#66): a see-through cyan panel projected beside the rider. */
+#holo {
+  position: fixed; right: max(18px, 3vw); top: 50%; transform: translateY(-50%);
+  width: min(380px, 44vw); z-index: 40; pointer-events: auto;
+  font-family: var(--body-font, "Arial Narrow", Arial, sans-serif); color: #dff8ff;
+  animation: holo-in 0.24s ease-out;
+}
+#holo.holo-out { animation: holo-out 0.22s ease-in forwards; }
+#holo .holo-panel {
+  position: relative; padding: 14px 16px 12px; border-radius: 14px;
+  background: linear-gradient(180deg, rgba(0, 150, 205, 0.42), rgba(0, 70, 110, 0.4)),
+    repeating-linear-gradient(0deg, rgba(160, 240, 255, 0.07) 0 1px, transparent 1px 4px);
+  border: 2px solid rgba(140, 236, 255, 0.85);
+  box-shadow: 0 0 18px rgba(0, 194, 255, 0.55), inset 0 0 22px rgba(0, 194, 255, 0.25);
+  text-shadow: 0 0 6px rgba(0, 194, 255, 0.9);
+  animation: holo-flicker 5s infinite steps(1);
+  overflow: hidden;
+}
+/* A slow scan line sweeping down the panel. */
+#holo .holo-panel::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 36px; top: -40px; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(190, 248, 255, 0.16), transparent);
+  animation: holo-scan 3.2s linear infinite;
+}
+#holo header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; border-bottom: 1px solid rgba(140, 236, 255, 0.5); padding-bottom: 6px; }
+#holo header small { font-size: 11px; letter-spacing: 0.14em; opacity: 0.85; }
+#holo header strong { font-family: var(--display-font, Impact, sans-serif); font-size: 26px; letter-spacing: 0.04em; color: #fff; }
+#holo header .holo-swap { margin-left: auto; }
+#holo ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+#holo li { display: grid; grid-template-columns: 34% 1fr; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+#holo li b { font-size: 11px; letter-spacing: 0.1em; opacity: 0.8; font-weight: 800; }
+#holo li span { display: flex; align-items: center; gap: 6px; min-width: 0; }
+#holo li em { font-style: normal; font-weight: 800; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+#holo li button { background: none; border: 0; color: inherit; font-size: 20px; line-height: 1; padding: 0 3px; cursor: pointer; opacity: 0.35; text-shadow: inherit; }
+#holo li.on { background: rgba(0, 194, 255, 0.28); border-color: rgba(190, 248, 255, 0.9); box-shadow: 0 0 10px rgba(0, 194, 255, 0.6); }
+#holo li.on b { opacity: 1; }
+#holo li.on button { opacity: 1; }
+#holo .holo-chip { width: 14px; height: 14px; border-radius: 4px; flex: none; border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 0 6px rgba(0, 194, 255, 0.7); }
+#holo .holo-note { margin: 8px 0 0; font-size: 12px; color: #ffe07a; text-shadow: none; }
+#holo footer { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(140, 236, 255, 0.5); font-size: 11px; letter-spacing: 0.08em; }
+#holo footer span { opacity: 0.8; margin-right: auto; }
+#holo footer button { background: rgba(0, 194, 255, 0.3); color: #fff; border: 1px solid rgba(190, 248, 255, 0.9); border-radius: 6px; padding: 5px 9px; font: inherit; font-weight: 800; cursor: pointer; text-shadow: inherit; }
+/* The beam from the phone up to the panel. */
+#holo .holo-beam {
+  position: absolute; left: -46px; bottom: -34px; width: 90px; height: 70%; pointer-events: none;
+  background: linear-gradient(35deg, rgba(0, 194, 255, 0.45), rgba(0, 194, 255, 0.04) 70%, transparent);
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+  filter: blur(2px); opacity: 0.7;
+}
+@keyframes holo-in { from { opacity: 0; transform: translateY(-46%) scale(0.92, 0.2); } to { opacity: 1; transform: translateY(-50%) scale(1); } }
+@keyframes holo-out { to { opacity: 0; transform: translateY(-50%) scale(1, 0.08); } }
+@keyframes holo-scan { to { top: 110%; } }
+@keyframes holo-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 0.92; } 48% { opacity: 1; } 83% { opacity: 0.95; } 84% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #holo, #holo .holo-panel, #holo .holo-panel::after { animation: none; } }
+@media (max-width: 640px) {
+  #holo { right: 8px; left: 8px; width: auto; top: auto; bottom: 8px; transform: none; animation: none; }
+  #holo.holo-out { animation: none; opacity: 0; }
+  #holo .holo-beam { display: none; }
+  #holo li { grid-template-columns: 38% 1fr; }
+}

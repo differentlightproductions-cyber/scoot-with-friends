@@ -114,6 +114,25 @@ export class GameMenu {
     Object.assign(this.savedProfile!,structuredClone(this.profile));this.onChange();this.notice='Changes '+savedWhere();this.saveFailed=false;this.render();
     if(customized){this.presetSaved(scooterChanged&&boardChanged?'both':boardChanged?'longboard':'scooter');void this.economy.track({},undefined,['customize']);}return true;
   }
+  /**
+   * Saves what the hologram editor (#66) built in a session, with the same
+   * checks as applying the in-session editors: the setup must not have changed
+   * elsewhere, a newly chosen part must be owned, a ridden board complete.
+   * Returns '' or why not.
+   */
+  saveHologram(draft:LocalProfile,mode:'ride'|'rider'):string{
+    const latest=loadProfile();
+    if(mode==='rider'){this.profile.avatar=structuredClone(draft.avatar);this.saveFailed=!saveProfile(this.profile);if(this.saveFailed)return 'Could not save. Try again.';this.onChange();return '';}
+    if((latest.equipmentRevision??0)!==(this.profile.equipmentRevision??0))return 'Setup changed in another tab. Cancel and reopen.';
+    for(const [slot,item] of Object.entries(draft.scooter) as [keyof ScooterLoadout,{partId:string;variantId:string}][]){const saved=latest.scooter[slot];if(!owns(latest.wallet,item)&&(saved.partId!==item.partId||saved.variantId!==item.variantId))return 'An equipped item is not owned.';}
+    if(draft.activeRideable==='longboard'&&!ownsBoard(latest.wallet,draft.longboard))return 'Own every part of this board before riding it.';
+    const scooterChanged=JSON.stringify(latest.scooter)!==JSON.stringify(draft.scooter),boardChanged=JSON.stringify(latest.longboard)!==JSON.stringify(draft.longboard);
+    if(!scooterChanged&&!boardChanged)return '';
+    const before={scooter:this.profile.scooter,longboard:this.profile.longboard,revision:this.profile.equipmentRevision};
+    this.profile.scooter=structuredClone(draft.scooter);this.profile.longboard=structuredClone(draft.longboard);this.profile.equipmentRevision=(this.profile.equipmentRevision??0)+1;
+    if(!saveProfile(this.profile)){Object.assign(this.profile,{scooter:before.scooter,longboard:before.longboard,equipmentRevision:before.revision});return 'Could not save. Try again.';}
+    this.onChange();void this.economy.track({},undefined,['customize']);return '';
+  }
   /** The rider creator (src/ui/creator.ts) edits a draft avatar on the preview rider. */
   readonly creator=new RiderCreator({
     preview:config=>{this.previewRider.setAvatar(config);this.creatorFraming='';},

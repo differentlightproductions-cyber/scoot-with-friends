@@ -4,6 +4,7 @@
 // a few merged parts drawn with InstancedMesh, so a whole desert of bushes
 // costs a handful of draw calls. Foliage sways a little in the wind.
 import * as THREE from "three";
+import { enableInstanceLod } from "../render/instance-lod";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { mulberry, Noise2 } from "./noise";
 import { barkTexture, leafCard, rockTexture } from "./textures";
@@ -368,7 +369,7 @@ export function plant(scene: THREE.Scene, model: PlantModel, placements: Placeme
   const list = placements.slice();
   for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; }
   const matrix = new THREE.Matrix4(), q = new THREE.Quaternion(), up = v3(0, 1, 0);
-  const meshes: THREE.InstancedMesh[] = [];
+  const meshes: THREE.InstancedMesh[] = [], maxScale = list.reduce((m, pl) => Math.max(m, pl.scale), 0.5);
   for (const part of model.parts) {
     const mesh = new THREE.InstancedMesh(part.geometry, part.material, Math.max(1, list.length));
     list.forEach((pl, i) => {
@@ -385,6 +386,8 @@ export function plant(scene: THREE.Scene, model: PlantModel, placements: Placeme
     mesh.computeBoundingSphere();
     mesh.onBeforeRender = tickWind;
     scene.add(mesh);
+    // Drawn only near the viewer (#98): taller plants carry further.
+    enableInstanceLod(scene, mesh, THREE.MathUtils.clamp(140 + 50 * model.height * maxScale, 160, 520));
     meshes.push(mesh);
   }
   return meshes;

@@ -1,6 +1,6 @@
 import { activeLayout } from '../editor/layout';
 
-import { inWater, lakeBed, WATER } from "../park/water";
+import { LAKES, inWater, lakeBed, lakeRho, shoreNormal, WATER } from "../park/water";
 import { DIVE_DOCK, dockBlocks, dockClear, ladderNear, springboardTop } from "../park/dive-dock";
 import { judgeWater, settleTarget, type WaterAir } from "../tricks/water";
 import * as THREE from "three";
@@ -1843,7 +1843,8 @@ export class Simulation {
         if (this.standingClear(out)) { sw.out = { start: this.position.clone(), end: out, time: 0 }; return; }
       }
       // Otherwise slide along the edge.
-      const centre = new THREE.Vector3(WATER.x, 0, WATER.z), n = new THREE.Vector3((next.x - WATER.x) / (WATER.radiusX ** 2), 0, (next.z - WATER.z) / (WATER.radiusZ ** 2)).normalize();
+      const body = LAKES[lakeRho(next.x, next.z).body], shore = shoreNormal(next.x, next.z);
+      const centre = new THREE.Vector3(body.x, 0, body.z), n = new THREE.Vector3(shore.x, 0, shore.z);
       const into = this.velocity.dot(n);
       if (into > 0) this.velocity.addScaledVector(n, -into);
       next.copy(this.position).addScaledVector(this.velocity, dt);

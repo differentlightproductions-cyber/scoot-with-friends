@@ -1,24 +1,140 @@
 ﻿import * as THREE from "three";
-export const WATER = {
-  x: -97,
-  z: 5,
-  radiusX: 10,
-  radiusZ: 30,
-  surface: 0.009,
-  depth: 2.5,
-};
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+/**
+ * Veterans' water (#99, from the owner's aerial photo): north of the park,
+ * past the open grass field, the long footprint-shaped lake runs east-west
+ * with the Model Boat Pond south of its west half. Outlines are traced off the
+ * photo at the district's scale (0.44 of real), in world metres round each
+ * body's centre. Both are star-shaped from their centre, so a point's
+ * normalised distance out to the bank (`lakeRho`) is its distance over the
+ * bank's distance along the same bearing: 0 at the middle, 1 at the bank.
+ */
+export interface LakeBody { name: string; x: number; z: number; depth: number; outline: [number, number][] }
+export const LAKES: LakeBody[] = [
+  { name: "Veterans lake", x: 33.3, z: -297.3, depth: 2.5, outline: [[36.7, -19.5], [32.6, -20.3], [26.0, -19.5], [21.1, -17.0], [17.8, -14.6], [12.9, -13.3], [7.9, -12.9], [1.3, -12.5], [-6.9, -11.3], [-15.1, -10.4], [-23.3, -9.6], [-31.5, -9.2], [-39.8, -8.8], [-46.3, -7.6], [-50.0, -5.5], [-51.3, -1.4], [-51.3, 4.4], [-49.6, 9.3], [-46.3, 12.2], [-41.4, 13.0], [-31.5, 13.4], [-23.3, 13.8], [-15.1, 13.8], [-6.9, 13.4], [1.3, 12.6], [9.6, 12.2], [16.1, 12.6], [21.9, 13.8], [29.3, 14.9], [35.9, 14.6], [40.0, 12.6], [42.0, 8.5], [42.6, 1.9], [42.4, -6.3], [41.6, -13.7], [40.0, -17.8]] },
+  { name: "Model Boat Pond", x: 11.1, z: -262.4, depth: 1.1, outline: [[21.5, -4.2], [21.9, -0.1], [20.3, 3.6], [16.2, 5.4], [10.4, 5.8], [4.7, 5.2], [-1.1, 6.0], [-9.3, 7.3], [-16.7, 7.3], [-20.4, 5.6], [-21.2, 1.5], [-19.2, -3.4], [-15.0, -6.3], [-9.3, -7.4], [-3.5, -6.6], [1.4, -4.1], [5.5, -3.8], [10.4, -6.3], [15.4, -7.9], [19.5, -7.1]] },
+];
+/** The main lake's centre and extent, the shared surface height and the deepest water. */
+export const WATER = { x: LAKES[0].x, z: LAKES[0].z, radiusX: 47, radiusZ: 17.5, surface: 0.009, depth: 2.5 };
+
+/** Bank distance by bearing, sampled finely and smoothed, per body. */
+const BEARINGS = 256;
+const bankRadii = LAKES.map((lake) => {
+  const out = new Float32Array(BEARINGS), n = lake.outline.length;
+  for (let j = 0; j < BEARINGS; j++) {
+    const a = (j / BEARINGS) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+    let best = Infinity;
+    for (let i = 0; i < n; i++) {
+      const [ax, az] = lake.outline[i], [bx, bz] = lake.outline[(i + 1) % n], ex = bx - ax, ez = bz - az;
+      const det = dz * ex - dx * ez; // the ray t·(dx, dz) meets the edge a + u·e
+      if (Math.abs(det) < 1e-9) continue;
+      const t = (ax * -ez + az * ex) / det, u = (dx * az - dz * ax) / det;
+      if (t > 0 && u >= 0 && u <= 1) best = Math.min(best, t);
+    }
+    out[j] = best;
+  }
+  // A light circular smoothing takes the corners off the traced polygon.
+  const smooth = new Float32Array(BEARINGS);
+  for (let j = 0; j < BEARINGS; j++) { let sum = 0; for (let k = -3; k <= 3; k++) sum += out[(j + k + BEARINGS) % BEARINGS]; smooth[j] = sum / 7; }
+  return smooth;
+});
+/** The distance from body `i`'s centre to its bank along bearing `a` (radians, from +x toward +z). */
+export function bankRadius(i: number, a: number) {
+  const r = bankRadii[i], f = (((a / (Math.PI * 2)) % 1) + 1) % 1 * BEARINGS, j = Math.floor(f), t = f - j;
+  return r[j % BEARINGS] * (1 - t) + r[(j + 1) % BEARINGS] * t;
+}
+/** The nearest body to (x, z) by normalised distance: `rho` is 0 at its middle, 1 at its bank. */
+export function lakeRho(x: number, z: number) {
+  let body = 0, rho = Infinity;
+  for (let i = 0; i < LAKES.length; i++) {
+    const dx = x - LAKES[i].x, dz = z - LAKES[i].z, r = Math.hypot(dx, dz) / bankRadius(i, Math.atan2(dz, dx));
+    if (r < rho) { rho = r; body = i; }
+  }
+  return { body, rho };
+}
 export function inWater(x: number, z: number, margin = 1) {
-  return (
-    ((x - WATER.x) / WATER.radiusX) ** 2 +
-      ((z - WATER.z) / WATER.radiusZ) ** 2 <
-    margin * margin
-  );
+  return lakeRho(x, z).rho < margin;
+}
+/** Outward normal of the bank near (x, z) (the way `rho` grows), in the xz plane. */
+export function shoreNormal(x: number, z: number) {
+  const e = 0.25, r = (px: number, pz: number) => lakeRho(px, pz).rho;
+  const nx = r(x + e, z) - r(x - e, z), nz = r(x, z + e) - r(x, z - e), l = Math.hypot(nx, nz) || 1;
+  return { x: nx / l, z: nz / l };
 }
 export const bedBump = (x: number, z: number) => Math.sin(x * 0.9 + z * 0.35) * 0.08 + Math.sin(z * 0.53 - x * 0.4) * 0.1;
-/** The lake bottom (underwater.ts draws it): a bowl 2.5 m deep at the middle, 0.34 m at the bank. */
+/** Floor depth at normalised distance `r` for a body `depth` deep. */
+export const bowl = (depth: number, r: number) => -depth * Math.pow(Math.max(0, 1 - r * r), 0.7);
+/** The lake bottom (underwater.ts draws it): a bowl 2.5 m deep at the middle (the pond 1.1 m), 0.34 m at the bank. */
 export function lakeBed(x: number, z: number) {
-  const r = Math.min(1, Math.hypot((x - WATER.x) / WATER.radiusX, (z - WATER.z) / WATER.radiusZ));
-  return Math.min(-0.34, -WATER.depth * Math.pow(Math.max(0, 1 - r * r), 0.7) + bedBump(x, z) * (1 - r));
+  const { body, rho } = lakeRho(x, z), r = Math.min(1, rho);
+  return Math.min(-0.34, bowl(LAKES[body].depth, r) + bedBump(x, z) * (1 - r));
+}
+/**
+ * A body's disc as a polar mesh in world metres: `rings` rings out to the bank
+ * along each bearing. Each vertex carries `rim` (its normalised distance out).
+ * `y` gives each vertex's height; the triangles face up.
+ */
+export function lakeDisc(i: number, rings: number, segments: number, y: (x: number, z: number, r: number) => number) {
+  const lake = LAKES[i], position: number[] = [], rim: number[] = [], index: number[] = [];
+  position.push(lake.x, y(lake.x, lake.z, 0), lake.z); rim.push(0);
+  for (let k = 1; k <= rings; k++) {
+    const r = k / rings;
+    for (let j = 0; j < segments; j++) {
+      const a = (j / segments) * Math.PI * 2, R = bankRadius(i, a) * r, x = lake.x + Math.cos(a) * R, z = lake.z + Math.sin(a) * R;
+      position.push(x, y(x, z, r), z); rim.push(r);
+    }
+  }
+  // Bearings turn from +x toward +z, clockwise seen from above; these windings face up.
+  for (let j = 0; j < segments; j++) index.push(0, 1 + ((j + 1) % segments), 1 + j);
+  for (let k = 1; k < rings; k++) for (let j = 0; j < segments; j++) {
+    const p = 1 + (k - 1) * segments + j, q = 1 + (k - 1) * segments + ((j + 1) % segments);
+    index.push(p, q, p + segments, q, q + segments, p + segments);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute("rim", new THREE.Float32BufferAttribute(rim, 1));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  return g;
+}
+/** Every body's surface in one mesh (one draw, one shader), at height 0 in its own space. */
+export function lakeSurfaceGeometry() {
+  const parts = LAKES.map((_, i) => lakeDisc(i, 12, 128, () => 0));
+  const position: number[] = [], rim: number[] = [], index: number[] = [];
+  let base = 0;
+  for (const g of parts) {
+    position.push(...(g.getAttribute("position").array as Float32Array));
+    rim.push(...(g.getAttribute("rim").array as Float32Array));
+    for (const k of Array.from(g.getIndex()!.array)) index.push(k + base);
+    base += g.getAttribute("position").count;
+    g.dispose();
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(new Array(position.length / 3).fill(0).flatMap(() => [0, 1, 0]), 3));
+  g.setAttribute("rim", new THREE.Float32BufferAttribute(rim, 1));
+  g.setIndex(index);
+  return g;
+}
+/**
+ * Where there is water, as a small mask texture over all the bodies (1 inside),
+ * for effects that must stay on it (the splash rings).
+ */
+let mask: { texture: THREE.DataTexture; min: THREE.Vector2; size: THREE.Vector2 } | null = null;
+export function lakeMask() {
+  if (mask) return mask;
+  const min = new THREE.Vector2(Infinity, Infinity), max = new THREE.Vector2(-Infinity, -Infinity);
+  LAKES.forEach((l) => l.outline.forEach(([x, z]) => { min.min(new THREE.Vector2(l.x + x, l.z + z)); max.max(new THREE.Vector2(l.x + x, l.z + z)); }));
+  min.subScalar(2); max.addScalar(2);
+  const N = 256, data = new Uint8Array(N * N * 4), size = max.clone().sub(min);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const v = inWater(min.x + ((i + 0.5) / N) * size.x, min.y + ((j + 0.5) / N) * size.y, 0.97) ? 255 : 0;
+    data.set([v, v, v, 255], (j * N + i) * 4);
+  }
+  const texture = new THREE.DataTexture(data, N, N);
+  texture.magFilter = texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return (mask = { texture, min, size });
 }
 /**
  * The lake's surface: a MeshStandardMaterial (so it keeps the scene's lights,
@@ -30,7 +146,7 @@ export function lakeBed(x: number, z: number) {
  */
 export function dressLake(lake: THREE.Mesh) {
   const material = new THREE.MeshStandardMaterial({ color: 0x1d4f57, roughness: 0.1, metalness: 0, polygonOffset: true, polygonOffsetUnits: -30, name: "Lake water" });
-  material.customProgramCacheKey = () => "swf-lake-water-v2";
+  material.customProgramCacheKey = () => "swf-lake-water-v3";
   lake.material = material;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.waterTime = { value: 0 };
@@ -39,10 +155,10 @@ export function dressLake(lake: THREE.Mesh) {
     shader.uniforms.sunDir = { value: new THREE.Vector3(0.3, 0.8, 0.2).normalize() };
     lake.userData.waterShader = shader;
     shader.vertexShader =
-      "varying vec2 waterUV;\n" +
-      shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nwaterUV=position.xy;");
+      "attribute float rim; varying vec2 waterUV; varying float waterRim;\n" +
+      shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nwaterUV=position.xz; waterRim=rim;");
     shader.fragmentShader =
-      `uniform float waterTime; uniform vec3 skyZenith; uniform vec3 skyHorizon; uniform vec3 sunDir; varying vec2 waterUV;
+      `uniform float waterTime; uniform vec3 skyZenith; uniform vec3 skyHorizon; uniform vec3 sunDir; varying vec2 waterUV; varying float waterRim;
 float waterHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float waterNoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(waterHash(i),waterHash(i+vec2(1,0)),f.x),mix(waterHash(i+vec2(0,1)),waterHash(i+vec2(1,1)),f.x),f.y);}
 // Slope of the ripple height field at p (metres): four wind wave trains and two octaves of chop.
@@ -61,8 +177,8 @@ vec2 waterSlope(vec2 p,float t){
         .replace(
           "#include <color_fragment>",
           `#include <color_fragment>
-vec2 wp=waterUV*vec2(${WATER.radiusX.toFixed(1)},${WATER.radiusZ.toFixed(1)});
-float edge=length(waterUV);
+vec2 wp=waterUV;
+float edge=waterRim;
 float shallowness=smoothstep(0.5,1.0,edge);
 vec3 shallow=vec3(0.22,0.44,0.38),deep=vec3(0.05,0.17,0.21);
 diffuseColor.rgb=mix(deep,shallow,shallowness);
@@ -79,10 +195,9 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.86,0.9,0.86),foam*0.75);`,
         .replace(
           "#include <normal_fragment_maps>",
           `#include <normal_fragment_maps>
-{ vec2 s=waterSlope(waterUV*vec2(${WATER.radiusX.toFixed(1)},${WATER.radiusZ.toFixed(1)}),waterTime)*0.75*(1.0-0.7*smoothstep(0.95,1.0,length(waterUV)));
-  // The disc is turned flat (-90 degrees about x): local y runs along world -z,
-  // so the height field's world normal is (-dh/dx, 1, dh/dy_local).
-  normal=normalize((viewMatrix*vec4(-s.x,1.0,s.y,0.0)).xyz); }`,
+{ vec2 s=waterSlope(waterUV,waterTime)*0.75*(1.0-0.7*smoothstep(0.95,1.0,waterRim));
+  // The surface is built flat in world x/z, so the height field's world normal is (-dh/dx, 1, -dh/dz).
+  normal=normalize((viewMatrix*vec4(-s.x,1.0,-s.y,0.0)).xyz); }`,
         )
         .replace(
           "#include <emissivemap_fragment>",
@@ -106,16 +221,18 @@ diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.86,0.9,0.86),foam*0.75);`,
  * darker damp strip right at the waterline.
  */
 export function buildShoreline(scene: THREE.Scene, material: THREE.Material) {
-  const segments = 180, width = 0.7, damp = 0.14;
-  const ring = (from: number, to: number, y: number, uvScale: number) => {
+  const segments = 220, width = 0.7, damp = 0.14;
+  // One band per body, `from`..`to` metres out from its bank (outward along the bank's normal).
+  const band = (body: number, from: number, to: number, y: number, uvScale: number) => {
+    const lake = LAKES[body], edges: THREE.Vector2[] = [];
+    for (let i = 0; i < segments; i++) { const a = (i / segments) * Math.PI * 2, R = bankRadius(body, a); edges.push(new THREE.Vector2(lake.x + Math.cos(a) * R, lake.z + Math.sin(a) * R)); }
     const p: number[] = [], uv: number[] = [], index: number[] = [];
-    let along = 0, last: THREE.Vector2 | null = null;
+    let along = 0;
     for (let i = 0; i <= segments; i++) {
-      const a = (i / segments) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
-      const edge = new THREE.Vector2(WATER.x + WATER.radiusX * c, WATER.z + WATER.radiusZ * s);
-      const n = new THREE.Vector2(c / WATER.radiusX, s / WATER.radiusZ).normalize();
-      if (last) along += edge.distanceTo(last);
-      last = edge;
+      const edge = edges[i % segments], prev = edges[(i - 1 + segments) % segments], next = edges[(i + 1) % segments];
+      // Outward: the bank's tangent turned a quarter (bearings run clockwise seen from above).
+      const t = next.clone().sub(prev).normalize(), n = new THREE.Vector2(t.y, -t.x);
+      if (i) along += edge.distanceTo(prev);
       for (const off of [from, to]) {
         p.push(edge.x + n.x * off, y, edge.y + n.y * off);
         uv.push(along / uvScale, (off - from) / uvScale);
@@ -129,15 +246,16 @@ export function buildShoreline(scene: THREE.Scene, material: THREE.Material) {
     g.setIndex(index);
     return g;
   };
-  const edge = new THREE.Mesh(ring(-0.02, width, 0.02, 2.4), material);
+  const merged = (from: number, to: number, y: number, uvScale: number) => mergeGeometries(LAKES.map((_, i) => band(i, from, to, y, uvScale)));
+  const edge = new THREE.Mesh(merged(-0.02, width, 0.02, 2.4), material);
   edge.name = "Lake shoreline edge";
   edge.receiveShadow = true;
   scene.add(edge);
-  const wet = new THREE.Mesh(ring(-0.02, damp, 0.021, 2.4), new THREE.MeshStandardMaterial({ color: 0x2f3634, transparent: true, opacity: 0.35, roughness: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetUnits: -44, name: "Damp waterline" }));
+  const wet = new THREE.Mesh(merged(-0.02, damp, 0.021, 2.4), new THREE.MeshStandardMaterial({ color: 0x2f3634, transparent: true, opacity: 0.35, roughness: 0.4, depthWrite: false, polygonOffset: true, polygonOffsetUnits: -44, name: "Damp waterline" }));
   wet.name = "Lake waterline";
   wet.renderOrder = 1;
   scene.add(wet);
-  return edge;
+  return { edge, band };
 }
 
 /** A soft round droplet: white core fading to clear, shared by every spray sprite. */
@@ -190,10 +308,11 @@ export class WaterEffects {
     // Rings live on the water only: clipped to the lake's outline where a splash meets the bank.
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = "varying vec2 ringWorld;\n" + shader.vertexShader.replace("#include <project_vertex>", "#include <project_vertex>\nringWorld = (modelMatrix * vec4(transformed, 1.0)).xz;");
-      const e = (n: number) => n.toFixed(2);
-      shader.fragmentShader = "varying vec2 ringWorld;\n" + shader.fragmentShader.replace("void main() {", `void main() {
-  vec2 lakeUV = (ringWorld - vec2(${e(WATER.x)}, ${e(WATER.z)})) / vec2(${e(WATER.radiusX)}, ${e(WATER.radiusZ)});
-  if (dot(lakeUV, lakeUV) > 0.94) discard;`);
+      const m = lakeMask(), e = (n: number) => n.toFixed(2);
+      shader.uniforms.lakeMask = { value: m.texture };
+      shader.fragmentShader = "uniform sampler2D lakeMask; varying vec2 ringWorld;\n" + shader.fragmentShader.replace("void main() {", `void main() {
+  vec2 lakeUV = (ringWorld - vec2(${e(m.min.x)}, ${e(m.min.y)})) / vec2(${e(m.size.x)}, ${e(m.size.y)});
+  if (texture2D(lakeMask, lakeUV).r < 0.5) discard;`);
     };
     material.customProgramCacheKey = () => "lake-ring";
     const mesh = new THREE.Mesh(this.ringGeometry, material);

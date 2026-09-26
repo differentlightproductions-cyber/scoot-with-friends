@@ -444,7 +444,7 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
   const kit = materials();
   const chunks = new Map<number, Map<Part, THREE.BufferGeometry[]>>();
   const bounds = new Map<number, THREE.Box3>();
-  const solids: HouseSolid[] = [], yard: YardSpot[] = [];
+  const solids: HouseSolid[] = [], yard: YardSpot[] = [], perches: THREE.Vector3[] = [];
   const Y = new THREE.Vector3(0, 1, 0), X = new THREE.Vector3(1, 0, 0);
   for (const lot of lots) {
     const plan = lot.plan, random = mulberry(plan.seed * 31 + 7);
@@ -469,7 +469,11 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
       const q = turn.clone().multiply(new THREE.Quaternion().setFromAxisAngle(Y, ry)).multiply(new THREE.Quaternion().setFromAxisAngle(X, rx));
       solids.push({ center: new THREE.Vector3(x, (y0 + y1) / 2, z).applyMatrix4(world), quaternion: q, half: new THREE.Vector3(hw, (y1 - y0) / 2, hd) });
     };
+    /** Somewhere a bird can sit (a roof ridge, a wall cap), in the lot frame. */
+    const perch = (x: number, y: number, z: number) => perches.push(new THREE.Vector3(x, y, z).applyMatrix4(world));
     const spot = (x: number, z: number, kind: YardSpot["kind"]) => {
+      // Never in the pool or on its coping.
+      if (pool && Math.abs(x - pool.x) < pool.w / 2 + 1.1 && Math.abs(z - pool.z) < pool.l / 2 + 1.1) return;
       const p = new THREE.Vector3(x, 0, z).applyMatrix4(world);
       yard.push({ x: p.x, y: lot.pad, z: p.z, kind });
     };
@@ -505,6 +509,7 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
     add("block", box(LW, wallH, 0.2, 1.6), 0, wallH / 2, -LD / 2 + 0.1);
     add("plain", box(LW, 0.06, 0.26), 0, wallH + 0.03, -LD / 2 + 0.1, 0, 0xd7cdbb);
     solid(0, 0, wallH, -LD / 2 + 0.1, LW / 2, 0.1);
+    perch(LW * 0.3, wallH + 0.06, -LD / 2 + 0.1);
 
     // ---- The house.
     const paintColor = new THREE.Color(plan.paint).offsetHSL(0, 0, (random() - 0.5) * 0.03);
@@ -520,6 +525,7 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
       for (const [x, z, rw, rd, y] of [[hx, hz, w, d, h], [gx, gz, gw, gd, gh]] as const) {
         add("plain", box(rw - 0.4, 0.04, rd - 0.4), x, y + 0.02, z, 0, MEMBRANE);
         add("plain", box(rw + 0.04, 0.07, rd + 0.04), x, y + parapet + 0.035, z, 0, new THREE.Color(plan.paint).multiplyScalar(0.97));
+        perch(x - rw / 2 + 0.3, y + parapet + 0.07, z + rd / 2 - 0.02);
       }
       add("stucco", box(w * 0.36, 0.5, 0.3, 3), doorX, h + parapet + 0.25, front - 0.15, 0, paintColor);
       for (let k = 0; k < 7; k++) add("plain", new THREE.CylinderGeometry(0.1, 0.1, 0.5, 8).rotateX(Math.PI / 2), hx - w / 2 + 0.7 + k * (w - 1.4) / 6, h - 0.28, front + 0.22, 0, WOOD);
@@ -536,6 +542,9 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
       const two = style === "twoStorey", rise = two ? 2.2 : 1.9;
       for (const [rx, rz, rw, rd, ry, rs] of [[hx, hz, w, d, h, rise], [gx, gz, gw, gd, gh, 1.5]] as const) {
         add(roofKey, hipRoof(rw + over * 2, rd + over * 2, rs, 2), rx, ry + 0.02, rz);
+        // The ridge: its middle and both ends.
+        const r = Math.abs(rw - rd) / 2;
+        for (const k of [-1, 0, 1]) perch(rx + (rw >= rd ? k * r : 0), ry + 0.02 + rs + 0.03, rz + (rw >= rd ? 0 : k * r));
         add("plain", box(rw + over * 2, 0.22, rd + over * 2), rx, ry - 0.09, rz, 0, TRIM);
       }
       // The AC unit in the side yard.
@@ -725,7 +734,7 @@ export function buildHouses(scene: THREE.Scene, lots: HouseLot[]) {
     }
     detail.push({ center, radius, meshes: near });
   }
-  return { solids, yard, detail };
+  return { solids, yard, detail, perches };
 }
 
 function offsetPath(p: THREE.Path, x: number, y: number) {

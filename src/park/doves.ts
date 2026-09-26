@@ -24,6 +24,12 @@ export interface DoveWorld {
   litter(): THREE.Object3D[];
   /** Top of whatever is below (x, y, z): a roof, a bench, a ramp, or the ground. */
   below(x: number, y: number, z: number): number;
+  /**
+   * On a long map (B Hill): a dove this far from the rider, well out of sight,
+   * quietly moves to a perch around them, so the few birds keep up with a rider
+   * bombing a 1.5 km hill. Unset in a park, where they stay put.
+   */
+  roam?: number;
 }
 export interface DoveContext {
   rider: THREE.Vector3;
@@ -33,6 +39,8 @@ export interface DoveContext {
   night: number;
   /** 0..1 rain. */
   rain: number;
+  /** Which way the rider is heading (yaw), when moving: a roaming dove settles ahead of them. */
+  heading?: number;
 }
 type State = "perch" | "ground" | "fly" | "feed";
 interface Food { kind: "crumb" | "chip"; object: THREE.Object3D; position: THREE.Vector3; taken: boolean; claimed?: Dove; snack?: Snack }
@@ -306,6 +314,7 @@ export class Doves {
     for (const d of this.doves) {
       d.timer -= dt;
       const near = Math.hypot(d.position.x - ctx.rider.x, d.position.z - ctx.rider.z), flee = ctx.speed > 3 ? FLEE_RIDING : FLEE_ON_FOOT;
+      if (this.world.roam && d.state !== "fly" && near > this.world.roam && this.relocate(d, ctx)) continue;
       const low = d.position.y - this.world.ground(d.position.x, d.position.z) < 1.6;
       // Too close: a clatter of wings and off to a tree.
       if ((d.state === "ground" || d.state === "feed" || (d.state === "perch" && low)) && near < flee && Math.abs(d.position.y - ctx.rider.y) < 2.5) { this.release(d); this.flyTo(d, this.perchAwayFrom(ctx.rider), "perch"); continue; }
@@ -455,6 +464,20 @@ export class Doves {
     const near = this.world.perches.filter((p) => p.distanceTo(from) < 60);
     const list = near.length ? near : this.world.perches;
     return list[Math.floor(Math.random() * list.length)];
+  }
+  /** Moves a far-off dove (unseen) to a perch 45 to 110 m from the rider (ahead of them when they are moving), not on another dove. */
+  private relocate(d: Dove, ctx: DoveContext) {
+    const rider = ctx.rider, fx = ctx.heading === undefined ? 0 : Math.sin(ctx.heading), fz = ctx.heading === undefined ? 0 : Math.cos(ctx.heading);
+    const around = this.world.perches.filter((p) => { const r = Math.hypot(p.x - rider.x, p.z - rider.z); return r > 45 && r < 110 && !this.doves.some((o) => o !== d && o.position.distanceToSquared(p) < 1); });
+    const ahead = around.filter((p) => (p.x - rider.x) * fx + (p.z - rider.z) * fz > 20);
+    const list = ahead.length ? ahead : around;
+    if (!list.length) return false;
+    this.release(d);
+    const perch = list[Math.floor(Math.random() * list.length)];
+    d.state = "perch"; d.perch = perch.clone(); d.position.copy(perch); d.timer = 10 + Math.random() * 30; d.yaw = Math.random() * Math.PI * 2;
+    if (d.carry) { d.carry.removeFromParent(); d.carry = null; }
+    this.pose(d, 0);
+    return true;
   }
   private perchAwayFrom(rider: THREE.Vector3) {
     const choices = this.world.perches.filter((p) => { const d = Math.hypot(p.x - rider.x, p.z - rider.z); return d > 8 && d < 45; });

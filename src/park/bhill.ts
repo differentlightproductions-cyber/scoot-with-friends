@@ -22,6 +22,8 @@ import { buildHouses, drivewayAt, planHouse, POOL_DEPTH, type HouseLot, type Hou
 import { asphaltTexture, gravelTexture } from "../art/textures";
 import { roadMarksMesh, scatterAlongRoad } from "../art/road-marks";
 import { raceGate, speedLimitSign, streetNameSign, warningSign } from "../art/road-signs";
+import { utilityBoxes, utilityLine, type BoxSpot, type PoleSpot } from "../art/utility-poles";
+import { enableInstanceLod } from "../render/instance-lod";
 import { aleppoPine, bursage, fanPalm, plant, yucca, type Placement } from "../art/flora";
 import { Drainage, type GutterLine } from "./gutters";
 
@@ -589,17 +591,37 @@ export function buildBHill(park: Park) {
     mesh.receiveShadow = true;
     scene.add(mesh);
   }
-  /** The drawn ground anywhere: corridor, skirt or land. */
+  /**
+   * The height of a grid drawn along the route (rows every `step` samples,
+   * columns at the unsigned offsets `cols`) at (x, z), from its own vertices and
+   * triangles, so what is set on it sits on what is drawn. `flip`: the grid's
+   * quads on the left side are split along the other diagonal (pair() reverses them).
+   */
+  const gridAt = (n: ReturnType<typeof nearest>, cols: number[], vertex: (q: Sample, o: number) => number, flip: boolean) => {
+    const side = Math.sign(n.offset) || 1, d = Math.abs(n.offset);
+    const rf = n.index / step, r0 = Math.min(rows - 2, Math.floor(rf)), fr = THREE.MathUtils.clamp(rf - r0, 0, 1);
+    let c0 = 0;
+    while (c0 < cols.length - 2 && cols[c0 + 1] <= d) c0++;
+    const fc = THREE.MathUtils.clamp((d - cols[c0]) / (cols[c0 + 1] - cols[c0]), 0, 1);
+    const h = (r: number, c: number) => vertex(ROUTE[Math.min(ROUTE.length - 1, r * step)], cols[c] * side);
+    const h00 = h(r0, c0), h01 = h(r0, c0 + 1), h10 = h(r0 + 1, c0), h11 = h(r0 + 1, c0 + 1);
+    if (flip && side < 0) return fc >= fr ? h00 + (h01 - h00) * (fc - fr) + (h11 - h00) * fr : h00 + (h10 - h00) * (fr - fc) + (h11 - h00) * fc;
+    return fr + fc <= 1 ? h00 + (h10 - h00) * fr + (h01 - h00) * fc : h11 + (h01 - h11) * (1 - fr) + (h10 - h11) * (1 - fc);
+  };
+  const at = (q: Sample, o: number) => [q.x + q.tz * o, q.z - q.tx * o] as const;
+  const skirtVertex = (q: Sample, o: number) => {
+    const side = Math.sign(o), extra = Math.abs(o) - CORRIDOR, k = SKIRT.indexOf(Math.round(extra));
+    const [ex, ez] = at(q, CORRIDOR * side), edgeY = bHillHeight(ex, ez), [x, z] = at(q, o);
+    return k <= 0 ? edgeY : underRoads(x, z, edgeY + (terrain.surface(x, z) + 0.05 - edgeY) * BLEND[k]);
+  };
+  const SKIRT_COLS = SKIRT.map((e) => CORRIDOR + e);
+  /** The drawn ground anywhere: road and shoulders, the hillside band, the skirt or the land beyond. */
   const groundAt = (x: number, z: number) => {
     const n = nearest(x, z), d = Math.abs(n.offset);
-    if (d <= CORRIDOR) return bHillHeight(x, z);
-    if (d < CORRIDOR + SKIRT[SKIRT.length - 1]) {
-      const side = Math.sign(n.offset), i = Math.round(n.index), p = ROUTE[Math.min(ROUTE.length - 1, i)];
-      const edgeY = bHillHeight(p.x + p.tz * CORRIDOR * side, p.z - p.tx * CORRIDOR * side), extra = d - CORRIDOR;
-      let k = 1;
-      for (let j = 1; j < SKIRT.length; j++) if (extra < SKIRT[j]) { k = BLEND[j - 1] + (BLEND[j] - BLEND[j - 1]) * (extra - SKIRT[j - 1]) / (SKIRT[j] - SKIRT[j - 1]); break; }
-      return underRoads(x, z, edgeY + (terrain.surface(x, z) + 0.05 - edgeY) * k);
-    }
+    if (d <= VERGE) return bHillHeight(x, z);
+    if (d <= CORRIDOR) return gridAt(n, outside, (q, o) => { const [vx, vz] = at(q, o); return bHillHeight(vx, vz); }, true);
+    // Where the skirt and the land beyond overlap, whichever is higher is what shows.
+    if (d < SKIRT_COLS[SKIRT_COLS.length - 1]) return Math.max(gridAt(n, SKIRT_COLS, skirtVertex, false), terrain.surface(x, z));
     return terrain.surface(x, z);
   };
 
@@ -752,16 +774,19 @@ export function buildBHill(park: Park) {
   // limit and a hill warning, a curve warning ahead of each bend, and the cross
   // street at the bottom. On the riders' right, clear of driveways and side streets.
   const feet = lots.map((l) => routeProgress(l.x + l.ax * l.plan.gx + l.fx * (l.plan.LD / 2 + l.reach), l.z + l.az * l.plan.gx + l.fz * (l.plan.LD / 2 + l.reach)));
+  // Things already standing on the verge (signs, poles, boxes): station and side.
+  const taken: { s: number; side: number }[] = SIDE_STREETS.map((st) => ({ s: st.s - 60, side: 1 }));
   const clear = (s: number, side: number) => {
     for (let k = 0; k < 12; k++) {
       const t = s + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 3;
-      const busy = lots.some((l, i) => l.side === side && Math.abs(feet[i] - t) < l.plan.drive + 2.2) || SIDE_STREETS.some((st) => Math.abs(st.s - t) < 16);
+      const busy = lots.some((l, i) => l.side === side && Math.abs(feet[i] - t) < l.plan.drive + 2.2) || SIDE_STREETS.some((st) => Math.abs(st.s - t) < 16) || taken.some((o) => o.side === side && Math.abs(o.s - t) < 4);
       if (!busy) return t;
     }
     return s;
   };
   const stand = (sign: THREE.Object3D, s: number, side = -1) => {
     const at = clear(s, side), p = routePose(at), o = side * (VERGE + 0.7), x = p.x + Math.cos(p.yaw) * o, z = p.z - Math.sin(p.yaw) * o;
+    taken.push({ s: at, side });
     sign.position.set(x, bHillHeight(x, z), z);
     sign.rotation.y = p.yaw + Math.PI; // facing riders coming down
     scene.add(sign);
@@ -792,6 +817,60 @@ export function buildBHill(park: Park) {
   const bottom = stand(streetNameSign(["B HILL", "PUEBLO DR"]), B_HILL_LENGTH - 40, 1);
   bottom.rotation.y += Math.PI / 2;
   scene.userData.bHillBends = bends;
+
+  // ---- Overhead power down the riders' left: wooden poles about 40 m apart,
+  // closer on the bends so the wires stay over the verge and the street, clear
+  // of driveways, mailboxes, signs and side streets. A can transformer on every
+  // few poles. Green pad-mounted transformers and telecom pedestals on the right.
+  const offsetOf = (x: number, z: number) => nearest(x, z).offset;
+  const poleAt = (s: number) => { const p = routePose(s), o = VERGE + 0.9; return { x: p.x + Math.cos(p.yaw) * o, z: p.z - Math.sin(p.yaw) * o, yaw: p.yaw + Math.PI }; };
+  const spots: PoleSpot[] = [];
+  for (let s = clear(8, 1); s < B_HILL_LENGTH - 6;) {
+    const here = poleAt(s);
+    spots.push({ ...here, y: bHillHeight(here.x, here.z) - 0.05, transformer: spots.length % 5 === 3 });
+    taken.push({ s, side: 1 });
+    let next = -1;
+    for (let reach = 42; reach >= 16 && next < 0; reach -= 2) {
+      const t = clear(s + reach, 1);
+      if (t <= s + 12 || t > s + 46) continue;
+      const there = poleAt(Math.min(t, B_HILL_LENGTH));
+      // The span's chord may cross over the street but not run far out over the yards.
+      let ok = true;
+      for (let k = 1; k < 8 && ok; k++) { const o = offsetOf(here.x + (there.x - here.x) * k / 8, here.z + (there.z - here.z) * k / 8); ok = o > -ROAD_HALF_WIDTH && o < VERGE + 3.5; }
+      if (ok) next = t;
+    }
+    s = next < 0 ? s + 16 : next;
+  }
+  const line = utilityLine(spots, "B Hill power line");
+  scene.add(line.group);
+  // Distance detail (#98): the insulators and bolts only near, the poles and cans much further.
+  line.group.traverse((o) => { if (o instanceof THREE.InstancedMesh) enableInstanceLod(scene, o, /hardware/.test(o.name) ? 140 : /transformers/.test(o.name) ? 320 : 900); });
+  for (const f of line.feet) world.createCollider(RAPIER.ColliderDesc.cylinder(f.height / 2, f.radius).setTranslation(f.x, f.y + f.height / 2, f.z).setFriction(0.3).setCollisionGroups(GROUPS.surface));
+  const boxes: BoxSpot[] = [];
+  for (let s = 70, n = 0; s < B_HILL_LENGTH - 30; s += 85 + (n * 37) % 50, n++) {
+    const kind = n % 3 === 1 ? "transformer" : "pedestal", o = -(VERGE + (kind === "transformer" ? 0.9 : 0.6));
+    // The first spot near s (tried every 7 m) whose footprint is off the lots and on nearly level ground.
+    let found: { at: number; x: number; z: number; low: number } | null = null;
+    for (let k = 0; k < 5 && !found; k++) {
+      const at = clear(s + k * 7, -1), p = routePose(at), x = p.x + Math.cos(p.yaw) * o, z = p.z - Math.sin(p.yaw) * o;
+      const half = kind === "transformer" ? [0.8, 0.66] : [0.2, 0.2], corners: [number, number][] = [];
+      for (const u of [-1, 1]) for (const v of [-1, 1]) corners.push([x + Math.sin(p.yaw) * half[0] * u + Math.cos(p.yaw) * half[1] * v, z + Math.cos(p.yaw) * half[0] * u - Math.sin(p.yaw) * half[1] * v]);
+      if (corners.some(([cx, cz]) => lotsNear(at).some((l) => { const { lx, lz } = lotFrame(l, cx, cz); return Math.abs(lx) < l.plan.LW / 2 + 0.2 && Math.abs(lz) < l.plan.LD / 2 + 0.2; }))) continue;
+      const heights = corners.map(([cx, cz]) => bHillHeight(cx, cz)), low = Math.min(...heights);
+      if (Math.max(...heights) - low <= 0.3) found = { at, x, z, low };
+    }
+    if (!found) continue;
+    const { at, x, z, low } = found, p = routePose(at);
+    taken.push({ s: at, side: -1 });
+    boxes.push({ x, y: low - 0.04, z, yaw: p.yaw + Math.PI, kind });
+    const size = kind === "transformer" ? [0.62, 0.55, 0.52] : [0.18, 0.5, 0.16];
+    world.createCollider(RAPIER.ColliderDesc.cuboid(size[0], size[1], size[2]).setTranslation(x, low + size[1], z).setRotation({ x: 0, y: Math.sin((p.yaw + Math.PI) / 2), z: 0, w: Math.cos((p.yaw + Math.PI) / 2) }).setFriction(0.3).setCollisionGroups(GROUPS.surface));
+  }
+  const utility = utilityBoxes(boxes, "B Hill utility boxes");
+  scene.add(utility);
+  utility.traverse((o) => { if (o instanceof THREE.InstancedMesh) enableInstanceLod(scene, o, 220); });
+  // Where the doves sit here: the wires and crossarms, the roof ridges and the yard walls.
+  scene.userData.dovePerches = [...line.perches, ...houses.perches];
 
   // The start and finish gates stand only while a timed race is on (setRaceGates).
   const gates = new THREE.Group();

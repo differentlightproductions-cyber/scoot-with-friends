@@ -1,15 +1,16 @@
 import { activeLayout, brushHeight } from "../editor/layout";
 import { addSurface, surfaceDisk, surfaceRect } from "./surfaces";
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { addParkPeople } from "./people";
 import { aleppoPine, boulder, bursage, plant, yucca, type Placement } from '../art/flora';
 import RAPIER from "@dimforge/rapier3d-compat";
 import type { Park } from "./park";
 import { GROUPS } from "../physics/groups";
-import { WATER, buildShoreline, dressLake } from "./water";
+import { LAKES, WATER, bankRadius, buildShoreline, dressLake, lakeSurfaceGeometry } from "./water";
 import { buildLakeBasin } from "./underwater";
 import { floodlight, monumentSign, pavilion as buildPavilion, veteransPanel } from "./props";
-import { buildDiveDock } from "./dive-dock";
+import { DIVE_DOCK, buildDiveDock } from "./dive-dock";
 import { surfaceMaterial } from "./art";
 import { CURB, StreetPlan, setStreets, type Ramp, type Rect } from "./streets";
 import { Drainage } from "./gutters";
@@ -144,7 +145,16 @@ const ISLAND_HX = 2.1,
   ISLAND_HZ = 4.5,
   ISLAND_EDGE = 0.17;
 /** The world's extent at Veterans (the ground slab the park is built on). */
-export const VETERANS_BOUNDS: Rect = { x0: -116, x1: 116, z0: -170, z1: 80 };
+/**
+ * The world's extent at Veterans (the ground slab the park is built on). It runs
+ * north past the ballfields over the open grass field and the lake (#99) to
+ * where Buchanan Blvd leaves for the Church (#43).
+ */
+export const VETERANS_BOUNDS: Rect = { x0: -116, x1: 116, z0: -412, z1: 80 };
+/** Where Buchanan Blvd leaves the Veterans district northbound, toward the Church (#43). */
+export const BUCHANAN_NORTH_END = -405;
+/** The open grass field north of the ballfields (#99): room for a soccer pitch later. */
+export const NORTH_FIELD: Rect = { x0: -19, x1: 77, z0: -238, z1: -160 };
 const LOT: Rect = { x0: -38, x1: 92, z0: -89, z1: -49 };
 const walkRamp = (axis: "x" | "z", at: number, from: number, to: number, dir: 1 | -1): Ramp => ({ axis, at, from, to, dir, run: 1.5 });
 const streetEnd = (axis: "x" | "z", at: number, from: number, to: number, dir: 1 | -1): Ramp => ({ axis, at, from, to, dir, run: 3, flare: 1, paving: "asphalt" });
@@ -152,7 +162,7 @@ export const VETERANS_STREETS = new StreetPlan(
   [
     LOT,
     { x0: 92, x1: 98.5, z0: -69.5, z1: -60.5 }, // the drive aisle out to the street
-    { x0: 98.5, x1: 107.5, z0: -99.125, z1: 69.5 }, // the east street
+    { x0: 98.5, x1: 107.5, z0: BUCHANAN_NORTH_END, z1: 69.5 }, // the east street: Buchanan Blvd
     { x0: -110.125, x1: 107.5, z0: 60.5, z1: 69.5 }, // the south street
   ],
   PARKING_ISLANDS.map(([x, z]) => ({ x0: x - ISLAND_HX - ISLAND_EDGE, x1: x + ISLAND_HX + ISLAND_EDGE, z0: z - ISLAND_HZ - ISLAND_EDGE, z1: z + ISLAND_HZ + ISLAND_EDGE })),
@@ -170,16 +180,16 @@ export const VETERANS_STREETS = new StreetPlan(
     walkRamp("z", 107.5, 65.5, 68, 1),
     walkRamp("x", 69.5, 102.5, 105, 1),
     // Where each street runs out into the desert.
-    streetEnd("x", -99.125, 98.5, 107.5, -1),
+    streetEnd("x", BUCHANAN_NORTH_END, 98.5, 107.5, -1),
     streetEnd("z", -110.125, 60.5, 69.5, -1),
   ],
   [
     { x0: -38, x1: 92, z0: -49, z1: -45 }, // the lot's south walk, along the park
     { x0: -38, x1: 92, z0: -93, z1: -89 }, // its north walk, along the ballfields
-    { x0: 96.4, x1: 98.5, z0: -99.125, z1: -69.5 }, // the east street's park-side walk
+    { x0: 96.4, x1: 98.5, z0: BUCHANAN_NORTH_END, z1: -69.5 }, // the east street's park-side walk
     { x0: 96.4, x1: 98.5, z0: -60.5, z1: 60.5 },
     { x0: -110.125, x1: 98.5, z0: 58.4, z1: 60.5 }, // the south street's
-    { x0: 107.5, x1: 109.6, z0: -99.125, z1: 71.6 }, // and the far walks
+    { x0: 107.5, x1: 109.6, z0: BUCHANAN_NORTH_END, z1: 71.6 }, // and the far walks
     { x0: -110.125, x1: 107.5, z0: 69.5, z1: 71.6 },
   ],
 );
@@ -224,7 +234,7 @@ export function buildMemorialGrounds(park: Park) {
     for (let j = 0; j <= nz; j++)
       for (let i = 0; i <= nx; i++) {
         const x = -116 + i * 2,
-          z = -170 + j * 2;
+          z = VETERANS_BOUNDS.z0 + j * 2;
         verts.push(x, brushHeight(x, z, low(x, z)), z);
       }
     for (let j = 0; j < nz; j++)
@@ -538,9 +548,9 @@ export function buildMemorialGrounds(park: Park) {
   // (streets.ts); these are their clearances for planting.
   for (const [a, b, width] of [
     [[-38, -47], [92, -47], 4], [[-38, -91], [92, -91], 4], [[-35, -65], [89, -65], 7],
-    [[103, -99], [103, 65], 9], [[103, 65], [-110, 65], 9], [[89, -65], [103, -65], 9],
-    [[97.45, -99], [97.45, 60.5], 2.1], [[-110, 59.45], [98.5, 59.45], 2.1],
-    [[108.55, -99], [108.55, 71.6], 2.1], [[-110, 70.55], [107.5, 70.55], 2.1],
+    [[103, BUCHANAN_NORTH_END], [103, 65], 9], [[103, 65], [-110, 65], 9], [[89, -65], [103, -65], 9],
+    [[97.45, BUCHANAN_NORTH_END], [97.45, 60.5], 2.1], [[-110, 59.45], [98.5, 59.45], 2.1],
+    [[108.55, BUCHANAN_NORTH_END], [108.55, 71.6], 2.1], [[-110, 70.55], [107.5, 70.55], 2.1],
   ] as [number[], number[], number][])
     pathClearance.push({ a, b, width });
   // Paint, wheel stops and islands stand on the sunk asphalt, a curb below the park.
@@ -576,26 +586,47 @@ export function buildMemorialGrounds(park: Park) {
     low(x, 0.019, -54, 0.18, 0.008, 3.5, 0xf0efe7);
   }
   // The east street's centre line, and the crosswalk where its walk crosses the aisle.
-  for (let z = -95; z < 60; z += 8) low(103, 0.017, z, 0.12, 0.01, 3, 0xe9d797);
+  for (let z = BUCHANAN_NORTH_END + 6; z < 60; z += 8) low(103, 0.017, z, 0.12, 0.01, 3, 0xe9d797);
   for (let i = 0; i < 4; i++) low(96.6 + i * 0.6, 0.023, -65, 0.32, 0.012, 7.4, 0xe9e7d9);
 
   // Lake and surrounding trail, set outside the usable skatepark lines: the
   // water itself (water.ts), a slim concrete edge between it and the grass, and
   // the dive dock at its south tip for on-foot water tricks.
-  const lake = new THREE.Mesh(new THREE.CircleGeometry(1, 96));
+  const lake = new THREE.Mesh(lakeSurfaceGeometry());
   lake.name = "lake-water";
   dressLake(lake);
-  lake.rotation.x = -Math.PI / 2;
-  lake.scale.set(WATER.radiusX, WATER.radiusZ, 1);
-  lake.position.set(WATER.x, WATER.surface, WATER.z);
+  lake.position.y = WATER.surface;
   scene.add(lake);
   // Under the surface: the basin, its stones and the surface seen from below (#62).
   scene.userData.lakeBasin = buildLakeBasin(scene);
   const shoreline = surfaceMaterial(0xdedad0, "concrete", 2.4, 2.4);
   shoreline.polygonOffset = true;
   shoreline.polygonOffsetUnits = -40;
-  buildShoreline(scene, shoreline);
+  const shore = buildShoreline(scene, shoreline);
   buildDiveDock(park);
+  // ---- North of the ballfields (#99, from the owner's aerial photo) ----
+  // Veterans, then the open grass field, then the lake with the Model Boat
+  // Pond: Buchanan Blvd runs up their east side. A gravel trail rings each body
+  // of water; paths join the ballfield loop, the field and the trails to the
+  // Buchanan walk.
+  cover(NORTH_FIELD, -0.008, 0x7f9b55, "grass", "North field lawn");
+  surfaceRect("grass", NORTH_FIELD.x0, NORTH_FIELD.x1, NORTH_FIELD.z0, NORTH_FIELD.z1);
+  // Where the old lake was, inside its loop path on the west side: lawn.
+  cover({ x0: -109, x1: -92.5, z0: -28, z1: 38 }, -0.008, 0x7f9b55, "grass", "West lawn");
+  surfaceRect("grass", -109, -92.5, -28, 38);
+  const gravel = surfaceMaterial(0xd6c29c, "concrete", 3, 3);
+  gravel.polygonOffset = true;
+  gravel.polygonOffsetUnits = -30;
+  const trails = mergeGeometries([shore.band(0, 4.5, 7.5, 0.006, 3), shore.band(1, 3.5, 6, 0.0068, 3)]);
+  const trail = new THREE.Mesh(trails, gravel);
+  trail.name = "Lakeside trail";
+  trail.receiveShadow = true;
+  scene.add(trail);
+  path([[-30, -151], [-30, -244], [91, -244], [91, -151]], 4);
+  path([[-30, -244], [-30, -297], [-24, -297]], 4);
+  path([[91, -244], [91, -297], [82, -297]], 4);
+  path([[91, -297], [96.4, -297]], 4);
+  path([[91, -151], [96.4, -151]], 4);
   const pavilion = (x: number, z: number) => {
     buildPavilion(park, x, z);
     surfaceRect("road", x - 3.5, x + 3.5, z - 3.5, z + 3.5);
@@ -723,8 +754,7 @@ export function buildMemorialGrounds(park: Park) {
       (x > -34 && x < 96 && z > -94 && z < -43) ||
       (x > -33 && x < 32 && z > -45 && z < 36) ||
       (x > 39 && x < 90 && z > -26 && z < 26) ||
-      (x > -83 && x < -41 && z > -31 && z < 37) ||
-      (x < -85 && x > -110 && z > -35 && z < 47);
+      (x > -83 && x < -41 && z > -31 && z < 37);
     if (!excluded&&clearPlant(x,z,2.7)) trees.push([x, z, 3.7 + (i % 4) * 0.7]);
   }
   trees.push(
@@ -738,6 +768,19 @@ export function buildMemorialGrounds(park: Park) {
     [91, 20, 4],
     [-29, 20, 5],
   );
+  // North (#99): pines along the Buchanan side of the field, round the lake and
+  // pond past their trails, and scattered beyond the lake.
+  const bankGap = (x: number, z: number) => Math.min(...LAKES.map((l, i) => Math.hypot(x - l.x, z - l.z) - bankRadius(i, Math.atan2(z - l.z, x - l.x))));
+  for (let z = -166; z > -236; z -= 11) trees.push([84, z, 3.9 + (Math.abs(z) % 3) * 0.5]);
+  for (let i = 0; i < 44; i++) {
+    const a = (i / 44) * Math.PI * 2 + Math.sin(i * 1.7) * 0.05, out = 11 + (i % 3) * 1.6, R = bankRadius(0, a);
+    trees.push([LAKES[0].x + Math.cos(a) * (R + out), LAKES[0].z + Math.sin(a) * (R + out), 3.8 + (i % 4) * 0.6]);
+  }
+  for (let i = 0; i < 40; i++) trees.push([-100 + ((i * 53) % 190), -335 - ((i * 29) % 65), 3.6 + (i % 4) * 0.7]);
+  for (let i = trees.length - 1; i >= 0; i--) {
+    const [x, z] = trees[i];
+    if (z < -150 && (bankGap(x, z) < 9 || (x > NORTH_FIELD.x0 - 2 && x < NORTH_FIELD.x1 + 2 && z > NORTH_FIELD.z0 - 2 && z < NORTH_FIELD.z1 + 2) || x > 94 || Math.hypot(x - DIVE_DOCK.rack[0], z - DIVE_DOCK.rack[1]) < 6)) trees.splice(i, 1);
+  }
   for(let i=trees.length-1;i>=0;i--)if(!clearPlant(trees[i][0],trees[i][1],2.7))trees.splice(i,1);
   // A rider should not be able to ride straight through a tree trunk. One
   // fixed cylinder per tree, sized to the trunk rather than the full canopy

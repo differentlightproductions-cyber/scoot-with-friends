@@ -39,6 +39,8 @@ export interface PhoneDeps {
   emote: (id: string) => void;
   /** Opens a Sesh menu screen (canonical customisation lives there). */
   openSesh: (screen: string) => void;
+  /** Projects the hologram mini editor (#66) for the ride or the rider. */
+  holo: (mode: 'ride' | 'rider') => void;
   switchRide: (kind: 'scooter' | 'longboard') => Promise<string>;
   ownsBoard: () => boolean;
   items: () => WorldInteractions;
@@ -206,8 +208,7 @@ function ridesApp(d: PhoneDeps): View {
           { id: 'ride-scooter', label: translate('phone.ui.scooter'), detail: translate(active === 'scooter' ? 'phone.ui.riding_now' : 'phone.ui.switch_ground'), chosen: active === 'scooter', action: () => void switchTo('scooter') },
           { id: 'ride-board', label: translate('phone.ui.longboard'), detail: translate(!owns ? 'phone.ui.buy_board' : active === 'longboard' ? 'phone.ui.riding_now' : 'phone.ui.switch_ground'), chosen: active === 'longboard', disabled: !owns, action: () => void switchTo('longboard') },
           { id: 'setup', label: translate('phone.ui.current_setup'), detail: translate('phone.ui.every_part'), action: () => d.phone.push(setup) },
-          { id: 'custom-scooter', label: translate('phone.ui.custom_scooter'), detail: translate('phone.ui.opens_builder'), action: () => d.phone.close(() => d.openSesh('scooter')) },
-          { id: 'custom-board', label: translate('phone.ui.custom_board'), detail: translate('phone.ui.opens_builder'), action: () => d.phone.close(() => d.openSesh('longboard')) },
+          { id: 'holo-ride', label: translate('phone.ui.holo_ride'), detail: translate('phone.ui.holo_ride_desc'), action: () => d.phone.close(() => d.holo('ride')) },
         ] },
       ];
       if (notice) blocks.push({ type: 'text', text: notice, muted: true });
@@ -247,8 +248,7 @@ function riderApp(d: PhoneDeps): View {
         { type: 'title', text: translate('phone.rider'), sub: preset ? preset.name : translate('phone.ui.your_custom_rider') },
         { type: 'card', title: preset?.name.toUpperCase() ?? translate('phone.ui.custom_rider'), art: TEAL, icon: 'rider', picture: riderPicture(d, a), lines: [words(a.hairStyle) + ' · ' + words(a.bodyType), words(a.top) + ' · ' + words(a.shoes)] },
         { type: 'list', rows: [
-          { id: 'customize', label: translate('phone.ui.customize_rider'), detail: translate('phone.ui.customize_rider_desc'), action: () => d.phone.close(() => d.openSesh('creator')) },
-          { id: 'presets', label: translate('phone.ui.choose_rider'), detail: translate('phone.ui.choose_rider_desc'), action: () => d.phone.close(() => d.openSesh('rider-presets')) },
+          { id: 'holo-rider', label: translate('phone.ui.holo_rider'), detail: translate('phone.ui.holo_rider_desc'), action: () => d.phone.close(() => d.holo('rider')) },
         ] },
       ] };
     },

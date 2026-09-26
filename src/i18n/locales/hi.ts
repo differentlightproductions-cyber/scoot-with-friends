@@ -116,6 +116,7 @@ export const HI: Record<string, string> = {
   "phone.ui.emotes_phone": "एक हाथ के इमोट में फ़ोन बाहर रहता है", "phone.ui.emotes_foot": "इमोट के लिए सवारी से उतरें",
   "phone.ui.current_setup": "मौजूदा सेटअप", "phone.ui.longboard": "लॉन्गबोर्ड", "phone.ui.scooter": "स्कूटर", "phone.ui.not_owned": "अभी अपना नहीं", "phone.ui.board_build": "{name} सेटअप",
   "phone.ui.riding_board": "लॉन्गबोर्ड पर", "phone.ui.riding_scooter": "स्कूटर पर", "phone.ui.riding_now": "अभी चला रहे हैं", "phone.ui.switch_ground": "ज़मीन पर बदलें", "phone.ui.buy_board": "Techno Gravity से पूरा बोर्ड खरीदें",
+  "phone.ui.holo_ride": "होलो एडिट", "phone.ui.holo_ride_desc": "यहीं पार्ट्स बदलें और अपनी राइड पर देखें", "phone.ui.holo_rider": "होलो एडिट राइडर", "phone.ui.holo_rider_desc": "यहीं अपना लुक बदलें, अपने राइडर पर", "phone.ui.full_editors": "पूरे एडिटर: मुख्य मेनू, LOCKER",
   "phone.ui.every_part": "सवारी के सारे पुर्ज़े", "phone.ui.custom_scooter": "स्कूटर बदलें", "phone.ui.custom_board": "लॉन्गबोर्ड बदलें", "phone.ui.opens_builder": "सत्र बिल्डर खोलें",
   "phone.ui.switching": "बदल रहे हैं…", "phone.ui.board_ready": "लॉन्गबोर्ड तैयार है। ज़मीन पर बदलेगा।", "phone.ui.scooter_ready": "स्कूटर तैयार है। ज़मीन पर बदलेगा।",
   "phone.ui.your_custom_rider": "आपका बनाया राइडर", "phone.ui.custom_rider": "बनाया राइडर", "phone.ui.customize_rider": "राइडर बदलें", "phone.ui.customize_rider_desc": "चेहरा, बाल, आँखें, कपड़े, सामान", "phone.ui.choose_rider": "राइडर चुनें", "phone.ui.choose_rider_desc": "नमूना राइडर और प्रीसेट",

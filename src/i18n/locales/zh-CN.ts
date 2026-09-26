@@ -125,6 +125,7 @@ export const ZH_CN: Record<string, string> = {
   "phone.ui.emotes_phone": "单手动作可保持手机打开", "phone.ui.emotes_foot": "下车后才能做动作",
   "phone.ui.current_setup": "当前配置", "phone.ui.longboard": "长板", "phone.ui.scooter": "滑板车", "phone.ui.not_owned": "尚未拥有", "phone.ui.board_build": "{name} 配置",
   "phone.ui.riding_board": "正在骑长板", "phone.ui.riding_scooter": "正在骑滑板车", "phone.ui.riding_now": "正在使用", "phone.ui.switch_ground": "落地后切换", "phone.ui.buy_board": "在 Techno Gravity 购买完整长板",
+  "phone.ui.holo_ride": "全息编辑", "phone.ui.holo_ride_desc": "就地更换部件，立即在车上看到", "phone.ui.holo_rider": "全息编辑车手", "phone.ui.holo_rider_desc": "就地改变造型，立即在车手身上看到", "phone.ui.full_editors": "完整编辑器：主菜单 LOCKER",
   "phone.ui.every_part": "载具上的所有部件", "phone.ui.custom_scooter": "定制滑板车", "phone.ui.custom_board": "定制长板", "phone.ui.opens_builder": "打开配置界面",
   "phone.ui.switching": "正在切换……", "phone.ui.board_ready": "长板已就绪，落地后切换。", "phone.ui.scooter_ready": "滑板车已就绪，落地后切换。",
   "phone.ui.your_custom_rider": "你的自定义角色", "phone.ui.custom_rider": "自定义角色", "phone.ui.customize_rider": "定制角色", "phone.ui.customize_rider_desc": "脸、头发、眼睛、服装与配饰", "phone.ui.choose_rider": "选择角色", "phone.ui.choose_rider_desc": "示例角色与预设",

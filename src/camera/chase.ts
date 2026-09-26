@@ -47,6 +47,9 @@ export class ChaseCamera {
   /** The phone camera's zoom (#77): first person narrows its field of view by this much. */
   zoom = 1;
   motion: "reduced" | "full" = "reduced";
+  /** The hologram editor (#66) is up: swing round to a close three-quarter view of the rider's front. */
+  showcase = false;
+  private showBlend = 0;
   /**
    * Mounted first-person framing. tilt: heads-up pitch from the head's forward
    * (radians, negative looks down); eyeBack: how far behind the head the eye
@@ -149,15 +152,20 @@ export class ChaseCamera {
       );
       this.elevation = damp(this.elevation, 0.2, 4, dt);
     }
+    this.showBlend = damp(this.showBlend, this.showcase ? 1 : 0, 4, dt);
+    if (this.showcase) {
+      this.orbit += wrap(s.yaw + Math.PI - 0.62 - this.heading - this.orbit) * (1 - Math.exp(-3.5 * dt));
+      this.elevation = damp(this.elevation, 0.02, 3, dt);
+    }
     // Bombing a hill past pushing speed the view eases back and looks further
     // down the road, so the next corner is on screen in time. Park riding never
     // reaches this range, so its framing is unchanged.
     const bomb = clamp((s.speed - TUNE.pushMaxSpeed) / 14, 0, 1) * (s.walking ? 0 : 1);
-    const distance = 4.7 + Math.min(s.speed * 0.055, 0.7) + bomb * 1.1;
+    const distance = (4.7 + Math.min(s.speed * 0.055, 0.7) + bomb * 1.1) * (1 - 0.3 * this.showBlend);
     const a = this.heading + this.orbit;
     const look = p
       .clone()
-      .add(new THREE.Vector3(0, 0.9 - bomb * 0.2, 0))
+      .add(new THREE.Vector3(0, 0.9 - bomb * 0.2 + 0.1 * this.showBlend, 0))
       .addScaledVector(s.velocity.clone().setY(0), 0.11 + bomb * 0.1);
     // Leading the rider up a steep ramp put the look point inside the ramp, so the
     // obstruction ray started blocked and the camera snapped in about a metre.

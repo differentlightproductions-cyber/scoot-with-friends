@@ -102,6 +102,20 @@ const shingles = () => mat("roof shingles", () => {
   t.repeat.set(3, 2.4);
   return new THREE.MeshStandardMaterial({ map: t, bumpMap: t, bumpScale: 0.02, roughness: 0.92 });
 });
+/** Pavilion ceiling (#39): tongue-and-groove pine boards, seen from below. */
+const soffit = () => mat("pavilion soffit", () => {
+  const t = canvasTexture(256, 256, (g) => {
+    const r = rng(412);
+    for (let i = 0; i < 16; i++) {
+      const k = 0.86 + r() * 0.22;
+      g.fillStyle = `rgb(${Math.round(176 * k)},${Math.round(128 * k)},${Math.round(84 * k)})`; g.fillRect(0, i * 16, 256, 16);
+      for (let n = 0; n < 5; n++) { g.strokeStyle = `rgba(90,55,30,${0.12 + r() * 0.12})`; g.lineWidth = 1; g.beginPath(); const y = i * 16 + 3 + r() * 10; g.moveTo(0, y); g.bezierCurveTo(80, y + r() * 4 - 2, 170, y + r() * 4 - 2, 256, y + r() * 3 - 1.5); g.stroke(); }
+      g.fillStyle = "rgba(40,24,12,.55)"; g.fillRect(0, i * 16 + 14, 256, 2);
+    }
+  }, true);
+  t.repeat.set(2, 2);
+  return new THREE.MeshStandardMaterial({ map: t, bumpMap: t, bumpScale: 0.015, roughness: 0.8, side: THREE.BackSide });
+});
 /** Desert stone veneer: coursed blocks in tans and rust with dark mortar. */
 const stone = () => mat("stone veneer", () => {
   const t = canvasTexture(256, 256, (g) => {
@@ -301,12 +315,30 @@ export function pavilion(park: Park, x: number, z: number, y = 0) {
     k.box(V(0.1, 0.9, 0.1), post, V(dx, 2.85, dz - Math.sign(dz) * 0.32), 0.01, new THREE.Euler(-Math.sign(dz) * 0.78, 0, 0));
   }
   for (const s of [-1, 1]) { k.box(V(5.8, 0.3, 0.16), post, V(0, 3.3, s * 2.6), 0.02); k.box(V(0.16, 0.3, 5.8), post, V(s * 2.6, 3.3, 0), 0.02); }
-  // Rafters under the roof, the shingled hip roof, fascia and a ridge cap.
-  for (let i = -2; i <= 2; i++) k.box(V(0.08, 0.14, 5.2), dark, V(i * 1.2, 3.52, 0), 0.01);
+  // Tie beams under the roof, the shingled hip roof, fascia and a ridge cap.
+  for (let i = -2; i <= 2; i++) k.box(V(0.1, 0.16, 5.2), post, V(i * 1.2, 3.52, 0), 0.01);
   const roof = new THREE.ConeGeometry(5.1, 1.5, 4, 1, true);
   k.add(roof, shingles(), V(0, 4.22, 0), new THREE.Euler(0, Math.PI / 4, 0));
-  // The underside: the same pyramid drawn from inside, as a dark timber ceiling.
-  k.add(new THREE.ConeGeometry(5.08, 1.5, 4, 1, true), mat("pavilion soffit", () => new THREE.MeshStandardMaterial({ color: 0x4a3526, roughness: 0.85, side: THREE.BackSide })), V(0, 4.2, 0), new THREE.Euler(0, Math.PI / 4, 0));
+  // The underside (#39): the same pyramid drawn from inside as a tongue-and-groove plank ceiling,
+  // with the hip rafters and the common rafters of each face just under it.
+  k.add(new THREE.ConeGeometry(5.08, 1.5, 4, 1, true), soffit(), V(0, 4.2, 0), new THREE.Euler(0, Math.PI / 4, 0));
+  const eave = 5.08 / Math.SQRT2, low = 3.45, rise = 1.5, under = 0.09;
+  // Just under the ceiling: `w` metres from the centre on the +z face, `h` along it; or on the corner diagonal.
+  const underside = (h: number, w: number) => V(h, low + rise * (1 - w / eave) - under, w);
+  const hip = (d: number) => V(d, low + rise * (1 - d / eave) - under, d);
+  const rafter = (a: THREE.Vector3, b: THREE.Vector3, size: number) => {
+    const mid = a.clone().add(b).multiplyScalar(0.5), dir = b.clone().sub(a), q = new THREE.Quaternion().setFromUnitVectors(V(0, 0, 1), dir.clone().normalize());
+    k.box(V(size, size * 1.5, dir.length()), post, mid, 0.01, new THREE.Euler().setFromQuaternion(q));
+  };
+  for (let side = 0; side < 4; side++) {
+    const turn = new THREE.Matrix4().makeRotationY(side * Math.PI / 2);
+    // The hip from this face's right-hand corner up to the peak.
+    rafter(hip(eave - 0.25).applyMatrix4(turn), hip(0.25).applyMatrix4(turn), 0.14);
+    // Common rafters from the eave up to where they meet the hips.
+    for (let t = -2.85; t <= 2.86; t += 0.95) rafter(underside(t, eave - 0.1).applyMatrix4(turn), underside(t, Math.max(0.35, Math.abs(t) + 0.12)).applyMatrix4(turn), 0.08);
+  }
+  // The boss where the hips meet under the peak.
+  k.box(V(0.36, 0.3, 0.36), post, V(0, low + rise - 0.24, 0), 0.02);
   for (const s of [-1, 1]) { k.box(V(7.25, 0.18, 0.06), dark, V(0, 3.43, s * 3.6), 0.01); k.box(V(0.06, 0.18, 7.25), dark, V(s * 3.6, 3.43, 0), 0.01); }
   k.add(new THREE.ConeGeometry(0.22, 0.25, 4), dark, V(0, 5.02, 0), new THREE.Euler(0, Math.PI / 4, 0));
   // A picnic table in the shade.

@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import { WATER, bedBump as bump, inWater } from "./water";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { LAKES, WATER, bankRadius, bedBump as bump, bowl, inWater, lakeDisc } from "./water";
 
 /**
  * Under the lake (#62). Its basin: a bowl 2.5 m deep at the middle, sand in
@@ -18,27 +19,20 @@ export function buildLakeBasin(scene: THREE.Scene) {
   group.name = "Lake basin";
   // The weather's snow and wet shading stays off the bottom of a lake.
   group.userData.weatherDynamic = true;
-  const rings = 22, segments = 96, position: number[] = [], color: number[] = [], index: number[] = [];
+  // Each body's bowl, as a polar mesh out to its bank (water.ts), coloured sand to silt with depth.
   const sand = new THREE.Color(0x8d8263), silt = new THREE.Color(0x33402f), c = new THREE.Color();
-  for (let i = 0; i <= rings; i++) {
-    const r = i / rings;
-    for (let j = 0; j < segments; j++) {
-      const a = (j / segments) * Math.PI * 2, x = WATER.x + Math.cos(a) * WATER.radiusX * r, z = WATER.z + Math.sin(a) * WATER.radiusZ * r;
-      const floor = -WATER.depth * Math.pow(Math.max(0, 1 - r * r), 0.7);
-      position.push(x, i === rings ? -0.34 : Math.min(-0.34, floor + bump(x, z) * (1 - r)), z);
-      c.copy(sand).lerp(silt, THREE.MathUtils.smoothstep(-floor, 0.4, 2.2)).multiplyScalar(0.9 + 0.2 * Math.sin(x * 3.1 + z * 2.3) * Math.sin(z * 1.7));
+  const geometry = mergeGeometries(LAKES.map((lake, i) => {
+    const g = lakeDisc(i, 22, 128, (x, z, r) => (r >= 1 ? -0.34 : Math.min(-0.34, bowl(lake.depth, r) + bump(x, z) * (1 - r))));
+    const pos = g.getAttribute("position"), color: number[] = [];
+    for (let k = 0; k < pos.count; k++) {
+      const x = pos.getX(k), z = pos.getZ(k), floor = -pos.getY(k);
+      c.copy(sand).lerp(silt, THREE.MathUtils.smoothstep(floor, 0.4, 2.2)).multiplyScalar(0.9 + 0.2 * Math.sin(x * 3.1 + z * 2.3) * Math.sin(z * 1.7));
       color.push(c.r, c.g, c.b);
-      if (i < rings) {
-        const p = i * segments + j, q = i * segments + ((j + 1) % segments);
-        index.push(p, q, p + segments, q, q + segments, p + segments);
-      }
     }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(position, 3));
-  geometry.setAttribute("color", new THREE.Float32BufferAttribute(color, 3));
-  geometry.setIndex(index);
-  geometry.computeVertexNormals();
+    g.setAttribute("color", new THREE.Float32BufferAttribute(color, 3));
+    g.deleteAttribute("rim");
+    return g;
+  }));
   const bed = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, name: "Lake bed" });
   // Sunlight through the rippling surface: caustic bands wandering over the bottom.
   const time = { value: 0 };
@@ -63,10 +57,11 @@ export function buildLakeBasin(scene: THREE.Scene) {
   const stone = new THREE.MeshStandardMaterial({ color: 0x5b5a4e, roughness: 0.95, name: "Lake stones" });
   let seed = 9173;
   const rnd = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < 34; i++) {
-    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.92, x = WATER.x + Math.cos(a) * WATER.radiusX * r, z = WATER.z + Math.sin(a) * WATER.radiusZ * r;
+  for (let i = 0; i < 44; i++) {
+    const body = i % 3 === 2 ? 1 : 0, lake = LAKES[body];
+    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 0.92, R = bankRadius(body, a) * r, x = lake.x + Math.cos(a) * R, z = lake.z + Math.sin(a) * R;
     const size = 0.12 + rnd() * rnd() * 0.5, rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), stone);
-    rock.position.set(x, -WATER.depth * Math.pow(Math.max(0, 1 - r * r), 0.7) + bump(x, z) * (1 - r) + size * 0.2, z);
+    rock.position.set(x, bowl(lake.depth, r) + bump(x, z) * (1 - r) + size * 0.2, z);
     rock.scale.set(1, 0.55 + rnd() * 0.4, 0.8 + rnd() * 0.4);
     rock.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
     group.add(rock);
@@ -74,7 +69,7 @@ export function buildLakeBasin(scene: THREE.Scene) {
   // The surface from below: only its underside is drawn (the lake above draws the top).
   const surfaceTime = { value: 0 };
   const underside = new THREE.Mesh(
-    new THREE.CircleGeometry(1, 96),
+    mergeGeometries(LAKES.map((_, i) => { const g = lakeDisc(i, 4, 128, () => UNDERSIDE); g.deleteAttribute("rim"); return g; })),
     new THREE.ShaderMaterial({
       uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, { uTime: { value: 0 }, uSky: { value: new THREE.Color(0xbfe0e8) }, uDeep: { value: new THREE.Color(0x163c38) }, uLight: { value: 1 } }]),
       vertexShader: `varying vec3 vWorld;
@@ -106,11 +101,8 @@ void main() {
     }),
   );
   underside.name = "Lake surface from below";
-  underside.rotation.x = -Math.PI / 2;
-  underside.scale.set(WATER.radiusX, WATER.radiusZ, 1);
-  // Below the park's ground layers, which run on under the lake: the lawn is a
+  // Drawn at UNDERSIDE, below the ground layers that run on under the water: a
   // 20 cm slab down to y -0.25 whose underside would otherwise hide the surface from below.
-  underside.position.set(WATER.x, UNDERSIDE, WATER.z);
   group.add(underside);
   scene.add(group);
   const uniforms = (underside.material as THREE.ShaderMaterial).uniforms;

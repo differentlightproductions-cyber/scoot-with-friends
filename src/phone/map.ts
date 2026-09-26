@@ -88,7 +88,7 @@ export class PhoneMap {
     const p = this.source.player();
     box.expandByPoint(new THREE.Vector2(p.x, p.z));
     const centre = box.getCenter(new THREE.Vector2()), extent = box.getSize(new THREE.Vector2());
-    return { x: centre.x, z: centre.y, size: THREE.MathUtils.clamp(Math.max(extent.x, extent.y) * 1.3 + 24, 60, 260) };
+    return { x: centre.x, z: centre.y, size: THREE.MathUtils.clamp(Math.max(extent.x, extent.y) * 1.3 + 24, 60, 560) };
   }
 
   /** The overhead photo, taken once per map. */
@@ -110,7 +110,8 @@ export class PhoneMap {
   private local: { photo: HTMLCanvasElement; b: { x: number; z: number; size: number }; key: string } | null = null;
   private miniPhoto(mapKey: string, span: number) {
     const main = this.capture(mapKey), b = this.bounds, p = this.source.player();
-    const inside = Math.max(Math.abs(p.x - b.x), Math.abs(p.z - b.z)) + span * 0.75 <= b.size / 2;
+    // A photo of a whole large map (Veterans with its field and lake, #99) is too coarse up close: use a local one.
+    const inside = b.size <= 300 && Math.max(Math.abs(p.x - b.x), Math.abs(p.z - b.z)) + span * 0.75 <= b.size / 2;
     if (inside) return { photo: main, b };
     const l = this.local;
     if (l && l.key === mapKey && Math.max(Math.abs(p.x - l.b.x), Math.abs(p.z - l.b.z)) + span * 0.75 <= l.b.size / 2) return l;

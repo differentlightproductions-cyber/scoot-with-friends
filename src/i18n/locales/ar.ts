@@ -116,6 +116,7 @@ export const AR: Record<string, string> = {
   "phone.ui.emotes_phone": "تبقي حركات اليد الواحدة الهاتف ظاهرًا", "phone.ui.emotes_foot": "انزل عن المركبة لأداء حركة",
   "phone.ui.current_setup": "التجهيز الحالي", "phone.ui.longboard": "لوح طويل", "phone.ui.scooter": "سكوتر", "phone.ui.not_owned": "غير مملوك بعد", "phone.ui.board_build": "تجهيز {name}",
   "phone.ui.riding_board": "تركب اللوح الطويل", "phone.ui.riding_scooter": "تركب السكوتر", "phone.ui.riding_now": "تستخدمه الآن", "phone.ui.switch_ground": "بدّل على الأرض", "phone.ui.buy_board": "اشترِ لوحًا كاملًا من Techno Gravity",
+  "phone.ui.holo_ride": "تعديل هولوغرام", "phone.ui.holo_ride_desc": "بدّل قطعك هنا وشاهدها على مركبتك", "phone.ui.holo_rider": "تعديل هولوغرام للراكب", "phone.ui.holo_rider_desc": "غيّر مظهرك هنا على راكبك", "phone.ui.full_editors": "المحررات الكاملة: القائمة الرئيسية، LOCKER",
   "phone.ui.every_part": "كل أجزاء مركبتك", "phone.ui.custom_scooter": "تخصيص السكوتر", "phone.ui.custom_board": "تخصيص اللوح الطويل", "phone.ui.opens_builder": "يفتح إعداد المركبة",
   "phone.ui.switching": "جارٍ التبديل…", "phone.ui.board_ready": "اللوح جاهز. سيتبدل على الأرض.", "phone.ui.scooter_ready": "السكوتر جاهز. سيتبدل على الأرض.",
   "phone.ui.your_custom_rider": "راكبك المخصص", "phone.ui.custom_rider": "راكب مخصص", "phone.ui.customize_rider": "تخصيص الراكب", "phone.ui.customize_rider_desc": "الوجه والشعر والعينان والملابس والإكسسوارات", "phone.ui.choose_rider": "اختيار راكب", "phone.ui.choose_rider_desc": "ركاب عينة وإعدادات مسبقة",

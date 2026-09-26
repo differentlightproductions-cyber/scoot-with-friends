@@ -50,6 +50,8 @@ import { AudioEngine } from "./audio/audio";
 import { HUD } from "./ui/hud";
 import { EMOTES, SocialControls } from "./ui/social";
 import { GameMenu } from "./ui/menu";
+import { HologramEditor } from "./ui/hologram";
+import { showAllInstances, updateInstanceLods } from "./render/instance-lod";
 import { loadProfile, saveProfile } from "./data/loadout";
 import {setLocale,t} from './i18n';
 import {applyUiPalette} from './ui/palette';
@@ -166,9 +168,11 @@ async function boot() {
     };
     return f;
   }
-  // Mourning doves (#71): a few in the pines and on the pavilion roofs, now and then down on the lawn. Veterans only.
+  // Mourning doves (#71): a few in the pines and on the pavilion roofs, now and then down on the lawn at
+  // Veterans; on B Hill they sit on the power lines, roof ridges and yard walls and come down on the shoulders and yards.
   let doves: Doves | null = null;
   function makeDoves() {
+    if (ACTIVE_MAP === "b_hill") return makeHillDoves();
     if (ACTIVE_MAP !== "outdoor") return null;
     const branches = (scene.userData.treePerches as THREE.Vector3[] | undefined) ?? [];
     const perches = branches.filter((_, i) => i % 3 === 0), tables: THREE.Vector3[] = [];
@@ -198,6 +202,30 @@ async function boot() {
       below,
     });
     d.tables = tables;
+    d.onSnackEmpty = (at) => playful?.leaveLitter("wrapper", at);
+    d.onPoopHit = () => hud.feedback(t("doves.hit"), "warn");
+    return d;
+  }
+  function makeHillDoves() {
+    const perches = (scene.userData.dovePerches as THREE.Vector3[] | undefined) ?? [];
+    if (!perches.length) return null;
+    const down = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+    const below = (x: number, y: number, z: number) => { down.origin = { x, y, z }; const hit = world.castRay(down, 40, true); return hit ? y - hit.timeOfImpact : terrainHeight(x, z); };
+    const d = new Doves(scene, audio, {
+      ground: terrainHeight,
+      perches,
+      // The gravel shoulders and the open yards: bare ground with nothing built over it.
+      landing(near) {
+        for (let i = 0; i < 16; i++) {
+          const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * 22, x = near.x + Math.cos(a) * r, z = near.z + Math.sin(a) * r, y = terrainHeight(x, z);
+          if (terrainSurface(x, z) !== "road" && Math.abs(below(x, y + 3, z) - y) < 0.05) return new THREE.Vector3(x, y, z);
+        }
+        return null;
+      },
+      litter: () => playful?.litterObjects() ?? [],
+      below,
+      roam: 150,
+    });
     d.onSnackEmpty = (at) => playful?.leaveLitter("wrapper", at);
     d.onPoopHit = () => hud.feedback(t("doves.hit"), "warn");
     return d;
@@ -297,7 +325,7 @@ async function boot() {
   };
   const mapRide=()=>sim.walking||sim.sitting?'foot' as const:sim.rideable==='longboard'?'longboard' as const:'scooter' as const;
   const phoneMap=new PhoneMap({renderer,scene,features:mapFeatures,player:()=>({x:sim.position.x,z:sim.position.z,yaw:sim.yaw,ride:mapRide()}),
-    hide:()=>{const riderShown=rider.root.visible;rider.root.visible=false;weather.setVisible(false);for(const r of network.remotes.values())r.model.root.visible=false;return()=>{rider.root.visible=riderShown;weather.setVisible(true);for(const r of network.remotes.values())r.model.root.visible=true;};}});
+    hide:()=>{const riderShown=rider.root.visible;rider.root.visible=false;weather.setVisible(false);showAllInstances(scene);for(const r of network.remotes.values())r.model.root.visible=false;return()=>{rider.root.visible=riderShown;weather.setVisible(true);updateInstanceLods(scene,sim.position,fidelity.lodScale,true);for(const r of network.remotes.values())r.model.root.visible=true;};}});
   builder.onChange=()=>phoneMap.invalidate();
   /** The phone comes out standing, sitting, or rolling on the ground; never in the air, a trick, a grind or a crash. */
   const minimap=new Minimap(document.querySelector('#app')!,phoneMap),minimapView=new THREE.Vector3();
@@ -317,6 +345,7 @@ async function boot() {
     sim:()=>sim,profile:()=>profile,mapId:()=>ACTIVE_MAP,mapName:()=>MAPS.find(m=>m.id===ACTIVE_MAP)?.name??'Map',
     emote:id=>social.perform(id,sim,profile.settings.phoneHand==='left'?1:0),
     openSesh:screen=>{menu.openSesh(screen,ACTIVE_MAP as MapId);input.clear();pending=emptyInput();accumulator=0;},
+    holo:mode=>{holoView=camera.view;camera.view='third';camera.showcase=true;holo.open(mode);input.clear();pending=emptyInput();accumulator=0;},
     switchRide:async kind=>{const r=await economy.setRideable(kind,profile.equipmentRevision??0);if('profile' in r&&r.profile){Object.assign(profile,r.profile);menu.onChange();return '';}return ('error' in r&&r.error)||'Could not switch.';},
     ownsBoard:()=>ownsBoard(loadProfile().wallet,profile.longboard),
     items:()=>interactions,builder:()=>builder,
@@ -332,6 +361,10 @@ async function boot() {
     replays:{capture:()=>captureReplay(),library:()=>{input.clear();void replay.openLibrary();},seconds:()=>profile.settings.replayHistory},
     // Fast travel (#43): the spot's district loads if it is not this one, then the rider is placed at the spot.
     fastTravel:async spot=>{if(ACTIVE_MAP!==spot.map)await menu.onRide(spot.map);if(ACTIVE_MAP!==spot.map)return;sim.spawnIndex=Math.min(spot.spawn,SPAWNS.length-1);reset();}};
+  // The hologram mini editor (#66): the phone projects it beside the rider; changes show on the rider at once.
+  let holoView: "first" | "third" = "third";
+  const holo=new HologramEditor({profile:()=>profile,preview:draft=>{rider.applyProfile(draft);fidelity.refresh(rider.root);},save:(draft,mode)=>menu.saveHologram(draft,mode)},document.querySelector('#app')!);
+  holo.onClose=()=>{camera.showcase=false;camera.view=holoView;input.clear();pending=emptyInput();accumulator=0;};
   installApps(phoneDeps);
   phone.homePage=()=>homePage(phoneDeps);
   // First person: taps land on the 3D phone's screen.
@@ -460,6 +493,8 @@ async function boot() {
     }
     await loadingStage("Compiling shaders",at(.4));
     weather.showAllForCompile();
+    // Every instance drawn once so each scenery material compiles here, not when it first comes into range.
+    showAllInstances(scene);
     await renderer.compileAsync(scene,camera.camera);
     const view=camera.camera,position=view.position.clone(),rotation=view.quaternion.clone(),turn=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI/2);
     for(let i=0;i<4;i++){
@@ -471,6 +506,7 @@ async function boot() {
     // The overhead photo for the minimap and phone map renders the whole park once more (off screen).
     await loadingStage("Drawing the map",at(.95));
     phoneMap.prepare(ACTIVE_MAP);
+    updateInstanceLods(scene,sim.position,fidelity.lodScale,true);
     render(1/60);
   };
   network.loadMap=async id=>{await loadDestination(id as MapId);};
@@ -634,7 +670,7 @@ async function boot() {
       // The scene object is reused: what one map's builders listed on it (lamp
       // lenses and heads, shelters, perches, pending loads) must not carry into
       // the next map, where old lamp positions lit phantom spots (#85).
-      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch","drainage","detailChunks","bHillRaceGates","bHillBends"])delete scene.userData[key];
+      for(const key of ["lampLenses","amberLights","floodHeads","shelters","treePerches","lakeBasin","churchDecals","assetLoads","staticBatch","drainage","detailChunks","bHillRaceGates","bHillBends","dovePerches","instanceLods","smallDetail"])delete scene.userData[key];
       scene.clear();
       fidelity.disposeScene();
       selectPark(id);
@@ -810,7 +846,7 @@ async function boot() {
   const render = (dt: number, alpha = 1) => {
     const worldFrozen = hud.started && (hud.paused || !menu.root.hidden || menu.seshOpen || menu.shopOpen || rewards.open);
     if (!worldFrozen) {
-    if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);appearancePending=false;
+    if(appearancePending&&sim.grounded&&!sim.grind&&!sim.manual.active){rider.applyProfile(profile);fidelity.refresh(rider.root);appearancePending=false;
       // Switching rideable takes effect on the ground, never mid-air or mid-grind,
       // and not while the current one sits in a rack.
       if(sim.rideable!==profile.activeRideable&&!interactions.stored){sim.rideable=profile.activeRideable;sim.board.reset();}}
@@ -911,6 +947,8 @@ async function boot() {
       return;
     }
     // Pausing puts the phone straight away: the Sesh menu is then the only input owner.
+    // Start (or a bail) closes the hologram editor, putting the saved look back, rather than pausing.
+    if (holo.active && (frame.pressed.pause || sim.state === "Bail")) { holo.close(false); frame.pressed.pause = false; }
     if (frame.pressed.pause) {
       if (phone.active) phone.stow();
       phoneCamera.exit();
@@ -934,6 +972,8 @@ async function boot() {
     // The phone owns controller input while it is out (the chat field, when
     // composing, owns it first). Gameplay receives nothing, so a rider coasts on.
     frame = phoneStep(frame, dt);
+    // The hologram owns the controls while it is up; riding, the rider brakes to a stop.
+    if (holo.active) { holo.step(frame, dt); const riding = !sim.walking; frame = emptyInput(); if (riding) frame.held.brake = 1; }
     // The phone camera (#77) owns the face buttons while it is up; the sticks still move the rider.
     if (phoneCamera.active) {
       if (sim.state === "Bail") phoneCamera.exit();
@@ -951,7 +991,7 @@ async function boot() {
         const heldEmpty:ThrowableKind|null=held?.state==='empty'?({Chips:'wrapper',Soda:'can',Water:'bottle','Sports drink':'sports','Party Popper':'popper'} as Partial<Record<string,ThrowableKind>>)[held.kind]??null:null;
         frame=playful.update(dt,frame,sim,social.chat.hidden&&!phone.active,heldEmpty,()=>{if(held)interactions.discard(held.id);});
       }
-      doves?.update(dt,{rider:sim.position,speed:sim.walking?0:Math.hypot(sim.velocity.x,sim.velocity.z),night:daylight.nightLevel,rain:weather.rain});
+      doves?.update(dt,{rider:sim.position,speed:sim.walking?0:Math.hypot(sim.velocity.x,sim.velocity.z),night:daylight.nightLevel,rain:weather.rain,heading:Math.hypot(sim.velocity.x,sim.velocity.z)>2?Math.atan2(sim.velocity.x,sim.velocity.z):undefined});
       frame = interactions.update(sim,frame,dt,social.chat.hidden&&!phone.active);
     }
     accumulator += dt;
@@ -1055,6 +1095,7 @@ async function boot() {
       get playful() { return playful; },
       /** Mourning doves (#71). */
       get doves() { return doves; },
+      holo, openHolo: (mode: 'ride' | 'rider') => phoneDeps.holo(mode),
       audio,
       social,
       get builder(){return builder;},get interactions(){return interactions;},get daylight(){return daylight;},get weather(){return weather;},underwater,
