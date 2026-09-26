@@ -258,10 +258,10 @@ try {
       s.tricks.last === "720°" && s.lastLanding !== "failed",
     );
     check(
-      "Park name contains no city or state",
+      "Location reads Boulder City, NV (#100; supersedes the old no-city rule)",
       document
         .querySelector(".location")
-        .textContent.startsWith("VETERANS MEMORIAL PARK"),
+        .textContent.startsWith("BOULDER CITY, NV"),
     );
     g.render();
     return results;

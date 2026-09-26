@@ -11,10 +11,10 @@
   },
   {
     id: "outdoor",
-    name: "Veterans Memorial Park",
-    type: "Outdoor / Wood + Metal + Trails",
+    name: "Boulder City, NV",
+    type: "Veterans Memorial Park / Wood + Metal + BMX + Lake",
     description:
-      "Wooden transitions, a separate metal street park, BMX rollers and connected lakeside paths.",
+      "Veterans Memorial Park's wooden transitions, metal street park and BMX track, with Lakeside Drive winding east past the grass field to the lake and dive dock.",
     preview: "/previews/outdoor.webp",
     spawn: { x: -10, z: -19, yaw: 0 },
     environment: "outdoor",

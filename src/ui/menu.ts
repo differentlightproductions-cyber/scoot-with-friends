@@ -66,7 +66,9 @@ import './theme.css';
 import './shop.css';
 import { cityForMap, liveSky } from '../park/liveSky';
 const plural=(n:number,word:string)=>n+' '+(n===1?word:/[^aeiou]y$/.test(word)?word.slice(0,-1)+'ies':word+'s');
-const PARK_MAPS=MAPS.filter(m=>m.id!=="techno_gravity").sort((a,b)=>Number(b.id==="outdoor")-Number(a.id==="outdoor"));
+// The Maps list (#100): Boulder City, NV is the one map to ride. The Warehouse
+// (Build), B Hill, the Church and the shop are still built, off the list.
+const PARK_MAPS=MAPS.filter(m=>m.id==="outdoor");
 const MAIN_TABS=['play','locker','shop','crates','settings','account'] as const;
 type MainTab=typeof MAIN_TABS[number];
 export class GameMenu {
@@ -411,7 +413,7 @@ export class GameMenu {
       subtitle = "YOUR NEXT SESH STARTS HERE";
     switch (this.screen) {
       case "online":
-        title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / VETERANS MEMORIAL PARK";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
+        title="PRIVATE FREE-RIDE";subtitle="UNRANKED ALPHA / BOULDER CITY, NV";for(const c of this.networkChoices())add(c.label,c.action,c.detail);break;
       case "home":
       case "play":
         title="PLAY";subtitle="YOUR NEXT SESH";
@@ -473,8 +475,8 @@ export class GameMenu {
         add(cloud.account?'MANAGE ACCOUNT':'SIGN IN / CREATE ACCOUNT',()=>{void this.accountPanel.open();},cloud.account?'View account and cloud save':'Save progress across your devices');
         break;
       case "maps":
-        title = "MAP SELECT";
-        subtitle = "CHOOSE YOUR PARK";
+        title = "MAPS";
+        subtitle = "CHOOSE WHERE TO RIDE";
         for (const map of PARK_MAPS)
           add(map.name, () => {if(this.seshOpen){this.travelMap=map.id;this.show('travel');}else this.onRide(map.id);}, map.type,this.seshOpen&&map.id===this.currentMap);
 

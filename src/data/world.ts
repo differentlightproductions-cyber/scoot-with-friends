@@ -97,7 +97,16 @@ export interface Spot {
 }
 
 export const SPOTS: Spot[] = [
-  { id: "veterans", label: "VETERANS MEMORIAL PARK", district: "veterans", map: "outdoor", spawn: 0, detail: "Wood and metal park, trails, lake" },
+  { id: "veterans", label: "VETERANS MEMORIAL PARK", district: "veterans", map: "outdoor", spawn: 0, detail: "Wood and metal park" },
+  { id: "veterans-bmx", label: "BMX TRACK", district: "veterans", map: "outdoor", spawn: 11, detail: "Dirt rollers east of the park" },
+  { id: "veterans-drive", label: "LAKESIDE DRIVE / FIELD", district: "veterans", map: "outdoor", spawn: 12, detail: "Across Buchanan from the lot, up to the grass field" },
+  { id: "veterans-lake", label: "LAKE / DIVE DOCK", district: "veterans", map: "outdoor", spawn: 13, detail: "Swim, dive and the lakeside trail" },
+];
+/**
+ * Off the fast-travel list for now (#100: Boulder City, NV is the one map).
+ * Kept so they can come back when the districts connect (#43).
+ */
+export const HIDDEN_SPOTS: Spot[] = [
   { id: "church-front", label: "CHURCH — FRONT", district: "church", map: "church", spawn: 0, detail: "Front lot, 11-stair and hubbas" },
   { id: "church-interior", label: "CHURCH — INTERIOR", district: "church", map: "church", spawn: 3, detail: "Sanctuary park inside" },
   { id: "b_hill-summit", label: "B HILL — SUMMIT", district: "b_hill", map: "b_hill", spawn: 0, detail: "Top of the downhill" },

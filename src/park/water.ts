@@ -1,21 +1,27 @@
 ﻿import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 /**
- * Veterans' water (#99, from the owner's aerial photo): north of the park,
- * past the open grass field, the long footprint-shaped lake runs east-west
- * with the Model Boat Pond south of its west half. Outlines are traced off the
- * photo at the district's scale (0.44 of real), in world metres round each
- * body's centre. Both are star-shaped from their centre, so a point's
- * normalised distance out to the bank (`lakeRho`) is its distance over the
- * bank's distance along the same bearing: 0 at the middle, 1 at the bank.
+ * Veterans' water (#99, #100, from the owner's aerial photo and street views):
+ * east of the skatepark and the BMX track, past the open grass field, reached
+ * by the winding drive from the parking lot. The photo is turned a quarter to
+ * the game's compass (its north is the game's east), so the long
+ * footprint-shaped lake runs north-south with the Model Boat Pond off its
+ * north-west, between it and the field. Outlines are traced off the photo
+ * (photo-north up) at the district's scale (0.44 of real), in world metres
+ * round each body's centre, then turned. Both are star-shaped from their
+ * centre, so a point's normalised distance out to the bank (`lakeRho`) is its
+ * distance over the bank's distance along the same bearing: 0 at the middle, 1
+ * at the bank.
  */
 export interface LakeBody { name: string; x: number; z: number; depth: number; outline: [number, number][] }
+/** Turns a photo-traced outline (photo-north up) to the game's compass, where photo-north is east (#100). */
+const turn = (outline: [number, number][]) => outline.map(([x, z]) => [-z, x] as [number, number]);
 export const LAKES: LakeBody[] = [
-  { name: "Veterans lake", x: 33.3, z: -297.3, depth: 2.5, outline: [[36.7, -19.5], [32.6, -20.3], [26.0, -19.5], [21.1, -17.0], [17.8, -14.6], [12.9, -13.3], [7.9, -12.9], [1.3, -12.5], [-6.9, -11.3], [-15.1, -10.4], [-23.3, -9.6], [-31.5, -9.2], [-39.8, -8.8], [-46.3, -7.6], [-50.0, -5.5], [-51.3, -1.4], [-51.3, 4.4], [-49.6, 9.3], [-46.3, 12.2], [-41.4, 13.0], [-31.5, 13.4], [-23.3, 13.8], [-15.1, 13.8], [-6.9, 13.4], [1.3, 12.6], [9.6, 12.2], [16.1, 12.6], [21.9, 13.8], [29.3, 14.9], [35.9, 14.6], [40.0, 12.6], [42.0, 8.5], [42.6, 1.9], [42.4, -6.3], [41.6, -13.7], [40.0, -17.8]] },
-  { name: "Model Boat Pond", x: 11.1, z: -262.4, depth: 1.1, outline: [[21.5, -4.2], [21.9, -0.1], [20.3, 3.6], [16.2, 5.4], [10.4, 5.8], [4.7, 5.2], [-1.1, 6.0], [-9.3, 7.3], [-16.7, 7.3], [-20.4, 5.6], [-21.2, 1.5], [-19.2, -3.4], [-15.0, -6.3], [-9.3, -7.4], [-3.5, -6.6], [1.4, -4.1], [5.5, -3.8], [10.4, -6.3], [15.4, -7.9], [19.5, -7.1]] },
+  { name: "Veterans lake", x: 325.3, z: -53.7, depth: 3.2, outline: turn([[36.7, -19.5], [32.6, -20.3], [26.0, -19.5], [21.1, -17.0], [17.8, -14.6], [12.9, -13.3], [7.9, -12.9], [1.3, -12.5], [-6.9, -11.3], [-15.1, -10.4], [-23.3, -9.6], [-31.5, -9.2], [-39.8, -8.8], [-46.3, -7.6], [-50.0, -5.5], [-51.3, -1.4], [-51.3, 4.4], [-49.6, 9.3], [-46.3, 12.2], [-41.4, 13.0], [-31.5, 13.4], [-23.3, 13.8], [-15.1, 13.8], [-6.9, 13.4], [1.3, 12.6], [9.6, 12.2], [16.1, 12.6], [21.9, 13.8], [29.3, 14.9], [35.9, 14.6], [40.0, 12.6], [42.0, 8.5], [42.6, 1.9], [42.4, -6.3], [41.6, -13.7], [40.0, -17.8]]) },
+  { name: "Model Boat Pond", x: 290.4, z: -75.9, depth: 1.1, outline: turn([[21.5, -4.2], [21.9, -0.1], [20.3, 3.6], [16.2, 5.4], [10.4, 5.8], [4.7, 5.2], [-1.1, 6.0], [-9.3, 7.3], [-16.7, 7.3], [-20.4, 5.6], [-21.2, 1.5], [-19.2, -3.4], [-15.0, -6.3], [-9.3, -7.4], [-3.5, -6.6], [1.4, -4.1], [5.5, -3.8], [10.4, -6.3], [15.4, -7.9], [19.5, -7.1]]) },
 ];
 /** The main lake's centre and extent, the shared surface height and the deepest water. */
-export const WATER = { x: LAKES[0].x, z: LAKES[0].z, radiusX: 47, radiusZ: 17.5, surface: 0.009, depth: 2.5 };
+export const WATER = { x: LAKES[0].x, z: LAKES[0].z, radiusX: 17.5, radiusZ: 47, surface: 0.009, depth: 3.2 };
 
 /** Bank distance by bearing, sampled finely and smoothed, per body. */
 const BEARINGS = 256;
@@ -63,8 +69,8 @@ export function shoreNormal(x: number, z: number) {
 }
 export const bedBump = (x: number, z: number) => Math.sin(x * 0.9 + z * 0.35) * 0.08 + Math.sin(z * 0.53 - x * 0.4) * 0.1;
 /** Floor depth at normalised distance `r` for a body `depth` deep. */
-export const bowl = (depth: number, r: number) => -depth * Math.pow(Math.max(0, 1 - r * r), 0.7);
-/** The lake bottom (underwater.ts draws it): a bowl 2.5 m deep at the middle (the pond 1.1 m), 0.34 m at the bank. */
+export const bowl = (depth: number, r: number) => -depth * Math.pow(Math.max(0, 1 - r * r), 0.5);
+/** The lake bottom (underwater.ts draws it): a bowl 3.2 m deep at the middle (the pond 1.1 m), 0.34 m at the bank. */
 export function lakeBed(x: number, z: number) {
   const { body, rho } = lakeRho(x, z), r = Math.min(1, rho);
   return Math.min(-0.34, bowl(LAKES[body].depth, r) + bedBump(x, z) * (1 - r));

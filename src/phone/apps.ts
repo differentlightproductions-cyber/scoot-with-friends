@@ -291,7 +291,8 @@ function drawCity(g: CanvasRenderingContext2D, x: number, y: number, w: number, 
   road(PUEBLO, 5, '#8a7d69'); road(BUCHANAN, 8, '#cfc3ad');
   g.save(); const [bx, by] = at(BUCHANAN[1][0], -250); g.translate(bx + 10, by); g.rotate(-Math.PI / 2);
   g.font = `800 9px ${BODY}`; g.fillStyle = '#cfc3ad'; g.textAlign = 'center'; g.fillText('BUCHANAN BLVD', 0, 0); g.restore();
-  for (const dist of DISTRICTS) {
+  // Only districts on the fast-travel list (#100: Boulder City's park for now).
+  for (const dist of DISTRICTS.filter((c) => SPOTS.some((s) => s.district === c.id))) {
     const [cx, cy] = at(dist.origin.x, dist.origin.z), dw = Math.max(26, dist.size[0] * k), dh = Math.max(22, dist.size[1] * k);
     g.fillStyle = DISTRICT_COLOR[dist.id]; g.strokeStyle = INK; g.lineWidth = 3;
     g.beginPath(); g.roundRect(cx - dw / 2, cy - dh / 2, dw, dh, 6); g.fill(); g.stroke();
@@ -421,7 +422,8 @@ function buildApp(d: PhoneDeps): View {
       if (d.mapId() !== 'warehouse') return { blocks: [
         { type: 'title', text: translate('phone.build'), sub: translate('phone.ui.warehouse_only') },
         { type: 'text', text: translate('phone.ui.build_warehouse') },
-        { type: 'list', rows: [{ id: 'maps', label: translate('phone.ui.open_maps'), action: () => d.phone.close(() => d.openSesh('maps')) }] },
+        // The Warehouse is off the Maps list (#100: Boulder City is the one map there); Build still goes to it.
+        { type: 'list', rows: [{ id: 'warehouse', label: translate('phone.ui.open_warehouse'), action: () => d.phone.close(() => void d.fastTravel({ id: 'warehouse', label: 'WAREHOUSE', district: 'veterans', map: 'warehouse', spawn: 0, detail: '' })) }] },
       ] };
       const b = d.builder(), count = b.layout.objects.length, owned = b.layout.objects.filter(o => b.canEdit(o.id)).length;
       const rows: Row[] = [

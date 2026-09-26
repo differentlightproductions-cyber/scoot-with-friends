@@ -4,10 +4,11 @@ import { setInstanceDensity, updateInstanceLods } from './instance-lod';
 export type Fidelity='low'|'medium'|'high';
 /**
  * Render resolution per preset, from the screen's own ratio (capped at 1.5 so a
- * 3x phone is not asked for 3x): Low draws 25% under it, Medium at it, High 35%
- * over it (supersampled on an ordinary 1x screen), never above 2.
+ * 3x phone is not asked for 3x): Low draws 25% under it, Medium at it, High 15%
+ * over it (lightly supersampled on an ordinary 1x screen; 35% was too heavy
+ * for laptops, #100), never above 2.
  */
-export const fidelityPixelRatio=(quality:Fidelity,device:number)=>{const base=Math.min(device||1,1.5);return +Math.min(2,base*(quality==='low'?.75:quality==='high'?1.35:1)).toFixed(3);};
+export const fidelityPixelRatio=(quality:Fidelity,device:number)=>{const base=Math.min(device||1,1.5);return +Math.min(2,base*(quality==='low'?.75:quality==='high'?1.15:1)).toFixed(3);};
 export class VisualFidelity {
  quality:Fidelity='high';lodScale=1;environment:THREE.Texture;private shadowLights:{light:THREE.DirectionalLight;offset:THREE.Vector3}[]=[];
  private scene?:THREE.Scene;private materialFeatures=new Map<THREE.MeshStandardMaterial,{bump:THREE.Texture|null;rough:THREE.Texture|null}>();

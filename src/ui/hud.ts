@@ -6,6 +6,10 @@ import { TUNE } from "../core/config";
 import { OUTDOOR, SPAWNS } from "../park/park";
 import type { TrickRecord } from "../tricks/resolver";
 import { onLocale, t } from "../i18n";
+/** HUD writes touch the DOM only when a value changes: rewriting every frame restyles the page (laptop lag, #100). */
+const text = (selector: string, value: string) => { const e = document.querySelector(selector); if (e && e.textContent !== value) e.textContent = value; };
+const style = (selector: string, prop: "opacity" | "bottom", value: string) => { const e = document.querySelector(selector) as HTMLElement | null; if (e && e.style[prop] !== value) e.style[prop] = value; };
+
 export class HUD {
   /** Replaces the riding hint while the phone is out. */
   phoneHint = '';
@@ -31,7 +35,7 @@ export class HUD {
   root: HTMLElement;
   constructor(public events: Events) {
     document.querySelector("#app")!.innerHTML = `
-      <header><div class="location">${OUTDOOR ? "VETERANS MEMORIAL PARK" : "WAREHOUSE <b>01</b>"}<span id="score">SESH 0 / LINE 0</span></div></header>
+      <header><div class="location">${OUTDOOR ? "BOULDER CITY, NV" : "WAREHOUSE <b>01</b>"}<span id="score">SESH 0 / LINE 0</span></div></header>
       <div id="start" class="overlay"><div class="start-copy"><div class="eyebrow">AN INDOOR FREESTYLE SESH</div><h1>FIND<br>YOUR<br><i>FLOW.</i></h1><p>One scooter. An empty park.<br>Make your next line a little better.</p><button id="ride" class="primary">A <span>RIDE</span> ↗</button><div id="connection">Connect a controller · or press Enter</div><small>SCOOT WITH FRIENDS</small></div></div>
       <div id="trick-line" aria-live="polite"><div id="line-label">CURRENT LINE</div><div id="line-text"></div><div id="line-meter" hidden><span class="lm-count"></span><span class="lm-points"></span><i class="lm-timer"><b></b></i></div><div id="line-status"></div></div>
       <div id="feedback"></div>
@@ -188,6 +192,8 @@ export class HUD {
     if (input.pressed.hop) target?.click();
     if (input.pressed.brakeBars) this.setPaused(false);
   }
+  /** The wallet's Coins, shown after the session score. */
+  coins = 0;
   update(
     s: Simulation,
     input: Input,
@@ -209,7 +215,7 @@ export class HUD {
       }
     }
     this.bankedAge+=dt;
-    if(this.bankedAge>2)document.querySelector('#line-status')!.textContent=view?view.status==='pending'?'PENDING':view.status==='landed'?'LANDED · BANKED':'ATTEMPT LOST':'';
+    if(this.bankedAge>2)text('#line-status',view?view.status==='pending'?'PENDING':view.status==='landed'?'LANDED · BANKED':'ATTEMPT LOST':'');
     // The line meter: tricks and points in this line, its multiplier, and the
     // 3 s the next trick has to land in to keep stacking (grinds, manuals and
     // air keep it open).
@@ -223,29 +229,23 @@ export class HUD {
       (meter.querySelector('.lm-timer b') as HTMLElement).style.transform=`scaleX(${left.toFixed(3)})`;
       meter.classList.toggle('closing',left<.34);
     }
-    (
-      document.querySelector('[data-action="marker"]') as HTMLButtonElement
-    ).disabled = !s.marker.saved;
-    document.querySelector("#marker-availability")!.textContent = s.marker.saved
+    const markerButton = document.querySelector('[data-action="marker"]') as HTMLButtonElement;
+    if (markerButton.disabled === !!s.marker.saved) markerButton.disabled = !s.marker.saved;
+    text("#marker-availability", s.marker.saved
       ? t('pause.marker.ready')
-      : t('pause.marker.unset');
+      : t('pause.marker.unset'));
     this.lineAge += dt;
     if (s.tricks.fakieRecord) this.lineAge = 0;
-    document.querySelector("#score")!.textContent =
-      `SESH ${s.score.total.toLocaleString()}`;
+    text("#score", `SESH ${s.score.total.toLocaleString()} / ${this.coins} Coins`);
     this.feedbackAge += dt;
     // Screens such as the rider creator have no connection line.
-    const connection = document.querySelector("#connection");
-    if (connection) connection.textContent = input.pad
+    text("#connection", input.pad
       ? "Controller connected · Press A to ride"
-      : "Connect a controller · Enter or click Ride for keyboard";
-    document.querySelector("#pad-status")!.textContent = input.pad
+      : "Connect a controller · Enter or click Ride for keyboard");
+    text("#pad-status", input.pad
       ? "● CONTROLLER CONNECTED"
-      : "○ NO CONTROLLER / KEYBOARD READY";
-    (document.querySelector("footer") as HTMLElement).style.opacity = this
-      .started
-      ? "1"
-      : "0";
+      : "○ NO CONTROLLER / KEYBOARD READY");
+    style("footer", "opacity", this.started ? "1" : "0");
     const help = document.querySelector("#help") as HTMLElement;
     help.hidden = !input.help;
     const mapping = ridingButtons(s.tricks.stance, s.tricks.controlStyle);
@@ -295,15 +295,13 @@ export class HUD {
         "<p>KEYBOARD: Space = A, X = X, B = B, Y = Y. Arrows = RS (Down hold/release pops). A/D and W/S = LS. Shift = LB, E = RB, Ctrl = LT, C = RT. F run, M marker, V recenter, R reset, Esc pause. F3 diagnostics. H closes.</p>" +
         "<p>Separate caught rotations form sequences. Grind assist helps contact without fixing your entry angle. Lean prepares landing; full flips are not enabled.</p>";
     }
-    const line = document.querySelector("#trick-line") as HTMLElement;
-    line.style.opacity=this.started&&view&&(view.status==='pending'||view.age<(view.status==='failed'?1.1:4))?'1':'0';
-    (document.querySelector("#feedback") as HTMLElement).style.opacity =
-      this.started && this.feedbackAge < 1.7 ? "1" : "0";
+    style("#trick-line", "opacity", this.started&&view&&(view.status==='pending'||view.age<(view.status==='failed'?1.1:4))?'1':'0');
+    style("#feedback", "opacity", this.started && this.feedbackAge < 1.7 ? "1" : "0");
     const balance = document.querySelector("#balance") as HTMLElement;
-    balance.hidden = !s.manual.active;
-    document.querySelector("#balance-title")!.textContent = s.manual.nose
+    if (balance.hidden === s.manual.active) balance.hidden = !s.manual.active;
+    text("#balance-title", s.manual.nose
       ? "NOSE MANUAL"
-      : "MANUAL";
+      : "MANUAL");
     // The main indicator is the simulated balance and nothing else. The small
     // notch shows where the stick is driving it, so the player can read their
     // own correction without the indicator faking a response the rider has not
@@ -311,11 +309,10 @@ export class HUD {
     const span = TUNE.manualLoopLimit - TUNE.manualDropLimit;
     const track = (v: number) =>
       `${Math.max(0, Math.min(100, ((v - TUNE.manualDropLimit) / span) * 100))}%`;
-    (document.querySelector("#balance-dot") as HTMLElement).style.bottom = track(
-      s.manual.balance,
-    );
-    (document.querySelector("#balance-command") as HTMLElement).style.bottom =
-      track(s.manual.balance + s.manual.command * 0.25);
+    if (s.manual.active) {
+      style("#balance-dot", "bottom", track(s.manual.balance));
+      style("#balance-command", "bottom", track(s.manual.balance + s.manual.command * 0.25));
+    }
     const hints: Record<string, string> = {
       Walking: s.swim
         ? (s.swim.depth ?? 0) > 0.2
@@ -337,9 +334,9 @@ export class HUD {
       Preloading: "FLICK RS UP TO POP / SIDE SCOOP TO TRICK",
       SketchyLanding: "EASE THE STEERING  /  RIDE IT OUT",
     };
-    document.querySelector("#hint")!.textContent = this.phoneHint ||
+    text("#hint", this.phoneHint ||
       (hints[s.state] ??
-      `${mapping.pushLabel} PUSH / RS DOWN → UP: POP / LT BRAKE / Y WALK`);
+      `${mapping.pushLabel} PUSH / RS DOWN → UP: POP / LT BRAKE / Y WALK`));
     const debug = document.querySelector("#debug") as HTMLElement;
     debug.hidden = !input.debug;
     if (input.debug)

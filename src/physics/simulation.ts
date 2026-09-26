@@ -32,6 +32,7 @@ import { GROUPS } from "./groups";
 import { ScoreSystem } from "../tricks/score";
 import { MarkerSystem } from "../player/marker";
 import { outdoorLip } from "../park/outdoor";
+import { VETERANS_BOUNDS } from "../park/memorial";
 import { activeStreets, curbCrossed } from "../park/streets";
 import { iceAt } from "../park/gutters";
 import { DropIn } from "../player/drop-in";
@@ -65,6 +66,15 @@ function spinToward(angle: number, dir: number, held: boolean, rate: number, dt:
   if (held) return angle + dir * rate * dt;
   const target = settleTarget(angle, dir), step = rate * dt;
   return Math.abs(target - angle) <= step ? target : angle + Math.sign(target - angle) * step;
+}
+
+/**
+ * Past the edge of the Veterans grounds (#100): the park's rectangle, and the
+ * east grounds across Buchanan out to the lake. A rider out here is put back.
+ */
+export function outOfVeterans(x: number, z: number) {
+  const b = VETERANS_BOUNDS;
+  return z < b.z0 + 4 || z > 78 || x < b.x0 + 3 || x > b.x1 - 3;
 }
 
 export class Simulation {
@@ -2498,10 +2508,9 @@ export class Simulation {
       ) ||
       (ACTIVE_MAP === "b_hill"
         ? Math.abs(this.position.x) > 280 || this.position.z < -120 || this.position.z > 1360 || this.position.y < -20 || this.position.y > 220
-        : Math.abs(this.position.x) > (OUTDOOR ? 113 : 34) ||
-          (OUTDOOR
-            ? this.position.z < -166 || this.position.z > 78
-            : Math.abs(this.position.z) > 46) ||
+        : (OUTDOOR
+            ? outOfVeterans(this.position.x, this.position.z)
+            : Math.abs(this.position.x) > 34 || Math.abs(this.position.z) > 46) ||
           this.position.y < -8 ||
           this.position.y > 35)
     ) {

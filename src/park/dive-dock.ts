@@ -6,10 +6,10 @@ import { GROUPS } from "../physics/groups";
 import { surfaceMaterial } from "./art";
 
 /**
- * The Veterans lake dive dock: the spot for on-foot water tricks. It stands on
- * the lake's north bank (#99: the lake now lies north of the grass field) and
- * runs south across it, with twenty metres of deep water ahead and the trail
- * round the lake passing behind it.
+ * The Veterans lake dive dock: the spot for on-foot water tricks. It stands at
+ * the lake's north tip (#100: the lake lies east of the park, running
+ * north-south) and runs south down the lake's length, with deep water ahead
+ * and the trail round the lake passing behind it.
  *
  * A short gangway climbs from the grass to a plank deck 0.4 m over the water;
  * stairs on the east half rise to a 3.2 m tower; a springboard runs out past
@@ -18,20 +18,20 @@ import { surfaceMaterial } from "./art";
  * footprint, the ladders and the springboard's bounce).
  */
 export const DIVE_DOCK = {
-  x0: 11.7, x1: 14.3, // deck width
-  land: -310.1, // gangway foot on the grass
-  z0: -308.7, z1: -300.9, // deck
+  x0: 321.7, x1: 324.3, // deck width
+  land: -107.75, // gangway foot on the grass
+  z0: -106.35, z1: -98.55, // deck
   deck: 0.4,
-  stairs: { x0: 13.0, x1: 14.3, z0: -306.9, z1: -302.5 },
-  tower: { x0: 12.9, x1: 14.7, z0: -302.5, z1: -299.9, y: 3.2 },
-  board: { x0: 12.1, x1: 12.7, z0: -301.7, z1: -298.1, y0: 0.46, y1: 0.66 },
+  stairs: { x0: 323.0, x1: 324.3, z0: -104.55, z1: -100.15 },
+  tower: { x0: 322.9, x1: 324.7, z0: -100.15, z1: -97.55, y: 3.2 },
+  board: { x0: 322.1, x1: 322.7, z0: -99.35, z1: -95.75, y0: 0.46, y1: 0.66 },
   /** Water-side foot of each ladder and where it lets the swimmer out on the deck. */
   ladders: [
-    { water: [11.25, -303.9] as const, top: [12.15, -303.9] as const },
-    { water: [13.65, -300.4] as const, top: [13.65, -301.25] as const },
+    { water: [321.25, -101.55] as const, top: [322.15, -101.55] as const },
+    { water: [323.65, -98.05] as const, top: [323.65, -98.9] as const },
   ],
   /** A rack on the grass beside the gangway: put the ride up, go for a dip. */
-  rack: [9.0, -308.7] as const,
+  rack: [319.0, -106.35] as const,
 } as const;
 
 /** Springboard top height at (x, z), or null off the board. */

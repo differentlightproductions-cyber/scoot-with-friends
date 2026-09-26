@@ -81,7 +81,7 @@ try {
     return { id, saveMs, inside, trim: r.trim, list: list.map((m) => ({ name: m.name, trimIn: m.trimIn, trimOut: m.trimOut, camera: m.camera, map: m.map, thumb: !!m.thumbnail })) };
   });
   check('Trimming keeps playback inside IN-OUT (1-5 s: a 4 s clip)', saved.inside && Math.abs(saved.trim.length - 4) < 1e-6, saved);
-  check('SAVE stores it with its map, trim, camera and a thumbnail', saved.id && saved.list.length === 1 && saved.list[0].name === 'Veterans Memorial Park - Replay 01' && saved.list[0].trimIn === 1 && saved.list[0].camera === 'first' && saved.list[0].thumb, saved.list);
+  check('SAVE stores it with its map, trim, camera and a thumbnail', saved.id && saved.list.length === 1 && saved.list[0].name === 'Boulder City, NV - Replay 01' && saved.list[0].trimIn === 1 && saved.list[0].camera === 'first' && saved.list[0].thumb, saved.list);
   console.log(`SAVE ${saved.saveMs.toFixed(0)} ms`);
   const reopened = await page.evaluate(async (id) => {
     const r = window.__LAZER.replay; r.close(); const closed = !r.open && window.__LAZER.rider.root.visible;

@@ -4,8 +4,9 @@ import type { MapRide, PhoneMap } from '../phone/map';
  * The riding HUD's top-left minimap: the phone MAP app's overhead photo and
  * features (one source of truth), drawn in a circle that turns with the
  * camera, with a compass ring and the rider's marker for their ride. Redrawn
- * a dozen times a second; hidden whenever a menu, the phone or a loading
- * screen owns the screen.
+ * up to ten times a second, and only when the rider has moved or the view has
+ * turned (#100: laptops felt every redraw); hidden whenever a menu, the phone
+ * or a loading screen owns the screen.
  */
 export class Minimap {
   readonly root: HTMLDivElement;
@@ -13,6 +14,7 @@ export class Minimap {
   private g: CanvasRenderingContext2D;
   private wait = 0;
   private shown = false;
+  private drawn = { x: NaN, z: NaN, yaw: NaN, ride: '', key: '', age: 0 };
 
   constructor(parent: HTMLElement, private map: PhoneMap) {
     this.root = document.createElement('div');
@@ -34,7 +36,12 @@ export class Minimap {
     if (!visible) return;
     this.wait -= dt;
     if (this.wait > 0) return;
-    this.wait = 1 / 12;
+    this.wait = 1 / 10;
+    // Standing still facing the same way, the circle would come out the same.
+    const p = this.map.pose(), d = this.drawn;
+    d.age += 1 / 10;
+    if (d.key === mapKey && d.ride === ride && d.age < 1 && Math.hypot(p.x - d.x, p.z - d.z) < 0.08 && Math.abs(Math.atan2(Math.sin(viewYaw - d.yaw), Math.cos(viewYaw - d.yaw))) < 0.006) return;
+    Object.assign(d, { x: p.x, z: p.z, yaw: viewYaw, ride, key: mapKey, age: 0 });
     const css = this.root.clientWidth || 150, ratio = Math.min(2, window.devicePixelRatio || 1), px = Math.round(css * ratio);
     if (this.canvas.width !== px) { this.canvas.width = this.canvas.height = px; }
     const g = this.g;

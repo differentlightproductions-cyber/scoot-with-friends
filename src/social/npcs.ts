@@ -22,7 +22,7 @@ export interface NpcSpot { x: number; z: number; yaw: number }
 /** Where Veterans Memorial Park's locals hang out. */
 export const VETERANS_LOCALS: NpcSpot[] = [
   { x: -30, z: 3, yaw: Math.PI / 2 }, // beside the wood park
-  { x: 60, z: -276.5, yaw: Math.PI }, // on the lake shore trail, north of the grass field (#99)
+  { x: 304.5, z: -27, yaw: Math.PI / 2 }, // on the lake shore trail, east of the grass field (#100)
   { x: -46, z: -121, yaw: -Math.PI / 2 }, // at the ballfield DIY lot
   { x: 31, z: -40, yaw: Math.PI }, // by the monument path
   { x: -23.5, z: -36.5, yaw: 0 }, // at the pavilion

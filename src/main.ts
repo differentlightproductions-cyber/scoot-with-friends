@@ -696,7 +696,7 @@ async function boot() {
       "?map="+id,
     );
     document.querySelector(".location")!.innerHTML =
-      (OUTDOOR ? "VETERANS MEMORIAL PARK" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":ACTIVE_MAP==="b_hill"?"B HILL":ACTIVE_MAP==="church"?"THE CHURCH":"WAREHOUSE <b>01</b>") +
+      (OUTDOOR ? "BOULDER CITY, NV" : ACTIVE_MAP==="techno_gravity"?"TECHNO GRAVITY SHOP":ACTIVE_MAP==="b_hill"?"B HILL":ACTIVE_MAP==="church"?"THE CHURCH":"WAREHOUSE <b>01</b>") +
       '<span id="score">SESH 0 / LINE 0</span>';
     document.querySelector("#spawn")!.innerHTML = SPAWNS.map(
       (s, i) => `<option value="${i}">${s.name}</option>`,
@@ -908,8 +908,7 @@ async function boot() {
     // that unchanged scene also survives resize/context compositing without a screenshot.
     if (hud.started){if(!worldFrozen)network.render(camera.camera,dt);camcorder.render(renderer,scene,camera.camera,phone.firstPerson&&camera.firstPersonActive&&!worldFrozen?()=>phoneRig.renderCloseUp(renderer,scene,camera.camera,dt):undefined);phoneCamera.afterRender();if(menu.shopOpen||menu.seshOpen)menu.preview(renderer);}
     else {renderer.setClearColor(0x15161a);renderer.clear();menu.preview(renderer);}
-    hud.update(sim, input, dt, fps, renderer.info.render.calls);
-    const balance=document.querySelector("#score");if(balance)balance.textContent+=" / "+profile.wallet.credit+" Coins";
+    hud.coins=profile.wallet.credit;hud.update(sim, input, dt, fps, renderer.info.render.calls);
     rewards.showChip(hud.started&&!hud.paused&&!menu.seshOpen&&!menu.shopOpen&&!phoneCamera.active);
     // Minimap: only over live riding, never over menus, the phone, loading or building.
     camera.camera.getWorldDirection(minimapView);
@@ -922,12 +921,27 @@ async function boot() {
     if(hud.started&&ACTIVE_MAP==='b_hill')missions.hillUpdate(routeProgress(sim.position.x,sim.position.z),B_HILL_LENGTH,sim.speed,!sim.walking&&sim.state!=='Bail');
     social.render(rider.head.getWorldPosition(new THREE.Vector3()), camera.camera, hud.started && !hud.paused);
   };
+  // Smooth riding first (#100): a machine that stays under 30 fps through
+  // several seconds of riding steps its graphics preset down one, and says so.
+  // Settings can raise it again. Automated browsers are left alone.
+  let slowFor = 0;
+  const autoGraphics = (dt: number) => {
+    if (navigator.webdriver || profile.settings.fidelity === 'low' || !hud.started || hud.paused || !menu.root.hidden || destinationLoading) { slowFor = 0; return; }
+    slowFor = fps < 30 ? slowFor + dt : Math.max(0, slowFor - dt * 2);
+    if (slowFor < 8) return;
+    slowFor = 0;
+    profile.settings.fidelity = profile.settings.fidelity === 'high' ? 'medium' : 'low';
+    saveProfile(profile);
+    fidelity.apply(scene, profile.settings.fidelity);
+    hud.feedback(`GRAPHICS ${profile.settings.fidelity.toUpperCase()} FOR SMOOTHER RIDING`);
+  };
   renderer.setAnimationLoop(() => {
     const now = performance.now(),
       dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     fps += (1 / Math.max(dt, 0.001) - fps) * 0.04;
     if (testMode) return;
+    autoGraphics(dt);
     touchPad.suspended=(!menu.root.hidden||hud.paused||phone.active||!social.chat.hidden||rewards.open)&&!touchPad.preview;
     input.poll();
     if(mobile.update(input)){audio.update(0,false,false,true);accumulator=0;return;}

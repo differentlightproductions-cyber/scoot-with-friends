@@ -29,7 +29,8 @@ export const outdoorSpawns = [
   { name: "METAL HALF PIPE", x: -64, z: 16, yaw: Math.PI / 2 },
   { name: "PARKING / PATHS", x: 15, z: -65, yaw: 0 },
   { name: "BMX TRACK GATE", x: 65, z: -25, yaw: 0 },
-  { name: "FIELD / LAKESIDE TRAIL", x: 93.5, z: -147, yaw: Math.PI },
+  { name: "LAKESIDE DRIVE / FIELD", x: 117, z: -65, yaw: Math.PI / 2 },
+  { name: "LAKE / DIVE DOCK", x: 312, z: -111, yaw: Math.PI / 2 },
 ];
 export interface RampModule {
   id: string;
@@ -335,20 +336,24 @@ export function buildOutdoor(park: Park) {
   box(0, -0.15, 97.75, 230, 0.2, 35.5, 0x719253);
   // Beyond the park's lawns the Mojave runs out to the River Mountains. Under
   // the park it lies below the sunk streets and their gutters (#87).
-  // The site runs from the south lawn north over the ballfields, the grass field and the lake (#99).
+  // The site runs from the south lawn north to the ballfields, and east across
+  // Buchanan over the grass field to the lake (#100): the park's rectangle and
+  // the east grounds' beside it.
   const north = VETERANS_BOUNDS.z0, south = 115, mid = (north + south) / 2, half = (south - north) / 2;
-  const keepOut = (x: number, z: number) => Math.hypot(Math.max(0, Math.abs(x) - 115), Math.max(0, north - z, z - south));
-  const desert = buildDesert(scene, { center: new THREE.Vector2(0, -150), base: -0.2, keepOut, rangeStart: 640, apron: { x: 0, z: mid, halfX: 115, halfZ: half, width: 9 } });
+  const east = VETERANS_BOUNDS.x1 - 1, eastSouth = VETERANS_BOUNDS.z1, eastMid = (115 + east) / 2;
+  const rectGap = (x: number, z: number, x0: number, x1: number, z0: number, z1: number) => Math.hypot(Math.max(0, x0 - x, x - x1), Math.max(0, z0 - z, z - z1));
+  const keepOut = (x: number, z: number) => Math.min(rectGap(x, z, -115, 115, north, south), rectGap(x, z, 115, east, north, eastSouth));
+  const desert = buildDesert(scene, { center: new THREE.Vector2(125, -45), base: -0.2, keepOut, rangeStart: 700, apron: { x: 0, z: mid, halfX: 115, halfZ: half, width: 9 } });
   // A concrete mow curb finishes the lawn's edge where the rock border starts.
   const curbMaterial = new THREE.MeshStandardMaterial({ color: 0xc9c2b6, roughness: 0.9, name: "Mow curb concrete" });
-  for (const [x, z, w, d] of [[0, south + 0.14, 230.56, 0.28], [0, north - 0.14, 230.56, 0.28], [115.14, mid, 0.28, half * 2], [-115.14, mid, 0.28, half * 2]]) {
+  for (const [x, z, w, d] of [[0, south + 0.14, 230.56, 0.28], [(-115 + east) / 2, north - 0.14, east + 115.56, 0.28], [115.14, (eastSouth + south) / 2, 0.28, south - eastSouth], [-115.14, mid, 0.28, half * 2], [eastMid, eastSouth + 0.14, east - 115, 0.28], [east + 0.14, (north + eastSouth) / 2, 0.28, eastSouth - north]]) {
     const curb = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), curbMaterial);
     curb.position.set(x, -0.18, z);
     curb.receiveShadow = true;
     curb.name = "Mow curb";
     scene.add(curb);
   }
-  scatterDesert(scene, { keepOut, ground: desert.surface, center: new THREE.Vector2(0, mid), near: 2.5, far: 330, count: 3800 });
+  scatterDesert(scene, { keepOut, ground: desert.surface, center: new THREE.Vector2(125, -45), near: 2.5, far: 420, count: 3800 });
   buildMemorialGrounds(park);
   // Built wooden ramps: plywood, framing, kick plates and coping, generated
   // from the same profiles the rider rides (see wood-ramps.ts).

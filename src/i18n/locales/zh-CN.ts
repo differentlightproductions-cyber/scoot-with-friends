@@ -112,7 +112,7 @@ export const ZH_CN: Record<string, string> = {
   "phone.ui.piece_gone": "此物件已不在场地中", "phone.ui.placed_other": "由另一位骑手放置",
   "phone.ui.move_rotate": "移动 / 旋转", "phone.ui.move_detail": "拿起并重新放置", "phone.ui.duplicate": "复制", "phone.ui.duplicate_detail": "在旁边创建副本", "phone.ui.delete": "删除", "phone.ui.delete_room": "移除你在房间的物件", "phone.ui.undo_restore": "撤销可恢复",
   "phone.ui.placed": "已放置", "phone.ui.nearest_first": "按距离排序", "phone.ui.nothing_placed": "尚未放置物件", "phone.ui.distance_away": "距离 {distance} 米", "phone.ui.other_rider": "其他骑手",
-  "phone.ui.warehouse_only": "仅限仓库", "phone.ui.build_warehouse": "可在仓库放置坡道、栏杆和箱子，然后骑行。请从地图选择仓库。", "phone.ui.open_maps": "打开地图",
+  "phone.ui.warehouse_only": "仅限仓库", "phone.ui.build_warehouse": "可在仓库放置坡道、栏杆和箱子，然后骑行。", "phone.ui.open_maps": "打开地图", "phone.ui.open_warehouse": "前往仓库",
   "phone.ui.add_group": "添加 {group}", "phone.ui.edit_placed": "编辑已放置物件", "phone.ui.edit_placed_desc": "移动、旋转、复制或删除", "phone.ui.undo": "撤销", "phone.ui.redo": "重做", "phone.ui.snap": "吸附", "phone.ui.snap_desc": "放置时也可按 Y 切换",
   "phone.ui.other_builds": "其他玩家的建筑", "phone.ui.visible_ghost": "可见，无碰撞", "phone.ui.visible_solid": "可见，实体", "phone.ui.ghost": "幽灵", "phone.ui.solid": "实体", "phone.ui.save_build": "保存建筑", "phone.ui.save_build_desc": "保存到资料（每次编辑后也会保存）",
   "phone.ui.clear_room": "清除我的房间物件……", "phone.ui.clear_build": "清空建筑……", "phone.ui.clear_room_desc": "移除此房间中你的物件", "phone.ui.clear_build_desc": "清空仓库", "phone.ui.clear_room_question": "清除你的房间物件？", "phone.ui.clear_build_question": "清除整个建筑？", "phone.ui.clear_pieces": "清除 {count} 个物件", "phone.ui.other_keep": "其他骑手保留自己的物件", "phone.ui.undo_until_leave": "离开前可撤销恢复",

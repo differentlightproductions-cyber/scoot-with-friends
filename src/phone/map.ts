@@ -97,7 +97,9 @@ export class PhoneMap {
   private capture(mapKey: string) {
     if (this.photo && this.key === mapKey) return this.photo;
     const b = (this.bounds = this.area(this.source.features()));
-    this.photo = this.shoot(b, this.soft ? SIZE / 4 : SIZE);
+    // A large map gets one sharp photo (#100): retaking local photos as the
+    // rider went re-rendered the whole scene and stalled on the read-back.
+    this.photo = this.shoot(b, this.soft ? SIZE / 4 : b.size > 300 ? SIZE * 2 : SIZE);
     this.key = mapKey;
     return this.photo;
   }
@@ -110,8 +112,9 @@ export class PhoneMap {
   private local: { photo: HTMLCanvasElement; b: { x: number; z: number; size: number }; key: string } | null = null;
   private miniPhoto(mapKey: string, span: number) {
     const main = this.capture(mapKey), b = this.bounds, p = this.source.player();
-    // A photo of a whole large map (Veterans with its field and lake, #99) is too coarse up close: use a local one.
-    const inside = b.size <= 300 && Math.max(Math.abs(p.x - b.x), Math.abs(p.z - b.z)) + span * 0.75 <= b.size / 2;
+    // The main photo serves wherever the rider is on it and it is sharp enough
+    // up close (Veterans with its field and lake, #100); a local one otherwise.
+    const inside = (b.size <= 300 || main.width / b.size >= 3.4) && Math.max(Math.abs(p.x - b.x), Math.abs(p.z - b.z)) + span * 0.75 <= b.size / 2;
     if (inside) return { photo: main, b };
     const l = this.local;
     if (l && l.key === mapKey && Math.max(Math.abs(p.x - l.b.x), Math.abs(p.z - l.b.z)) + span * 0.75 <= l.b.size / 2) return l;
@@ -119,6 +122,9 @@ export class PhoneMap {
     this.local = { photo: this.shoot(nb, this.soft ? LOCAL_SIZE / 4 : LOCAL_SIZE), b: nb, key: mapKey };
     return this.local;
   }
+
+  /** The rider's position and heading, for the minimap to tell whether it needs redrawing. */
+  pose() { return this.source.player(); }
 
   private shoot(b: { x: number; z: number; size: number }, res: number) {
     const { renderer, scene } = this.source;
