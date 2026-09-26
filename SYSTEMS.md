@@ -54,6 +54,8 @@ Phone camera (#77, `src/phone/camera.ts`): OPEN CAMERA in the CAMERA app holds t
 
 Crate result previews (#53, #78, `GameMenu.renderPartPreview` / `rewardProduct` in `src/ui/menu.ts`): the revealed part is lifted out on its own and the camera is fitted to its bounds, so a bushing reads as big as a deck. Scooter parts use the shop's isolated product (one grip of the pair); board parts are cut from the assembled longboard by part id with `pickTriangles`: the front truck's trucks, bushings or hardware, one wheel's wheel or bearings, the deck on its edge showing its graphic, the grip on its deck. UI palettes (`src/ui/palette.ts`) recolor interface only; in grayscale and earth the selection colour is a clear mid tone and the accent text colour stays dark enough to read on paper.
 
+B Hill signs (#96, owner request): no banners. Real street signs stand on the riders' right, clear of driveways and side streets (`art/road-signs.ts`): a green B HILL street-name blade at the top, SPEED LIMIT 25, a hill warning with a STEEP GRADE plaque, a curve warning ahead of each real bend (found from the route's heading, a reverse-curve sign for the S-bends) and the B HILL / PUEBLO DR cross street at the bottom. The checkered START and FINISH gates are built hidden and stand only during a timed race: `setRaceGates(scene, on)` in `park/bhill.ts`, for the race lifecycle (#81 stage 3) to call. Road cracks and oil stains are sparse marks of their own (`art/road-marks.ts`); the asphalt tile carries none, so nothing repeats.
+
 ## Architecture and performance
 
 

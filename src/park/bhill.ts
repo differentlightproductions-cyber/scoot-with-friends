@@ -21,6 +21,7 @@ import { buildTerrain, desertMaterial, paintDesert, scatterDesert } from "../art
 import { buildHouses, drivewayAt, planHouse, POOL_DEPTH, type HouseLot, type HousePlan } from "../art/houses";
 import { asphaltTexture, gravelTexture } from "../art/textures";
 import { roadMarksMesh, scatterAlongRoad } from "../art/road-marks";
+import { raceGate, speedLimitSign, streetNameSign, warningSign } from "../art/road-signs";
 import { aleppoPine, bursage, fanPalm, plant, yucca, type Placement } from "../art/flora";
 import { Drainage, type GutterLine } from "./gutters";
 
@@ -402,6 +403,12 @@ export const B_HILL_ROUTE = {
 };
 
 /** Distance along the route for a world position (progress readout / recovery). */
+/** Puts up (or takes down) the start and finish gates: only while a timed race is running. */
+export function setRaceGates(scene: THREE.Scene, on: boolean) {
+  const gates = scene.userData.bHillRaceGates as THREE.Object3D | undefined;
+  if (gates) gates.visible = on;
+  return !!gates;
+}
 export function routeProgress(x: number, z: number) {
   return nearest(x, z).s;
 }
@@ -741,24 +748,63 @@ export function buildBHill(park: Park) {
         }
       });
 
-  // Start and finish banners.
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x5b5f63, metalness: 0.6, roughness: 0.45 });
-  for (const [s, label] of [[70, "B HILL"], [B_HILL_LENGTH - 60, "FINISH"]] as const) {
-    const pose = routePose(s);
-    const canvas = document.createElement("canvas"); canvas.width = 512; canvas.height = 96;
-    const ctx = canvas.getContext("2d")!; ctx.fillStyle = "#223331"; ctx.fillRect(0, 0, 512, 96); ctx.fillStyle = "#f3e2bb"; ctx.font = "bold 62px Impact, sans-serif"; ctx.textAlign = "center"; ctx.fillText(label, 256, 70);
-    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
-    // Readable from both sides: riders coming down see the uphill face.
-    for (const turn of [Math.PI, 0]) {
-      const banner = new THREE.Mesh(new THREE.PlaneGeometry(10, 1.9), new THREE.MeshStandardMaterial({ map: texture }));
-      banner.position.set(pose.x - Math.sin(pose.yaw) * (turn ? 0.01 : -0.01), pose.y + 5.4, pose.z - Math.cos(pose.yaw) * (turn ? 0.01 : -0.01));
-      banner.rotation.y = pose.yaw + turn;
-      banner.name = "B Hill banner";
-      scene.add(banner);
+  // Real street signs, not banners: a street-name blade at the top, the speed
+  // limit and a hill warning, a curve warning ahead of each bend, and the cross
+  // street at the bottom. On the riders' right, clear of driveways and side streets.
+  const feet = lots.map((l) => routeProgress(l.x + l.ax * l.plan.gx + l.fx * (l.plan.LD / 2 + l.reach), l.z + l.az * l.plan.gx + l.fz * (l.plan.LD / 2 + l.reach)));
+  const clear = (s: number, side: number) => {
+    for (let k = 0; k < 12; k++) {
+      const t = s + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 3;
+      const busy = lots.some((l, i) => l.side === side && Math.abs(feet[i] - t) < l.plan.drive + 2.2) || SIDE_STREETS.some((st) => Math.abs(st.s - t) < 16);
+      if (!busy) return t;
     }
-    for (const o of [-5.4, 5.4]) {
-      const px = pose.x + Math.cos(pose.yaw) * o, pz = pose.z - Math.sin(pose.yaw) * o;
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 6.4, 8), postMat); post.position.set(px, bHillHeight(px, pz) + 3.2, pz); post.castShadow = true; scene.add(post);
-    }
+    return s;
+  };
+  const stand = (sign: THREE.Object3D, s: number, side = -1) => {
+    const at = clear(s, side), p = routePose(at), o = side * (VERGE + 0.7), x = p.x + Math.cos(p.yaw) * o, z = p.z - Math.sin(p.yaw) * o;
+    sign.position.set(x, bHillHeight(x, z), z);
+    sign.rotation.y = p.yaw + Math.PI; // facing riders coming down
+    scene.add(sign);
+    world.createCollider(RAPIER.ColliderDesc.cylinder(1.4, 0.05).setTranslation(x, sign.position.y + 1.4, z).setFriction(0.3).setCollisionGroups(GROUPS.surface));
+    return sign;
+  };
+  const top = stand(streetNameSign(["B HILL"]), 58);
+  top.rotation.y += Math.PI / 2; // the blade runs along the street it names
+  stand(speedLimitSign(25), 96);
+  stand(warningSign("hill", "STEEP GRADE"), 150);
+  // Curve warnings ahead of each real bend: a run of road whose heading turns 19°+
+  // within 60 m. A bend followed closely by one the other way (an S) gets one reverse-curve sign.
+  const heading = (s: number) => routePose(s).yaw, bends: { start: number; end: number; turn: number }[] = [];
+  for (let s = 160; s < B_HILL_LENGTH - 80; s += 5) {
+    const turn = Math.atan2(Math.sin(heading(s + 60) - heading(s)), Math.cos(heading(s + 60) - heading(s)));
+    const last = bends[bends.length - 1];
+    if (Math.abs(turn) < 0.33) continue;
+    if (last && s - last.end <= 5 && Math.sign(turn) === Math.sign(last.turn)) { last.end = s; if (Math.abs(turn) > Math.abs(last.turn)) last.turn = turn; }
+    else bends.push({ start: s, end: s, turn });
   }
+  // Heading increases turning toward +x, which is the rider's left.
+  for (let i = 0; i < bends.length; i++) {
+    const b = bends[i], next = bends[i + 1], reverse = next && next.start - b.end < 120 && Math.sign(next.turn) !== Math.sign(b.turn);
+    const dir = b.turn > 0 ? "left" : "right";
+    stand(warningSign(reverse ? (`reverse-${dir}` as const) : (`curve-${dir}` as const)), Math.max(170, b.start - 15));
+    if (reverse) i++;
+  }
+  const bottom = stand(streetNameSign(["B HILL", "PUEBLO DR"]), B_HILL_LENGTH - 40, 1);
+  bottom.rotation.y += Math.PI / 2;
+  scene.userData.bHillBends = bends;
+
+  // The start and finish gates stand only while a timed race is on (setRaceGates).
+  const gates = new THREE.Group();
+  gates.name = "B Hill race gates";
+  gates.visible = false;
+  gates.userData.noBatch = true;
+  for (const [s, label] of [[70, "START"], [B_HILL_LENGTH - 60, "FINISH"]] as const) {
+    const p = routePose(s), y0 = bHillHeight(p.x, p.z);
+    const gate = raceGate(label, ROAD_HALF_WIDTH * 2 + 1.6, (lx) => bHillHeight(p.x + Math.cos(p.yaw) * lx, p.z - Math.sin(p.yaw) * lx) - y0);
+    gate.position.set(p.x, y0, p.z);
+    gate.rotation.y = p.yaw;
+    gates.add(gate);
+  }
+  scene.add(gates);
+  scene.userData.bHillRaceGates = gates;
 }
